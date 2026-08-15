@@ -1,6 +1,6 @@
 name: Extract Scenes
 description: Copy the files attached to selected scenes into a separate folder without changing the originals.
-version: 0.2.0
+version: 0.2.1
 
 ui:
   javascript:
