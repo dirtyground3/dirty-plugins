@@ -29,4 +29,4 @@ The source code and build script are maintained in the `infinitescreens` project
 
 ## License
 
-No explicit license is currently included for Multiscreen.
+Multiscreen is distributed under the [MIT License](LICENSE).

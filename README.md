@@ -25,11 +25,13 @@ Keep each plugin's directory name and all files inside it unchanged.
 ```text
 plugins/
 ├── extractScenes/
+│   ├── LICENSE
 │   ├── extractScenes.yml
 │   ├── extractScenes.js
 │   ├── extractScenes.css
 │   └── extract_scenes.py
 └── multiscreen/
+    ├── LICENSE
     ├── multiscreen.yml
     ├── multiscreen.js
     └── multiscreen.css
@@ -37,4 +39,7 @@ plugins/
 
 ## License
 
-Licensing is documented per plugin. Extract Scenes is distributed under the MIT License. Multiscreen does not currently include an explicit license.
+This repository and both plugins are distributed under the [MIT License](LICENSE):
+
+- [Extract Scenes license](plugins/extractScenes/LICENSE)
+- [Multiscreen license](plugins/multiscreen/LICENSE)

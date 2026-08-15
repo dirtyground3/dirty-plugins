@@ -65,3 +65,7 @@ node --check extractScenes.js
 
 The UI integration uses Stash's experimental `PluginApi`, so future Stash
 versions may require small compatibility updates.
+
+## License
+
+Extract Scenes is distributed under the [MIT License](LICENSE).
