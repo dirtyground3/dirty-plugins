@@ -1,6 +1,6 @@
-name: Extract Scenes
+name: DirtyFileExtractor
 description: Copy the files attached to selected scenes into a separate folder without changing the originals.
-version: 0.2.1
+version: 0.2.2
 
 ui:
   javascript:

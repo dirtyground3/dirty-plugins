@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backend for the Extract Scenes plugin.
+"""Backend for the DirtyFileExtractor plugin.
 
 Stash invokes this program with its raw plugin protocol: a JSON object is read
 from stdin and a JSON result is written to stdout.  The browser passes scene
@@ -286,7 +286,7 @@ def copy_scenes(
     destination_value = str(settings.get("destinationFolder") or "").strip()
     if not destination_value:
         raise PluginError(
-            "Set Destination folder under Settings > Plugins > Extract Scenes first"
+            "Set Destination folder under Settings > Plugins > DirtyFileExtractor first"
         )
 
     destination_root = Path(os.path.expandvars(os.path.expanduser(destination_value)))
@@ -426,7 +426,7 @@ def copy_scenes(
 
     reporter.progress(1.0)
     reporter.info(
-        f"Extract Scenes finished: {len(copied)} copied, {len(skipped)} skipped, "
+        f"DirtyFileExtractor finished: {len(copied)} copied, {len(skipped)} skipped, "
         f"{len(missing)} missing"
     )
 
@@ -452,9 +452,9 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
     if not isinstance(args, dict):
         raise PluginError("Plugin arguments must be an object")
 
-    reporter.info("Extract Scenes started")
+    reporter.info("DirtyFileExtractor started")
     client = StashClient(server_connection)
-    reporter.info("Reading Extract Scenes settings")
+    reporter.info("Reading DirtyFileExtractor settings")
     settings = client.plugin_settings()
     return copy_scenes(client, scene_ids_from_args(args), settings, reporter)
 
@@ -465,7 +465,7 @@ def main() -> int:
         emit_output(run(read_payload(), reporter))
         return 0
     except Exception as exc:  # Stash must always receive a valid protocol response.
-        reporter.error(f"Extract Scenes failed: {exc}")
+        reporter.error(f"DirtyFileExtractor failed: {exc}")
         emit_error(exc)
         return 1
 

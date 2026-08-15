@@ -1,6 +1,6 @@
-# Multiscreen
+# DirtyMultiscreen
 
-Multiscreen adds an immersive multiscreen playback grid to Stash. It can launch from Stash scene and marker contexts while preserving the active list order when appropriate.
+DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can launch from Stash scene and marker contexts while preserving the active list order when appropriate.
 
 ## Features
 
@@ -16,8 +16,8 @@ Multiscreen adds an immersive multiscreen playback grid to Stash. It can launch 
 
 1. Copy this entire `multiscreen` directory into Stash's plugin directory. The usual paths are `%USERPROFILE%\.stash\plugins\multiscreen` on Windows and `~/.stash/plugins/multiscreen` on Linux/macOS.
 2. In Stash, open **Settings > Plugins** and select **Reload Plugins**.
-3. Configure **Multiscreen** under **Installed Plugins**.
-4. Use the Multiscreen action in Stash to open the playback grid.
+3. Configure **DirtyMultiscreen** under **Installed Plugins**.
+4. Use the DirtyMultiscreen action in Stash to open the playback grid.
 
 ## Configuration
 
@@ -29,4 +29,4 @@ The source code and build script are maintained in the `infinitescreens` project
 
 ## License
 
-Multiscreen is distributed under the [MIT License](LICENSE).
+DirtyMultiscreen is distributed under the [MIT License](LICENSE).

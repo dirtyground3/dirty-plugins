@@ -6,8 +6,8 @@ A collection of plugins for [Stash](https://stashapp.cc/).
 
 | Plugin | Description | Version |
 | --- | --- | --- |
-| [Extract Scenes](plugins/extractScenes/) | Copy the media files attached to selected scenes into a separate folder. | 0.2.1 |
-| [Multiscreen](plugins/multiscreen/) | Launch an immersive multiscreen grid for scenes and markers. | 0.3.0 |
+| [DirtyFileExtractor](plugins/extractScenes/) | Copy the media files attached to selected scenes into a separate folder. | 0.2.2 |
+| [DirtyMultiscreen](plugins/multiscreen/) | Launch an immersive multiscreen grid for scenes and markers. | 0.3.1 |
 
 ## Install from Stash
 
@@ -19,7 +19,8 @@ https://dirtyground3.github.io/dirty-plugins/main/index.yml
 
 The URL must end in `index.yml`. The GitHub repository URL is a webpage and is not a valid Stash plugin source.
 
-After adding the source, reload the available packages and install **Extract Scenes** or **Multiscreen**.
+After adding the source, reload the available packages and install
+**DirtyFileExtractor** or **DirtyMultiscreen**.
 
 ## Manual installation
 
@@ -74,5 +75,5 @@ To test the package build locally on a system with Bash and `zip` installed:
 
 This repository and both plugins are distributed under the [MIT License](LICENSE):
 
-- [Extract Scenes license](plugins/extractScenes/LICENSE)
-- [Multiscreen license](plugins/multiscreen/LICENSE)
+- [DirtyFileExtractor license](plugins/extractScenes/LICENSE)
+- [DirtyMultiscreen license](plugins/multiscreen/LICENSE)

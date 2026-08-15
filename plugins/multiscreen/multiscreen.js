@@ -1252,7 +1252,7 @@
     return /* @__PURE__ */ createElement("div", { className: "ms-route" }, loading && /* @__PURE__ */ createElement(StateView, { title: `Loading ${itemType}` }), !loading && error && /* @__PURE__ */ createElement(
       StateView,
       {
-        title: "Could not load multiscreen",
+        title: "Could not load DirtyMultiscreen",
         detail: error.message,
         onRetry: () => {
           void configQuery.refetch?.();
@@ -1288,7 +1288,7 @@
         icon: oCounterButtonIcon,
         onClick: () => void incrementVisibleOCounters()
       }
-    ), /* @__PURE__ */ createElement(PluginIconButton, { ariaLabel: "Close multiscreen", fallback: "x", icon: ICONS.close, onClick: closeRoute })));
+    ), /* @__PURE__ */ createElement(PluginIconButton, { ariaLabel: "Close DirtyMultiscreen", fallback: "x", icon: ICONS.close, onClick: closeRoute })));
   };
   var ContextualMultiscreenNavLink = () => {
     const location = useLocation();
@@ -1340,7 +1340,7 @@
     }, [launchContext, launchContextKey]);
     const formattedSceneCount = sceneCount?.toLocaleString();
     const countNoun = isMarkerLaunchContext(launchContext) ? "markers" : "scenes";
-    const buttonTitle = formattedSceneCount ? `Multiscreen (${formattedSceneCount} ${countNoun})` : "Multiscreen";
+    const buttonTitle = formattedSceneCount ? `DirtyMultiscreen (${formattedSceneCount} ${countNoun})` : "DirtyMultiscreen";
     const handleClick = useCallback(() => {
       storeLaunchContext(launchContext);
     }, [launchContext]);

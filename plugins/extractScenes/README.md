@@ -1,6 +1,6 @@
-# Extract Scenes
+# DirtyFileExtractor
 
-Extract Scenes is a Stash plugin that copies every media file attached to one or
+DirtyFileExtractor is a Stash plugin that copies every media file attached to one or
 more selected scenes into a separate folder. It does not move, rename, or
 modify the originals.
 
@@ -25,7 +25,7 @@ modify the originals.
    are `%USERPROFILE%\.stash\plugins\extractScenes` on Windows and
    `~/.stash/plugins/extractScenes` on Linux/macOS.
 2. In Stash, open **Settings > Plugins** and click **Reload Plugins**.
-3. Expand **Extract Scenes** and set **Destination folder** to an absolute path on
+3. Expand **DirtyFileExtractor** and set **Destination folder** to an absolute path on
    the machine running Stash.
 4. Ensure `python` on that machine runs Python 3.9 or newer.
 
@@ -68,4 +68,4 @@ It intentionally does not use Stash's experimental React `PluginApi`.
 
 ## License
 
-Extract Scenes is distributed under the [MIT License](LICENSE).
+DirtyFileExtractor is distributed under the [MIT License](LICENSE).

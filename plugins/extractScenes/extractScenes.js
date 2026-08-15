@@ -169,7 +169,7 @@
       .then(function (settings) {
         if (!String(settings.destinationFolder || "").trim()) {
           throw new Error(
-            "Set Destination folder under Settings > Plugins > Extract Scenes first."
+            "Set Destination folder under Settings > Plugins > DirtyFileExtractor first."
           );
         }
         return queueCopy(sceneIds);
@@ -181,7 +181,7 @@
         );
       })
       .catch(function (error) {
-        console.error("[Extract Scenes]", error);
+        console.error("[DirtyFileExtractor]", error);
         notify(error.message || String(error), true);
       })
       .then(function () {
