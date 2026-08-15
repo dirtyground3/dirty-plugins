@@ -1,0 +1,8 @@
+.stash-copy-toast {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.35);
+  max-width: min(32rem, calc(100vw - 2rem));
+  position: fixed;
+  right: 1rem;
+  top: 1rem;
+  z-index: 11000;
+}

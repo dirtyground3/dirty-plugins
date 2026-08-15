@@ -1,0 +1,37 @@
+name: Stash Copy
+description: Copy the files attached to selected scenes into a separate folder without changing the originals.
+version: 0.1.5
+
+ui:
+  javascript:
+    - stashCopy.js
+  css:
+    - stashCopy.css
+
+exec:
+  - python
+  - "{pluginDir}/stash_copy.py"
+interface: raw
+errLog: error
+
+settings:
+  destinationFolder:
+    displayName: Destination folder
+    description: Absolute path on the machine running Stash. The plugin creates this folder when necessary.
+    type: STRING
+  collisionPolicy:
+    displayName: File collision policy
+    description: "rename (default), skip, or overwrite. Rename adds a numeric suffix and never replaces an existing file."
+    type: STRING
+  createSceneFolders:
+    displayName: Create a folder for each scene
+    description: Put each scene in a subfolder named from its title. Disabled by default.
+    type: BOOLEAN
+  dryRun:
+    displayName: Dry run
+    description: Report what would be copied without writing any files. Disabled by default.
+    type: BOOLEAN
+  maxCopySpeedMBps:
+    displayName: Maximum copy speed (MiB/s)
+    description: Limit disk usage so Stash stays responsive. Defaults to 20 MiB/s. Set to 0 for unlimited speed.
+    type: NUMBER

@@ -1,0 +1,49 @@
+name: Stash Multiscreen
+description: Immersive multiscreen scene playback grid for Stash.
+version: 0.3.0
+ui:
+  javascript:
+  - stashMultiscreen.js
+  css:
+  - stashMultiscreen.css
+settings:
+  totalScreens:
+    type: NUMBER
+    displayName: Total screens
+    description: Number of video panes to render. Defaults to 4.
+  rows:
+    type: NUMBER
+    displayName: Rows
+    description: Number of grid rows. Defaults to 2.
+  columns:
+    type: NUMBER
+    displayName: Columns
+    description: Number of grid columns. Defaults to 2.
+  randomize:
+    type: BOOLEAN
+    displayName: Randomize scenes
+    description: Shuffle scene playback lists. Defaults to true.
+  splitScenes:
+    type: BOOLEAN
+    displayName: Split scenes
+    description: Split loaded scenes across panes instead of reusing the same list. Defaults to false.
+  startMuted:
+    type: BOOLEAN
+    displayName: Start muted
+    description: Start every video muted. Defaults to true.
+  randomStart:
+    type: BOOLEAN
+    displayName: Random start
+    description: Start each scene at a random timestamp after metadata loads. Defaults to false.
+  loopScenes:
+    type: BOOLEAN
+    displayName: Loop scenes
+    description: Loop each scene instead of advancing at the end. Defaults to true.
+  markerDuration:
+    type: NUMBER
+    displayName: Marker fallback duration
+    description: Seconds to play markers that do not have an end time. Defaults to 30.
+  pauseWhenHidden:
+    type: BOOLEAN
+    displayName: Pause when hidden
+    description: Pause playback while the browser tab is hidden. Defaults to false.
