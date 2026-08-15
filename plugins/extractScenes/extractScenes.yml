@@ -1,16 +1,16 @@
-name: Stash Copy
+name: Extract Scenes
 description: Copy the files attached to selected scenes into a separate folder without changing the originals.
 version: 0.1.5
 
 ui:
   javascript:
-    - stashCopy.js
+    - extractScenes.js
   css:
-    - stashCopy.css
+    - extractScenes.css
 
 exec:
   - python
-  - "{pluginDir}/stash_copy.py"
+  - "{pluginDir}/extract_scenes.py"
 interface: raw
 errLog: error
 

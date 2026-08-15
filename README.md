@@ -25,16 +25,16 @@ Keep each plugin's directory name and all files inside it unchanged.
 ```text
 plugins/
 ├── extractScenes/
-│   ├── stashCopy.yml
-│   ├── stashCopy.js
-│   ├── stashCopy.css
-│   └── stash_copy.py
+│   ├── extractScenes.yml
+│   ├── extractScenes.js
+│   ├── extractScenes.css
+│   └── extract_scenes.py
 └── multiscreen/
-    ├── stashMultiscreen.yml
-    ├── stashMultiscreen.js
-    └── stashMultiscreen.css
+    ├── multiscreen.yml
+    ├── multiscreen.js
+    └── multiscreen.css
 ```
 
 ## License
 
-Licensing is documented per plugin. Extract Scenes (internally Stash Copy) is distributed under the MIT License. Multiscreen does not currently include an explicit license.
+Licensing is documented per plugin. Extract Scenes is distributed under the MIT License. Multiscreen does not currently include an explicit license.

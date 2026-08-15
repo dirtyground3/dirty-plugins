@@ -1,11 +1,11 @@
-name: Stash Multiscreen
+name: Multiscreen
 description: Immersive multiscreen scene playback grid for Stash.
 version: 0.3.0
 ui:
   javascript:
-  - stashMultiscreen.js
+  - multiscreen.js
   css:
-  - stashMultiscreen.css
+  - multiscreen.css
 settings:
   totalScreens:
     type: NUMBER

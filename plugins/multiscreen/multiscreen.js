@@ -1,5 +1,5 @@
 (() => {
-  // plugins/stash-multiscreen/src/stashReactShim.ts
+  // plugins/multiscreen/src/reactShim.ts
   var React = window.PluginApi.React;
   var Children = React.Children;
   var Component = React.Component;
@@ -65,20 +65,20 @@
     );
   };
 
-  // plugins/stash-multiscreen/src/stashMultiscreen.tsx
+  // plugins/multiscreen/src/multiscreen.tsx
   var PluginApi = window.PluginApi;
   var GQL = PluginApi.GQL;
   var { Button } = PluginApi.libraries.Bootstrap;
   var { NavLink, useLocation } = PluginApi.libraries.ReactRouterDOM;
   var FontAwesomeIcon = PluginApi.libraries.ReactFontAwesome?.FontAwesomeIcon;
   var solidIcons = PluginApi.libraries.FontAwesomeSolid ?? {};
-  var PLUGIN_ID = "stashMultiscreen";
+  var PLUGIN_ID = "multiscreen";
   var ROUTE_PATH = "/plugins/multiscreen";
   var SCENES_ROUTE_PATH = "/scenes";
   var MARKERS_ROUTE_PATH = "/scenes/markers";
   var PERFORMERS_ROUTE_PATH = "/performers";
   var STUDIOS_ROUTE_PATH = "/studios";
-  var LAUNCH_CONTEXT_STORAGE_KEY = "stashMultiscreen.launchContext";
+  var LAUNCH_CONTEXT_STORAGE_KEY = "multiscreen.launchContext";
   var MAX_SCENE_PAGE_SIZE = 240;
   var PLUGIN_SETTING_ORDER = [
     "totalScreens",
@@ -542,7 +542,7 @@
     return result.data;
   };
   var findPerformersQuery = `
-  query StashMultiscreenPerformers(
+  query MultiscreenPerformers(
     $filter: FindFilterType
     $performer_filter: PerformerFilterType
   ) {
@@ -554,7 +554,7 @@
   }
 `;
   var findStudiosQuery = `
-  query StashMultiscreenStudios(
+  query MultiscreenStudios(
     $filter: FindFilterType
     $studio_filter: StudioFilterType
   ) {
@@ -566,7 +566,7 @@
   }
 `;
   var findScenesQuery = `
-  query StashMultiscreenScenes(
+  query MultiscreenScenes(
     $filter: FindFilterType
     $scene_filter: SceneFilterType
     $ids: [ID!]
@@ -589,7 +589,7 @@
   }
 `;
   var findSceneMarkersQuery = `
-  query StashMultiscreenMarkers(
+  query MultiscreenMarkers(
     $filter: FindFilterType
     $scene_marker_filter: SceneMarkerFilterType
     $ids: [ID!]
@@ -625,7 +625,7 @@
   }
 `;
   var findSceneCountQuery = `
-  query StashMultiscreenSceneCount(
+  query MultiscreenSceneCount(
     $filter: FindFilterType
     $scene_filter: SceneFilterType
     $ids: [ID!]
@@ -636,7 +636,7 @@
   }
 `;
   var findSceneMarkerCountQuery = `
-  query StashMultiscreenMarkerCount(
+  query MultiscreenMarkerCount(
     $filter: FindFilterType
     $scene_marker_filter: SceneMarkerFilterType
     $ids: [ID!]
@@ -651,7 +651,7 @@
   }
 `;
   var incrementSceneOQuery = `
-  mutation StashMultiscreenIncrementSceneO($id: ID!) {
+  mutation MultiscreenIncrementSceneO($id: ID!) {
     sceneIncrementO(id: $id)
   }
 `;

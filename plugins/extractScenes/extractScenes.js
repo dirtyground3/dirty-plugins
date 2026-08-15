@@ -3,16 +3,16 @@
 
   var api = window.PluginApi;
   if (!api || !api.React || !api.patch) {
-    console.error("[Stash Copy] PluginApi is unavailable");
+    console.error("[Extract Scenes] PluginApi is unavailable");
     return;
   }
-  if (window.__stashCopyNativeMenuLoaded) return;
-  window.__stashCopyNativeMenuLoaded = true;
+  if (window.__extractScenesNativeMenuLoaded) return;
+  window.__extractScenesNativeMenuLoaded = true;
 
   var React = api.React;
   var ReactDOM = api.ReactDOM;
   var Dropdown = api.libraries.Bootstrap.Dropdown;
-  var PLUGIN_ID = "stashCopy";
+  var PLUGIN_ID = "extractScenes";
   var busy = false;
 
   function graphql(query, variables) {
@@ -38,7 +38,7 @@
 
   function getSettings() {
     return graphql(
-      "query StashCopySettings($ids:[ID!]){" +
+      "query ExtractScenesSettings($ids:[ID!]){" +
         "configuration{plugins(include:$ids)}}",
       { ids: [PLUGIN_ID] }
     ).then(function (data) {
@@ -49,7 +49,7 @@
 
   function queueCopy(sceneIds) {
     return graphql(
-      "mutation StashCopyRun($pluginId:ID!,$description:String!,$args:Map){" +
+      "mutation ExtractScenesRun($pluginId:ID!,$description:String!,$args:Map){" +
         "runPluginTask(plugin_id:$pluginId,description:$description,args_map:$args)}",
       {
         pluginId: PLUGIN_ID,
@@ -116,7 +116,7 @@
       .then(function (settings) {
         if (!String(settings.destinationFolder || "").trim()) {
           throw new Error(
-            "Set Destination folder under Settings > Plugins > Stash Copy first."
+            "Set Destination folder under Settings > Plugins > Extract Scenes first."
           );
         }
         return queueCopy(sceneIds);
@@ -128,7 +128,7 @@
         );
       })
       .catch(function (error) {
-        console.error("[Stash Copy]", error);
+        console.error("[Extract Scenes]", error);
         notify(error.message || String(error), true);
       })
       .then(function () { busy = false; });

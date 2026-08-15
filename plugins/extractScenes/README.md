@@ -1,6 +1,6 @@
-# Stash Copy
+# Extract Scenes
 
-Stash Copy is a Stash plugin that copies every media file attached to one or
+Extract Scenes is a Stash plugin that copies every media file attached to one or
 more selected scenes into a separate folder. It does not move, rename, or
 modify the originals.
 
@@ -25,7 +25,7 @@ modify the originals.
    are `%USERPROFILE%\.stash\plugins\extractScenes` on Windows and
    `~/.stash/plugins/extractScenes` on Linux/macOS.
 2. In Stash, open **Settings > Plugins** and click **Reload Plugins**.
-3. Expand **Stash Copy** and set **Destination folder** to an absolute path on
+3. Expand **Extract Scenes** and set **Destination folder** to an absolute path on
    the machine running Stash.
 4. Ensure `python` on that machine runs Python 3.9 or newer.
 
@@ -59,8 +59,8 @@ Run the local checks from this directory:
 
 ```powershell
 python -m unittest discover -s tests -v
-python -m py_compile stash_copy.py
-node --check stashCopy.js
+python -m py_compile extract_scenes.py
+node --check extractScenes.js
 ```
 
 The UI integration uses Stash's experimental `PluginApi`, so future Stash

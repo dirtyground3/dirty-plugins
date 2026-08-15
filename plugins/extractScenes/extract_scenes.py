@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backend for the Stash Copy plugin.
+"""Backend for the Extract Scenes plugin.
 
 Stash invokes this program with its raw plugin protocol: a JSON object is read
 from stdin and a JSON result is written to stdout.  The browser passes scene
@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-PLUGIN_ID = "stashCopy"
+PLUGIN_ID = "extractScenes"
 VALID_COLLISION_POLICIES = {"rename", "skip", "overwrite"}
 INVALID_FOLDER_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 COPY_CHUNK_SIZE = 4 * 1024 * 1024
@@ -104,7 +104,7 @@ class StashClient:
 
     def plugin_settings(self) -> dict[str, Any]:
         query = """
-          query StashCopySettings($ids: [ID!]) {
+          query ExtractScenesSettings($ids: [ID!]) {
             configuration { plugins(include: $ids) }
           }
         """
@@ -114,7 +114,7 @@ class StashClient:
 
     def scene(self, scene_id: str) -> dict[str, Any] | None:
         query = """
-          query StashCopyScene($id: ID!) {
+          query ExtractScenesScene($id: ID!) {
             findScene(id: $id) {
               id
               title
@@ -248,7 +248,7 @@ def copy_file_chunked(
 ) -> None:
     """Copy through a temporary sibling while reporting transferred bytes."""
     temporary = destination.with_name(
-        f".{destination.name}.stashcopy-{uuid.uuid4().hex}.part"
+        f".{destination.name}.extract-scenes-{uuid.uuid4().hex}.part"
     )
     started = time.monotonic()
     transferred = 0
@@ -286,7 +286,7 @@ def copy_scenes(
     destination_value = str(settings.get("destinationFolder") or "").strip()
     if not destination_value:
         raise PluginError(
-            "Set Destination folder under Settings > Plugins > Stash Copy first"
+            "Set Destination folder under Settings > Plugins > Extract Scenes first"
         )
 
     destination_root = Path(os.path.expandvars(os.path.expanduser(destination_value)))
@@ -426,7 +426,7 @@ def copy_scenes(
 
     reporter.progress(1.0)
     reporter.info(
-        f"Stash Copy finished: {len(copied)} copied, {len(skipped)} skipped, "
+        f"Extract Scenes finished: {len(copied)} copied, {len(skipped)} skipped, "
         f"{len(missing)} missing"
     )
 
@@ -452,9 +452,9 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
     if not isinstance(args, dict):
         raise PluginError("Plugin arguments must be an object")
 
-    reporter.info("Stash Copy started")
+    reporter.info("Extract Scenes started")
     client = StashClient(server_connection)
-    reporter.info("Reading Stash Copy settings")
+    reporter.info("Reading Extract Scenes settings")
     settings = client.plugin_settings()
     return copy_scenes(client, scene_ids_from_args(args), settings, reporter)
 
@@ -465,7 +465,7 @@ def main() -> int:
         emit_output(run(read_payload(), reporter))
         return 0
     except Exception as exc:  # Stash must always receive a valid protocol response.
-        reporter.error(f"Stash Copy failed: {exc}")
+        reporter.error(f"Extract Scenes failed: {exc}")
         emit_error(exc)
         return 1
 
