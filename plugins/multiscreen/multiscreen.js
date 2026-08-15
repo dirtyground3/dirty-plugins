@@ -115,10 +115,10 @@
     randomize: true,
     splitScenes: false,
     startMuted: true,
-    randomStart: false,
+    randomStart: true,
     loopScenes: true,
     markerDuration: 30,
-    pauseWhenHidden: false
+    pauseWhenHidden: true
   };
   var ICONS = {
     close: solidIcons.faXmark ?? solidIcons.faTimes,

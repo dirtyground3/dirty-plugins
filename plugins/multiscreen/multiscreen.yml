@@ -1,6 +1,6 @@
 name: DirtyMultiscreen
 description: Immersive multiscreen scene playback grid for Stash.
-version: 0.3.1
+version: 0.3.2
 ui:
   javascript:
   - multiscreen.js
@@ -21,8 +21,8 @@ settings:
     description: Number of grid columns. Defaults to 2.
   randomize:
     type: BOOLEAN
-    displayName: Randomize scenes
-    description: Shuffle scene playback lists. Defaults to true.
+    displayName: Random scenes
+    description: Shuffle scene playback lists. Enabled by default.
   splitScenes:
     type: BOOLEAN
     displayName: Split scenes
@@ -30,15 +30,15 @@ settings:
   startMuted:
     type: BOOLEAN
     displayName: Start muted
-    description: Start every video muted. Defaults to true.
+    description: Start every video muted. Enabled by default.
   randomStart:
     type: BOOLEAN
     displayName: Random start
-    description: Start each scene at a random timestamp after metadata loads. Defaults to false.
+    description: Start each scene at a random timestamp after metadata loads. Enabled by default.
   loopScenes:
     type: BOOLEAN
     displayName: Loop scenes
-    description: Loop each scene instead of advancing at the end. Defaults to true.
+    description: Loop each scene instead of advancing at the end. Enabled by default.
   markerDuration:
     type: NUMBER
     displayName: Marker fallback duration
@@ -46,4 +46,4 @@ settings:
   pauseWhenHidden:
     type: BOOLEAN
     displayName: Pause when hidden
-    description: Pause playback while the browser tab is hidden. Defaults to false.
+    description: Pause playback while the browser tab is hidden. Enabled by default.

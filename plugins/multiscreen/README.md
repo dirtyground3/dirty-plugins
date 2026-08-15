@@ -23,6 +23,9 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 
 The plugin exposes settings for screen count, grid dimensions, randomization, scene splitting, random start positions, looping, marker duration, muting, tab visibility behavior, and fallback scene sorting.
 
+The following playback options are enabled by default: **Random scenes**,
+**Start muted**, **Random start**, **Loop scenes**, and **Pause when hidden**.
+
 ## Source
 
 The source code and build script are maintained in the `infinitescreens` project. This folder contains the built files required to install the Stash plugin.

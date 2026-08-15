@@ -7,7 +7,7 @@ A collection of plugins for [Stash](https://stashapp.cc/).
 | Plugin | Description | Version |
 | --- | --- | --- |
 | [DirtyFileExtractor](plugins/extractScenes/) | Copy the media files attached to selected scenes into a separate folder. | 0.2.2 |
-| [DirtyMultiscreen](plugins/multiscreen/) | Launch an immersive multiscreen grid for scenes and markers. | 0.3.1 |
+| [DirtyMultiscreen](plugins/multiscreen/) | Launch an immersive multiscreen grid for scenes and markers. | 0.3.2 |
 
 ## Install from Stash
 
