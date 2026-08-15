@@ -1,5 +1,5 @@
 (() => {
-  // plugins/multiscreen/src/reactShim.ts
+  // plugins/DirtyMultiscreen/src/reactShim.ts
   var React = window.PluginApi.React;
   var Children = React.Children;
   var Component = React.Component;
@@ -65,7 +65,7 @@
     );
   };
 
-  // plugins/multiscreen/src/multiscreen.tsx
+  // plugins/DirtyMultiscreen/src/multiscreen.tsx
   var PluginApi = window.PluginApi;
   var GQL = PluginApi.GQL;
   var { Button } = PluginApi.libraries.Bootstrap;

@@ -2,8 +2,8 @@
 """Backend for the DirtyFileExtractor plugin.
 
 Stash invokes this program with its raw plugin protocol: a JSON object is read
-from stdin and a JSON result is written to stdout.  The browser passes scene
-IDs only; source paths are always resolved from Stash's own GraphQL API.
+from stdin and a JSON result is written to stdout. The browser passes scene,
+marker, or image IDs; source paths are always resolved from Stash's GraphQL API.
 """
 
 from __future__ import annotations
@@ -125,6 +125,41 @@ class StashClient:
         data = self.call(query, {"id": str(scene_id)})
         return data.get("findScene")
 
+    def markers(self, marker_ids: Iterable[str]) -> list[dict[str, Any]]:
+        query = """
+          query DirtyFileExtractorMarkers($ids: [ID!]) {
+            findSceneMarkers(ids: $ids) {
+              scene_markers {
+                id
+                title
+                scene { id title files { id path basename } }
+              }
+            }
+          }
+        """
+        data = self.call(query, {"ids": [str(value) for value in marker_ids]})
+        result = data.get("findSceneMarkers") or {}
+        return result.get("scene_markers") or []
+
+    def images(self, image_ids: Iterable[str]) -> list[dict[str, Any]]:
+        query = """
+          query DirtyFileExtractorImages($ids: [ID!]) {
+            findImages(ids: $ids) {
+              images {
+                id
+                title
+                visual_files {
+                  ... on ImageFile { id path basename }
+                  ... on VideoFile { id path basename }
+                }
+              }
+            }
+          }
+        """
+        data = self.call(query, {"ids": [str(value) for value in image_ids]})
+        result = data.get("findImages") or {}
+        return result.get("images") or []
+
 
 def read_payload(stream: Any = sys.stdin) -> dict[str, Any]:
     raw = stream.read()
@@ -173,32 +208,56 @@ def as_nonnegative_float(value: Any, default: float) -> float:
     return result
 
 
+def _unique_ids(raw_ids: Any) -> list[str]:
+    if raw_ids is None:
+        return []
+    if not isinstance(raw_ids, list):
+        raise PluginError("Selected item IDs must be provided as a list")
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in raw_ids:
+        item_id = str(value).strip()
+        if item_id and item_id not in seen:
+            result.append(item_id)
+            seen.add(item_id)
+    return result
+
+
 def scene_ids_from_args(args: dict[str, Any]) -> list[str]:
     raw_ids = args.get("scene_ids")
     if raw_ids is None and args.get("scene_id") is not None:
         raw_ids = [args.get("scene_id")]
-    if not isinstance(raw_ids, list):
-        raise PluginError("Select at least one scene before starting the copy")
-
-    result: list[str] = []
-    seen: set[str] = set()
-    for value in raw_ids:
-        scene_id = str(value).strip()
-        if scene_id and scene_id not in seen:
-            result.append(scene_id)
-            seen.add(scene_id)
+    result = _unique_ids(raw_ids)
     if not result:
         raise PluginError("Select at least one scene before starting the copy")
     return result
 
 
-def sanitize_folder_name(title: str | None, scene_id: str) -> str:
+def selections_from_args(args: dict[str, Any]) -> dict[str, list[str]]:
+    selections: dict[str, list[str]] = {}
+    for kind in ("scene", "marker", "image"):
+        raw_ids = args.get(f"{kind}_ids")
+        if raw_ids is None and args.get(f"{kind}_id") is not None:
+            raw_ids = [args.get(f"{kind}_id")]
+        selections[kind] = _unique_ids(raw_ids)
+    if not any(selections.values()):
+        raise PluginError(
+            "Select at least one scene, marker, or image before starting the copy"
+        )
+    return selections
+
+
+def sanitize_folder_name(
+    title: str | None,
+    item_id: str,
+    item_kind: str = "scene",
+) -> str:
     name = INVALID_FOLDER_CHARS.sub("_", (title or "").strip())
     name = re.sub(r"\s+", " ", name).strip(" .")
     if not name:
-        name = f"scene-{scene_id}"
+        name = f"{item_kind}-{item_id}"
     # Leave room for paths on systems where long path support is disabled.
-    return name[:120].rstrip(" .") or f"scene-{scene_id}"
+    return name[:120].rstrip(" .") or f"{item_kind}-{item_id}"
 
 
 def renamed_destination(path: Path) -> Path:
@@ -276,11 +335,88 @@ def copy_file_chunked(
         raise
 
 
-def copy_scenes(
+def _scene_item(scene: dict[str, Any]) -> dict[str, Any]:
+    scene_id = str(scene.get("id") or "")
+    return {
+        "kind": "scene",
+        "id": scene_id,
+        "title": scene.get("title"),
+        "folder_kind": "scene",
+        "folder_id": scene_id,
+        "files": scene.get("files") or [],
+    }
+
+
+def resolve_selected_items(
     client: StashClient,
-    scene_ids: Iterable[str],
+    selections: dict[str, list[str]],
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    items: list[dict[str, Any]] = []
+    missing: list[dict[str, str]] = []
+
+    for scene_id in selections.get("scene", []):
+        scene = client.scene(scene_id)
+        if scene:
+            items.append(_scene_item(scene))
+        else:
+            missing.append({"scene_id": scene_id, "reason": "scene not found"})
+
+    marker_ids = selections.get("marker", [])
+    markers_by_id = {
+        str(marker.get("id")): marker for marker in client.markers(marker_ids)
+    } if marker_ids else {}
+    for marker_id in marker_ids:
+        marker = markers_by_id.get(marker_id)
+        if not marker:
+            missing.append({"marker_id": marker_id, "reason": "marker not found"})
+            continue
+        scene = marker.get("scene")
+        if not scene:
+            missing.append(
+                {"marker_id": marker_id, "reason": "marker has no parent scene"}
+            )
+            continue
+        scene_id = str(scene.get("id") or "")
+        items.append(
+            {
+                "kind": "marker",
+                "id": marker_id,
+                "title": scene.get("title"),
+                "folder_kind": "scene",
+                "folder_id": scene_id,
+                "files": scene.get("files") or [],
+            }
+        )
+
+    image_ids = selections.get("image", [])
+    images_by_id = {
+        str(image.get("id")): image for image in client.images(image_ids)
+    } if image_ids else {}
+    for image_id in image_ids:
+        image = images_by_id.get(image_id)
+        if not image:
+            missing.append({"image_id": image_id, "reason": "image not found"})
+            continue
+        items.append(
+            {
+                "kind": "image",
+                "id": image_id,
+                "title": image.get("title"),
+                "folder_kind": "image",
+                "folder_id": image_id,
+                "files": image.get("visual_files") or [],
+            }
+        )
+
+    return items, missing
+
+
+def _copy_resolved_items(
+    items: Iterable[dict[str, Any]],
+    requested_counts: dict[str, int],
     settings: dict[str, Any],
     reporter: Reporter | None = None,
+    initial_missing: Iterable[dict[str, str]] = (),
 ) -> dict[str, Any]:
     reporter = reporter or Reporter()
     destination_value = str(settings.get("destinationFolder") or "").strip()
@@ -300,7 +436,7 @@ def copy_scenes(
             f"(received {policy!r})"
         )
 
-    create_scene_folders = as_bool(settings.get("createSceneFolders"))
+    create_item_folders = as_bool(settings.get("createSceneFolders"))
     dry_run = as_bool(settings.get("dryRun"))
     max_copy_speed_mib = as_nonnegative_float(
         settings.get("maxCopySpeedMBps"), 20.0
@@ -311,33 +447,37 @@ def copy_scenes(
 
     copied: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
-    missing: list[dict[str, str]] = []
+    missing: list[dict[str, str]] = list(initial_missing)
     pending: list[dict[str, Any]] = []
     seen_sources: set[str] = set()
-    requested_scene_ids = list(scene_ids)
+    resolved_items = list(items)
+    total_requested = sum(requested_counts.values())
 
     reporter.info(
-        f"Preparing {len(requested_scene_ids)} selected scene"
-        f"{'s' if len(requested_scene_ids) != 1 else ''}"
+        f"Preparing {total_requested} selected item"
+        f"{'s' if total_requested != 1 else ''}"
     )
     reporter.progress(0.0)
 
-    for scene_id in requested_scene_ids:
-        scene = client.scene(scene_id)
-        if not scene:
-            missing.append({"scene_id": scene_id, "reason": "scene not found"})
-            continue
-
-        scene_destination = destination_root
-        if create_scene_folders:
-            folder_name = sanitize_folder_name(scene.get("title"), scene_id)
-            scene_destination = destination_root / folder_name
+    for item in resolved_items:
+        kind = str(item.get("kind") or "item")
+        item_id = str(item.get("id") or "")
+        item_destination = destination_root
+        if create_item_folders:
+            folder_name = sanitize_folder_name(
+                item.get("title"),
+                str(item.get("folder_id") or item_id),
+                str(item.get("folder_kind") or kind),
+            )
+            item_destination = destination_root / folder_name
             if not dry_run:
-                scene_destination.mkdir(parents=True, exist_ok=True)
+                item_destination.mkdir(parents=True, exist_ok=True)
 
-        files = scene.get("files") or []
+        files = item.get("files") or []
         if not files:
-            missing.append({"scene_id": scene_id, "reason": "scene has no files"})
+            missing.append(
+                {f"{kind}_id": item_id, "reason": f"{kind} has no files"}
+            )
             continue
 
         for file_info in files:
@@ -353,7 +493,7 @@ def copy_scenes(
                 continue
 
             basename = str(file_info.get("basename") or source.name)
-            requested_destination = scene_destination / basename
+            requested_destination = item_destination / basename
             final_destination, action = resolve_destination(source, requested_destination, policy)
 
             if action in {"skip", "same-file"}:
@@ -433,7 +573,9 @@ def copy_scenes(
     return {
         "destination": str(destination_root),
         "dry_run": dry_run,
-        "scenes_requested": len(requested_scene_ids),
+        "scenes_requested": requested_counts.get("scene", 0),
+        "markers_requested": requested_counts.get("marker", 0),
+        "images_requested": requested_counts.get("image", 0),
         "files_copied": len(copied),
         "files_skipped": len(skipped),
         "files_missing": len(missing),
@@ -441,6 +583,42 @@ def copy_scenes(
         "skipped": skipped,
         "missing": missing,
     }
+
+
+def copy_scenes(
+    client: StashClient,
+    scene_ids: Iterable[str],
+    settings: dict[str, Any],
+    reporter: Reporter | None = None,
+) -> dict[str, Any]:
+    """Backward-compatible scene-only entry point used by existing callers."""
+    requested_scene_ids = list(scene_ids)
+    items: list[dict[str, Any]] = []
+    missing: list[dict[str, str]] = []
+    for scene_id in requested_scene_ids:
+        scene = client.scene(scene_id)
+        if scene:
+            items.append(_scene_item(scene))
+        else:
+            missing.append({"scene_id": scene_id, "reason": "scene not found"})
+    return _copy_resolved_items(
+        items,
+        {"scene": len(requested_scene_ids), "marker": 0, "image": 0},
+        settings,
+        reporter,
+        missing,
+    )
+
+
+def copy_selected(
+    client: StashClient,
+    selections: dict[str, list[str]],
+    settings: dict[str, Any],
+    reporter: Reporter | None = None,
+) -> dict[str, Any]:
+    items, missing = resolve_selected_items(client, selections)
+    counts = {kind: len(selections.get(kind, [])) for kind in selections}
+    return _copy_resolved_items(items, counts, settings, reporter, missing)
 
 
 def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, Any]:
@@ -456,7 +634,7 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
     client = StashClient(server_connection)
     reporter.info("Reading DirtyFileExtractor settings")
     settings = client.plugin_settings()
-    return copy_scenes(client, scene_ids_from_args(args), settings, reporter)
+    return copy_selected(client, selections_from_args(args), settings, reporter)
 
 
 def main() -> int:

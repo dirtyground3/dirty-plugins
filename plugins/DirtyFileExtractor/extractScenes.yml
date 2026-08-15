@@ -1,6 +1,6 @@
 name: DirtyFileExtractor
-description: Copy the files attached to selected scenes into a separate folder without changing the originals.
-version: 0.2.2
+description: Copy files from selected scenes, markers, or images into a separate folder without changing the originals.
+version: 0.3.0
 
 ui:
   javascript:
@@ -17,15 +17,15 @@ errLog: error
 settings:
   destinationFolder:
     displayName: Destination folder
-    description: Absolute path on the machine running Stash. The plugin creates this folder when necessary.
+    description: Choose an existing folder with Browse, or edit the absolute path manually. The path is on the machine running Stash.
     type: STRING
   collisionPolicy:
     displayName: File collision policy
     description: "rename (default), skip, or overwrite. Rename adds a numeric suffix and never replaces an existing file."
     type: STRING
   createSceneFolders:
-    displayName: Create a folder for each scene
-    description: Put each scene in a subfolder named from its title. Disabled by default.
+    displayName: Create a folder for each item
+    description: Put scenes and marker source scenes in scene-title folders, and images in image-title folders. Disabled by default.
     type: BOOLEAN
   dryRun:
     displayName: Dry run
