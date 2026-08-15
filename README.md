@@ -6,7 +6,7 @@ A collection of plugins for [Stash](https://stashapp.cc/).
 
 | Plugin | Description | Version |
 | --- | --- | --- |
-| [Extract Scenes](plugins/extractScenes/) | Copy the media files attached to selected scenes into a separate folder. | 0.1.5 |
+| [Extract Scenes](plugins/extractScenes/) | Copy the media files attached to selected scenes into a separate folder. | 0.2.0 |
 | [Multiscreen](plugins/multiscreen/) | Launch an immersive multiscreen grid for scenes and markers. | 0.3.0 |
 
 ## Install from Stash

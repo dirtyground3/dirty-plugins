@@ -6,15 +6,15 @@ modify the originals.
 
 ## Features
 
-- **Copy scene files** appears beside Stash's Export actions in the scene
-  selection menu.
+- An **Extract selected scenes** button appears in the lower-right corner when
+  one or more scenes are selected.
 - Copies all files attached to each selected scene.
 - Optional scene-title subfolders.
 - Collision policies: `rename` (safe default), `skip`, and `overwrite`.
 - Optional dry-run mode.
 - Live per-file log messages and byte-level progress in Stash's Tasks view.
-- Uses Stash's official filtered-scene-list patch point and a standard React
-  portal without traversing or modifying Stash's rendered scene tree.
+- The UI is isolated from Stash's React tree: it does not patch components,
+  change menus, replace elements, or render React children.
 - Copy speed defaults to 20 MiB/s to avoid monopolizing the disk used by Stash;
   set **Maximum copy speed** to `0` for unlimited throughput.
 - Uses only the Python standard library; no packages need to be installed.
@@ -37,9 +37,9 @@ running Stash.
 ## Usage
 
 Open Stash's **Scenes** page and select one or more scenes using the normal
-checkboxes. Open the selection actions menu (the three-dot button), then choose
-**Copy scene files** near **Export**. Stash runs copying as a background job;
-progress and errors appear under **Tasks** and in the Stash log.
+checkboxes. Choose **Extract selected scene(s)** in the lower-right corner.
+Stash runs copying as a background job; progress and errors appear under
+**Tasks** and in the Stash log.
 
 The plugin copies Stash scene files only. It does not copy generated previews,
 screenshots, sprites, or unrelated sidecar files.
@@ -63,8 +63,8 @@ python -m py_compile extract_scenes.py
 node --check extractScenes.js
 ```
 
-The UI integration uses Stash's experimental `PluginApi`, so future Stash
-versions may require small compatibility updates.
+The UI integration is plain browser JavaScript attached directly to `document.body`.
+It intentionally does not use Stash's experimental React `PluginApi`.
 
 ## License
 

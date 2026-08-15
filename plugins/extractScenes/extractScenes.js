@@ -1,19 +1,23 @@
 (function () {
   "use strict";
 
-  var api = window.PluginApi;
-  if (!api || !api.React || !api.patch) {
-    console.error("[Extract Scenes] PluginApi is unavailable");
-    return;
-  }
-  if (window.__extractScenesNativeMenuLoaded) return;
-  window.__extractScenesNativeMenuLoaded = true;
-
-  var React = api.React;
-  var ReactDOM = api.ReactDOM;
-  var Dropdown = api.libraries.Bootstrap.Dropdown;
   var PLUGIN_ID = "extractScenes";
-  var busy = false;
+  var INSTANCE_KEY = "__extractScenesFloatingAction";
+
+  // Stash may reload plugin assets without reloading the page. Tear down an
+  // older instance first so observers and event handlers are never duplicated.
+  var previousInstance = window[INSTANCE_KEY];
+  if (previousInstance && typeof previousInstance.destroy === "function") {
+    previousInstance.destroy();
+  }
+
+  var state = {
+    busy: false,
+    button: null,
+    destroyed: false,
+    frame: null,
+    observer: null,
+  };
 
   function graphql(query, variables) {
     return fetch("/graphql", {
@@ -62,7 +66,7 @@
 
   function notify(message, isError) {
     var toast = document.createElement("div");
-    toast.className = "stash-copy-toast alert " +
+    toast.className = "extract-scenes-toast alert " +
       (isError ? "alert-danger" : "alert-success");
     toast.setAttribute("role", "alert");
     toast.textContent = message;
@@ -101,17 +105,66 @@
     return ids;
   }
 
-  function startCopy(selectedIds) {
-    var sceneIds = selectedIds && selectedIds.length
-      ? selectedIds.slice()
-      : selectedSceneIds();
-    if (busy) return;
-    if (!sceneIds.length) {
-      notify("No selected scenes were found on this page.", true);
+  function isScenesListVisible() {
+    return /^\/scenes\/?$/.test(window.location.pathname) &&
+      Boolean(document.querySelector(".item-list-container.scene-list"));
+  }
+
+  function ensureButton() {
+    if (state.button && state.button.isConnected) return state.button;
+
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "extract-scenes-action btn btn-primary";
+    button.hidden = true;
+    button.setAttribute("aria-live", "polite");
+    button.addEventListener("click", onActionClick);
+    document.body.appendChild(button);
+    state.button = button;
+    return button;
+  }
+
+  function renderButton() {
+    if (state.destroyed) return;
+    var button = ensureButton();
+    var sceneIds = selectedSceneIds();
+    var count = sceneIds.length;
+
+    if (state.busy) {
+      button.hidden = false;
+      button.disabled = true;
+      if (button.textContent !== "Queuing extraction\u2026") {
+        button.textContent = "Queuing extraction\u2026";
+      }
       return;
     }
 
-    busy = true;
+    button.disabled = false;
+    button.hidden = !isScenesListVisible() || count === 0;
+    var label = count === 1
+      ? "Extract selected scene"
+      : "Extract " + count + " selected scenes";
+    if (button.textContent !== label) button.textContent = label;
+  }
+
+  function scheduleRender() {
+    if (state.destroyed || state.frame !== null) return;
+    state.frame = window.requestAnimationFrame(function () {
+      state.frame = null;
+      renderButton();
+    });
+  }
+
+  function startCopy(sceneIds) {
+    if (state.busy) return;
+    if (!sceneIds.length) {
+      notify("No selected scenes were found on this page.", true);
+      scheduleRender();
+      return;
+    }
+
+    state.busy = true;
+    renderButton();
     getSettings()
       .then(function (settings) {
         if (!String(settings.destinationFolder || "").trim()) {
@@ -131,71 +184,47 @@
         console.error("[Extract Scenes]", error);
         notify(error.message || String(error), true);
       })
-      .then(function () { busy = false; });
+      .then(function () {
+        state.busy = false;
+        scheduleRender();
+      });
   }
 
-  function CopyMenuController() {
-    var menuState = React.useState(null);
-    var menu = menuState[0];
-    var setMenu = menuState[1];
-    var idsState = React.useState([]);
-    var sceneIds = idsState[0];
-    var setSceneIds = idsState[1];
-
-    React.useEffect(function () {
-      var pendingTimer = null;
-
-      function onDocumentClick(event) {
-        var target = event.target;
-        if (!(target instanceof Element)) return;
-        var toggle = target.closest(
-          ".item-list-container.scene-list #more-menu"
-        );
-        if (!toggle) return;
-
-        if (pendingTimer !== null) window.clearTimeout(pendingTimer);
-        pendingTimer = window.setTimeout(function () {
-          pendingTimer = null;
-          var dropdown = toggle.closest(".dropdown");
-          var targetMenu = dropdown && dropdown.querySelector(
-            ".scene-list-operations-dropdown"
-          );
-          var selected = selectedSceneIds();
-          setSceneIds(selected);
-          setMenu(selected.length ? targetMenu : null);
-        }, 0);
-      }
-
-      document.addEventListener("click", onDocumentClick);
-      return function () {
-        document.removeEventListener("click", onDocumentClick);
-        if (pendingTimer !== null) window.clearTimeout(pendingTimer);
-      };
-    }, []);
-
-    if (!menu || !sceneIds.length) return null;
-    return ReactDOM.createPortal(
-      React.createElement(
-        Dropdown.Item,
-        {
-          className: "bg-secondary text-white stash-copy-menu-item",
-          onClick: function () { startCopy(sceneIds); },
-        },
-        "Copy scene files"
-      ),
-      menu
-    );
+  function onActionClick(event) {
+    event.preventDefault();
+    startCopy(selectedSceneIds());
   }
 
-  // FilteredSceneList is an official Stash patch point. Its existing output is
-  // returned unchanged; the controller is a sibling that stays idle until the
-  // operations menu is opened. React owns and removes the portal item safely.
-  api.patch.after("FilteredSceneList", function (_props, rendered) {
-    return React.createElement(
-      React.Fragment,
-      null,
-      rendered,
-      React.createElement(CopyMenuController, { key: "stash-copy-controller" })
-    );
-  });
+  function onDocumentChange(event) {
+    var target = event.target;
+    if (target instanceof Element && target.matches("input[type=checkbox]")) {
+      scheduleRender();
+    }
+  }
+
+  function destroy() {
+    if (state.destroyed) return;
+    state.destroyed = true;
+    document.removeEventListener("change", onDocumentChange, true);
+    window.removeEventListener("popstate", scheduleRender);
+    window.removeEventListener("hashchange", scheduleRender);
+    if (state.observer) state.observer.disconnect();
+    if (state.frame !== null) window.cancelAnimationFrame(state.frame);
+    if (state.button) {
+      state.button.removeEventListener("click", onActionClick);
+      if (state.button.parentNode) state.button.parentNode.removeChild(state.button);
+    }
+  }
+
+  document.addEventListener("change", onDocumentChange, true);
+  window.addEventListener("popstate", scheduleRender);
+  window.addEventListener("hashchange", scheduleRender);
+
+  // The observer only reads Stash's DOM and updates our body-level button. It
+  // never inserts into, replaces, or patches any React-owned element.
+  state.observer = new MutationObserver(scheduleRender);
+  state.observer.observe(document.body, { childList: true, subtree: true });
+
+  window[INSTANCE_KEY] = { destroy: destroy };
+  scheduleRender();
 })();
