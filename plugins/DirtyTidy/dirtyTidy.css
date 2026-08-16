@@ -1,0 +1,250 @@
+.dirty-tidy-card {
+  margin: 0;
+}
+
+.dirty-tidy-actions,
+.dirty-tidy-confirm,
+.dirty-tidy-filters,
+.dirty-tidy-level,
+.dirty-tidy-pagination,
+.dirty-tidy-summary {
+  align-items: center;
+  display: flex;
+}
+
+.dirty-tidy-body {
+  display: grid;
+  gap: 1.1rem;
+}
+
+
+.dirty-tidy-levels {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.9rem;
+}
+
+.dirty-tidy-level {
+  gap: 0.45rem;
+}
+
+.dirty-tidy-level-number {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  height: 1.75rem;
+  justify-content: center;
+  width: 1.75rem;
+}
+
+.dirty-tidy-level .form-control {
+  min-width: 0;
+}
+
+.dirty-tidy-field {
+  display: grid;
+  flex: 1 1 0;
+  gap: 0.3rem;
+  margin-top: 0.85rem;
+}
+
+.dirty-tidy-field label {
+  font-weight: 600;
+  margin: 0;
+}
+
+.dirty-tidy-field-row {
+  display: flex;
+  gap: 1rem;
+}
+
+.dirty-tidy-variables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.dirty-tidy-variable {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--dirty-ui-border-soft);
+  border-radius: 999px;
+  color: var(--dirty-ui-text);
+  cursor: pointer;
+  font: 500 0.78rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 0.35rem 0.55rem;
+}
+
+.dirty-tidy-variable:hover,
+.dirty-tidy-variable:focus-visible {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: var(--dirty-ui-border);
+}
+
+.dirty-tidy-automation {
+  max-width: 20rem;
+}
+
+.dirty-tidy-automation-state {
+  color: var(--dirty-ui-muted);
+  margin: 0.65rem 0 0;
+}
+
+.dirty-tidy-actions {
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.dirty-tidy-message {
+  margin-top: 0.8rem;
+}
+
+.dirty-tidy-summary {
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.dirty-tidy-summary-item {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--dirty-ui-border-soft);
+  border-radius: var(--dirty-ui-radius-small);
+  display: grid;
+  min-width: 6rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.dirty-tidy-summary-item strong {
+  font-size: 1.15rem;
+}
+
+.dirty-tidy-summary-item span {
+  color: var(--dirty-ui-muted);
+  font-size: 0.78rem;
+}
+
+.dirty-tidy-summary-blocked {
+  border-color: rgba(255, 123, 123, 0.5);
+}
+
+.dirty-tidy-summary-warning {
+  border-color: rgba(255, 193, 7, 0.55);
+}
+
+.dirty-tidy-filters {
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+}
+
+.dirty-tidy-filter {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--dirty-ui-border-soft);
+  border-radius: 999px;
+  color: var(--dirty-ui-text);
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.dirty-tidy-filter:hover,
+.dirty-tidy-filter:focus-visible,
+.dirty-tidy-filter-active {
+  background: rgba(255, 255, 255, 0.17);
+  border-color: var(--dirty-ui-border);
+}
+
+.dirty-tidy-filter-active {
+  box-shadow: inset 0 0 0 1px var(--dirty-ui-border);
+}
+
+.dirty-tidy-filter:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.dirty-tidy-preview-table-wrap {
+  margin-top: 1rem;
+  overflow-x: auto;
+}
+
+.dirty-tidy-preview-table {
+  margin: 0;
+  min-width: 58rem;
+}
+
+.dirty-tidy-preview-table th:first-child {
+  width: 6rem;
+}
+
+.dirty-tidy-preview-table th:nth-child(2),
+.dirty-tidy-preview-table th:nth-child(3) {
+  width: 31%;
+}
+
+.dirty-tidy-path {
+  font: 0.78rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.dirty-tidy-status {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--dirty-ui-text);
+  text-transform: capitalize;
+}
+
+.dirty-tidy-row-blocked .dirty-tidy-status {
+  background: #682b2b;
+}
+
+.dirty-tidy-row-ready .dirty-tidy-status {
+  background: #20593b;
+}
+
+.dirty-tidy-row-warning .dirty-tidy-status {
+  background: #7a5a00;
+  color: #fff3cd;
+}
+
+.dirty-tidy-pagination {
+  gap: 0.75rem;
+  justify-content: center;
+  margin-top: 0.85rem;
+}
+
+.dirty-tidy-confirm {
+  border-top: 1px solid var(--dirty-ui-border-soft);
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.dirty-tidy-empty {
+  color: var(--dirty-ui-muted);
+  margin: 1rem 0 0;
+}
+
+@media (max-width: 48rem) {
+  .dirty-tidy-field-row {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .dirty-tidy-level {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .dirty-tidy-level .form-control {
+    flex: 1 1 calc(100% - 2.5rem);
+  }
+
+  .dirty-tidy-confirm {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

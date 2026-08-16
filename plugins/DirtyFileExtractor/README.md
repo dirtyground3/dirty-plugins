@@ -28,17 +28,19 @@ the originals.
 1. Copy this entire directory into Stash's plugin directory. The usual paths
    are `%USERPROFILE%\.stash\plugins\DirtyFileExtractor` on Windows and
    `~/.stash/plugins/DirtyFileExtractor` on Linux/macOS.
-2. In Stash, open **Settings > Plugins** and click **Reload Plugins**.
-3. Expand **DirtyFileExtractor** and set **Destination folder** to an absolute path on
+2. Copy the sibling **DirtyPlugins** directory into the same plugins directory.
+3. In Stash, open **Settings > Plugins** and click **Reload Plugins**.
+4. Expand **DirtyFileExtractor**, follow its settings link, and set
+   **Destination folder** to an absolute path on
    the machine running Stash.
-4. Ensure `python` on that machine runs Python 3.9 or newer.
+5. Ensure `python` on that machine runs Python 3.9 or newer.
 
 For Docker, the destination must be a path *inside the Stash container*. Bind
 mount the host export directory into the container, then enter that container
 path in the plugin setting. The mounted directory must be writable by the user
 running Stash.
 
-Use **Browse…** beside **Destination folder** to navigate directories exposed
+Use **Browse…** beside **Destination folder** on the shared settings page to navigate directories exposed
 by the Stash server and save the selected path. The standard **Edit** button is
 still available for entering a path manually. In Docker, the picker shows the
 container filesystem rather than host-only paths.
@@ -73,8 +75,10 @@ python -B -m unittest discover -s tests -v
 node --check plugins/DirtyFileExtractor/extractScenes.js
 ```
 
-The UI integration is plain browser JavaScript attached directly to `document.body`.
-It intentionally does not use Stash's experimental React `PluginApi`.
+The UI integration is plain browser JavaScript attached directly to
+`document.body`. It uses DirtyPlugins for GraphQL, configuration, notifications,
+and shared visuals while intentionally avoiding Stash's experimental React
+`PluginApi` for its own controls.
 
 ## License
 

@@ -15,9 +15,10 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 ## Installation
 
 1. Copy this entire `DirtyMultiscreen` directory into Stash's plugin directory. The usual paths are `%USERPROFILE%\.stash\plugins\DirtyMultiscreen` on Windows and `~/.stash/plugins/DirtyMultiscreen` on Linux/macOS.
-2. In Stash, open **Settings > Plugins** and select **Reload Plugins**.
-3. Configure **DirtyMultiscreen** under **Installed Plugins**.
-4. Use the DirtyMultiscreen action in Stash to open the playback grid.
+2. Copy the sibling **DirtyPlugins** directory into the same plugins directory.
+3. In Stash, open **Settings > Plugins** and select **Reload Plugins**.
+4. Expand **DirtyMultiscreen** and follow its settings link.
+5. Use the DirtyMultiscreen action in Stash to open the playback grid.
 
 ## Configuration
 
@@ -29,6 +30,10 @@ The following playback options are enabled by default: **Random scenes**,
 ## Source
 
 The source code and build script are maintained in the `infinitescreens` project. This folder contains the built files required to install the Stash plugin.
+
+The built UI consumes DirtyPlugins' shared GraphQL client, value helpers, React
+icon/state components, and visual tokens so its controls remain consistent with
+the other plugins in this repository.
 
 ## License
 

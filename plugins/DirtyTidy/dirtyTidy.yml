@@ -1,0 +1,17 @@
+name: DirtyTidy
+description: Organize and rename scene files from configurable metadata templates, with a confirmed preview before execution.
+version: 0.2.0
+
+ui:
+  requires:
+    - dirtyPlugins
+  javascript:
+    - dirtyTidy.js
+  css:
+    - dirtyTidy.css
+
+exec:
+  - python
+  - "{pluginDir}/dirty_tidy.py"
+interface: raw
+errLog: error

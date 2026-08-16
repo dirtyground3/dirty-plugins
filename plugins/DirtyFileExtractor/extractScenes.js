@@ -3,6 +3,7 @@
 
   var PLUGIN_ID = "extractScenes";
   var INSTANCE_KEY = "__extractScenesFloatingAction";
+  var hubApi = window.DirtyPlugins;
 
   // Stash may reload plugin assets without reloading the page. Tear down an
   // older instance first so observers and event handlers are never duplicated.
@@ -21,43 +22,19 @@
     picker: null,
     pickerRequest: 0,
   };
-
-  function graphql(query, variables) {
-    return fetch("/graphql", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ query: query, variables: variables || {} }),
-    })
-      .then(function (response) {
-        if (!response.ok) throw new Error("Stash returned HTTP " + response.status);
-        return response.json();
-      })
-      .then(function (result) {
-        if (result.errors && result.errors.length) {
-          throw new Error(
-            result.errors.map(function (error) { return error.message; }).join("; ")
-          );
-        }
-        return result.data || {};
-      });
-  }
+  var hubFieldAction = {
+    label: "Browse\u2026",
+    onClick: openFolderPicker,
+  };
 
   function getSettings() {
-    return graphql(
-      "query ExtractScenesSettings($ids:[ID!]){" +
-        "configuration{plugins(include:$ids)}}",
-      { ids: [PLUGIN_ID] }
-    ).then(function (data) {
-      var plugins = (data.configuration && data.configuration.plugins) || {};
-      return plugins[PLUGIN_ID] || {};
-    });
+    return hubApi.getPluginSettings(PLUGIN_ID);
   }
 
   function queueCopy(selection) {
     var args = {};
     args[selection.kind + "_ids"] = selection.ids;
-    return graphql(
+    return hubApi.graphql(
       "mutation ExtractScenesRun($pluginId:ID!,$description:String!,$args:Map){" +
         "runPluginTask(plugin_id:$pluginId,description:$description,args_map:$args)}",
       {
@@ -70,15 +47,7 @@
   }
 
   function notify(message, isError) {
-    var toast = document.createElement("div");
-    toast.className = "extract-scenes-toast alert " +
-      (isError ? "alert-danger" : "alert-success");
-    toast.setAttribute("role", "alert");
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    window.setTimeout(function () {
-      if (toast.parentNode) toast.parentNode.removeChild(toast);
-    }, isError ? 8000 : 5000);
+    hubApi.ui.notify(message, isError ? "error" : "success");
   }
 
   function currentItemKind() {
@@ -166,7 +135,7 @@
 
     var button = document.createElement("button");
     button.type = "button";
-    button.className = "extract-scenes-action btn btn-primary";
+    button.className = "extract-scenes-action btn btn-primary dirty-ui-button";
     button.hidden = true;
     button.setAttribute("aria-live", "polite");
     button.addEventListener("click", onActionClick);
@@ -218,7 +187,7 @@
 
     var button = document.createElement("button");
     button.type = "button";
-    button.className = "dirty-file-extractor-browse btn btn-secondary";
+    button.className = "dirty-file-extractor-browse btn btn-secondary dirty-ui-button";
     button.textContent = "Browse\u2026";
     button.hidden = true;
     button.addEventListener("click", openFolderPicker);
@@ -227,7 +196,18 @@
     return button;
   }
 
+  function registerHubFieldAction() {
+    var hub = window.DirtyPlugins;
+    if (!hub || typeof hub.registerFieldAction !== "function") return false;
+    hub.registerFieldAction(PLUGIN_ID, "destinationFolder", hubFieldAction);
+    return true;
+  }
+
   function renderBrowseButton() {
+    if (registerHubFieldAction()) {
+      if (state.browseButton) state.browseButton.hidden = true;
+      return;
+    }
     var button = ensureBrowseButton();
     var row = document.querySelector("#plugin-extractScenes-destinationFolder");
     var editButton = row && row.querySelector("button");
@@ -266,7 +246,7 @@
 
   function setPickerStatus(picker, message, isError) {
     picker.status.textContent = message || "";
-    picker.status.classList.toggle("text-danger", Boolean(isError));
+    picker.status.classList.toggle("dirty-ui-text-error", Boolean(isError));
   }
 
   function renderDirectory(picker, directory) {
@@ -309,7 +289,7 @@
     picker.list.textContent = "";
     setPickerStatus(picker, "Loading folders\u2026", false);
 
-    return graphql(
+    return hubApi.graphql(
       "query DirtyFileExtractorDirectory($path:String){" +
         "directory(path:$path){path parent directories}}",
       { path: path || null }
@@ -351,15 +331,15 @@
         var nextSettings = Object.assign({}, settings, {
           destinationFolder: picker.currentPath,
         });
-        return graphql(
-          "mutation DirtyFileExtractorConfigure($pluginId:ID!,$input:Map!){" +
-            "configurePlugin(plugin_id:$pluginId,input:$input)}",
-          { pluginId: PLUGIN_ID, input: nextSettings }
-        );
+        return hubApi.configurePlugin(PLUGIN_ID, nextSettings);
       })
       .then(function () {
         closeFolderPicker();
         notify("Destination folder saved.", false);
+        if (window.DirtyPlugins &&
+            typeof window.DirtyPlugins.notifyConfigurationChanged === "function") {
+          window.DirtyPlugins.notifyConfigurationChanged(PLUGIN_ID);
+        }
       })
       .catch(function (error) {
         setPickerStatus(picker, error.message || String(error), true);
@@ -369,10 +349,10 @@
 
   function createFolderPicker() {
     var backdrop = document.createElement("div");
-    backdrop.className = "dirty-file-extractor-picker-backdrop";
+    backdrop.className = "dirty-file-extractor-picker-backdrop dirty-ui-backdrop";
 
     var dialog = document.createElement("div");
-    dialog.className = "dirty-file-extractor-picker-dialog";
+    dialog.className = "dirty-file-extractor-picker-dialog dirty-ui-dialog";
     dialog.setAttribute("role", "dialog");
     dialog.setAttribute("aria-modal", "true");
     dialog.setAttribute("aria-labelledby", "dirty-file-extractor-picker-title");
@@ -389,7 +369,7 @@
 
     var closeButton = document.createElement("button");
     closeButton.type = "button";
-    closeButton.className = "close";
+    closeButton.className = "close dirty-ui-icon-button";
     closeButton.setAttribute("aria-label", "Close folder picker");
     closeButton.textContent = "\u00d7";
     closeButton.addEventListener("click", closeFolderPicker);
@@ -401,7 +381,7 @@
 
     var upButton = document.createElement("button");
     upButton.type = "button";
-    upButton.className = "btn btn-secondary";
+    upButton.className = "btn btn-secondary dirty-ui-button";
     upButton.textContent = "Up";
     pathBar.appendChild(upButton);
 
@@ -413,7 +393,7 @@
 
     var goButton = document.createElement("button");
     goButton.type = "button";
-    goButton.className = "btn btn-secondary";
+    goButton.className = "btn btn-secondary dirty-ui-button";
     goButton.textContent = "Go";
     pathBar.appendChild(goButton);
 
@@ -432,14 +412,14 @@
 
     var cancelButton = document.createElement("button");
     cancelButton.type = "button";
-    cancelButton.className = "btn btn-secondary";
+    cancelButton.className = "btn btn-secondary dirty-ui-button";
     cancelButton.textContent = "Cancel";
     cancelButton.addEventListener("click", closeFolderPicker);
     footer.appendChild(cancelButton);
 
     var useButton = document.createElement("button");
     useButton.type = "button";
-    useButton.className = "btn btn-primary";
+    useButton.className = "btn btn-primary dirty-ui-button";
     useButton.textContent = "Use this folder";
     footer.appendChild(useButton);
 
@@ -551,7 +531,8 @@
       .then(function (settings) {
         if (!String(settings.destinationFolder || "").trim()) {
           throw new Error(
-            "Set Destination folder under Settings > Plugins > DirtyFileExtractor first."
+            "No destination folder selected. Set Destination folder under " +
+            "the Dirty Plugins settings page first."
           );
         }
         return queueCopy(selection);
@@ -604,6 +585,14 @@
         state.browseButton.parentNode.removeChild(state.browseButton);
       }
     }
+    if (window.DirtyPlugins &&
+        typeof window.DirtyPlugins.unregisterFieldAction === "function") {
+      window.DirtyPlugins.unregisterFieldAction(
+        PLUGIN_ID,
+        "destinationFolder",
+        hubFieldAction
+      );
+    }
     closeFolderPicker();
   }
 
@@ -619,5 +608,6 @@
   state.observer.observe(document.body, { childList: true, subtree: true });
 
   window[INSTANCE_KEY] = { destroy: destroy };
+  registerHubFieldAction();
   scheduleRender();
 })();

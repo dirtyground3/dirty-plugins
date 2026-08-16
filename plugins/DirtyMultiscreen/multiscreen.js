@@ -67,10 +67,10 @@
 
   // plugins/DirtyMultiscreen/src/multiscreen.tsx
   var PluginApi = window.PluginApi;
+  var DirtyPlugins = window.DirtyPlugins;
   var GQL = PluginApi.GQL;
   var { Button } = PluginApi.libraries.Bootstrap;
   var { NavLink, useLocation } = PluginApi.libraries.ReactRouterDOM;
-  var FontAwesomeIcon = PluginApi.libraries.ReactFontAwesome?.FontAwesomeIcon;
   var solidIcons = PluginApi.libraries.FontAwesomeSolid ?? {};
   var PLUGIN_ID = "multiscreen";
   var ROUTE_PATH = "/plugins/multiscreen";
@@ -80,21 +80,6 @@
   var STUDIOS_ROUTE_PATH = "/studios";
   var LAUNCH_CONTEXT_STORAGE_KEY = "multiscreen.launchContext";
   var MAX_SCENE_PAGE_SIZE = 240;
-  var PLUGIN_SETTING_ORDER = [
-    "totalScreens",
-    "rows",
-    "columns",
-    "randomize",
-    "splitScenes",
-    "startMuted",
-    "randomStart",
-    "loopScenes",
-    "markerDuration",
-    "pauseWhenHidden"
-  ];
-  var PLUGIN_SETTING_ORDER_INDEX = new Map(
-    PLUGIN_SETTING_ORDER.map((name, order) => [name, order])
-  );
   var latestSceneListContext = null;
   var latestMarkerListContext = null;
   var latestPerformerListContext = null;
@@ -127,56 +112,23 @@
     reload: solidIcons.faRotateRight ?? solidIcons.faRedo,
     success: solidIcons.faCheck
   };
-  var Glyph = ({ icon, fallback }) => {
-    if (FontAwesomeIcon && icon) {
-      return /* @__PURE__ */ createElement(FontAwesomeIcon, { icon });
-    }
-    return /* @__PURE__ */ createElement("span", { "aria-hidden": "true" }, fallback);
-  };
   var PluginIconButton = ({ ariaLabel, disabled = false, fallback, icon, onClick }) => /* @__PURE__ */ createElement(
-    "button",
+    DirtyPlugins.react.IconButton,
     {
-      type: "button",
+      ariaLabel,
       className: "ms-button",
-      "aria-label": ariaLabel,
-      title: ariaLabel,
       disabled,
+      fallback,
+      icon,
       onClick
-    },
-    /* @__PURE__ */ createElement(Glyph, { icon, fallback })
+    }
   );
-  var clampInteger = (value, fallback, min, max) => {
-    const next = Number(value);
-    if (!Number.isFinite(next)) return fallback;
-    return Math.max(min, Math.min(max, Math.floor(next)));
-  };
-  var coerceBoolean = (value, fallback) => {
-    if (typeof value === "boolean") return value;
-    if (typeof value === "string") {
-      const normalizedValue = value.trim().toLowerCase();
-      if (normalizedValue === "true") return true;
-      if (normalizedValue === "false") return false;
-    }
-    return fallback;
-  };
-  var parseMaybeJson = (value) => {
-    if (typeof value !== "string") return value;
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value;
-    }
-  };
-  var getPluginSettingsMap = (pluginsConfig) => {
-    const parsedConfig = parseMaybeJson(pluginsConfig);
-    if (!parsedConfig || typeof parsedConfig !== "object") return {};
-    const configRecord = parsedConfig;
-    const nestedConfig = configRecord[PLUGIN_ID];
-    if (nestedConfig && typeof nestedConfig === "object") {
-      return nestedConfig;
-    }
-    return configRecord;
-  };
+  var clampInteger = DirtyPlugins.values.clampInteger;
+  var coerceBoolean = DirtyPlugins.values.coerceBoolean;
+  var getPluginSettingsMap = (pluginsConfig) => DirtyPlugins.getPluginSettingsFromConfiguration(
+    pluginsConfig,
+    PLUGIN_ID
+  );
   var normalizeSettings = (rawSettings) => ({
     totalScreens: clampInteger(rawSettings.totalScreens, DEFAULT_SETTINGS.totalScreens, 1, 36),
     rows: clampInteger(rawSettings.rows, DEFAULT_SETTINGS.rows, 1, 12),
@@ -521,26 +473,7 @@
       scene: marker.scene
     };
   };
-  var graphqlRequest = async (query, variables) => {
-    const response = await fetch("/graphql", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ query, variables })
-    });
-    if (!response.ok) {
-      throw new Error(`GraphQL request failed with HTTP ${response.status}`);
-    }
-    const result = await response.json();
-    if (result.errors?.length) {
-      throw new Error(result.errors.map((error) => error.message).join("; "));
-    }
-    if (!result.data) {
-      throw new Error("GraphQL response did not include data.");
-    }
-    return result.data;
-  };
+  var graphqlRequest = DirtyPlugins.graphql;
   var findPerformersQuery = `
   query MultiscreenPerformers(
     $filter: FindFilterType
@@ -1163,7 +1096,23 @@
       })
     );
   };
-  var StateView = ({ detail, onRetry, title }) => /* @__PURE__ */ createElement("div", { className: "ms-state" }, /* @__PURE__ */ createElement("div", { className: "ms-state-panel" }, /* @__PURE__ */ createElement("div", { className: "ms-state-title" }, title), detail && /* @__PURE__ */ createElement("div", { className: "ms-state-detail" }, detail), onRetry && /* @__PURE__ */ createElement("div", { className: "ms-state-actions" }, /* @__PURE__ */ createElement(PluginIconButton, { ariaLabel: "Retry", fallback: "reload", icon: ICONS.reload, onClick: onRetry }))));
+  var StateView = ({ detail, onRetry, title }) => /* @__PURE__ */ createElement(
+    DirtyPlugins.react.StateView,
+    {
+      className: "ms-state",
+      detail,
+      title,
+      actions: onRetry ? /* @__PURE__ */ createElement(
+        PluginIconButton,
+        {
+          ariaLabel: "Retry",
+          fallback: "reload",
+          icon: ICONS.reload,
+          onClick: onRetry
+        }
+      ) : null
+    }
+  );
   var closeRoute = () => {
     if (window.history.length > 1) {
       window.history.back();
@@ -1353,17 +1302,6 @@
       countLoading ? "\u2026" : formattedSceneCount ?? "?"
     )));
   };
-  PluginApi.patch.before("PluginSettings", function(props) {
-    if (props.pluginID !== PLUGIN_ID || !Array.isArray(props.settings)) {
-      return [props];
-    }
-    const settings = [...props.settings].sort((left, right) => {
-      const leftOrder = left.name ? PLUGIN_SETTING_ORDER_INDEX.get(left.name) : void 0;
-      const rightOrder = right.name ? PLUGIN_SETTING_ORDER_INDEX.get(right.name) : void 0;
-      return (leftOrder ?? Number.MAX_SAFE_INTEGER) - (rightOrder ?? Number.MAX_SAFE_INTEGER);
-    });
-    return [{ ...props, settings }];
-  });
   PluginApi.register.route(ROUTE_PATH, MultiscreenRoute);
   PluginApi.patch.before("SceneMarkerList", function(props) {
     if (window.location.pathname === MARKERS_ROUTE_PATH && props.filter && props.selectedIds instanceof Set) {
