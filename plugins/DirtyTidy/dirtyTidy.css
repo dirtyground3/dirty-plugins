@@ -17,6 +17,9 @@
   gap: 1.1rem;
 }
 
+.dirty-tidy-body .dirty-ui-settings-toggle + .dirty-ui-settings-toggle {
+  margin-top: 0.55rem;
+}
 
 .dirty-tidy-levels {
   display: grid;
@@ -206,6 +209,16 @@
 .dirty-tidy-row-warning .dirty-tidy-status {
   background: #7a5a00;
   color: #fff3cd;
+}
+
+.dirty-tidy-notes > div + div {
+  margin-top: 0.35rem;
+}
+
+.dirty-tidy-blocked-scenes a {
+  color: var(--bs-link-color, #66b5ff);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 .dirty-tidy-pagination {

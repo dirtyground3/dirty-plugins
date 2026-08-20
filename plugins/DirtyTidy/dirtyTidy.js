@@ -22,8 +22,10 @@
   var PREVIEW_PAGE_SIZE = 50;
   var DEFAULT_SETTINGS = {
     moveEnabled: true,
+    moveRequireStashId: false,
     hierarchyLevels: ["{studio}", "{year}"],
     renameEnabled: false,
+    renameRequireStashId: false,
     renamePattern: "{date} - {studio} - {title}",
     maxFilenameLength: 180,
     multiValueSeparator: ", ",
@@ -33,17 +35,21 @@
   var VARIABLES = [
     ["title", "Title"],
     ["scene_id", "Scene ID"],
+    ["stash_id", "Stash ID"],
     ["date", "Date"],
     ["year", "Year"],
     ["month", "Month"],
     ["day", "Day"],
     ["rating", "Rating"],
+    ["grade", "Grade (A–F)"],
     ["rating_bucket", "Rating bucket"],
     ["organized", "Organized"],
     ["studio", "Studio"],
     ["parent_studio", "Parent studio"],
     ["performers", "Performers"],
     ["first_performer", "First performer"],
+    ["female_performers", "Female performers"],
+    ["male_performers", "Male performers"],
     ["first_female_performer", "First female performer"],
     ["first_male_performer", "First male performer"],
     ["performer_count", "Performer count"],
@@ -82,8 +88,10 @@
       : "";
     return {
       moveEnabled: DirtyPlugins.values.coerceBoolean(source.moveEnabled, true),
+      moveRequireStashId: DirtyPlugins.values.coerceBoolean(source.moveRequireStashId, false),
       hierarchyLevels: parseLevels(source.hierarchyLevels),
       renameEnabled: DirtyPlugins.values.coerceBoolean(source.renameEnabled, false),
+      renameRequireStashId: DirtyPlugins.values.coerceBoolean(source.renameRequireStashId, false),
       renamePattern: String(source.renamePattern || DEFAULT_SETTINGS.renamePattern),
       maxFilenameLength: DirtyPlugins.values.clampInteger(
         source.maxFilenameLength,
@@ -240,6 +248,39 @@
     );
   }
 
+  function PreviewNotes(props) {
+    var operation = props.operation || {};
+    var warnings = operation.warnings || [];
+    var blockedScenes = operation.blocked_scenes || [];
+    return h(
+      "div",
+      { className: "dirty-tidy-notes" },
+      warnings.map(function (warning, index) {
+        return h("div", { key: "warning-" + index }, warning);
+      }),
+      blockedScenes.length > 0 && h(
+        "div",
+        { className: "dirty-tidy-blocked-scenes" },
+        h("span", null, blockedScenes.length === 1 ? "Blocked scene: " : "Blocked scenes: "),
+        blockedScenes.map(function (scene, index) {
+          return h(
+            React.Fragment,
+            { key: scene.id },
+            index > 0 && ", ",
+            h(
+              "a",
+              {
+                href: "/scenes/" + encodeURIComponent(scene.id),
+                title: "Open scene " + scene.id,
+              },
+              scene.title || ("Scene " + scene.id)
+            )
+          );
+        })
+      )
+    );
+  }
+
   function PreviewTable(props) {
     var operations = props.operations || [];
     if (!operations.length) {
@@ -263,7 +304,7 @@
               h("td", null, h("span", { className: "badge dirty-tidy-status" }, operation.status)),
               h("td", { className: "dirty-tidy-path" }, operation.source_path),
               h("td", { className: "dirty-tidy-path" }, operation.destination_path),
-              h("td", null, (operation.warnings || []).join(" "))
+              h("td", null, h(PreviewNotes, { operation: operation }))
             );
           })
         )
@@ -370,11 +411,11 @@
         if (affectsStrategy !== false) next.approvedStrategyHash = "";
         return next;
       });
+      setConfirmed(false);
       if (affectsStrategy !== false) {
         setPreview(null);
         setPreviewFilter("all");
         setPreviewPage(1);
-        setConfirmed(false);
       }
       setStatus("");
       setError("");
@@ -445,18 +486,18 @@
     function generatePreview() {
       setBusy(true);
       setError("");
-      setStatus("Saving strategy and calculating preview…");
-      DirtyPlugins.configurePlugin(PLUGIN_ID, draft)
-        .then(function () {
-          setSavedSettings(draft);
-          return runPreview(draft);
-        })
+      setStatus("Calculating preview from the current settings…");
+      runPreview(draft)
         .then(function (result) {
           setPreview(result);
           setPreviewFilter("all");
           setPreviewPage(1);
           setConfirmed(false);
-          setStatus("Preview calculated from the saved strategy.");
+          setStatus(
+            settingsDirty
+              ? "Preview calculated. These settings have not been saved."
+              : "Preview calculated from the saved strategy."
+          );
         })
         .catch(function (previewError) {
           setError(previewError.message || String(previewError));
@@ -470,8 +511,27 @@
       setPreviewPage(1);
     }
 
+    function confirmAndSavePreview() {
+      if (!preview) return;
+      setBusy(true);
+      setError("");
+      setStatus("Saving strategy and confirming preview…");
+      DirtyPlugins.configurePlugin(PLUGIN_ID, draft)
+        .then(function () {
+          setSavedSettings(draft);
+          setConfirmed(true);
+          setStatus("Preview confirmed and strategy saved.");
+          DirtyPlugins.ui.notify("DirtyTidy preview confirmed and strategy saved.");
+        })
+        .catch(function (confirmationError) {
+          setError(confirmationError.message || String(confirmationError));
+          setStatus("");
+        })
+        .then(function () { setBusy(false); });
+    }
+
     function execute() {
-      if (!preview || !confirmed) return;
+      if (!preview || !confirmed || settingsDirty) return;
       setBusy(true);
       setError("");
       setStatus("Queueing confirmed operations…");
@@ -489,7 +549,7 @@
     }
 
     function approveAutomation() {
-      if (!preview || !confirmed || draft.automationMode === "manual") return;
+      if (!preview || !confirmed || settingsDirty || draft.automationMode === "manual") return;
       var approvedSettings = Object.assign({}, draft, {
         approvedStrategyHash: preview.strategy_hash,
       });
@@ -546,6 +606,11 @@
             label: "Move files into the configured hierarchy",
             onChange: function (value) { changed({ moveEnabled: value }); },
           }),
+          h(Toggle, {
+            checked: draft.moveRequireStashId,
+            label: "Only move files for scenes with a Stash ID",
+            onChange: function (value) { changed({ moveRequireStashId: value }); },
+          }),
           h("div", { className: "dirty-tidy-levels" },
             draft.hierarchyLevels.map(function (level, index) {
               return h("div", { className: "dirty-tidy-level", key: index },
@@ -569,12 +634,17 @@
         ),
         h(Section, {
           title: "Rename files",
-          description: "The original extension is preserved. Invalid filename characters are removed before the maximum length is applied.",
+          description: "Missing variables are skipped. The original extension is preserved, and invalid filename characters are removed before the maximum length is applied.",
         },
           h(Toggle, {
             checked: draft.renameEnabled,
             label: "Rename files using a template",
             onChange: function (value) { changed({ renameEnabled: value }); },
+          }),
+          h(Toggle, {
+            checked: draft.renameRequireStashId,
+            label: "Only rename files for scenes with a Stash ID",
+            onChange: function (value) { changed({ renameRequireStashId: value }); },
           }),
           h("div", { className: "dirty-tidy-field" },
             h("label", { htmlFor: "dirty-tidy-rename-pattern" }, "Filename pattern"),
@@ -639,7 +709,7 @@
             { className: "dirty-tidy-automation-state" },
             draft.approvedStrategyHash
               ? "Automation is approved for the current strategy."
-              : "Automation is inactive. Save and preview, review the result, then approve it below."
+              : "Automation is inactive. Preview and review the strategy, then use Confirm and save before approving below."
           )
         ),
         h(Section, {
@@ -648,11 +718,16 @@
         },
           h("div", { className: "dirty-tidy-actions" },
             h("button", { className: "btn btn-secondary dirty-ui-button", disabled: busy, onClick: saveStrategy, type: "button" }, busy ? "Working…" : "Save strategy"),
-            h("button", { className: "btn btn-primary dirty-ui-button", disabled: busy || (!draft.moveEnabled && !draft.renameEnabled), onClick: generatePreview, type: "button" }, busy ? "Working…" : "Save and preview")
+            h("button", { className: "btn btn-primary dirty-ui-button", disabled: busy || (!draft.moveEnabled && !draft.renameEnabled), onClick: generatePreview, type: "button" }, busy ? "Working…" : "Preview")
           ),
           error && h("div", { className: "dirty-tidy-message dirty-ui-text-error", role: "alert" }, error),
           status && h("div", { className: "dirty-tidy-message", role: "status" }, status),
           preview && h(React.Fragment, null,
+            settingsDirty && h(
+              "div",
+              { className: "dirty-tidy-message", role: "status" },
+              "This preview uses unsaved settings. Use Confirm and save before running or enabling automation."
+            ),
             h(Summary, { summary: preview.summary }),
             h(PreviewFilters, {
               disabled: busy,
@@ -668,20 +743,21 @@
               h("button", { className: "btn btn-secondary dirty-ui-button", disabled: previewPage >= previewPages, onClick: function () { setPreviewPage(previewPage + 1); }, type: "button" }, "Next")
             ),
             h("div", { className: "dirty-tidy-confirm" },
-              h(Toggle, {
-                checked: confirmed,
-                label: "I reviewed this preview and confirm the ready operations.",
-                onChange: setConfirmed,
-              }),
+              h("button", {
+                className: "btn btn-primary dirty-ui-button",
+                disabled: busy || confirmed,
+                onClick: confirmAndSavePreview,
+                type: "button",
+              }, "Confirm and save"),
               h("button", {
                 className: "btn btn-danger dirty-ui-button",
-                disabled: busy || !confirmed || !previewReady,
+                disabled: busy || !confirmed || !previewReady || settingsDirty,
                 onClick: execute,
                 type: "button",
               }, "Run " + ((preview.summary && preview.summary.ready) || 0) + " operation(s)"),
               draft.automationMode !== "manual" && h("button", {
                 className: "btn btn-primary dirty-ui-button",
-                disabled: busy || !confirmed,
+                disabled: busy || !confirmed || settingsDirty,
                 onClick: approveAutomation,
                 type: "button",
               }, "Approve and enable after " + (draft.automationMode === "scan" ? "Scan" : "Generate"))

@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 import urllib.error
@@ -132,6 +133,8 @@ class StashClient:
               scene_markers {
                 id
                 title
+                seconds
+                end_seconds
                 scene { id title files { id path basename } }
               }
             }
@@ -159,6 +162,45 @@ class StashClient:
         data = self.call(query, {"ids": [str(value) for value in image_ids]})
         result = data.get("findImages") or {}
         return result.get("images") or []
+
+    def ffmpeg_path(self) -> str:
+        data = self.call(
+            """
+            query DirtyFileExtractorFFmpegPath {
+              configuration { general { ffmpegPath } }
+            }
+            """
+        )
+        configured = str(
+            ((data.get("configuration") or {}).get("general") or {}).get(
+                "ffmpegPath"
+            )
+            or ""
+        ).strip()
+        executable = configured or shutil.which("ffmpeg")
+        if not executable:
+            raise PluginError(
+                "FFmpeg is required to extract markers but was not found in Stash's "
+                "configuration or PATH"
+            )
+        return executable
+
+    def extract_marker_clip(
+        self,
+        source: Path,
+        destination: Path,
+        start_seconds: float,
+        end_seconds: float,
+        on_progress: Any,
+    ) -> None:
+        extract_marker_clip(
+            self.ffmpeg_path(),
+            source,
+            destination,
+            start_seconds,
+            end_seconds,
+            on_progress,
+        )
 
 
 def read_payload(stream: Any = sys.stdin) -> dict[str, Any]:
@@ -290,6 +332,33 @@ def resolve_destination(source: Path, requested: Path, policy: str) -> tuple[Pat
     return renamed_destination(requested), "rename"
 
 
+def resolve_generated_destination(requested: Path, policy: str) -> tuple[Path, str]:
+    """Resolve a collision for generated media without a local source path."""
+    if not requested.exists():
+        return requested, "extract"
+    if policy == "skip":
+        return requested, "skip"
+    if policy == "overwrite":
+        return requested, "overwrite"
+    return renamed_destination(requested), "rename"
+
+
+def marker_clip_basename(
+    source_basename: str,
+    marker_title: str | None,
+    marker_id: str,
+) -> str:
+    source_stem = Path(source_basename).stem.strip() or "scene"
+    marker_name = INVALID_FOLDER_CHARS.sub("_", (marker_title or "").strip())
+    marker_name = re.sub(r"\s+", " ", marker_name).strip(" .")
+    if not marker_name:
+        marker_name = "marker"
+    suffix = ".mp4"
+    stem = f"{source_stem} - {marker_name} [marker-{marker_id}]"
+    stem = stem[: max(1, 220 - len(suffix))].rstrip(" .")
+    return (stem or f"marker-{marker_id}") + suffix
+
+
 def format_bytes(value: int) -> str:
     size = float(max(value, 0))
     for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
@@ -327,6 +396,110 @@ def copy_file_chunked(
                         time.sleep(delay)
         shutil.copystat(source, temporary)
         os.replace(temporary, destination)
+    except BaseException:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def _ffmpeg_timestamp(value: float) -> str:
+    return f"{max(0.0, float(value)):.6f}"
+
+
+def _parse_ffmpeg_time(value: str) -> float:
+    try:
+        hours, minutes, seconds = value.strip().split(":", 2)
+        return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def extract_marker_clip(
+    ffmpeg_path: str,
+    source: Path,
+    destination: Path,
+    start_seconds: float,
+    end_seconds: float,
+    on_progress: Any,
+) -> None:
+    """Create an accurate MP4 clip for one marker through FFmpeg."""
+    duration = float(end_seconds) - float(start_seconds)
+    if start_seconds < 0 or duration <= 0:
+        raise PluginError(
+            f"Invalid marker interval: {start_seconds!r} to {end_seconds!r}"
+        )
+    temporary = destination.with_name(
+        f".{destination.stem}.extract-scenes-{uuid.uuid4().hex}.part.mp4"
+    )
+    command = [
+        ffmpeg_path,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-ss",
+        _ffmpeg_timestamp(start_seconds),
+        "-i",
+        str(source),
+        "-t",
+        _ffmpeg_timestamp(duration),
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a?",
+        "-map_metadata",
+        "0",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "18",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        "-progress",
+        "pipe:1",
+        "-nostats",
+        "-y",
+        str(temporary),
+    ]
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        output_lines: list[str] = []
+        assert process.stdout is not None
+        for raw_line in process.stdout:
+            line = raw_line.strip()
+            if line.startswith("out_time="):
+                elapsed = _parse_ffmpeg_time(line.split("=", 1)[1])
+                on_progress(min(max(elapsed / duration, 0.0), 1.0))
+            elif line and not line.startswith("progress="):
+                output_lines.append(line)
+                output_lines = output_lines[-20:]
+        process.stdout.close()
+        return_code = process.wait()
+        if return_code != 0:
+            detail = "\n".join(output_lines).strip()
+            raise PluginError(
+                f"FFmpeg marker extraction failed with exit code {return_code}"
+                + (f": {detail}" if detail else "")
+            )
+        os.replace(temporary, destination)
+        on_progress(1.0)
+    except FileNotFoundError as exc:
+        raise PluginError(f"FFmpeg executable was not found: {ffmpeg_path}") from exc
     except BaseException:
         try:
             temporary.unlink(missing_ok=True)
@@ -382,6 +555,9 @@ def resolve_selected_items(
                 "kind": "marker",
                 "id": marker_id,
                 "title": scene.get("title"),
+                "marker_title": marker.get("title"),
+                "seconds": marker.get("seconds"),
+                "end_seconds": marker.get("end_seconds"),
                 "folder_kind": "scene",
                 "folder_id": scene_id,
                 "files": scene.get("files") or [],
@@ -417,6 +593,7 @@ def _copy_resolved_items(
     settings: dict[str, Any],
     reporter: Reporter | None = None,
     initial_missing: Iterable[dict[str, str]] = (),
+    marker_clip_extractor: Any | None = None,
 ) -> dict[str, Any]:
     reporter = reporter or Reporter()
     destination_value = str(settings.get("destinationFolder") or "").strip()
@@ -480,6 +657,63 @@ def _copy_resolved_items(
             )
             continue
 
+        if kind == "marker":
+            try:
+                start_seconds = float(item.get("seconds"))
+                end_seconds = float(item.get("end_seconds"))
+            except (TypeError, ValueError):
+                missing.append(
+                    {"marker_id": item_id, "reason": "marker has no valid end time"}
+                )
+                continue
+            if start_seconds < 0 or end_seconds <= start_seconds:
+                missing.append(
+                    {"marker_id": item_id, "reason": "marker interval is invalid"}
+                )
+                continue
+            source_info = files[0]
+            source = Path(str(source_info.get("path") or ""))
+            if not source.is_file():
+                missing.append(
+                    {
+                        "marker_id": item_id,
+                        "source": str(source),
+                        "reason": "source file not found",
+                    }
+                )
+                continue
+            basename = marker_clip_basename(
+                str(source_info.get("basename") or source.name),
+                item.get("marker_title"),
+                item_id,
+            )
+            requested_destination = item_destination / basename
+            final_destination, action = resolve_generated_destination(
+                requested_destination, policy
+            )
+            if action == "skip":
+                skipped.append(
+                    {
+                        "marker_id": item_id,
+                        "source": str(source),
+                        "reason": action,
+                    }
+                )
+                continue
+            pending.append(
+                {
+                    "kind": "marker",
+                    "marker_id": item_id,
+                    "source_path": source,
+                    "seconds": start_seconds,
+                    "end_seconds": end_seconds,
+                    "destination_path": final_destination,
+                    "action": "dry-run" if dry_run else action,
+                    "size": 0,
+                }
+            )
+            continue
+
         for file_info in files:
             source = Path(str(file_info.get("path") or ""))
             source_key = os.path.normcase(os.path.abspath(str(source)))
@@ -502,6 +736,7 @@ def _copy_resolved_items(
 
             pending.append(
                 {
+                    "kind": kind,
                     "source_path": source,
                     "destination_path": final_destination,
                     "action": "dry-run" if dry_run else action,
@@ -510,9 +745,16 @@ def _copy_resolved_items(
             )
 
     total_bytes = sum(int(item["size"]) for item in pending)
+    marker_clip_count = sum(1 for item in pending if item["kind"] == "marker")
+    size_description = format_bytes(total_bytes)
+    if marker_clip_count:
+        size_description += (
+            f" plus {marker_clip_count} marker clip"
+            f"{'s' if marker_clip_count != 1 else ''}"
+        )
     reporter.info(
         f"Resolved {len(pending)} file{'s' if len(pending) != 1 else ''} "
-        f"({format_bytes(total_bytes)}) for destination {destination_root}"
+        f"({size_description}) for destination {destination_root}"
     )
     if max_copy_speed_mib > 0:
         reporter.info(f"Copy speed limited to {max_copy_speed_mib:g} MiB/s")
@@ -521,37 +763,65 @@ def _copy_resolved_items(
 
     completed_bytes = 0
     last_progress_time = 0.0
+    use_byte_progress = marker_clip_count == 0
     for index, item in enumerate(pending, start=1):
         source = item["source_path"]
         final_destination = item["destination_path"]
         file_size = int(item["size"])
-        reporter.info(
-            f"[{index}/{len(pending)}] Copying {source} -> {final_destination} "
-            f"({format_bytes(file_size)})"
-        )
+        if item["kind"] == "marker":
+            reporter.info(
+                f"[{index}/{len(pending)}] Extracting marker {item['marker_id']} "
+                f"({item.get('seconds')}–{item.get('end_seconds')} seconds) from "
+                f"{source} -> {final_destination}"
+            )
+        else:
+            reporter.info(
+                f"[{index}/{len(pending)}] Copying {source} -> {final_destination} "
+                f"({format_bytes(file_size)})"
+            )
 
         if not dry_run:
+            if item["kind"] == "marker" and marker_clip_extractor is None:
+                raise PluginError("Marker clip extraction is unavailable")
             file_copied = 0
 
             def on_chunk(chunk_size: int) -> None:
                 nonlocal file_copied, last_progress_time
                 file_copied += chunk_size
                 now = time.monotonic()
-                if now - last_progress_time >= PROGRESS_INTERVAL_SECONDS:
+                if (
+                    use_byte_progress
+                    and now - last_progress_time >= PROGRESS_INTERVAL_SECONDS
+                ):
                     denominator = total_bytes or max(len(pending), 1)
                     numerator = completed_bytes + file_copied
                     reporter.progress(numerator / denominator)
                     last_progress_time = now
 
-            copy_file_chunked(
-                source,
-                final_destination,
-                on_chunk,
-                max_copy_speed_bytes,
-            )
+            if item["kind"] == "marker":
+                def on_marker_progress(value: float) -> None:
+                    reporter.progress(
+                        ((index - 1) + min(max(float(value), 0.0), 1.0))
+                        / max(len(pending), 1)
+                    )
+
+                marker_clip_extractor(
+                    source,
+                    final_destination,
+                    float(item["seconds"]),
+                    float(item["end_seconds"]),
+                    on_marker_progress,
+                )
+            else:
+                copy_file_chunked(
+                    source,
+                    final_destination,
+                    on_chunk,
+                    max_copy_speed_bytes,
+                )
 
         completed_bytes += file_size
-        if total_bytes:
+        if use_byte_progress and total_bytes:
             reporter.progress(completed_bytes / total_bytes)
         elif pending:
             reporter.progress(index / len(pending))
@@ -561,6 +831,7 @@ def _copy_resolved_items(
                 "source": str(source),
                 "destination": str(final_destination),
                 "action": str(item["action"]),
+                "kind": str(item["kind"]),
             }
         )
 
@@ -577,6 +848,9 @@ def _copy_resolved_items(
         "markers_requested": requested_counts.get("marker", 0),
         "images_requested": requested_counts.get("image", 0),
         "files_copied": len(copied),
+        "marker_clips_extracted": sum(
+            1 for item in copied if item.get("kind") == "marker"
+        ),
         "files_skipped": len(skipped),
         "files_missing": len(missing),
         "copied": copied,
@@ -618,7 +892,14 @@ def copy_selected(
 ) -> dict[str, Any]:
     items, missing = resolve_selected_items(client, selections)
     counts = {kind: len(selections.get(kind, [])) for kind in selections}
-    return _copy_resolved_items(items, counts, settings, reporter, missing)
+    return _copy_resolved_items(
+        items,
+        counts,
+        settings,
+        reporter,
+        missing,
+        getattr(client, "extract_marker_clip", None),
+    )
 
 
 def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, Any]:

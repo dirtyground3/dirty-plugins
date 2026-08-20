@@ -9,8 +9,9 @@ the originals.
 - An **Extract selected…** button appears beside the top toolbar when one or
   more scenes, markers, or images are selected.
 - Scenes copy every attached media file.
-- Markers copy the files belonging to their parent scenes. Selecting several
-  markers from the same scene copies that source file only once.
+- Markers extract only their `seconds` to `end_seconds` range from the parent
+  scene. Each selected marker produces its own accurately bounded MP4 clip
+  through FFmpeg, including when several markers belong to the same scene.
 - Images copy their original visual files.
 - Optional title-based subfolders for scenes and images. Marker files use the
   parent scene's title.
@@ -21,7 +22,8 @@ the originals.
   change menus, replace elements, or render React children.
 - Copy speed defaults to 20 MiB/s to avoid monopolizing the disk used by Stash;
   set **Maximum copy speed** to `0` for unlimited throughput.
-- Uses only the Python standard library; no packages need to be installed.
+- Uses only the Python standard library and Stash's configured FFmpeg; no
+  additional packages need to be installed.
 
 ## Installation
 
@@ -53,9 +55,10 @@ items using the normal checkboxes. Choose **Extract selected scene(s)**,
 toolbar. Stash runs copying as a background job; progress and errors appear
 under **Tasks** and in the Stash log.
 
-The plugin copies source media only. For scenes and markers this means the
-files attached to the scene; for images it means the original visual files. It
-does not copy generated previews, screenshots, sprites, or unrelated sidecars.
+For scenes, the plugin copies every attached media file. For markers, it writes
+one MP4 containing only the selected marker interval. For images, it copies the
+original visual files. It does not copy generated previews, screenshots,
+sprites, or unrelated sidecars.
 
 ## Collision behavior
 

@@ -6,9 +6,9 @@ A collection of plugins for [Stash](https://stashapp.cc/).
 
 | Plugin | Description | Version |
 | --- | --- | --- |
-| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copy media from selected scenes, markers, or images into a separate folder. | 0.3.2 |
+| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copy scene and image files or extract selected marker clips into a separate folder. | 0.3.3 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Launch an immersive multiscreen grid for scenes and markers. | 0.3.5 |
-| [DirtyTidy](plugins/DirtyTidy/) | Preview and apply metadata-based folder and filename organization. | 0.2.0 |
+| [DirtyTidy](plugins/DirtyTidy/) | Preview and apply metadata-based folder and filename organization. | 0.2.11 |
 
 The plugins use the hidden [DirtyPlugins settings hub](plugins/DirtyPlugins/).
 The hub is installed automatically from the package source and provides one

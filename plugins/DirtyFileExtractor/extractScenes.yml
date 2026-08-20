@@ -1,6 +1,6 @@
 name: DirtyFileExtractor
-description: Copy files from selected scenes, markers, or images into a separate folder without changing the originals.
-version: 0.3.2
+description: Copy selected scene and image files or extract selected marker clips into a separate folder without changing the originals.
+version: 0.3.3
 
 ui:
   requires:
@@ -27,7 +27,7 @@ settings:
     type: STRING
   createSceneFolders:
     displayName: Create a folder for each item
-    description: Put scenes and marker source scenes in scene-title folders, and images in image-title folders. Disabled by default.
+    description: Put scenes and marker clips in scene-title folders, and images in image-title folders. Disabled by default.
     type: BOOLEAN
   dryRun:
     displayName: Dry run

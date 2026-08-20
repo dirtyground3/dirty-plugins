@@ -19,10 +19,13 @@ from typing import Any, Iterable
 
 PLUGIN_ID = "dirtyTidy"
 UNKNOWN_VALUE = "Unknown"
+STRATEGY_VERSION = 6
 DEFAULT_SETTINGS = {
     "moveEnabled": True,
+    "moveRequireStashId": False,
     "hierarchyLevels": ["{studio}", "{year}"],
     "renameEnabled": False,
+    "renameRequireStashId": False,
     "renamePattern": "{date} - {studio} - {title}",
     "maxFilenameLength": 180,
     "multiValueSeparator": ", ",
@@ -32,8 +35,10 @@ DEFAULT_SETTINGS = {
 AUTOMATION_MODES = {"manual", "scan", "generate"}
 STRATEGY_SETTING_KEYS = (
     "moveEnabled",
+    "moveRequireStashId",
     "hierarchyLevels",
     "renameEnabled",
+    "renameRequireStashId",
     "renamePattern",
     "maxFilenameLength",
     "multiValueSeparator",
@@ -41,15 +46,20 @@ STRATEGY_SETTING_KEYS = (
 VARIABLE_NAMES = {
     "title",
     "scene_id",
+    "stash_id",
     "date",
     "year",
     "month",
     "day",
     "rating",
+    "grade",
     "rating_bucket",
     "organized",
     "performers",
     "first_performer",
+    "female_performers",
+    "females_performers",
+    "male_performers",
     "first_female_performer",
     "first_male_performer",
     "performer_count",
@@ -175,6 +185,7 @@ class StashClient:
               count
               scenes {
                 id title date rating100 organized
+                stash_ids { stash_id }
                 studio { name parent_studio { name } }
                 performers { name gender }
                 tags { name }
@@ -246,11 +257,28 @@ def read_payload(stream: Any = sys.stdin) -> dict[str, Any]:
 
 
 def emit_output(output: Any, stream: Any = sys.stdout) -> None:
-    json.dump({"output": output}, stream, ensure_ascii=False)
+    # Stash may launch Python with a legacy Windows code page. Keeping the raw
+    # plugin protocol ASCII-only avoids charmap failures while JSON decoding
+    # still restores every Unicode character.
+    json.dump({"output": output}, stream, ensure_ascii=True)
 
 
 def emit_error(error: Any, stream: Any = sys.stdout) -> None:
-    json.dump({"error": str(error)}, stream, ensure_ascii=False)
+    json.dump({"error": str(error)}, stream, ensure_ascii=True)
+
+
+def configure_standard_streams() -> None:
+    """Use UTF-8 for human-readable plugin logs when Python permits it."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (OSError, ValueError):
+            # The JSON protocol remains ASCII-safe even if a host-owned stream
+            # cannot be reconfigured.
+            pass
 
 
 def as_bool(value: Any, default: bool) -> bool:
@@ -302,8 +330,10 @@ def normalize_settings(raw: Any) -> dict[str, Any]:
         approved_hash = ""
     return {
         "moveEnabled": as_bool(source.get("moveEnabled"), True),
+        "moveRequireStashId": as_bool(source.get("moveRequireStashId"), False),
         "hierarchyLevels": _parse_levels(source.get("hierarchyLevels", DEFAULT_SETTINGS["hierarchyLevels"])),
         "renameEnabled": as_bool(source.get("renameEnabled"), False),
+        "renameRequireStashId": as_bool(source.get("renameRequireStashId"), False),
         "renamePattern": str(source.get("renamePattern", DEFAULT_SETTINGS["renamePattern"]) or "").strip(),
         "maxFilenameLength": max(16, min(255, max_length)),
         "multiValueSeparator": separator[:10],
@@ -314,7 +344,10 @@ def normalize_settings(raw: Any) -> dict[str, Any]:
 
 def strategy_hash(settings: dict[str, Any]) -> str:
     normalized = normalize_settings(settings)
-    strategy = {key: normalized[key] for key in STRATEGY_SETTING_KEYS}
+    strategy = {
+        "strategyVersion": STRATEGY_VERSION,
+        "settings": {key: normalized[key] for key in STRATEGY_SETTING_KEYS},
+    }
     encoded = json.dumps(strategy, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
@@ -331,6 +364,17 @@ def _names(items: Any) -> list[str]:
         return []
     result = [_clean_text(item.get("name")) for item in items if isinstance(item, dict)]
     return sorted({value for value in result if value != UNKNOWN_VALUE}, key=str.casefold)
+
+
+def _stash_ids(items: Any) -> list[str]:
+    if not isinstance(items, list):
+        return []
+    values = [
+        str(item.get("stash_id") or "").strip()
+        for item in items
+        if isinstance(item, dict)
+    ]
+    return sorted({value for value in values if value}, key=str.casefold)
 
 
 def _date_parts(value: Any) -> tuple[str, str, str, str]:
@@ -351,6 +395,24 @@ def _rating_bucket(value: Any) -> str:
         return "90-100"
     lower = (rating // 10) * 10
     return f"{lower}-{lower + 9}"
+
+
+def _grade(value: Any) -> str:
+    try:
+        rating = max(0, min(100, int(value)))
+    except (TypeError, ValueError):
+        return UNKNOWN_VALUE
+    if rating >= 90:
+        return "A"
+    if rating >= 80:
+        return "B"
+    if rating >= 70:
+        return "C"
+    if rating >= 60:
+        return "D"
+    if rating >= 50:
+        return "E"
+    return "F"
 
 
 def _resolution(height: Any) -> str:
@@ -407,6 +469,7 @@ def scene_variables(
     tags = _names(scene.get("tags"))
     studio = scene.get("studio") if isinstance(scene.get("studio"), dict) else {}
     parent_studio = studio.get("parent_studio") if isinstance(studio.get("parent_studio"), dict) else {}
+    parent_studio_name = parent_studio.get("name") or studio.get("name")
     groups = scene.get("groups") if isinstance(scene.get("groups"), list) else []
     groups = [item for item in groups if isinstance(item, dict)]
     groups.sort(key=lambda item: (item.get("scene_index") is None, item.get("scene_index") or 0))
@@ -420,23 +483,29 @@ def scene_variables(
     except (TypeError, ValueError):
         duration_minutes = UNKNOWN_VALUE
     rating = scene.get("rating100")
+    stash_ids = _stash_ids(scene.get("stash_ids"))
     return {
         "title": _clean_text(scene.get("title")),
         "scene_id": _clean_text(scene.get("id")),
+        "stash_id": stash_ids[0] if stash_ids else UNKNOWN_VALUE,
         "date": date,
         "year": year,
         "month": month,
         "day": day,
         "rating": _clean_text(rating),
+        "grade": _grade(rating),
         "rating_bucket": _rating_bucket(rating),
         "organized": "Organized" if scene.get("organized") else "Unorganized",
         "performers": separator.join(performers) if performers else UNKNOWN_VALUE,
         "first_performer": performers[0] if performers else UNKNOWN_VALUE,
+        "female_performers": separator.join(female_performers) if female_performers else UNKNOWN_VALUE,
+        "females_performers": separator.join(female_performers) if female_performers else UNKNOWN_VALUE,
+        "male_performers": separator.join(male_performers) if male_performers else UNKNOWN_VALUE,
         "first_female_performer": female_performers[0] if female_performers else UNKNOWN_VALUE,
         "first_male_performer": male_performers[0] if male_performers else UNKNOWN_VALUE,
         "performer_count": str(len(performers)),
         "studio": _clean_text(studio.get("name")),
-        "parent_studio": _clean_text(parent_studio.get("name")),
+        "parent_studio": _clean_text(parent_studio_name),
         "tags": separator.join(tags) if tags else UNKNOWN_VALUE,
         "first_tag": tags[0] if tags else UNKNOWN_VALUE,
         "group": _clean_text(group_value.get("name")),
@@ -452,7 +521,11 @@ def scene_variables(
     }
 
 
-def render_template(template: str, variables: dict[str, str]) -> tuple[str, list[str], list[str]]:
+def _render_template(
+    template: str,
+    variables: dict[str, str],
+    missing_replacement: str,
+) -> tuple[str, list[str], list[str]]:
     missing: set[str] = set()
     invalid: set[str] = set()
 
@@ -464,9 +537,50 @@ def render_template(template: str, variables: dict[str, str]) -> tuple[str, list
         value = variables.get(name, UNKNOWN_VALUE)
         if value == UNKNOWN_VALUE:
             missing.add(name)
+            return missing_replacement
         return value
 
     return TOKEN_PATTERN.sub(replace, str(template)), sorted(missing), sorted(invalid)
+
+
+def render_template(template: str, variables: dict[str, str]) -> tuple[str, list[str], list[str]]:
+    return _render_template(template, variables, UNKNOWN_VALUE)
+
+
+def _clean_rename_separators(value: str) -> str:
+    value = re.sub(r"\(\s*\)|\[\s*\]|\{\s*\}", "", value)
+    separators = ("-", "–", "—", "|", ",", ";", "·", "_", ".")
+    for separator in separators:
+        def collapse(match: re.Match[str], current: str = separator) -> str:
+            if current in {"_", "."}:
+                return current
+            return f" {current} " if any(char.isspace() for char in match.group(0)) else current
+
+        value = re.sub(
+            rf"(?:\s*{re.escape(separator)}\s*){{2,}}",
+            collapse,
+            value,
+        )
+    value = re.sub(r"^[\s\-–—_|,;·.]+|[\s\-–—_|,;·.]+$", "", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def render_rename_template(
+    template: str,
+    variables: dict[str, str],
+) -> tuple[str, list[str], list[str]]:
+    rendered, missing, invalid = _render_template(template, variables, "")
+    return _clean_rename_separators(rendered), missing, invalid
+
+
+def template_variable_names(template: str) -> list[str]:
+    """Return valid variable names used by a template, preserving first use order."""
+    names: list[str] = []
+    for match in TOKEN_PATTERN.finditer(str(template)):
+        name = match.group(1).lower()
+        if name in VARIABLE_NAMES and name not in names:
+            names.append(name)
+    return names
 
 
 def sanitize_segment(value: str) -> str:
@@ -510,6 +624,16 @@ def find_source_root(path: str, roots: Iterable[str]) -> str | None:
     return max(candidates, key=lambda value: len(_normalized_path(value)))
 
 
+def scene_has_stash_id(scene: dict[str, Any]) -> bool:
+    stash_ids = scene.get("stash_ids")
+    if not isinstance(stash_ids, list):
+        return False
+    return any(
+        isinstance(stash_id, dict) and bool(str(stash_id.get("stash_id") or "").strip())
+        for stash_id in stash_ids
+    )
+
+
 def build_operation(
     scene: dict[str, Any],
     file_info: dict[str, Any],
@@ -522,6 +646,7 @@ def build_operation(
     warnings: list[str] = []
     invalid_tokens: set[str] = set()
     missing_tokens: set[str] = set()
+    skipped_rename_tokens: set[str] = set()
 
     operation: dict[str, Any] = {
         "scene_id": str(scene.get("id") or ""),
@@ -553,9 +678,20 @@ def build_operation(
         source_root,
         settings["multiValueSeparator"],
     )
+    has_stash_id = scene_has_stash_id(scene)
+    move_allowed = settings["moveEnabled"] and (
+        not settings["moveRequireStashId"] or has_stash_id
+    )
+    rename_allowed = settings["renameEnabled"] and (
+        not settings["renameRequireStashId"] or has_stash_id
+    )
+    if settings["moveEnabled"] and not move_allowed:
+        warnings.append("Skipped move because the scene has no Stash ID.")
+    if settings["renameEnabled"] and not rename_allowed:
+        warnings.append("Skipped rename because the scene has no Stash ID.")
 
     destination_folder = str(Path(source_path).parent)
-    if settings["moveEnabled"]:
+    if move_allowed:
         destination = Path(source_root)
         for level in settings["hierarchyLevels"]:
             rendered, missing, invalid = render_template(level, variables)
@@ -565,24 +701,34 @@ def build_operation(
         destination_folder = str(destination)
 
     destination_basename = source_basename
-    if settings["renameEnabled"]:
+    if rename_allowed:
         if not settings["renamePattern"]:
             operation["status"] = "blocked"
             warnings.append("Renaming is enabled but the filename pattern is empty.")
             return operation
-        rendered, missing, invalid = render_template(settings["renamePattern"], variables)
-        missing_tokens.update(missing)
+        rendered, missing, invalid = render_rename_template(settings["renamePattern"], variables)
         invalid_tokens.update(invalid)
-        extension = Path(source_basename).suffix
-        destination_basename, filename_error = sanitize_filename(
-            rendered,
-            extension,
-            settings["maxFilenameLength"],
+        rename_variables = template_variable_names(settings["renamePattern"])
+        all_rename_variables_missing = bool(rename_variables) and all(
+            variables.get(name, UNKNOWN_VALUE) == UNKNOWN_VALUE
+            for name in rename_variables
         )
-        if filename_error:
-            operation["status"] = "blocked"
-            warnings.append(filename_error)
-            return operation
+        if all_rename_variables_missing and not invalid:
+            warnings.append(
+                "Kept the original filename because all filename variables are missing."
+            )
+        else:
+            skipped_rename_tokens.update(missing)
+            extension = Path(source_basename).suffix
+            destination_basename, filename_error = sanitize_filename(
+                rendered,
+                extension,
+                settings["maxFilenameLength"],
+            )
+            if filename_error:
+                operation["status"] = "blocked"
+                warnings.append(filename_error)
+                return operation
 
     destination_path = str(Path(destination_folder) / destination_basename)
     operation["destination_folder"] = destination_folder
@@ -594,6 +740,11 @@ def build_operation(
         warnings.append("Unknown variables: " + ", ".join(sorted(invalid_tokens)))
     if missing_tokens:
         warnings.append("Used Unknown for: " + ", ".join(sorted(missing_tokens)))
+    if skipped_rename_tokens:
+        warnings.append(
+            "Skipped empty filename variables: "
+            + ", ".join(sorted(skipped_rename_tokens))
+        )
     if not path_is_within(destination_path, source_root):
         operation["status"] = "blocked"
         warnings.append("The destination would leave the file's Stash source.")
@@ -631,9 +782,27 @@ def build_plan(
     for duplicates in destinations.values():
         if len(duplicates) < 2:
             continue
+        blocked_scenes = []
+        seen_scene_ids: set[str] = set()
+        for duplicate in duplicates:
+            scene_id = duplicate["scene_id"]
+            if not scene_id or scene_id in seen_scene_ids:
+                continue
+            seen_scene_ids.add(scene_id)
+            blocked_scenes.append(
+                {"id": scene_id, "title": duplicate["scene_title"]}
+            )
         for operation in duplicates:
             operation["status"] = "blocked"
             operation["warnings"].append("Multiple files in this plan have the same destination.")
+            operation["blocked_scenes"] = blocked_scenes
+
+    for operation in operations:
+        if operation["status"] != "blocked" or operation.get("blocked_scenes"):
+            continue
+        operation["blocked_scenes"] = [
+            {"id": operation["scene_id"], "title": operation["scene_title"]}
+        ] if operation["scene_id"] else []
 
     counts = Counter(operation["status"] for operation in operations)
     action_counts = Counter(
@@ -816,6 +985,7 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
 
 
 def main() -> int:
+    configure_standard_streams()
     reporter = StashReporter()
     try:
         emit_output(run(read_payload(), reporter))

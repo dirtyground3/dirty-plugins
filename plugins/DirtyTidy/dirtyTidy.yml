@@ -1,6 +1,6 @@
 name: DirtyTidy
 description: Organize and rename scene files from configurable metadata templates, with a confirmed preview before execution.
-version: 0.2.0
+version: 0.2.11
 
 ui:
   requires:

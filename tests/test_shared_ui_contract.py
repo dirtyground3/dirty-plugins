@@ -114,7 +114,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("onDirtyChange: reportCustomDirty", hub)
         self.assertIn("savedSettingsState", tidy)
         self.assertIn("props.onDirtyChange(PLUGIN_ID, settingsDirty)", tidy)
-        self.assertGreaterEqual(tidy.count("setSavedSettings(draft)"), 2)
+        self.assertGreaterEqual(tidy.count("setSavedSettings(draft)"), 1)
 
     def test_shared_settings_link_is_centered(self):
         css = read("plugins/DirtyPlugins/dirtyPlugins.css")
@@ -154,6 +154,76 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("approveAutomation", tidy)
         self.assertIn('if mode == "automation":', backend)
         self.assertIn('settings["approvedStrategyHash"]', backend)
+
+    def test_dirty_tidy_preview_links_blocked_scenes(self):
+        tidy = read("plugins/DirtyTidy/dirtyTidy.js")
+
+        self.assertIn("function PreviewNotes", tidy)
+        self.assertIn("operation.blocked_scenes", tidy)
+        self.assertIn('href: "/scenes/" + encodeURIComponent(scene.id)', tidy)
+        self.assertIn('["female_performers", "Female performers"]', tidy)
+        self.assertIn('["male_performers", "Male performers"]', tidy)
+
+    def test_dirty_tidy_preview_does_not_save_the_draft(self):
+        tidy = read("plugins/DirtyTidy/dirtyTidy.js")
+        preview_function = tidy.split("function generatePreview()", 1)[1].split(
+            "function changePreviewFilter", 1
+        )[0]
+
+        self.assertIn("runPreview(draft)", preview_function)
+        self.assertNotIn("configurePlugin", preview_function)
+        self.assertNotIn("setSavedSettings", preview_function)
+        self.assertIn('Working…" : "Preview"', tidy)
+        self.assertIn("!previewReady || settingsDirty", tidy)
+
+    def test_dirty_tidy_has_independent_stash_id_safeguards(self):
+        tidy = read("plugins/DirtyTidy/dirtyTidy.js")
+        backend = read("plugins/DirtyTidy/dirty_tidy.py")
+
+        self.assertIn("moveRequireStashId", tidy)
+        self.assertIn("renameRequireStashId", tidy)
+        self.assertIn("Only move files for scenes with a Stash ID", tidy)
+        self.assertIn("Only rename files for scenes with a Stash ID", tidy)
+        self.assertIn('stash_ids { stash_id }', backend)
+        self.assertIn("def scene_has_stash_id", backend)
+
+    def test_dirty_tidy_confirms_and_saves_with_a_button(self):
+        tidy = read("plugins/DirtyTidy/dirtyTidy.js")
+
+        self.assertIn("function confirmAndSavePreview", tidy)
+        self.assertIn('}, "Confirm and save")', tidy)
+        self.assertIn("setConfirmed(true)", tidy)
+        self.assertIn("DirtyPlugins.configurePlugin(PLUGIN_ID, draft)", tidy)
+        self.assertNotIn("I reviewed this preview", tidy)
+
+    def test_automation_mode_change_can_be_confirmed_and_saved_again(self):
+        tidy = read("plugins/DirtyTidy/dirtyTidy.js")
+        changed_function = tidy.split("function changed(update, affectsStrategy)", 1)[1].split(
+            "function updateLevel", 1
+        )[0]
+
+        self.assertIn(
+            'setConfirmed(false);\n      if (affectsStrategy !== false) {\n        setPreview(null)',
+            changed_function,
+        )
+        self.assertIn(
+            'changed({ automationMode: event.target.value }, false)',
+            tidy,
+        )
+
+    def test_dirty_tidy_exposes_the_grade_variable(self):
+        tidy = read("plugins/DirtyTidy/dirtyTidy.js")
+        backend = read("plugins/DirtyTidy/dirty_tidy.py")
+
+        self.assertIn('["grade", "Grade (A–F)"]', tidy)
+        self.assertIn('"grade": _grade(rating)', backend)
+
+    def test_dirty_tidy_exposes_the_stash_id_variable(self):
+        tidy = read("plugins/DirtyTidy/dirtyTidy.js")
+        backend = read("plugins/DirtyTidy/dirty_tidy.py")
+
+        self.assertIn('["stash_id", "Stash ID"]', tidy)
+        self.assertIn('"stash_id": stash_ids[0] if stash_ids else UNKNOWN_VALUE', backend)
 
 
 if __name__ == "__main__":
