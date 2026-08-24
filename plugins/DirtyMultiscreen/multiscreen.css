@@ -144,3 +144,9 @@
 .ms-native-tile:hover .ms-title {
   opacity: 1;
 }
+
+/* Documentation captures preserve the real grid while obscuring video frames. */
+.ms-docs-capture .ms-native-tile .VideoPlayer {
+  filter: blur(42px) saturate(0.45) brightness(0.72);
+  transform: scale(1.08);
+}

@@ -42,6 +42,21 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("DirtyPlugins.react.StateView", multiscreen_js)
         self.assertIn("var(--dirty-ui-radius-small)", multiscreen_css)
 
+    def test_documentation_capture_modes_hide_private_paths_and_media(self):
+        hub_js = read("plugins/DirtyPlugins/dirtyPlugins.js")
+        hub_css = read("plugins/DirtyPlugins/dirtyPlugins.css")
+        multiscreen_js = read("plugins/DirtyMultiscreen/multiscreen.js")
+        multiscreen_css = read("plugins/DirtyMultiscreen/multiscreen.css")
+        rank_css = read("plugins/DirtyRank/dirtyRank.css")
+
+        self.assertIn('get("docsCapture") === "1"', hub_js)
+        self.assertIn("dirty-plugins-docs-capture", hub_css)
+        self.assertIn("#dirty-plugins-panel-extractScenes", hub_css)
+        self.assertIn('get("docsCapture") === "1"', multiscreen_js)
+        self.assertIn(".ms-docs-capture .ms-native-tile .VideoPlayer", multiscreen_css)
+        self.assertIn(".dirty-rank-censored-media .dirty-rank-podium-image", rank_css)
+        self.assertIn(".dirty-rank-censored-media .dirty-rank-table-performer img", rank_css)
+
     def test_hub_exposes_the_common_runtime_contract(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
         for export in (

@@ -913,7 +913,13 @@
 
     return createElement(
       "main",
-      { className: "dirty-plugins-page" },
+      {
+        className: "dirty-plugins-page" + (
+          new URLSearchParams(window.location.search).get("docsCapture") === "1"
+            ? " dirty-plugins-docs-capture"
+            : ""
+        ),
+      },
       createElement(
         "header",
         { className: "dirty-plugins-page-header" },

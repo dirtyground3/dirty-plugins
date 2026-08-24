@@ -1200,7 +1200,8 @@
     const oCounterButtonLabel = oCounterStatus === "loading" ? `Increasing O counter for ${visibleSceneCount} visible scene${visibleSceneCount === 1 ? "" : "s"}` : oCounterStatus === "success" ? `Increased O counter for ${visibleSceneCount} visible scene${visibleSceneCount === 1 ? "" : "s"}` : oCounterStatus === "error" ? `Could not increase every visible scene O counter; click to retry` : `Increase O counter for ${visibleSceneCount} visible scene${visibleSceneCount === 1 ? "" : "s"}`;
     const oCounterButtonIcon = oCounterStatus === "success" ? ICONS.success : oCounterStatus === "error" ? ICONS.error : ICONS.oCounter;
     const oCounterButtonFallback = oCounterStatus === "loading" ? "..." : oCounterStatus === "success" ? "ok" : oCounterStatus === "error" ? "!" : "O";
-    return /* @__PURE__ */ createElement("div", { className: "ms-route" }, loading && /* @__PURE__ */ createElement(StateView, { title: `Loading ${itemType}` }), !loading && error && /* @__PURE__ */ createElement(
+    const docsCapture = new URLSearchParams(window.location.search).get("docsCapture") === "1";
+    return /* @__PURE__ */ createElement("div", { className: `ms-route${docsCapture ? " ms-docs-capture" : ""}` }, loading && /* @__PURE__ */ createElement(StateView, { title: `Loading ${itemType}` }), !loading && error && /* @__PURE__ */ createElement(
       StateView,
       {
         title: "Could not load DirtyMultiscreen",

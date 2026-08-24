@@ -346,6 +346,11 @@
   margin: 0;
 }
 
+/* Documentation captures keep machine-specific paths out of public images. */
+.dirty-plugins-docs-capture #dirty-plugins-panel-extractScenes input[type="text"] {
+  filter: blur(8px);
+}
+
 @media (max-width: 48rem) {
   .dirty-plugins-setting {
     align-items: stretch;

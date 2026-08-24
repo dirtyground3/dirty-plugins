@@ -316,6 +316,18 @@
   z-index: 1;
 }
 
+.dirty-rank-censored-media .dirty-rank-podium-image,
+.dirty-rank-censored-media .dirty-rank-gallery-image {
+  filter: blur(42px) saturate(0.45) brightness(0.72);
+  transform: scale(1.08);
+}
+
+.dirty-rank-censored-media .dirty-rank-table-performer img {
+  clip-path: circle(50%);
+  filter: blur(8px) saturate(0.45) brightness(0.72);
+  transform: scale(1.18);
+}
+
 .dirty-rank-scene-playing {
   background: #050505;
   display: grid;

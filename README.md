@@ -83,24 +83,52 @@ DirtyTidy deliberately keeps its confirmation workflow because its settings
 can move and rename files. Other Dirty Plugin settings save automatically after
 a control changes.
 
-## Screenshots
+## Visual tour
 
-### DirtyRank battle
+### Pick a winner. Build a ranking.
 
-![DirtyRank battle with performer media hidden](docs/images/dirty-rank-battle-censored.png)
+![DirtyRank Performance battle with performer media blurred](docs/images/dirty-rank-battle-censored.png)
 
-The battle screenshot uses DirtyRank's CSS-only capture mode to apply a strong
-blur to both performer media regions before the image is created. It preserves
-the real battle layout, confidence estimate, controls, and category standings
-without exposing performer images or video frames.
+DirtyRank turns each vote into a focused comparison: one category, two
+performers, instant visual feedback, live category standings, and a confidence
+estimate that shows how much work remains.
 
-### Shared Dirty Plugins settings
+### From every vote to a real leaderboard
 
-![DirtyRank options in the shared Dirty Plugins settings hub](docs/images/dirty-rank-settings.png)
+![DirtyRank gold, silver, and bronze podium with performer media blurred](docs/images/dirty-rank-leaderboard-censored.png)
 
-The shared settings hub keeps configuration for all installed Dirty plugins in
-one place. Standard options save automatically; DirtyTidy retains its explicit
-preview and confirmation workflow.
+The podium gives the top three a distinctive gold, silver, and bronze finish,
+while the standings below retain rating, deviation, battle count, record, and
+precision at a glance.
+
+### Four scenes. One immersive canvas.
+
+![DirtyMultiscreen four-pane playback grid with video frames blurred](docs/images/dirty-multiscreen-grid-censored.png)
+
+DirtyMultiscreen fills the browser with a clean, edge-to-edge playback grid.
+The real capture above uses a four-pane layout; only the video frames are
+blurred for the public repository.
+
+### One home for every setting
+
+The shared Dirty Plugins hub makes the suite feel like one product. Each plugin
+gets a focused panel, a short explanation for every control, and consistent
+styling. Standard options save automatically as soon as they change.
+
+| Extract safely | Shape the screen |
+| --- | --- |
+| **DirtyFileExtractor** — destination, collision handling, folders, dry runs, and disk-friendly copy limits. | **DirtyMultiscreen** — grid dimensions, randomization, scene splitting, and playback behavior. |
+| <img src="docs/images/dirty-file-extractor-settings.png" alt="DirtyFileExtractor settings with the private destination path blurred" width="100%"> | <img src="docs/images/dirty-multiscreen-settings.png" alt="DirtyMultiscreen playback and grid settings" width="100%"> |
+
+| Organize with a preview | Tune the rating engine |
+| --- | --- |
+| **DirtyTidy** — metadata templates, hierarchy controls, automation, and the deliberate preview-before-run workflow. | **DirtyRank** — performer pools, presentation, confidence goals, weighted categories, exports, and advanced Glicko-2 controls. |
+| <img src="docs/images/dirty-tidy-settings.png" alt="DirtyTidy organization and filename template settings" width="100%"> | <img src="docs/images/dirty-rank-settings.png" alt="DirtyRank performer pool and rating settings" width="100%"> |
+
+All media-heavy screenshots use CSS-only capture modes. They preserve the real
+interface while blurring performer images and video frames before capture. The
+DirtyFileExtractor capture similarly obscures the machine-specific destination
+path without changing the saved setting.
 
 ## Installation from Stash
 

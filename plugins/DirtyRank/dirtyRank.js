@@ -1674,7 +1674,8 @@
 
     var stats = data.stats;
     var leaderboardName = selectedCategory ? selectedCategory.name : "Overall";
-    return h("main", { className: "dirty-rank-route dirty-rank-leaderboards-route" },
+    var censorMedia = new URLSearchParams(window.location.search).get("censorMedia") === "1";
+    return h("main", { className: "dirty-rank-route dirty-rank-leaderboards-route" + (censorMedia ? " dirty-rank-censored-media" : "") },
       h("div", { className: "dirty-rank-leaderboards-shell" },
         h("header", { className: "dirty-rank-leaderboards-header dirty-ui-feature-card d-flex align-items-end justify-content-between" },
           h("div", null,
