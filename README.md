@@ -8,13 +8,14 @@ A collection of plugins for [Stash](https://stashapp.cc/).
 | --- | --- | --- |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copy scene and image files or extract selected marker clips into a separate folder. | 0.3.3 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Launch an immersive multiscreen grid for scenes and markers. | 0.3.5 |
+| [DirtyRank](plugins/DirtyRank/) | Rank performers in configurable category and gender pools with high-precision Glicko-2 battles. | 0.5.2 |
 | [DirtyTidy](plugins/DirtyTidy/) | Preview and apply metadata-based folder and filename organization. | 0.2.11 |
 
 The plugins use the hidden [DirtyPlugins settings hub](plugins/DirtyPlugins/).
 The hub is installed automatically from the package source and provides one
 shared settings page without adding an item to Stash's navigation.
-It also supplies the common GraphQL client, configuration helpers, notification
-system, React primitives, and visual tokens used by both plugins.
+It also supplies the common GraphQL client, database-backed settings helpers, notification
+system, React primitives, and visual tokens used by the managed plugins.
 
 ## Install from Stash
 
@@ -27,7 +28,7 @@ https://dirtyground3.github.io/dirty-plugins/main/index.yml
 The URL must end in `index.yml`. The GitHub repository URL is a webpage and is not a valid Stash plugin source.
 
 After adding the source, reload the available packages and install
-**DirtyFileExtractor**, **DirtyMultiscreen**, or **DirtyTidy**. The required **DirtyPlugins**
+**DirtyFileExtractor**, **DirtyMultiscreen**, **DirtyRank**, or **DirtyTidy**. The required **DirtyPlugins**
 settings hub is installed with it automatically.
 
 ## Manual installation
@@ -62,6 +63,13 @@ plugins/
 │   ├── multiscreen.yml
 │   ├── multiscreen.js
 │   └── multiscreen.css
+├── DirtyRank/
+│   ├── LICENSE
+│   ├── README.md
+│   ├── dirtyRank.yml
+│   ├── dirtyRank.js
+│   ├── dirtyRank.css
+│   └── dirty_rank.py
 └── DirtyTidy/
     ├── LICENSE
     ├── dirtyTidy.yml
@@ -82,6 +90,7 @@ main/
 ├── dirtyPlugins.zip
 ├── extractScenes.zip
 ├── multiscreen.zip
+├── dirtyRank.zip
 └── dirtyTidy.zip
 ```
 
@@ -100,4 +109,5 @@ This repository and its plugins are distributed under the [MIT License](LICENSE)
 - [DirtyPlugins license](plugins/DirtyPlugins/LICENSE)
 - [DirtyFileExtractor license](plugins/DirtyFileExtractor/LICENSE)
 - [DirtyMultiscreen license](plugins/DirtyMultiscreen/LICENSE)
+- [DirtyRank license](plugins/DirtyRank/LICENSE)
 - [DirtyTidy license](plugins/DirtyTidy/LICENSE)

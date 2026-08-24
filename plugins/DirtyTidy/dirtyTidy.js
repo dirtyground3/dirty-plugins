@@ -105,30 +105,12 @@
     };
   }
 
-  function pluginResult(value) {
-    var result = DirtyPlugins.values.parseMaybeJson(value);
-    if (result && typeof result === "object" && result.error) {
-      throw new Error(String(result.error));
-    }
-    if (result && typeof result === "object" && Object.prototype.hasOwnProperty.call(result, "output")) {
-      return DirtyPlugins.values.parseMaybeJson(result.output);
-    }
-    return result;
-  }
-
   function runPreview(settings) {
-    return DirtyPlugins.graphql(
-      "mutation DirtyTidyPreview($pluginId:ID!,$args:Map!){" +
-        "runPluginOperation(plugin_id:$pluginId,args:$args)}",
-      {
-        pluginId: PLUGIN_ID,
-        args: {
-          includeAll: true,
-          mode: "preview",
-          settings: settings,
-        },
-      }
-    ).then(function (data) { return pluginResult(data.runPluginOperation); });
+    return DirtyPlugins.runPluginOperation(PLUGIN_ID, {
+      includeAll: true,
+      mode: "preview",
+      settings: settings,
+    });
   }
 
   function queueExecution(strategyHash) {

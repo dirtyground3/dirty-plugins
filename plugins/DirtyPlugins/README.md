@@ -9,14 +9,30 @@ value coercion, stacked notifications, reusable React settings-card, section,
 toggle, icon, and state components, custom settings-panel registration, and
 the visual tokens used by the Dirty plugins.
 
+DirtyPlugins also owns `dirty_plugins.sqlite3`, the shared WAL-enabled database
+for high-frequency plugin data that should not trigger Stash entity-update
+hooks. Runtime database and WAL files are excluded from plugin packages and
+remain in the installed DirtyPlugins directory across ordinary updates.
+
+The database is also the authoritative settings store for DirtyFileExtractor,
+DirtyMultiscreen, DirtyTidy, and DirtyRank. The Stash manifests retain setting
+definitions so the shared hub can render typed controls, but Stash's plugin
+configuration values are not read or written by Dirty plugins.
+
+Managed plugins currently include DirtyFileExtractor, DirtyMultiscreen,
+DirtyTidy, and DirtyRank. DirtyRank uses a custom hub panel for its categories,
+performer cohort, Glicko-2 parameters, and guarded data tools.
+
 The page has no navigation entry. Open it using the link shown in the normal
 Stash settings panel for a managed Dirty plugin. Each installed plugin has its
 own inner tab, and the link opens that plugin's tab directly.
 On Stash's main Plugins page, the Dirty plugin setting cards are kept together
 in a stable shared-hub-first order without changing other plugins' order.
-Unsaved settings are visibly marked and protected by confirmation when the
-page is closed, refreshed, or left through an in-app link. Custom panels use
-the same dirty-state contract as the standard settings forms.
+Standard settings and DirtyRank's custom settings save automatically shortly
+after a control changes. Pending or invalid values remain visibly marked and
+are protected by confirmation when the page is closed, refreshed, or left
+through an in-app link. DirtyTidy deliberately keeps its explicit preview and
+confirmation workflow because its strategy can move and rename files.
 The direct URL is `/plugins/dirty-plugins`; it remains unlisted in Stash's
 navigation.
 

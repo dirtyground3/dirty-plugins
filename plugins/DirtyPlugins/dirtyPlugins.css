@@ -30,6 +30,13 @@
   box-shadow: var(--dirty-ui-shadow);
 }
 
+.dirty-ui-feature-card {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(0, 0, 0, 0.16));
+  border: 1px solid var(--dirty-ui-border-soft);
+  border-radius: calc(var(--dirty-ui-radius) * 1.35);
+  box-shadow: var(--dirty-ui-shadow);
+}
+
 .dirty-ui-settings-section {
   background: rgba(0, 0, 0, 0.12);
   border: 1px solid var(--dirty-ui-border-soft);

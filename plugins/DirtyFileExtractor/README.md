@@ -79,7 +79,7 @@ node --check plugins/DirtyFileExtractor/extractScenes.js
 ```
 
 The UI integration is plain browser JavaScript attached directly to
-`document.body`. It uses DirtyPlugins for GraphQL, configuration, notifications,
+`document.body`. It uses DirtyPlugins for GraphQL, database-backed settings, notifications,
 and shared visuals while intentionally avoiding Stash's experimental React
 `PluginApi` for its own controls.
 

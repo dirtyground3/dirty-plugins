@@ -14,6 +14,7 @@ class SharedUIContractTests(unittest.TestCase):
         for manifest in (
             "plugins/DirtyFileExtractor/extractScenes.yml",
             "plugins/DirtyMultiscreen/multiscreen.yml",
+            "plugins/DirtyRank/dirtyRank.yml",
             "plugins/DirtyTidy/dirtyTidy.yml",
         ):
             contents = read(manifest)
@@ -45,6 +46,7 @@ class SharedUIContractTests(unittest.TestCase):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
         for export in (
             "hubApi.graphql",
+            "hubApi.runPluginOperation",
             "hubApi.getPluginSettings",
             "hubApi.configurePlugin",
             "hubApi.values",
@@ -95,7 +97,7 @@ class SharedUIContractTests(unittest.TestCase):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
 
         self.assertIn(
-            'var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy"]',
+            'var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank"]',
             hub,
         )
         self.assertIn('"data-dirty-plugin-id": props.pluginId', hub)
@@ -141,6 +143,144 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("includeAll: true", tidy)
         self.assertIn("filteredOperations.slice", tidy)
         self.assertNotIn("Loading filtered preview", tidy)
+
+    def test_dirty_rank_uses_the_shared_runtime_and_custom_panel(self):
+        hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
+        script = read("plugins/DirtyRank/dirtyRank.js")
+        manifest = read("plugins/DirtyRank/dirtyRank.yml")
+
+        self.assertIn('"dirtyRank"', hub)
+        self.assertIn("- dirtyPlugins", manifest)
+        self.assertIn("DirtyPlugins.graphql", script)
+        self.assertIn("DirtyPlugins.react.SettingsCard", script)
+        self.assertIn("registerSettingsPanel(PLUGIN_ID, DirtyRankSettings)", script)
+        self.assertIn("PluginApi.register.route(ROUTE_PATH, DirtyRankRoute)", script)
+        self.assertIn('to: "/plugins/dirty-plugins?plugin=dirtyRank"', script)
+
+    def test_dirty_plugins_settings_are_database_backed(self):
+        hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
+        backend = read("plugins/DirtyPlugins/dirty_plugins.py")
+        storage = read("plugins/DirtyPlugins/dirty_plugins_storage.py")
+
+        self.assertIn('runPluginOperation(plugin_id:$pluginId,args:$args)', hub)
+        self.assertIn('mode: "getSettings"', hub)
+        self.assertIn('mode: "setSettings"', hub)
+        self.assertNotIn('configurePlugin(plugin_id:$pluginId,input:$input)', hub)
+        self.assertIn("dirty_plugin_settings", storage)
+        self.assertIn('mode == "getAllSettings"', backend)
+
+    def test_dirty_rank_separates_tie_from_skip_and_preserves_native_rating(self):
+        script = read("plugins/DirtyRank/dirtyRank.js")
+        backend = read("plugins/DirtyRank/dirty_rank.py")
+
+        self.assertIn('submit("draw")', script)
+        self.assertIn("function skip()", script)
+        self.assertNotIn('outcome: "skip"', script)
+        self.assertIn("CREATE TABLE IF NOT EXISTS dirty_rank_pools", backend)
+        self.assertNotIn('STATE_FIELD = "dirty_rank_state"', backend)
+        self.assertNotIn("rating100:", backend)
+
+    def test_dirty_rank_settings_are_editable_weighted_and_cohort_scoped(self):
+        script = read("plugins/DirtyRank/dirtyRank.js")
+        backend = read("plugins/DirtyRank/dirty_rank.py")
+        battle_ui = script.split("function DirtyRankSettings", 1)[0]
+        settings_ui = script.split("function DirtyRankSettings", 1)[1]
+
+        self.assertIn("DirtyPlugins.getPluginSettings(PLUGIN_ID)", script)
+        self.assertIn("function addCategory()", script)
+        self.assertIn("categoriesByCohort", script)
+        self.assertIn("function overallPoolFor", script)
+        self.assertIn('label: "Overall weight"', script)
+        self.assertIn('label: "Evidence per battle"', script)
+        self.assertIn("evidenceWeight: 2", script)
+        self.assertIn('"evidenceWeight": 2.0', backend)
+        self.assertIn('"Advanced configuration"', script)
+        self.assertNotIn("Eligibility tag IDs", script)
+        self.assertNotIn("ratingPeriodDays", script)
+        self.assertNotIn("ratingPeriodDays", backend)
+        self.assertNotIn("inflate_deviation", backend)
+        self.assertNotIn("Performer pool", battle_ui)
+        self.assertNotIn("Export ratings", battle_ui)
+        self.assertIn('title: "Options"', settings_ui)
+        self.assertIn('"Export ratings"', settings_ui)
+
+    def test_standard_and_dirty_rank_settings_save_automatically(self):
+        hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
+        rank = read("plugins/DirtyRank/dirtyRank.js")
+        tidy = read("plugins/DirtyTidy/dirtyTidy.js")
+
+        self.assertIn("Saving automatically…", hub)
+        self.assertIn("Saved automatically.", hub)
+        self.assertIn("saveChainsRef", hub)
+        self.assertNotIn('saving ? "Saving…" : "Save"', hub)
+        self.assertIn("Waiting to save automatically…", rank)
+        self.assertIn("Saving automatically…", rank)
+        self.assertNotIn('Save settings")', rank)
+        self.assertIn('}, "Confirm and save")', tidy)
+
+    def test_dirty_rank_advances_before_background_vote_persistence(self):
+        script = read("plugins/DirtyRank/dirtyRank.js")
+        backend = read("plugins/DirtyRank/dirty_rank.py")
+        submit = script.split("function submit(outcome)", 1)[1].split("function skip()", 1)[0]
+
+        self.assertIn("voteQueueRef.current", submit)
+        self.assertIn("pendingVotesRef.current += 1", submit)
+        self.assertLess(
+            submit.index("showPreparedOrPickNext()"),
+            submit.index("voteQueueRef.current"),
+        )
+        self.assertNotIn("setTimeout", submit)
+        self.assertIn('pendingVotes + " queued operation"', script)
+        self.assertNotIn("performerUpdate", backend)
+        self.assertIn('connection.execute("BEGIN IMMEDIATE")', backend)
+
+    def test_dirty_rank_shows_decision_colors_and_category_confidence(self):
+        script = read("plugins/DirtyRank/dirtyRank.js")
+        stylesheet = read("plugins/DirtyRank/dirtyRank.css")
+
+        self.assertIn("function DecisionIndicator", script)
+        self.assertIn('outcome === "left" ? "winner" : "loser"', script)
+        self.assertIn("dirty-rank-decision-winner", stylesheet)
+        self.assertIn("dirty-rank-decision-loser", stylesheet)
+        self.assertIn("function categoryConfidence", script)
+        self.assertIn("estimatedMatchesToConfidence", script)
+        self.assertIn("function representativeOpponent", script)
+        self.assertIn("nextOpponentDeviation", script)
+        self.assertIn('" battles estimated"', script)
+        self.assertIn("battlePurpose", script)
+        self.assertIn("settings.provisionalDeviation", script)
+
+    def test_dirty_rank_can_play_each_performers_top_rated_scene(self):
+        script = read("plugins/DirtyRank/dirtyRank.js")
+        stylesheet = read("plugins/DirtyRank/dirtyRank.css")
+
+        self.assertIn("function loadPreferredMedia", script)
+        self.assertIn('sort: "rating", direction: "DESC"', script)
+        self.assertIn('modifier: "INCLUDES"', script)
+        self.assertIn("findSceneMarkers", script)
+        self.assertIn("markerEndSeconds", script)
+        self.assertIn("startMarkerPlayback", script)
+        self.assertIn('"Close marker"', script)
+        self.assertIn('"▶ Play top scene"', script)
+        self.assertIn('h("video"', script)
+        self.assertIn("event.stopPropagation()", script)
+        self.assertIn("dirty-rank-scene-player", stylesheet)
+
+    def test_dirty_rank_adds_global_overall_elo_sort_to_performers(self):
+        script = read("plugins/DirtyRank/dirtyRank.js")
+
+        self.assertIn('OVERALL_SORT_VALUE = "dirty_rank_overall"', script)
+        self.assertIn('OVERALL_SORT_LABEL = "Overall Elo"', script)
+        self.assertIn('PluginApi.patch.before("FilteredPerformerList"', script)
+        self.assertIn('PluginApi.patch.after("FilteredPerformerList"', script)
+        self.assertIn('PluginApi.patch.instead("PerformerList"', script)
+        self.assertIn("function sortPerformersByOverall", script)
+        self.assertIn('var cohort = String(performer.gender || "").toUpperCase()', script)
+        self.assertIn("if (left.rated !== right.rated) return left.rated ? -1 : 1", script)
+        self.assertIn("queryFilter.itemsPerPage = -1", script)
+        self.assertIn("queryFilter[OVERALL_SORT_ACTIVE] = true", script)
+        self.assertIn("filter.currentPage", script)
+        self.assertIn("filter.itemsPerPage", script)
 
     def test_dirty_tidy_supports_approved_scan_and_generate_automation(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")

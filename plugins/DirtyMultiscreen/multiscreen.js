@@ -125,10 +125,6 @@
   );
   var clampInteger = DirtyPlugins.values.clampInteger;
   var coerceBoolean = DirtyPlugins.values.coerceBoolean;
-  var getPluginSettingsMap = (pluginsConfig) => DirtyPlugins.getPluginSettingsFromConfiguration(
-    pluginsConfig,
-    PLUGIN_ID
-  );
   var normalizeSettings = (rawSettings) => ({
     totalScreens: clampInteger(rawSettings.totalScreens, DEFAULT_SETTINGS.totalScreens, 1, 36),
     rows: clampInteger(rawSettings.rows, DEFAULT_SETTINGS.rows, 1, 12),
@@ -1126,23 +1122,29 @@
     const oCounterResetTimeout = useRef(null);
     const launchContext = useMemo(() => readLaunchContext(), []);
     const markerMode = isMarkerLaunchContext(launchContext);
-    const configQuery = GQL.useConfigurationQuery({ fetchPolicy: "network-only" });
-    const rawSettings = useMemo(
-      () => getPluginSettingsMap(configQuery.data?.configuration?.plugins),
-      [configQuery.data]
-    );
+    const [settingsQuery, setSettingsQuery] = useState({ loading: true, error: null, data: {} });
+    const reloadSettings = useCallback(() => {
+      setSettingsQuery((current) => ({ ...current, loading: true, error: null }));
+      return DirtyPlugins.getPluginSettings(PLUGIN_ID).then((data) => {
+        setSettingsQuery({ loading: false, error: null, data });
+      }).catch((error) => {
+        setSettingsQuery({ loading: false, error, data: {} });
+      });
+    }, []);
+    useEffect(() => { void reloadSettings(); }, [reloadSettings]);
+    const rawSettings = settingsQuery.data;
     const settings = useMemo(() => normalizeSettings(rawSettings), [rawSettings]);
     const playbackSettings = useMemo(() => getPlaybackSettings(settings), [settings]);
     const nativePlayerQuery = useNativePlayerComponent();
     const scenesQuery = useSceneQuery(
       settings,
       launchContext,
-      !configQuery.loading && !markerMode
+      !settingsQuery.loading && !markerMode
     );
     const markersQuery = useMarkerQuery(
       settings,
       launchContext,
-      !configQuery.loading && markerMode
+      !settingsQuery.loading && markerMode
     );
     const sceneItems = useMemo(
       () => scenesQuery.result.scenes.map(getSceneItem).filter((item) => item !== null),
@@ -1163,8 +1165,8 @@
       [items, settings.randomize, settings.splitScenes, settings.totalScreens]
     );
     const activeQuery = markerMode ? markersQuery : scenesQuery;
-    const loading = configQuery.loading || activeQuery.loading || nativePlayerQuery.loading;
-    const error = configQuery.error ?? activeQuery.error ?? nativePlayerQuery.error;
+    const loading = settingsQuery.loading || activeQuery.loading || nativePlayerQuery.loading;
+    const error = settingsQuery.error ?? activeQuery.error ?? nativePlayerQuery.error;
     const itemType = markerMode ? "markers" : "scenes";
     const visibleSceneCount = visibleNativeSceneIds.length;
     useEffect(() => () => {
@@ -1204,7 +1206,7 @@
         title: "Could not load DirtyMultiscreen",
         detail: error.message,
         onRetry: () => {
-          void configQuery.refetch?.();
+          void reloadSettings();
           void activeQuery.refresh();
           nativePlayerQuery.refresh();
         }

@@ -69,7 +69,9 @@ build_plugin() {
   (
     cd "$plugin_dir"
     zip -qr "$(realpath --relative-to=. "$OLDPWD/$zip_path")" . \
-      -x '*/__pycache__/*' '__pycache__/*' '*.pyc'
+      -x '*/__pycache__/*' '__pycache__/*' '*.pyc' \
+         '*.sqlite' '*.sqlite3' '*.sqlite-wal' '*.sqlite-shm' \
+         '*.sqlite3-wal' '*.sqlite3-shm'
   )
 
   checksum=$(sha256sum "$zip_path" | cut -d' ' -f1)

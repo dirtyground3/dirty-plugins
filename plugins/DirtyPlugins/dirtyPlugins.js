@@ -10,6 +10,7 @@
   var useCallback = React.useCallback;
   var useEffect = React.useEffect;
   var useMemo = React.useMemo;
+  var useRef = React.useRef;
   var useState = React.useState;
   var Link = PluginApi.libraries.ReactRouterDOM.Link;
   var FontAwesomeIcon = PluginApi.libraries.ReactFontAwesome &&
@@ -20,9 +21,9 @@
   var SETTINGS_PANELS_CHANGED_EVENT = "dirty-plugins:settings-panels-changed";
   var UNSAVED_SETTINGS_MESSAGE = "You have unsaved Dirty Plugins settings. Leave without saving them?";
 
-  var MANAGED_PLUGIN_IDS = ["extractScenes", "multiscreen", "dirtyTidy"];
+  var MANAGED_PLUGIN_IDS = ["extractScenes", "multiscreen", "dirtyTidy", "dirtyRank"];
   var MANAGED_PLUGIN_ID_SET = new Set(MANAGED_PLUGIN_IDS);
-  var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy"];
+  var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank"];
   var MAIN_PAGE_PLUGIN_ID_SET = new Set(MAIN_PAGE_PLUGIN_IDS);
   var PLUGIN_SETTING_ORDER = {
     extractScenes: [
@@ -103,9 +104,12 @@
     delete fieldActions[pluginId][settingName];
     window.dispatchEvent(new CustomEvent(FIELD_ACTIONS_CHANGED_EVENT));
   };
-  hubApi.notifyConfigurationChanged = function (pluginId) {
+  hubApi.notifyConfigurationChanged = function (pluginId, options) {
     window.dispatchEvent(new CustomEvent(CONFIGURATION_CHANGED_EVENT, {
-      detail: { pluginId: pluginId },
+      detail: {
+        pluginId: pluginId,
+        preserveSettingsPage: Boolean(options && options.preserveSettingsPage),
+      },
     }));
   };
   hubApi.registerSettingsPanel = function (pluginId, component) {
@@ -158,30 +162,35 @@
       : {};
   }
 
-  function getPluginSettingsFromConfiguration(pluginsConfig, pluginId) {
-    var configuration = asObject(pluginsConfig);
-    return asObject(configuration[pluginId]);
+  function pluginResult(value) {
+    var result = parseMaybeJson(value);
+    if (result && typeof result === "object" && result.error) throw new Error(String(result.error));
+    if (result && typeof result === "object" && Object.prototype.hasOwnProperty.call(result, "output")) {
+      return parseMaybeJson(result.output);
+    }
+    return result;
+  }
+
+  function runPluginOperation(pluginId, args) {
+    return graphql(
+      "mutation DirtyPluginsOperation($pluginId:ID!,$args:Map!){" +
+        "runPluginOperation(plugin_id:$pluginId,args:$args)}",
+      { pluginId: pluginId, args: args }
+    ).then(function (data) { return pluginResult(data.runPluginOperation); });
+  }
+
+  function runSharedOperation(args) {
+    return runPluginOperation("dirtyPlugins", args);
   }
 
   function getPluginSettings(pluginId) {
-    return graphql(
-      "query DirtyPluginConfiguration($ids:[ID!]){" +
-        "configuration{plugins(include:$ids)}}",
-      { ids: [pluginId] }
-    ).then(function (data) {
-      return getPluginSettingsFromConfiguration(
-        data.configuration && data.configuration.plugins,
-        pluginId
-      );
+    return runSharedOperation({ mode: "getSettings", pluginId: pluginId }).then(function (result) {
+      return asObject(result && result.settings);
     });
   }
 
   function configurePlugin(pluginId, input) {
-    return graphql(
-      "mutation DirtyPluginConfigure($pluginId:ID!,$input:Map!){" +
-        "configurePlugin(plugin_id:$pluginId,input:$input)}",
-      { pluginId: pluginId, input: input }
-    ).then(function (data) { return data.configurePlugin; });
+    return runSharedOperation({ mode: "setSettings", pluginId: pluginId, settings: asObject(input) });
   }
 
   function clampInteger(value, fallback, min, max) {
@@ -344,9 +353,10 @@
   }
 
   hubApi.graphql = graphql;
+  hubApi.runPluginOperation = runPluginOperation;
   hubApi.getPluginSettings = getPluginSettings;
-  hubApi.getPluginSettingsFromConfiguration = getPluginSettingsFromConfiguration;
   hubApi.configurePlugin = configurePlugin;
+  hubApi.runSharedOperation = runSharedOperation;
   hubApi.values = {
     asObject: asObject,
     clampInteger: clampInteger,
@@ -364,14 +374,14 @@
   };
 
   function loadSettingsSnapshot() {
-    return graphql(
+    return Promise.all([graphql(
       "query DirtyPluginsSettings{" +
         "plugins{id name description version enabled " +
           "settings{name display_name description type}}" +
-        "configuration{plugins}" +
       "}"
-    ).then(function (data) {
-      var configuration = asObject(data.configuration && data.configuration.plugins);
+    ), runSharedOperation({ mode: "getAllSettings" })]).then(function (values) {
+      var data = values[0];
+      var configuration = asObject(values[1] && values[1].settings);
       var plugins = Array.isArray(data.plugins) ? data.plugins : [];
       return {
         configuration: configuration,
@@ -596,11 +606,9 @@
   function PluginCard(props) {
     var plugin = props.plugin;
     var draft = props.draft || {};
-    var saving = props.saving;
     var status = props.status;
     var actionRevision = props.actionRevision;
     var onFieldChange = props.onFieldChange;
-    var onSave = props.onSave;
     var footer = (plugin.settings || []).length > 0 && createElement(
       "div",
       { className: "card-footer dirty-plugins-card-footer" },
@@ -612,16 +620,6 @@
           role: status ? "status" : undefined,
         },
         status && status.message
-      ),
-      createElement(
-        "button",
-        {
-          type: "button",
-          className: "btn btn-primary dirty-ui-button",
-          disabled: saving,
-          onClick: function () { onSave(plugin); },
-        },
-        saving ? "Saving…" : "Save"
       )
     );
 
@@ -664,9 +662,6 @@
     var errorState = useState(null);
     var error = errorState[0];
     var setError = errorState[1];
-    var savingState = useState({});
-    var saving = savingState[0];
-    var setSaving = savingState[1];
     var statusesState = useState({});
     var statuses = statusesState[0];
     var setStatuses = statusesState[1];
@@ -675,6 +670,9 @@
     var setActionRevision = actionRevisionState[1];
     var settingsPanelRevisionState = useState(0);
     var setSettingsPanelRevision = settingsPanelRevisionState[1];
+    var autoSaveTimersRef = useRef({});
+    var saveChainsRef = useRef({});
+    var saveRevisionsRef = useRef({});
     var activePluginState = useState(requestedPluginId);
     var activePluginId = activePluginState[0];
     var setActivePluginId = activePluginState[1];
@@ -724,7 +722,10 @@
     }, [reload]);
 
     useEffect(function () {
-      function onConfigurationChanged() { reload(); }
+      function onConfigurationChanged(event) {
+        if (event.detail && event.detail.preserveSettingsPage) return;
+        reload();
+      }
       function onFieldActionsChanged() {
         setActionRevision(function (revision) { return revision + 1; });
       }
@@ -774,11 +775,21 @@
       };
     }, [hasUnsavedChanges]);
 
+    useEffect(function () {
+      return function () {
+        Object.keys(autoSaveTimersRef.current).forEach(function (pluginId) {
+          window.clearTimeout(autoSaveTimersRef.current[pluginId]);
+        });
+      };
+    }, []);
+
     function updateField(pluginId, settingName, value) {
+      var plugin = snapshot && snapshot.plugins.find(function (item) { return item.id === pluginId; });
+      var nextPluginDraft = Object.assign({}, drafts[pluginId] || {});
+      nextPluginDraft[settingName] = value;
       setDrafts(function (current) {
         var next = Object.assign({}, current);
-        next[pluginId] = Object.assign({}, current[pluginId] || {});
-        next[pluginId][settingName] = value;
+        next[pluginId] = nextPluginDraft;
         return next;
       });
       setStatuses(function (current) {
@@ -786,16 +797,23 @@
         delete next[pluginId];
         return next;
       });
+      if (!plugin) return;
+      var revision = (saveRevisionsRef.current[pluginId] || 0) + 1;
+      saveRevisionsRef.current[pluginId] = revision;
+      window.clearTimeout(autoSaveTimersRef.current[pluginId]);
+      autoSaveTimersRef.current[pluginId] = window.setTimeout(function () {
+        savePlugin(plugin, nextPluginDraft, revision);
+      }, 350);
     }
 
-    function savePlugin(plugin) {
+    function savePlugin(plugin, pluginDraft, revision) {
       var rawSettings = asObject(snapshot.configuration[plugin.id]);
       var input = Object.assign({}, rawSettings);
       try {
         (plugin.settings || []).forEach(function (setting) {
           input[setting.name] = serializeFieldValue(
             setting,
-            drafts[plugin.id] && drafts[plugin.id][setting.name]
+            pluginDraft && pluginDraft[setting.name]
           );
         });
       } catch (validationError) {
@@ -806,46 +824,41 @@
         });
         return;
       }
-
-      setSaving(function (current) {
-        var next = Object.assign({}, current);
-        next[plugin.id] = true;
-        return next;
-      });
       setStatuses(function (current) {
         var next = Object.assign({}, current);
-        next[plugin.id] = { error: false, message: "Saving…" };
+        next[plugin.id] = { error: false, message: "Saving automatically…" };
         return next;
       });
 
-      configurePlugin(plugin.id, input)
+      var previousSave = saveChainsRef.current[plugin.id] || Promise.resolve();
+      var currentSave = previousSave.catch(function () {}).then(function () {
+        return configurePlugin(plugin.id, input);
+      });
+      saveChainsRef.current[plugin.id] = currentSave;
+      currentSave
         .then(function () {
           snapshot.configuration[plugin.id] = input;
+          if (saveRevisionsRef.current[plugin.id] !== revision) return;
           setSavedDrafts(function (current) {
             var next = Object.assign({}, current);
-            next[plugin.id] = Object.assign({}, drafts[plugin.id] || {});
+            next[plugin.id] = Object.assign({}, pluginDraft || {});
             return next;
           });
           setStatuses(function (current) {
             var next = Object.assign({}, current);
-            next[plugin.id] = { error: false, message: "Saved." };
+            next[plugin.id] = { error: false, message: "Saved automatically." };
             return next;
           });
+          hubApi.notifyConfigurationChanged(plugin.id, { preserveSettingsPage: true });
         })
         .catch(function (saveError) {
+          if (saveRevisionsRef.current[plugin.id] !== revision) return;
           setStatuses(function (current) {
             var next = Object.assign({}, current);
             next[plugin.id] = {
               error: true,
               message: saveError.message || String(saveError),
             };
-            return next;
-          });
-        })
-        .then(function () {
-          setSaving(function (current) {
-            var next = Object.assign({}, current);
-            next[plugin.id] = false;
             return next;
           });
         });
@@ -983,10 +996,8 @@
                 actionRevision: actionRevision,
                 draft: drafts[activePlugin.id],
                 plugin: activePlugin,
-                saving: Boolean(saving[activePlugin.id]),
                 status: statuses[activePlugin.id],
                 onFieldChange: updateField,
-                onSave: savePlugin,
               })
         )
       )

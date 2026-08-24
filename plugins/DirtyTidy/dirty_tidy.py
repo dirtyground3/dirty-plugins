@@ -43,6 +43,21 @@ STRATEGY_SETTING_KEYS = (
     "maxFilenameLength",
     "multiValueSeparator",
 )
+
+
+def _load_shared_storage():
+    plugin_root = Path(__file__).resolve().parent.parent
+    for path in (
+        plugin_root / "dirtyPlugins" / "dirty_plugins_storage.py",
+        plugin_root / "DirtyPlugins" / "dirty_plugins_storage.py",
+    ):
+        if path.is_file():
+            sys.path.insert(0, str(path.parent))
+            return __import__("dirty_plugins_storage")
+    raise RuntimeError("DirtyPlugins shared storage is not installed")
+
+
+shared_storage = _load_shared_storage()
 VARIABLE_NAMES = {
     "title",
     "scene_id",
@@ -163,19 +178,6 @@ class StashClient:
             message = "; ".join(str(error.get("message", error)) for error in errors)
             raise PluginError(f"Stash GraphQL returned an error: {message}")
         return result.get("data") or {}
-
-    def plugin_settings(self) -> dict[str, Any]:
-        data = self.call(
-            """
-            query DirtyTidySettings($ids: [ID!]) {
-              configuration { plugins(include: $ids) }
-            }
-            """,
-            {"ids": [PLUGIN_ID]},
-        )
-        plugins = (data.get("configuration") or {}).get("plugins") or {}
-        settings = plugins.get(PLUGIN_ID) or {}
-        return settings if isinstance(settings, dict) else {}
 
     def library_snapshot(self) -> tuple[list[str], list[dict[str, Any]]]:
         query = """
@@ -944,7 +946,7 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
     if mode == "preview":
         settings = args.get("settings")
         if not isinstance(settings, dict):
-            settings = client.plugin_settings()
+            settings = shared_storage.get_plugin_settings(PLUGIN_ID)
         return preview_plan(
             client,
             settings,
@@ -954,14 +956,15 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
             as_bool(args.get("includeAll"), False),
         )
     if mode == "execute":
+        stored_settings = shared_storage.get_plugin_settings(PLUGIN_ID)
         return execute_plan(
             client,
-            client.plugin_settings(),
+            stored_settings,
             str(args.get("expectedStrategyHash") or ""),
             reporter,
         )
     if mode == "automation":
-        settings = normalize_settings(client.plugin_settings())
+        settings = normalize_settings(shared_storage.get_plugin_settings(PLUGIN_ID))
         trigger = str(args.get("automationTrigger") or "").strip().lower()
         if trigger not in {"scan", "generate"}:
             raise PluginError("DirtyTidy automation requires a Scan or Generate trigger")

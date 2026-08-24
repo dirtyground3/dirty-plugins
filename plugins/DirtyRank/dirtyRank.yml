@@ -1,0 +1,91 @@
+name: DirtyRank
+description: Rank performers through category-based head-to-head battles using a high-precision Glicko-2 system.
+version: 0.7.0
+
+ui:
+  requires:
+    - dirtyPlugins
+  javascript:
+    - dirtyRank.js
+  css:
+    - dirtyRank.css
+
+exec:
+  - python
+  - "{pluginDir}/dirty_rank.py"
+interface: raw
+errLog: error
+
+settings:
+  categories:
+    type: STRING
+    displayName: Rating categories
+    description: Per-performer-sex weighted category definitions managed by the DirtyRank settings panel.
+  defaultCohort:
+    type: STRING
+    displayName: Default performer cohort
+    description: The Stash performer gender used for battles and leaderboards.
+  enabledCohorts:
+    type: STRING
+    displayName: Enabled performer sexes
+    description: Performer sexes available for DirtyRank battles and leaderboards. Managed by the DirtyRank settings panel.
+  showLeaderboardsInMenu:
+    type: BOOLEAN
+    displayName: Show Leaderboards in navigation
+    description: Add a Leaderboards button to Stash's utility navigation. Enabled by default.
+  showRatingsBeforeVote:
+    type: BOOLEAN
+    displayName: Show ratings before voting
+    description: Reveal ratings and ranks before choosing a performer. Disabled by default to reduce bias.
+  hidePerformerImages:
+    type: BOOLEAN
+    displayName: Hide performer images in battles
+    description: Remove performer profile images from battle cards. Disabled by default.
+  includePerformersWithoutImages:
+    type: BOOLEAN
+    displayName: Include performers without images
+    description: Allow performers without a profile image to appear in battles.
+  confidenceGoal:
+    type: STRING
+    displayName: Confidence goal
+    description: Optimize information-gain matchmaking for every rating, leaderboard order, or a top-N leaderboard. Defaults to leaderboard order.
+  confidenceTopN:
+    type: NUMBER
+    displayName: Confidence top N
+    description: Number of top performers to stabilize when the top-N confidence goal is selected. Defaults to 20.
+  avoidRepeatWindow:
+    type: NUMBER
+    displayName: Repeat avoidance window
+    description: Number of recent pairs to avoid when alternatives are available. Defaults to 12.
+  calibrationPercent:
+    type: NUMBER
+    displayName: Calibration match percentage
+    description: Percentage of battles paired across rating tiers. Defaults to 10.
+  initialRating:
+    type: NUMBER
+    displayName: Initial rating
+    description: Starting rating for a new category and cohort pool. Defaults to 1000.
+  initialDeviation:
+    type: NUMBER
+    displayName: Initial rating deviation
+    description: Starting uncertainty for an unrated performer. Defaults to 350.
+  initialVolatility:
+    type: NUMBER
+    displayName: Initial volatility
+    description: Starting Glicko-2 volatility. Defaults to 0.06.
+  evidenceWeight:
+    type: NUMBER
+    displayName: Evidence per battle
+    description: Strength of one subjective comparison in the Glicko-2 update. 1 is standard evidence; 2 doubles the information contribution while recording one battle. Defaults to 2.
+  tau:
+    type: NUMBER
+    displayName: Glicko-2 tau
+    description: Controls how quickly volatility may change. Defaults to 0.5.
+  deviationFloor:
+    type: NUMBER
+    displayName: Rating deviation floor
+    description: Minimum uncertainty retained for highly precise ratings. Defaults to 30.
+  provisionalDeviation:
+    type: NUMBER
+    displayName: Provisional threshold
+    description: Ratings at or below this deviation are Refined; Excellent uses 60% of this threshold or the deviation floor, whichever is higher. Defaults to 100.

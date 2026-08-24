@@ -29,6 +29,21 @@ COPY_CHUNK_SIZE = 4 * 1024 * 1024
 PROGRESS_INTERVAL_SECONDS = 0.5
 
 
+def _load_shared_storage():
+    plugin_root = Path(__file__).resolve().parent.parent
+    for path in (
+        plugin_root / "dirtyPlugins" / "dirty_plugins_storage.py",
+        plugin_root / "DirtyPlugins" / "dirty_plugins_storage.py",
+    ):
+        if path.is_file():
+            sys.path.insert(0, str(path.parent))
+            return __import__("dirty_plugins_storage")
+    raise RuntimeError("DirtyPlugins shared storage is not installed")
+
+
+shared_storage = _load_shared_storage()
+
+
 class PluginError(RuntimeError):
     """An error that should be reported cleanly to Stash."""
 
@@ -102,16 +117,6 @@ class StashClient:
             messages = "; ".join(str(error.get("message", error)) for error in errors)
             raise PluginError(f"Stash GraphQL returned an error: {messages}")
         return result.get("data") or {}
-
-    def plugin_settings(self) -> dict[str, Any]:
-        query = """
-          query ExtractScenesSettings($ids: [ID!]) {
-            configuration { plugins(include: $ids) }
-          }
-        """
-        data = self.call(query, {"ids": [PLUGIN_ID]})
-        plugins = (data.get("configuration") or {}).get("plugins") or {}
-        return plugins.get(PLUGIN_ID) or {}
 
     def scene(self, scene_id: str) -> dict[str, Any] | None:
         query = """
@@ -914,7 +919,7 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
     reporter.info("DirtyFileExtractor started")
     client = StashClient(server_connection)
     reporter.info("Reading DirtyFileExtractor settings")
-    settings = client.plugin_settings()
+    settings = shared_storage.get_plugin_settings(PLUGIN_ID)
     return copy_selected(client, selections_from_args(args), settings, reporter)
 
 
