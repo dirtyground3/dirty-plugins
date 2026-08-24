@@ -1138,8 +1138,8 @@
         "div",
         {
           className: "dirty-rank-image-wrap" + (imageReady ? " dirty-rank-image-ready" : "") + (scene ? " dirty-rank-scene-playing" : ""),
-          onClick: function (event) { event.stopPropagation(); },
-          onKeyDown: function (event) { event.stopPropagation(); },
+          onClick: scene ? function (event) { event.stopPropagation(); } : undefined,
+          onKeyDown: scene ? function (event) { event.stopPropagation(); } : undefined,
         },
         scene
           ? h("video", {

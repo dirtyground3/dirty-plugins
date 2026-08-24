@@ -404,6 +404,10 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
 
         self.assertIn('to: "/performers/" + performer.id', source)
         self.assertIn('event.stopPropagation()', source)
+        self.assertIn(
+            'onClick: scene ? function (event) { event.stopPropagation(); } : undefined',
+            source,
+        )
         self.assertIn('key: pairInfo.instanceId + ":left"', source)
         self.assertIn('key: pairInfo.instanceId + ":right"', source)
         self.assertIn("@keyframes dirty-rank-card-change", styles)
