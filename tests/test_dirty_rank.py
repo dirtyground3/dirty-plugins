@@ -468,7 +468,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('"Gold", "Silver", "Bronze"', source)
         self.assertIn("var podiumOrder = [1, 0, 2]", source)
         self.assertIn("dirty-rank-podium-step", source)
-        self.assertIn('useState("table")', source)
+        self.assertIn('useState("gallery")', source)
         self.assertIn('}, "Table")', source)
         self.assertIn('}, "Gallery")', source)
         self.assertIn("function LeaderboardGallery", source)

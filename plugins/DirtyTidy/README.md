@@ -12,6 +12,13 @@ completed Generate job. Stash does not currently provide Scan/Generate plugin
 hooks, so DirtyTidy listens to Stash's supported job-completion subscription;
 the Stash UI must remain open until the selected job finishes.
 
+## Screenshot
+
+![DirtyTidy organization and filename template settings](../../docs/images/dirty-tidy-settings.png)
+
+The settings page keeps folder hierarchy, filename templates, metadata
+variables, automation, preview, and confirmation in one reviewable workflow.
+
 ## Safety model
 
 - Missing metadata renders as `Unknown` in folder hierarchies. Missing filename

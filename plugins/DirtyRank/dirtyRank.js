@@ -1611,7 +1611,7 @@
     var errorState = useState("");
     var error = errorState[0];
     var setError = errorState[1];
-    var viewState = useState("table");
+    var viewState = useState("gallery");
     var viewMode = viewState[0];
     var setViewMode = viewState[1];
     var pageState = useState(1);

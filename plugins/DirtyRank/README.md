@@ -80,6 +80,30 @@ volatility instead of relying on a capped integer score.
 - JSON export, a full shared-database backup action, and a guarded
   category/cohort reset tool in settings Options.
 
+## Screenshots
+
+### Performer battles
+
+![DirtyRank Performance battle with performer media blurred](../../docs/images/dirty-rank-battle-censored.png)
+
+Each comparison keeps the selected category, confidence estimate, vote
+controls, and current-category standings together while the next matchup is
+prepared in the background.
+
+### Leaderboards
+
+![DirtyRank gold, silver, and bronze podium with performer media blurred](../../docs/images/dirty-rank-leaderboard-censored.png)
+
+The leaderboard combines its top-three podium with rating precision, completed
+battles, confidence, and full paginated standings.
+
+### Settings
+
+![DirtyRank performer pool and rating settings](../../docs/images/dirty-rank-settings.png)
+
+Choose performer pools, battle presentation, confidence goals, weighted
+categories, exports, and advanced Glicko-2 parameters from the shared hub.
+
 ## Data and compatibility
 
 DirtyRank stores its high-precision pools and battle journal in the shared

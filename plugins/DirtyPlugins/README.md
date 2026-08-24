@@ -36,6 +36,13 @@ confirmation workflow because its strategy can move and rename files.
 The direct URL is `/plugins/dirty-plugins`; it remains unlisted in Stash's
 navigation.
 
+## Screenshot
+
+![Dirty Plugins shared settings hub showing DirtyRank configuration](../../docs/images/dirty-rank-settings.png)
+
+The hub gives every installed Dirty plugin its own tab and consistent settings
+layout. This capture shows DirtyRank's custom panel inside the shared page.
+
 For a manual installation, copy this directory alongside the other Dirty
 plugin directories and reload plugins in Stash.
 

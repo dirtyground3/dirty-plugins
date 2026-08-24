@@ -25,6 +25,14 @@ the originals.
 - Uses only the Python standard library and Stash's configured FFmpeg; no
   additional packages need to be installed.
 
+## Screenshot
+
+![DirtyFileExtractor settings with the private destination path blurred](../../docs/images/dirty-file-extractor-settings.png)
+
+The shared settings panel controls the destination, collision policy, optional
+folders, dry runs, and copy-speed limit. The machine-specific destination is
+blurred only in this documentation capture.
+
 ## Installation
 
 1. Copy this entire directory into Stash's plugin directory. The usual paths

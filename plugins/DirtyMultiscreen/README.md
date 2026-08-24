@@ -12,6 +12,22 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - Optional pause when the browser tab is hidden.
 - Runs inside Stash and uses its existing scene and marker data.
 
+## Screenshots
+
+### Playback grid
+
+![DirtyMultiscreen four-pane playback grid with video frames blurred](../../docs/images/dirty-multiscreen-grid-censored.png)
+
+The capture shows a real edge-to-edge four-pane session. Only the video frames
+are blurred for the public repository.
+
+### Settings
+
+![DirtyMultiscreen playback and grid settings](../../docs/images/dirty-multiscreen-settings.png)
+
+Configure the grid geometry, scene distribution, starting behavior, looping,
+muting, marker duration, and hidden-tab handling in one panel.
+
 ## Installation
 
 1. Copy this entire `DirtyMultiscreen` directory into Stash's plugin directory. The usual paths are `%USERPROFILE%\.stash\plugins\DirtyMultiscreen` on Windows and `~/.stash/plugins/DirtyMultiscreen` on Linux/macOS.
