@@ -301,6 +301,21 @@
   transform: scale(1);
 }
 
+.dirty-rank-censored-media .dirty-rank-image,
+.dirty-rank-censored-media .dirty-rank-scene-player {
+  filter: blur(42px) saturate(0.45) brightness(0.72);
+  transform: scale(1.2);
+}
+
+.dirty-rank-censored-media .dirty-rank-image-wrap::after {
+  background: rgba(20, 28, 34, 0.22);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+
 .dirty-rank-scene-playing {
   background: #050505;
   display: grid;

@@ -387,12 +387,16 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
 
     def test_battle_cards_conditionally_render_images(self):
         source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
 
         self.assertIn("hidePerformerImages", source)
         self.assertIn("dirty-rank-card-no-image", source)
         self.assertIn("var showMedia = showImages || Boolean(scene) || sceneLoading", source)
         self.assertIn("showMedia && h(", source)
         self.assertIn("showImages && performer.image_path", source)
+        self.assertIn('get("censorMedia") === "1"', source)
+        self.assertIn("dirty-rank-censored-media", styles)
+        self.assertIn("blur(42px)", styles)
 
     def test_battle_cards_link_performers_and_animate_every_pair(self):
         source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")

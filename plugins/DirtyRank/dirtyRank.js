@@ -365,12 +365,13 @@
 
   function scenePlaybackUrl(scene) {
     var streams = scene && Array.isArray(scene.sceneStreams) ? scene.sceneStreams : [];
+    var directPath = scene && scene.paths && scene.paths.stream;
     var preferred = streams.find(function (stream) {
-      return stream.mime_type === "video/mp4" && /720p/i.test(stream.label || "");
-    }) || streams.find(function (stream) {
       return stream.mime_type === "video/mp4" && /direct/i.test(stream.label || "");
+    }) || streams.find(function (stream) {
+      return stream.mime_type === "video/mp4" && /720p/i.test(stream.label || "");
     });
-    return preferred && preferred.url || scene && scene.paths && scene.paths.stream || "";
+    return directPath || preferred && preferred.url || "";
   }
 
   function parseState(performer) {
@@ -1800,6 +1801,7 @@
     if (gauntletPathActive && !routeTargetId) return null;
     var gauntletTargetId = routeTargetId;
     var gauntletMode = Boolean(gauntletTargetId);
+    var censorMedia = new URLSearchParams(window.location.search).get("censorMedia") === "1";
     var settingsState = useState(null);
     var settings = settingsState[0];
     var setSettings = settingsState[1];
@@ -2191,7 +2193,7 @@
         message: "DirtyRank is still saving queued votes or undos. Wait for the queue to finish before leaving this page.",
         when: pendingVotes > 0,
       }),
-      h("main", { className: "dirty-rank-route" + (gauntletMode ? " dirty-rank-gauntlet-route" : "") },
+      h("main", { className: "dirty-rank-route" + (gauntletMode ? " dirty-rank-gauntlet-route" : "") + (censorMedia ? " dirty-rank-censored-media" : "") },
       h("div", { className: "dirty-rank-shell" },
         h("section", { className: "dirty-rank-main dirty-ui-feature-card" },
           h("header", { className: "dirty-rank-header d-flex align-items-start justify-content-between" },

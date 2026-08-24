@@ -253,6 +253,9 @@ class SharedUIContractTests(unittest.TestCase):
     def test_dirty_rank_can_play_each_performers_top_rated_scene(self):
         script = read("plugins/DirtyRank/dirtyRank.js")
         stylesheet = read("plugins/DirtyRank/dirtyRank.css")
+        playback_url = script.split("function scenePlaybackUrl", 1)[1].split(
+            "function parseState", 1
+        )[0]
 
         self.assertIn("function loadPreferredMedia", script)
         self.assertIn('sort: "rating", direction: "DESC"', script)
@@ -265,6 +268,10 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('h("video"', script)
         self.assertIn("event.stopPropagation()", script)
         self.assertIn("dirty-rank-scene-player", stylesheet)
+        self.assertLess(
+            playback_url.index("directPath"),
+            playback_url.index("/720p/i"),
+        )
 
     def test_dirty_rank_adds_global_overall_elo_sort_to_performers(self):
         script = read("plugins/DirtyRank/dirtyRank.js")
