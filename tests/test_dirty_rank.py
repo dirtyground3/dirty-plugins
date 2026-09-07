@@ -360,6 +360,13 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_battle_media_behavior(self):
+        script = Path(__file__).with_name("test_dirty_rank_media.js")
+        result = subprocess.run(
+            ["node", str(script)], capture_output=True, check=False, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_arrow_shortcuts_cover_tie_and_undo(self):
         source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
 
@@ -393,7 +400,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("dirty-rank-card-no-image", source)
         self.assertIn("var showMedia = showImages || Boolean(scene) || sceneLoading", source)
         self.assertIn("showMedia && h(", source)
-        self.assertIn("showImages && performer.image_path", source)
+        self.assertIn('showImages && h("div", { className: "dirty-rank-portrait" }', source)
         self.assertIn('get("censorMedia") === "1"', source)
         self.assertIn("dirty-rank-censored-media", styles)
         self.assertIn("blur(42px)", styles)
@@ -404,10 +411,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
 
         self.assertIn('to: "/performers/" + performer.id', source)
         self.assertIn('event.stopPropagation()', source)
-        self.assertIn(
-            'onClick: scene ? function (event) { event.stopPropagation(); } : undefined',
-            source,
-        )
+        self.assertIn('className: "dirty-rank-scene-panel"', source)
         self.assertIn('key: pairInfo.instanceId + ":left"', source)
         self.assertIn('key: pairInfo.instanceId + ":right"', source)
         self.assertIn("@keyframes dirty-rank-card-change", styles)

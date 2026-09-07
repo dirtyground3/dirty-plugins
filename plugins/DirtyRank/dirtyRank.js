@@ -75,6 +75,7 @@
     showLeaderboardsInMenu: true,
     showRatingsBeforeVote: false,
     hidePerformerImages: false,
+    autoPlayTopScenes: false,
     includePerformersWithoutImages: false,
     confidenceGoal: "ranking",
     confidenceTopN: 20,
@@ -209,6 +210,7 @@
       showLeaderboardsInMenu: DirtyPlugins.values.coerceBoolean(source.showLeaderboardsInMenu, true),
       showRatingsBeforeVote: DirtyPlugins.values.coerceBoolean(source.showRatingsBeforeVote, false),
       hidePerformerImages: DirtyPlugins.values.coerceBoolean(source.hidePerformerImages, false),
+      autoPlayTopScenes: DirtyPlugins.values.coerceBoolean(source.autoPlayTopScenes, false),
       includePerformersWithoutImages: DirtyPlugins.values.coerceBoolean(source.includePerformersWithoutImages, false),
       confidenceGoal: confidenceGoal,
       confidenceTopN: integer(source.confidenceTopN, 20, 1, 1000),
@@ -257,6 +259,7 @@
       showLeaderboardsInMenu: Boolean(settings.showLeaderboardsInMenu),
       showRatingsBeforeVote: Boolean(settings.showRatingsBeforeVote),
       hidePerformerImages: Boolean(settings.hidePerformerImages),
+      autoPlayTopScenes: Boolean(settings.autoPlayTopScenes),
       includePerformersWithoutImages: Boolean(settings.includePerformersWithoutImages),
       confidenceGoal: settings.confidenceGoal,
       confidenceTopN: settings.confidenceTopN,
@@ -316,21 +319,22 @@
     });
   }
 
-  function loadPreferredMedia(performerId) {
-    var cacheKey = String(performerId);
+  function loadPreferredMedia(performerId, fullScene) {
+    var cacheKey = String(performerId) + (fullScene ? ":scene" : ":preferred");
     if (performerMediaCache.has(cacheKey)) return performerMediaCache.get(cacheKey);
     var request = DirtyPlugins.graphql(
-      "query DirtyRankPreferredMedia($filter:FindFilterType,$sceneFilter:SceneFilterType,$markerFilter:SceneMarkerFilterType){" +
+      "query DirtyRankPreferredMedia($filter:FindFilterType,$sceneFilter:SceneFilterType,$markerFilter:SceneMarkerFilterType,$includeMarkers:Boolean!){" +
         "top:findScenes(filter:$filter,scene_filter:$sceneFilter){scenes{" +
           "id title rating100 paths{stream} sceneStreams{url mime_type label}" +
         "}}" +
-        "markers:findSceneMarkers(filter:{per_page:-1},scene_marker_filter:$markerFilter){scene_markers{" +
+        "markers:findSceneMarkers(filter:{per_page:-1},scene_marker_filter:$markerFilter) @include(if:$includeMarkers){scene_markers{" +
           "id title seconds end_seconds scene{id title rating100 paths{stream} sceneStreams{url mime_type label}}" +
         "}}}",
       {
         filter: { per_page: 1, sort: "rating", direction: "DESC" },
-        sceneFilter: { performers: { value: [cacheKey], modifier: "INCLUDES" } },
-        markerFilter: { performers: { value: [cacheKey], modifier: "INCLUDES" } },
+        sceneFilter: { performers: { value: [String(performerId)], modifier: "INCLUDES" } },
+        markerFilter: { performers: { value: [String(performerId)], modifier: "INCLUDES" } },
+        includeMarkers: !fullScene,
       }
     ).then(function (data) {
       var markers = data.markers && Array.isArray(data.markers.scene_markers)
@@ -344,7 +348,7 @@
         if (rightRating !== leftRating) return rightRating - leftRating;
         return Number(left.seconds || 0) - Number(right.seconds || 0);
       });
-      if (markers[0] && markers[0].scene) {
+      if (!fullScene && markers[0] && markers[0].scene) {
         return Object.assign({}, markers[0].scene, {
           marker: {
             id: markers[0].id,
@@ -1062,11 +1066,21 @@
     var sceneError = sceneErrorState[0];
     var setSceneError = sceneErrorState[1];
     var cardMountedRef = useRef(true);
+    var mediaRequestRef = useRef(0);
+    var videoRef = useRef(null);
+    var playbackStartRef = useRef(null);
     var showMedia = showImages || Boolean(scene) || sceneLoading;
     useEffect(function () {
       cardMountedRef.current = true;
-      return function () { cardMountedRef.current = false; };
+      return function () {
+        cardMountedRef.current = false;
+        mediaRequestRef.current += 1;
+        if (videoRef.current) videoRef.current.pause();
+      };
     }, []);
+    useEffect(function () {
+      if (props.settings.autoPlayTopScenes && Number(performer.scene_count || 0) > 0) openTopScene(true);
+    }, [performer.id, props.settings.autoPlayTopScenes]);
     function markerEndSeconds(media) {
       if (!media || !media.marker) return null;
       var start = Number(media.marker.seconds) || 0;
@@ -1074,8 +1088,19 @@
       return Number.isFinite(end) && end > start ? end : start + 30;
     }
     function startMarkerPlayback(event) {
-      if (!scene || !scene.marker) return;
-      event.currentTarget.currentTime = Number(scene.marker.seconds) || 0;
+      if (!scene) return;
+      if (playbackStartRef.current === null) {
+        if (scene.marker) {
+          playbackStartRef.current = Number(scene.marker.seconds) || 0;
+        } else {
+          var duration = event.currentTarget.duration;
+          if (!Number.isFinite(duration) || duration <= 0) return;
+          playbackStartRef.current = duration * (0.3 + Math.random() * 0.4);
+        }
+        event.currentTarget.currentTime = playbackStartRef.current;
+      } else {
+        return;
+      }
       var playResult = event.currentTarget.play();
       if (playResult && typeof playResult.catch === "function") playResult.catch(function () {});
     }
@@ -1101,26 +1126,33 @@
     function toggleTopScene(event) {
       event.preventDefault();
       event.stopPropagation();
-      if (scene) {
+      if (scene || sceneLoading) {
+        mediaRequestRef.current += 1;
+        if (videoRef.current) videoRef.current.pause();
         setScene(null);
+        setSceneLoading(false);
         setSceneError("");
         return;
       }
-      if (sceneLoading) return;
+      openTopScene(props.settings.autoPlayTopScenes);
+    }
+    function openTopScene(fullScene) {
+      var requestId = ++mediaRequestRef.current;
+      playbackStartRef.current = null;
       setSceneLoading(true);
       setSceneError("");
-      loadPreferredMedia(performer.id).then(function (result) {
-        if (!cardMountedRef.current) return;
+      loadPreferredMedia(performer.id, fullScene).then(function (result) {
+        if (!cardMountedRef.current || requestId !== mediaRequestRef.current) return;
         if (!result || !scenePlaybackUrl(result)) {
           setSceneError("No playable scene found.");
           return;
         }
         setScene(result);
       }).catch(function (error) {
-        if (!cardMountedRef.current) return;
+        if (!cardMountedRef.current || requestId !== mediaRequestRef.current) return;
         setSceneError(error.message || String(error));
       }).finally(function () {
-        if (cardMountedRef.current) setSceneLoading(false);
+        if (cardMountedRef.current && requestId === mediaRequestRef.current) setSceneLoading(false);
       });
     }
     return h(
@@ -1137,23 +1169,10 @@
       showMedia && h(
         "div",
         {
-          className: "dirty-rank-image-wrap" + (imageReady ? " dirty-rank-image-ready" : "") + (scene ? " dirty-rank-scene-playing" : ""),
-          onClick: scene ? function (event) { event.stopPropagation(); } : undefined,
-          onKeyDown: scene ? function (event) { event.stopPropagation(); } : undefined,
+          className: "dirty-rank-image-wrap" + (imageReady ? " dirty-rank-image-ready" : "") + (scene || sceneLoading ? " dirty-rank-scene-playing" : "") + (!showImages ? " dirty-rank-media-no-portrait" : ""),
         },
-        scene
-          ? h("video", {
-              autoPlay: !scene.marker,
-              className: "dirty-rank-scene-player",
-              controls: true,
-              onLoadedMetadata: startMarkerPlayback,
-              onPlay: keepMarkerPlaybackInRange,
-              onTimeUpdate: stopAtMarkerEnd,
-              playsInline: true,
-              preload: "metadata",
-              src: scenePlaybackUrl(scene),
-            })
-          : showImages && performer.image_path
+        showImages && h("div", { className: "dirty-rank-portrait" },
+          performer.image_path
           ? h("img", {
               alt: "",
               className: "dirty-rank-image",
@@ -1163,17 +1182,40 @@
               src: performer.image_path,
             })
           : h("div", { className: "dirty-rank-image-placeholder d-flex flex-column align-items-center justify-content-center" },
-              h("span", null, sceneLoading ? "…" : "◇"),
-              h("span", null, sceneLoading ? "Loading top scene…" : "No performer image")
+              h("span", null, "◇"),
+              h("span", null, "No performer image")
             ),
-        !scene && showImages && performer.image_path && !imageReady && h("div", { "aria-hidden": "true", className: "dirty-rank-image-loading" }),
-        scene && h("div", { className: "dirty-rank-scene-caption" },
-          h("span", null, scene.marker
-            ? "Marker · " + (scene.marker.title || scene.title || "Untitled")
-            : scene.title || "Top-rated scene"),
-          Number.isFinite(scene.rating100) && h("span", null, "Rating " + scene.rating100)
+          performer.image_path && !imageReady && h("div", { "aria-hidden": "true", className: "dirty-rank-image-loading" }),
+          (scene || sceneLoading) && h("span", { className: "dirty-rank-photo-vote-hint" }, "Click photo to vote"),
+          reveal && props.rank && h("span", { className: "dirty-rank-rank" }, "#" + props.rank)
         ),
-        reveal && props.rank && h("span", { className: "dirty-rank-rank" }, "#" + props.rank)
+        (scene || sceneLoading) && h("div", {
+          className: "dirty-rank-scene-panel",
+          onClick: function (event) { event.stopPropagation(); },
+          onKeyDown: function (event) { event.stopPropagation(); },
+        },
+          scene ? h("video", {
+            "aria-label": "Scene preview for " + performer.name,
+            className: "dirty-rank-scene-player",
+            controls: true,
+            muted: true,
+            onLoadedMetadata: startMarkerPlayback,
+            onDurationChange: startMarkerPlayback,
+            onPlay: keepMarkerPlaybackInRange,
+            onTimeUpdate: stopAtMarkerEnd,
+            onError: function () { setSceneError("This scene could not be played. Close it and try again."); },
+            playsInline: true,
+            preload: "metadata",
+            ref: videoRef,
+            src: scenePlaybackUrl(scene),
+          }) : h("div", { className: "dirty-rank-scene-loading", role: "status" }, "Loading top scene…"),
+          scene && h("div", { className: "dirty-rank-scene-caption" },
+            h("span", null, scene.marker
+              ? "Marker · " + (scene.marker.title || scene.title || "Untitled")
+              : scene.title || "Top-rated scene"),
+            Number.isFinite(scene.rating100) && h("span", null, "Rating " + scene.rating100)
+          )
+        )
       ),
       !showImages && reveal && props.rank && h("span", { className: "dirty-rank-rank" }, "#" + props.rank),
       props.gauntletTarget && h("span", { className: "dirty-rank-gauntlet-target" }, "Gauntlet target"),
@@ -1195,10 +1237,10 @@
         h("div", { className: "dirty-rank-scene-actions" },
           h("button", {
             className: "btn btn-sm btn-secondary dirty-ui-button dirty-rank-play-scene",
-            disabled: props.disabled || sceneLoading || Number(performer.scene_count || 0) < 1,
+            disabled: props.disabled || Number(performer.scene_count || 0) < 1,
             onClick: toggleTopScene,
             type: "button",
-          }, sceneLoading ? "Loading…" : scene ? (scene.marker ? "Close marker" : "Close top scene") : "▶ Play top scene")
+          }, sceneLoading ? "Cancel loading" : scene ? (scene.marker ? "Close marker" : "Close top scene") : "▶ Play top scene")
         ),
         sceneError && h("div", { className: "dirty-rank-scene-error dirty-ui-text-error", role: "alert" }, sceneError),
         h("div", { className: "dirty-rank-rating-row d-flex flex-wrap align-items-center" },
@@ -2608,6 +2650,13 @@
         h("div", { className: "dirty-rank-settings-row" },
           h(Toggle, { checked: draft.showRatingsBeforeVote, label: "Show ratings and ranks before voting", onChange: function (value) { changed({ showRatingsBeforeVote: value }); } }),
           h(Toggle, { checked: draft.hidePerformerImages, label: "Hide performer images in battles", onChange: function (value) { changed({ hidePerformerImages: value }); } }),
+          h(Toggle, {
+            checked: draft.autoPlayTopScenes,
+            label: h("span", {
+              title: "Automatic previews play each performer's highest-rated full scene, muted, from a random point between 30% and 70%. Photos remain clickable for voting unless hidden above.",
+            }, "Automatically play top scenes"),
+            onChange: function (value) { changed({ autoPlayTopScenes: value }); },
+          }),
           h(Toggle, { checked: draft.includePerformersWithoutImages, label: "Include performers without profile images", onChange: function (value) { changed({ includePerformersWithoutImages: value }); } })
         )
       ),
