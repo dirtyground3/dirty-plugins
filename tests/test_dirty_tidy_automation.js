@@ -72,15 +72,19 @@ function browser(storage = new Map()) {
   };
 }
 
-function completed(addTime, overrides = {}) {
+// Match Stash v0.31.1 graphql/subscriptions.graphql, not the broader JobData
+// query fragment: subscription events do NOT contain addTime or endTime.
+function completed(startTime, overrides = {}) {
   return { type: "REMOVE", job: {
-    id: "1", description: "Scanning...", status: "FINISHED", addTime, ...overrides,
+    id: "1", description: "Scanning...", status: "FINISHED",
+    subTasks: [], progress: 1, error: null, startTime, ...overrides,
   } };
 }
 
 async function main() {
   const storage = new Map([["dirtyTidy.automationJobs", '["1"]']]);
   const first = completed("2026-09-07T08:00:00Z");
+  assert.equal(Object.hasOwn(first.job, "addTime"), false);
   const restarted = completed("2026-09-08T08:00:00Z");
   const tab = browser(storage);
   // A finished scan alone suffices: no start or separate completion event needed.

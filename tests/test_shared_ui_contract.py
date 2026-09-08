@@ -312,7 +312,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('value: "generate"', tidy)
         self.assertNotIn('disabled: true, value: "manual"', tidy)
         self.assertIn("useJobsSubscribeSubscription", tidy)
-        self.assertIn("job && job.addTime", tidy)
+        self.assertIn("job && job.startTime", tidy)
         self.assertIn('event.type !== "REMOVE"', tidy)
         self.assertIn('job.status !== "FINISHED"', tidy)
         self.assertIn("approveAutomation", tidy)

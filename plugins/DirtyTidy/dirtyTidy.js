@@ -205,13 +205,14 @@
         job.status !== "FINISHED" ||
         !trigger
       ) return;
-      // Stash restarts its job counter on startup. addTime identifies this run
-      // across restarts, browser reloads and subscription replays.
-      if (!job.addTime) {
-        console.error("DirtyTidy could not identify the completed job: missing addTime", job.id);
+      // Stash restarts its job counter on startup. The built-in JobsSubscribe
+      // selection includes startTime, but not addTime (unlike JobData queries).
+      // Use the start timestamp to identify runs across restarts and replays.
+      if (!job.startTime) {
+        console.error("DirtyTidy could not identify the completed job: missing startTime", job.id);
         return;
       }
-      var jobKey = JSON.stringify([trigger, String(job.id), job.addTime]);
+      var jobKey = JSON.stringify([trigger, String(job.id), job.startTime]);
       if (processingJobs.current[jobKey]) return;
       processingJobs.current[jobKey] = true;
       // A finished REMOVE carries the scan identity itself, avoiding a race
@@ -221,7 +222,7 @@
           console.error("DirtyTidy could not queue automation", automationError);
           delete processingJobs.current[jobKey];
         });
-    }, [event && event.type, job && job.id, job && job.status, job && job.description, job && job.addTime]);
+    }, [event && event.type, job && job.id, job && job.status, job && job.description, job && job.startTime]);
 
     return null;
   }
