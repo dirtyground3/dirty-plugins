@@ -1296,7 +1296,7 @@
     const handleClick = useCallback(() => {
       storeLaunchContext(launchContext);
     }, [launchContext]);
-    return /* @__PURE__ */ createElement(NavLink, { className: "nav-utility ms-nav-link", exact: true, to: ROUTE_PATH, onClick: handleClick }, /* @__PURE__ */ createElement(Button, { className: "minimal d-flex align-items-center h-100 ms-nav-button", title: buttonTitle }, /* @__PURE__ */ createElement("span", { className: "ms-nav-icon", "aria-hidden": "true" }, /* @__PURE__ */ createElement("span", null), /* @__PURE__ */ createElement("span", null), /* @__PURE__ */ createElement("span", null), /* @__PURE__ */ createElement("span", null)), launchContext && /* @__PURE__ */ createElement(
+    return /* @__PURE__ */ createElement(NavLink, { className: "nav-utility ms-nav-link", exact: true, to: ROUTE_PATH, onClick: handleClick }, /* @__PURE__ */ createElement(Button, { className: "minimal d-flex align-items-center h-100 ms-nav-button", title: buttonTitle }, /* @__PURE__ */ createElement("i", { className: "ms-nav-icon", "aria-hidden": "true" }, /* @__PURE__ */ createElement("i", null), /* @__PURE__ */ createElement("i", null), /* @__PURE__ */ createElement("i", null), /* @__PURE__ */ createElement("i", null)), launchContext && /* @__PURE__ */ createElement(
       "span",
       {
         className: `ms-nav-count${countLoading ? " ms-loading" : ""}`,

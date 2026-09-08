@@ -312,10 +312,19 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('value: "generate"', tidy)
         self.assertNotIn('disabled: true, value: "manual"', tidy)
         self.assertIn("useJobsSubscribeSubscription", tidy)
+        self.assertIn("job && job.addTime", tidy)
+        self.assertIn('event.type !== "REMOVE"', tidy)
         self.assertIn('job.status !== "FINISHED"', tidy)
         self.assertIn("approveAutomation", tidy)
         self.assertIn('if mode == "automation":', backend)
         self.assertIn('settings["approvedStrategyHash"]', backend)
+
+    def test_nav_icons_survive_themes_that_hide_navbar_spans(self):
+        rank = read("plugins/DirtyRank/dirtyRank.js")
+        multiscreen = read("plugins/DirtyMultiscreen/multiscreen.js")
+
+        self.assertIn('className: "dirty-rank-nav-icon"', rank)
+        self.assertIn('createElement("i", { className: "ms-nav-icon"', multiscreen)
 
     def test_dirty_tidy_preview_links_blocked_scenes(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")

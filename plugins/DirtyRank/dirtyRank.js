@@ -75,6 +75,7 @@
     showLeaderboardsInMenu: true,
     showRatingsBeforeVote: false,
     hidePerformerImages: false,
+    autoPlayTopScenes: false,
     includePerformersWithoutImages: false,
     confidenceGoal: "ranking",
     confidenceTopN: 20,
@@ -209,6 +210,7 @@
       showLeaderboardsInMenu: DirtyPlugins.values.coerceBoolean(source.showLeaderboardsInMenu, true),
       showRatingsBeforeVote: DirtyPlugins.values.coerceBoolean(source.showRatingsBeforeVote, false),
       hidePerformerImages: DirtyPlugins.values.coerceBoolean(source.hidePerformerImages, false),
+      autoPlayTopScenes: DirtyPlugins.values.coerceBoolean(source.autoPlayTopScenes, false),
       includePerformersWithoutImages: DirtyPlugins.values.coerceBoolean(source.includePerformersWithoutImages, false),
       confidenceGoal: confidenceGoal,
       confidenceTopN: integer(source.confidenceTopN, 20, 1, 1000),
@@ -257,6 +259,7 @@
       showLeaderboardsInMenu: Boolean(settings.showLeaderboardsInMenu),
       showRatingsBeforeVote: Boolean(settings.showRatingsBeforeVote),
       hidePerformerImages: Boolean(settings.hidePerformerImages),
+      autoPlayTopScenes: Boolean(settings.autoPlayTopScenes),
       includePerformersWithoutImages: Boolean(settings.includePerformersWithoutImages),
       confidenceGoal: settings.confidenceGoal,
       confidenceTopN: settings.confidenceTopN,
@@ -304,11 +307,20 @@
     return ratingIndexPromise;
   }
 
-  function queryPerformers() {
+  function loadNativePerformerCard() {
+    if (PluginApi.components && PluginApi.components.PerformerCard) return Promise.resolve();
+    if (!PluginApi.utils || !PluginApi.utils.loadComponents || !PluginApi.loadableComponents || !PluginApi.loadableComponents.PerformerCard) {
+      return Promise.resolve();
+    }
+    return PluginApi.utils.loadComponents([PluginApi.loadableComponents.PerformerCard]);
+  }
+
+  function queryPerformers(withCardData) {
     return DirtyPlugins.graphql(
       "query DirtyRankPerformers($filter:FindFilterType){" +
         "findPerformers(filter:$filter){count performers{" +
           "id name gender image_path scene_count" +
+          (withCardData ? " disambiguation birthdate country favorite rating100 o_counter image_count gallery_count group_count performer_count alias_list tags{id name} stash_ids{endpoint stash_id}" : "") +
         "}}}",
       { filter: { per_page: -1, sort: "name", direction: "ASC" } }
     ).then(function (data) {
@@ -316,22 +328,24 @@
     });
   }
 
-  function loadPreferredMedia(performerId) {
-    var cacheKey = String(performerId);
-    if (performerMediaCache.has(cacheKey)) return performerMediaCache.get(cacheKey);
+  function loadPreferredMedia(performerId, fullScene, signal) {
+    var cacheKey = String(performerId) + (fullScene ? ":scene" : ":preferred");
+    if (performerMediaCache.has(cacheKey)) return Promise.resolve(performerMediaCache.get(cacheKey));
     var request = DirtyPlugins.graphql(
-      "query DirtyRankPreferredMedia($filter:FindFilterType,$sceneFilter:SceneFilterType,$markerFilter:SceneMarkerFilterType){" +
+      "query DirtyRankPreferredMedia($filter:FindFilterType,$sceneFilter:SceneFilterType,$markerFilter:SceneMarkerFilterType,$includeMarkers:Boolean!){" +
         "top:findScenes(filter:$filter,scene_filter:$sceneFilter){scenes{" +
           "id title rating100 paths{stream} sceneStreams{url mime_type label}" +
         "}}" +
-        "markers:findSceneMarkers(filter:{per_page:-1},scene_marker_filter:$markerFilter){scene_markers{" +
+        "markers:findSceneMarkers(filter:{per_page:-1},scene_marker_filter:$markerFilter) @include(if:$includeMarkers){scene_markers{" +
           "id title seconds end_seconds scene{id title rating100 paths{stream} sceneStreams{url mime_type label}}" +
         "}}}",
       {
         filter: { per_page: 1, sort: "rating", direction: "DESC" },
-        sceneFilter: { performers: { value: [cacheKey], modifier: "INCLUDES" } },
-        markerFilter: { performers: { value: [cacheKey], modifier: "INCLUDES" } },
-      }
+        sceneFilter: { performers: { value: [String(performerId)], modifier: "INCLUDES" } },
+        markerFilter: { performers: { value: [String(performerId)], modifier: "INCLUDES" } },
+        includeMarkers: !fullScene,
+      },
+      { signal: signal }
     ).then(function (data) {
       var markers = data.markers && Array.isArray(data.markers.scene_markers)
         ? data.markers.scene_markers.slice()
@@ -344,7 +358,7 @@
         if (rightRating !== leftRating) return rightRating - leftRating;
         return Number(left.seconds || 0) - Number(right.seconds || 0);
       });
-      if (markers[0] && markers[0].scene) {
+      if (!fullScene && markers[0] && markers[0].scene) {
         return Object.assign({}, markers[0].scene, {
           marker: {
             id: markers[0].id,
@@ -355,11 +369,11 @@
         });
       }
       return data.top && data.top.scenes && data.top.scenes[0] || null;
-    }).catch(function (error) {
-      performerMediaCache.delete(cacheKey);
-      throw error;
+    }).then(function (media) {
+      // Pending requests belong to their card so cancellation cannot affect another preview.
+      if (media && (!signal || !signal.aborted)) performerMediaCache.set(cacheKey, media);
+      return media;
     });
-    performerMediaCache.set(cacheKey, request);
     return request;
   }
 
@@ -1049,6 +1063,7 @@
     var pool = props.pool;
     var reveal = props.reveal;
     var showImages = !props.settings.hidePerformerImages;
+    var NativePerformerCard = showImages && PluginApi.components && PluginApi.components.PerformerCard;
     var imageState = useState(!showImages || !performer.image_path);
     var imageReady = imageState[0];
     var setImageReady = imageState[1];
@@ -1062,11 +1077,43 @@
     var sceneError = sceneErrorState[0];
     var setSceneError = sceneErrorState[1];
     var cardMountedRef = useRef(true);
+    var mediaRequestRef = useRef(0);
+    var mediaAbortRef = useRef(null);
+    var autoPreviewTimerRef = useRef(null);
+    var videoRef = useRef(null);
+    var setVideoRef = useCallback(function (node) {
+      if (videoRef.current && videoRef.current !== node) releaseVideo(videoRef.current);
+      videoRef.current = node;
+    }, []);
+    var playbackStartRef = useRef(null);
     var showMedia = showImages || Boolean(scene) || sceneLoading;
     useEffect(function () {
       cardMountedRef.current = true;
-      return function () { cardMountedRef.current = false; };
+      return function () {
+        cardMountedRef.current = false;
+        cancelMediaRequest();
+      };
     }, []);
+    useEffect(function () {
+      if (props.settings.autoPlayTopScenes && Number(performer.scene_count || 0) > 0) {
+        setSceneLoading(true);
+        autoPreviewTimerRef.current = window.setTimeout(function () { openTopScene(true); }, 400);
+      }
+      return cancelMediaRequest;
+    }, [performer.id, props.settings.autoPlayTopScenes]);
+    function releaseVideo(video) {
+      video.pause();
+      video.removeAttribute("src");
+      // Reset the media resource immediately, including during React's ref-detachment phase.
+      video.load();
+    }
+    function cancelMediaRequest() {
+      window.clearTimeout(autoPreviewTimerRef.current);
+      autoPreviewTimerRef.current = null;
+      mediaRequestRef.current += 1;
+      if (mediaAbortRef.current) mediaAbortRef.current.abort();
+      mediaAbortRef.current = null;
+    }
     function markerEndSeconds(media) {
       if (!media || !media.marker) return null;
       var start = Number(media.marker.seconds) || 0;
@@ -1074,8 +1121,19 @@
       return Number.isFinite(end) && end > start ? end : start + 30;
     }
     function startMarkerPlayback(event) {
-      if (!scene || !scene.marker) return;
-      event.currentTarget.currentTime = Number(scene.marker.seconds) || 0;
+      if (!scene || !cardMountedRef.current || event.currentTarget !== videoRef.current) return;
+      if (playbackStartRef.current === null) {
+        if (scene.marker) {
+          playbackStartRef.current = Number(scene.marker.seconds) || 0;
+        } else {
+          var duration = event.currentTarget.duration;
+          if (!Number.isFinite(duration) || duration <= 0) return;
+          playbackStartRef.current = duration * (0.3 + Math.random() * 0.4);
+        }
+        event.currentTarget.currentTime = playbackStartRef.current;
+      } else {
+        return;
+      }
       var playResult = event.currentTarget.play();
       if (playResult && typeof playResult.catch === "function") playResult.catch(function () {});
     }
@@ -1098,29 +1156,56 @@
         props.onChoose();
       }
     }
+    function chooseFromClick(event) {
+      if (props.disabled || event.defaultPrevented) return;
+      if (event.target.closest && event.target.closest(".dirty-rank-native-portrait")) return;
+      props.onChoose();
+    }
+    function chooseNativePhoto(event) {
+      var target = event.target;
+      if (!target.closest || !target.closest(".thumbnail-section")) return;
+      if (target.closest("button, input, select, textarea")) return;
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!props.disabled) props.onChoose();
+    }
     function toggleTopScene(event) {
       event.preventDefault();
       event.stopPropagation();
-      if (scene) {
+      if (scene || sceneLoading) {
+        cancelMediaRequest();
+        setVideoRef(null);
         setScene(null);
+        setSceneLoading(false);
         setSceneError("");
         return;
       }
-      if (sceneLoading) return;
+      openTopScene(props.settings.autoPlayTopScenes);
+    }
+    function openTopScene(fullScene) {
+      cancelMediaRequest();
+      var requestId = ++mediaRequestRef.current;
+      var controller = new AbortController();
+      mediaAbortRef.current = controller;
+      playbackStartRef.current = null;
       setSceneLoading(true);
       setSceneError("");
-      loadPreferredMedia(performer.id).then(function (result) {
-        if (!cardMountedRef.current) return;
+      loadPreferredMedia(performer.id, fullScene, controller.signal).then(function (result) {
+        if (!cardMountedRef.current || requestId !== mediaRequestRef.current) return;
         if (!result || !scenePlaybackUrl(result)) {
           setSceneError("No playable scene found.");
           return;
         }
         setScene(result);
       }).catch(function (error) {
-        if (!cardMountedRef.current) return;
+        if (!cardMountedRef.current || requestId !== mediaRequestRef.current || controller.signal.aborted) return;
         setSceneError(error.message || String(error));
       }).finally(function () {
-        if (cardMountedRef.current) setSceneLoading(false);
+        if (cardMountedRef.current && requestId === mediaRequestRef.current) {
+          mediaAbortRef.current = null;
+          setSceneLoading(false);
+        }
       });
     }
     return h(
@@ -1128,8 +1213,8 @@
       {
         "aria-disabled": props.disabled ? "true" : undefined,
         "aria-label": "Choose " + performer.name,
-        className: "dirty-rank-card" + (showMedia ? "" : " dirty-rank-card-no-image") + (props.gauntletTarget ? " dirty-rank-card-gauntlet-target" : "") + (props.disabled ? " dirty-rank-card-disabled" : ""),
-        onClick: props.disabled ? undefined : props.onChoose,
+        className: "dirty-rank-card" + (NativePerformerCard ? " dirty-rank-battle-native" : "") + (showMedia ? "" : " dirty-rank-card-no-image") + (props.gauntletTarget ? " dirty-rank-card-gauntlet-target" : "") + (props.disabled ? " dirty-rank-card-disabled" : ""),
+        onClick: chooseFromClick,
         onKeyDown: chooseFromKeyboard,
         role: "button",
         tabIndex: props.disabled ? -1 : 0,
@@ -1137,23 +1222,18 @@
       showMedia && h(
         "div",
         {
-          className: "dirty-rank-image-wrap" + (imageReady ? " dirty-rank-image-ready" : "") + (scene ? " dirty-rank-scene-playing" : ""),
-          onClick: scene ? function (event) { event.stopPropagation(); } : undefined,
-          onKeyDown: scene ? function (event) { event.stopPropagation(); } : undefined,
+          className: "dirty-rank-image-wrap" + (imageReady ? " dirty-rank-image-ready" : "") + (scene || sceneLoading ? " dirty-rank-scene-playing" : "") + (!showImages ? " dirty-rank-media-no-portrait" : ""),
         },
-        scene
-          ? h("video", {
-              autoPlay: !scene.marker,
-              className: "dirty-rank-scene-player",
-              controls: true,
-              onLoadedMetadata: startMarkerPlayback,
-              onPlay: keepMarkerPlaybackInRange,
-              onTimeUpdate: stopAtMarkerEnd,
-              playsInline: true,
-              preload: "metadata",
-              src: scenePlaybackUrl(scene),
-            })
-          : showImages && performer.image_path
+        NativePerformerCard ? h("div", {
+          className: "dirty-rank-native-portrait dirty-rank-native-card",
+          onClickCapture: chooseNativePhoto,
+          onKeyDown: function (event) { event.stopPropagation(); },
+        },
+          h(NativePerformerCard, { performer: performer }),
+          h("span", { className: "dirty-rank-native-vote-hint" }, "Click photo to vote"),
+          reveal && props.rank && h("span", { className: "dirty-rank-rank" }, "#" + props.rank)
+        ) : showImages && h("div", { className: "dirty-rank-portrait" },
+          performer.image_path
           ? h("img", {
               alt: "",
               className: "dirty-rank-image",
@@ -1163,17 +1243,45 @@
               src: performer.image_path,
             })
           : h("div", { className: "dirty-rank-image-placeholder d-flex flex-column align-items-center justify-content-center" },
-              h("span", null, sceneLoading ? "…" : "◇"),
-              h("span", null, sceneLoading ? "Loading top scene…" : "No performer image")
+              h("span", null, "◇"),
+              h("span", null, "No performer image")
             ),
-        !scene && showImages && performer.image_path && !imageReady && h("div", { "aria-hidden": "true", className: "dirty-rank-image-loading" }),
-        scene && h("div", { className: "dirty-rank-scene-caption" },
-          h("span", null, scene.marker
-            ? "Marker · " + (scene.marker.title || scene.title || "Untitled")
-            : scene.title || "Top-rated scene"),
-          Number.isFinite(scene.rating100) && h("span", null, "Rating " + scene.rating100)
+          performer.image_path && !imageReady && h("div", { "aria-hidden": "true", className: "dirty-rank-image-loading" }),
+          (scene || sceneLoading) && h("span", { className: "dirty-rank-photo-vote-hint" }, "Click photo to vote"),
+          reveal && props.rank && h("span", { className: "dirty-rank-rank" }, "#" + props.rank)
         ),
-        reveal && props.rank && h("span", { className: "dirty-rank-rank" }, "#" + props.rank)
+        (scene || sceneLoading) && h("div", {
+          className: "dirty-rank-scene-panel",
+          onClick: function (event) { event.stopPropagation(); },
+          onKeyDown: function (event) { event.stopPropagation(); },
+        },
+          scene ? h("video", {
+            "aria-label": "Scene preview for " + performer.name,
+            className: "dirty-rank-scene-player",
+            controls: true,
+            muted: true,
+            onLoadedMetadata: startMarkerPlayback,
+            onDurationChange: startMarkerPlayback,
+            onPlay: keepMarkerPlaybackInRange,
+            onTimeUpdate: stopAtMarkerEnd,
+            onError: function (event) {
+              if (event.currentTarget !== videoRef.current || !cardMountedRef.current) return;
+              setSceneError("This scene could not be played. Close it and try again.");
+              setVideoRef(null);
+              setScene(null);
+            },
+            playsInline: true,
+            preload: "metadata",
+            ref: setVideoRef,
+            src: scenePlaybackUrl(scene),
+          }) : h("div", { className: "dirty-rank-scene-loading", role: "status" }, "Loading top scene…"),
+          scene && h("div", { className: "dirty-rank-scene-caption" },
+            h("span", null, scene.marker
+              ? "Marker · " + (scene.marker.title || scene.title || "Untitled")
+              : scene.title || "Top-rated scene"),
+            Number.isFinite(scene.rating100) && h("span", null, "Rating " + scene.rating100)
+          )
+        )
       ),
       !showImages && reveal && props.rank && h("span", { className: "dirty-rank-rank" }, "#" + props.rank),
       props.gauntletTarget && h("span", { className: "dirty-rank-gauntlet-target" }, "Gauntlet target"),
@@ -1195,10 +1303,10 @@
         h("div", { className: "dirty-rank-scene-actions" },
           h("button", {
             className: "btn btn-sm btn-secondary dirty-ui-button dirty-rank-play-scene",
-            disabled: props.disabled || sceneLoading || Number(performer.scene_count || 0) < 1,
+            disabled: props.disabled || Number(performer.scene_count || 0) < 1,
             onClick: toggleTopScene,
             type: "button",
-          }, sceneLoading ? "Loading…" : scene ? (scene.marker ? "Close marker" : "Close top scene") : "▶ Play top scene")
+          }, sceneLoading ? "Cancel loading" : scene ? (scene.marker ? "Close marker" : "Close top scene") : "▶ Play top scene")
         ),
         sceneError && h("div", { className: "dirty-rank-scene-error dirty-ui-text-error", role: "alert" }, sceneError),
         h("div", { className: "dirty-rank-rating-row d-flex flex-wrap align-items-center" },
@@ -1391,6 +1499,7 @@
   }
 
   function LeaderboardPodium(props) {
+    var NativePerformerCard = PluginApi.components && PluginApi.components.PerformerCard;
     var medals = ["Gold", "Silver", "Bronze"];
     var symbols = ["♛", "◆", "●"];
     var top = props.ranked.slice(0, 3);
@@ -1403,18 +1512,19 @@
         var performer = top[index];
         var pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
         return h("article", { className: "dirty-rank-podium-place d-flex flex-column dirty-rank-podium-" + (index + 1), key: performer.id },
-          h("div", { className: "dirty-rank-podium-card" },
+          h("div", { className: NativePerformerCard ? "dirty-rank-native-card" : "dirty-rank-podium-card" },
             h("div", { className: "dirty-rank-podium-medal d-flex align-items-center justify-content-center" },
               h("span", { "aria-hidden": "true" }, symbols[index]),
               h("strong", null, "#" + (index + 1) + " " + medals[index])
             ),
-            h(NavLink, { className: "dirty-rank-podium-image-link", to: "/performers/" + performer.id },
+            NativePerformerCard ? h(NativePerformerCard, { performer: performer }) : h(NavLink, { className: "dirty-rank-podium-image-link", to: "/performers/" + performer.id },
               performer.image_path
                 ? h("img", { alt: "", className: "dirty-rank-podium-image", loading: "lazy", src: performer.image_path })
                 : h("div", { className: "dirty-rank-podium-placeholder d-flex align-items-center justify-content-center" }, "◇")
             ),
             h("div", { className: "dirty-rank-podium-copy text-center" },
-              h(NavLink, { className: "dirty-rank-podium-name text-truncate", to: "/performers/" + performer.id }, performer.name),
+              !NativePerformerCard && h(NavLink, { className: "dirty-rank-podium-name text-truncate", to: "/performers/" + performer.id }, performer.name),
+              h("span", { className: "dirty-rank-eyebrow" }, "DirtyRank score"),
               h("strong", { className: "dirty-rank-podium-rating" }, Math.round(pool.rating).toLocaleString()),
               h("span", { className: "dirty-rank-podium-detail" },
                 "RD " + pool.deviation.toFixed(1) + " · " + pool.matches.toLocaleString() + " battles"
@@ -1524,6 +1634,7 @@
   }
 
   function LeaderboardGalleryCard(props) {
+    var NativePerformerCard = PluginApi.components && PluginApi.components.PerformerCard;
     var performer = props.performer;
     var pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
     var imageState = useState(!performer.image_path);
@@ -1532,8 +1643,8 @@
     var failedState = useState(false);
     var imageFailed = failedState[0];
     var setImageFailed = failedState[1];
-    return h("article", { className: "dirty-rank-gallery-card" },
-      h(NavLink, { className: "dirty-rank-gallery-image-link", to: "/performers/" + performer.id },
+    return h("article", { className: NativePerformerCard ? "dirty-rank-native-card" : "dirty-rank-gallery-card" },
+      NativePerformerCard ? h(NativePerformerCard, { performer: performer }) : h(NavLink, { className: "dirty-rank-gallery-image-link", to: "/performers/" + performer.id },
         performer.image_path && !imageFailed
           ? h("img", {
               alt: "",
@@ -1549,7 +1660,9 @@
       ),
       h("div", { className: "dirty-rank-gallery-copy" },
         h("div", { className: "dirty-rank-gallery-heading d-flex align-items-start justify-content-between" },
-          h(NavLink, { className: "dirty-rank-gallery-name text-truncate", title: performer.name, to: "/performers/" + performer.id }, performer.name),
+          NativePerformerCard
+            ? h("strong", null, "#" + props.rank + " · DirtyRank")
+            : h(NavLink, { className: "dirty-rank-gallery-name text-truncate", title: performer.name, to: "/performers/" + performer.id }, performer.name),
           h(PrecisionBadge, { pool: pool, settings: props.settings })
         ),
         h("div", { className: "dirty-rank-gallery-rating-row d-flex align-items-baseline" },
@@ -1621,7 +1734,7 @@
     var load = useCallback(function () {
       setLoading(true);
       setError("");
-      return Promise.all([DirtyPlugins.getPluginSettings(PLUGIN_ID), queryPerformers(), loadRatingIndex()])
+      return Promise.all([DirtyPlugins.getPluginSettings(PLUGIN_ID), queryPerformers(true), loadRatingIndex(), loadNativePerformerCard()])
         .then(function (values) {
           var nextSettings = settingsFromConfiguration(values[0]);
           setSettings(nextSettings);
@@ -1856,7 +1969,7 @@
     var load = useCallback(function () {
       setLoading(true);
       setError("");
-      return Promise.all([DirtyPlugins.getPluginSettings(PLUGIN_ID), queryPerformers(), loadRatingIndex()])
+      return Promise.all([DirtyPlugins.getPluginSettings(PLUGIN_ID), queryPerformers(true), loadRatingIndex(), loadNativePerformerCard()])
         .then(function (values) {
           var nextSettings = settingsFromConfiguration(values[0]);
           var gauntletTarget = gauntletMode
@@ -2608,6 +2721,13 @@
         h("div", { className: "dirty-rank-settings-row" },
           h(Toggle, { checked: draft.showRatingsBeforeVote, label: "Show ratings and ranks before voting", onChange: function (value) { changed({ showRatingsBeforeVote: value }); } }),
           h(Toggle, { checked: draft.hidePerformerImages, label: "Hide performer images in battles", onChange: function (value) { changed({ hidePerformerImages: value }); } }),
+          h(Toggle, {
+            checked: draft.autoPlayTopScenes,
+            label: h("span", {
+              title: "Automatic previews play each performer's highest-rated full scene, muted, from a random point between 30% and 70%. Photos remain clickable for voting unless hidden above.",
+            }, "Automatically play top scenes"),
+            onChange: function (value) { changed({ autoPlayTopScenes: value }); },
+          }),
           h(Toggle, { checked: draft.includePerformersWithoutImages, label: "Include performers without profile images", onChange: function (value) { changed({ includePerformersWithoutImages: value }); } })
         )
       ),
@@ -2738,7 +2858,7 @@
   function DirtyRankBattleNavLink() {
     return h(NavLink, { className: "nav-utility dirty-rank-nav-link", exact: true, to: ROUTE_PATH },
       h("button", { className: "minimal d-flex align-items-center h-100 dirty-rank-nav-button", title: "DirtyRank performer battles", type: "button" },
-        h("span", { "aria-hidden": "true" }, "⚔")
+        h("i", { "aria-hidden": "true", className: "dirty-rank-nav-icon" }, "⚔")
       )
     );
   }
@@ -2756,7 +2876,7 @@
   function DirtyRankLeaderboardsNavLink() {
     return h(NavLink, { className: "nav-utility dirty-rank-nav-link dirty-rank-leaderboards-nav-link", exact: true, to: LEADERBOARDS_ROUTE_PATH },
       h("button", { className: "minimal d-flex align-items-center h-100 dirty-rank-nav-button", title: "DirtyRank leaderboards", type: "button" },
-        h("span", { "aria-hidden": "true" }, "🏆")
+        h("i", { "aria-hidden": "true", className: "dirty-rank-nav-icon" }, "🏆")
       )
     );
   }

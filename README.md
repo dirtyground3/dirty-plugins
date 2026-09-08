@@ -237,6 +237,9 @@ Run the test suite from the repository root:
 ```powershell
 python -B -m unittest discover -s tests -v
 node --check plugins/DirtyRank/dirtyRank.js
+node tests/test_dirty_rank_algorithms.js
+node tests/test_dirty_rank_media.js
+node tests/test_dirty_tidy_automation.js
 ```
 
 Build the package source locally on a system with Bash and `zip`:

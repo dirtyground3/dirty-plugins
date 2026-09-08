@@ -124,11 +124,12 @@
   };
   window.DirtyPlugins = hubApi;
 
-  function graphql(query, variables) {
+  function graphql(query, variables, options) {
     return fetch("/graphql", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
+      signal: options && options.signal,
       body: JSON.stringify({ query: query, variables: variables || {} }),
     })
       .then(function (response) {

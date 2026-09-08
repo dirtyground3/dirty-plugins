@@ -9,8 +9,10 @@ and pagination then happen instantly in the browser without recalculating it.
 
 An approved strategy can run manually, after a completed Scan job, or after a
 completed Generate job. Stash does not currently provide Scan/Generate plugin
-hooks, so DirtyTidy listens to Stash's supported job-completion subscription;
-the Stash UI must remain open until the selected job finishes.
+hooks, so DirtyTidy listens for successfully finished jobs through Stash's
+job-status subscription; the Stash UI must remain open until the selected job
+finishes. Duplicate detection uses each job's ID and creation time, so reused
+job IDs after a Stash or PC restart do not suppress new runs.
 
 ## Screenshot
 

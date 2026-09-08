@@ -6,6 +6,13 @@ volatility instead of relying on a capped integer score.
 
 ## Features
 
+- Standings gallery and podium use Stash's native performer cards, so installed
+  themes and performer-card customizations apply automatically. DirtyRank scores
+  and ranks appear separately below the cards; the cards keep their Stash ratings.
+- Battles and Gauntlet also use native cards. Click the photo to vote; native
+  card buttons and profile links keep their normal actions. Scene players remain
+  separate below the cards. Hiding performer images also hides the native card.
+
 - Independent rating pools and configurable category sets for each Stash
   performer sex.
 - The battle page remembers the explicitly selected category for each performer
@@ -35,8 +42,20 @@ volatility instead of relying on a capped integer score.
   either performer.
 - Each battle card can load media on demand. It prefers a curated marker from
   the performer's highest-rated scene that has markers, then falls back to the
-  performer's highest-rated full Stash scene. Media is not requested until the
-  button is used.
+  performer's highest-rated full Stash scene.
+- Enable **Automatically play top scenes** under **Battle presentation** to
+  open each performer's highest-rated full scene when a battle starts, including
+  Gauntlet battles. This setting is off by default; when off, media is requested
+  only when the play button is used.
+- Full scenes start at a fresh random point between 30% and 70% of their duration.
+  Curated markers retain their original start/end bounds. Previews start muted;
+  use the player controls to enable sound or resume if the browser blocks playback.
+- Previews appear in separate panels below the photos. Photos stay visible and
+  clickable for voting unless explicitly hidden in settings. Player controls
+  do not cast votes, and each preview can be closed independently.
+- Automatic previews wait briefly for a battle to settle before loading. Leaving
+  a battle or closing a preview cancels its metadata request and releases its
+  video stream, so rapid choices do not leave old downloads running.
 - Performer images can be hidden from battle cards without changing which
   performers are eligible for the pool.
 - Performer names on battle cards open their Stash performer pages. Every new

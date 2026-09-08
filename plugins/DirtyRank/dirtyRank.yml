@@ -1,6 +1,6 @@
 name: DirtyRank
 description: Rank performers through category-based head-to-head battles using a high-precision Glicko-2 system.
-version: 0.7.0
+version: 0.7.3
 
 ui:
   requires:
@@ -41,6 +41,10 @@ settings:
     type: BOOLEAN
     displayName: Hide performer images in battles
     description: Remove performer profile images from battle cards. Disabled by default.
+  autoPlayTopScenes:
+    type: BOOLEAN
+    displayName: Automatically play top scenes
+    description: Open each performer's highest-rated full scene in battles, muted, at a random point between 30% and 70%. Disabled by default. Photos remain clickable for voting unless hidden.
   includePerformersWithoutImages:
     type: BOOLEAN
     displayName: Include performers without images

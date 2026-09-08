@@ -112,9 +112,10 @@
   grid-template-columns: repeat(2, 0.42rem);
   grid-template-rows: repeat(2, 0.42rem);
   gap: 0.12rem;
+  font-style: normal;
 }
 
-.ms-nav-icon span {
+.ms-nav-icon i {
   display: block;
   width: 0.42rem;
   height: 0.42rem;
