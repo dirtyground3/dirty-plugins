@@ -405,14 +405,14 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("dirty-rank-censored-media", styles)
         self.assertIn("blur(42px)", styles)
 
-    def test_battle_cards_link_performers_and_animate_every_pair(self):
+    def test_battle_cards_link_performers_and_preserve_gauntlet_target(self):
         source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
         styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
 
         self.assertIn('to: "/performers/" + performer.id', source)
         self.assertIn('event.stopPropagation()', source)
         self.assertIn('className: "dirty-rank-scene-panel"', source)
-        self.assertIn('key: pairInfo.instanceId + ":left"', source)
+        self.assertIn('key: gauntletMode ? "gauntlet:" + pair[0].id : pairInfo.instanceId + ":left"', source)
         self.assertIn('key: pairInfo.instanceId + ":right"', source)
         self.assertIn("@keyframes dirty-rank-card-change", styles)
         self.assertIn(".dirty-rank-image-ready .dirty-rank-image", styles)
@@ -469,7 +469,8 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('"Rated coverage"', source)
         self.assertIn('"Median RD"', source)
         self.assertIn('"Draw rate"', source)
-        self.assertIn('"Gold", "Silver", "Bronze"', source)
+        podium = source[source.index("function LeaderboardPodium(props)") : source.index("function LeaderboardTable")]
+        self.assertIn('h("strong", null, "#" + (index + 1))', podium)
         self.assertIn("var podiumOrder = [1, 0, 2]", source)
         self.assertIn("dirty-rank-podium-step", source)
         self.assertIn('useState("gallery")', source)

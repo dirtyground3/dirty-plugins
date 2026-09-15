@@ -12,6 +12,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
+| [dirtyStats](plugins/DirtyStats/) | Explores performer origins on a filterable world map with PNG and CSV exports. | 0.1.0 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 0.4.0 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 0.4.0 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers through category-based comparisons using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet battles, and leaderboards. | 0.7.0 |
@@ -146,7 +147,7 @@ The recommended installation method is the published package source.
 
 3. Reload the available plugin packages.
 4. Install any of **DirtyFileExtractor**, **DirtyMultiscreen**, **DirtyRank**,
-   or **DirtyTidy**.
+   **DirtyTidy**, or **dirtyStats**.
 5. Reload the Stash page after installation or an update.
 
 The source URL must end in `index.yml`; the GitHub repository URL is not a
@@ -167,6 +168,8 @@ link to the shared Dirty Plugins settings page.
   Battles and Leaderboards.
 - **DirtyTidy:** configure a folder/filename strategy, generate a preview,
   review it, then use **Confirm and save** before running or enabling automation.
+- **dirtyStats:** open the pie chart icon in the utility navigation to explore
+  performer origins, apply filters, and export the map or country counts.
 
 ## Manual installation
 
@@ -225,6 +228,7 @@ plugins/
 ├── DirtyFileExtractor/  # selection UI and Python extraction backend
 ├── DirtyMultiscreen/    # multiscreen playback UI
 ├── DirtyRank/           # battle/leaderboard UI and Glicko-2 backend
+├── DirtyStats/          # filterable performer-origin map and exports
 └── DirtyTidy/           # preview UI and file-organization backend
 tests/                   # Python, JavaScript, and shared UI contracts
 build_site.sh            # builds the GitHub Pages package source
@@ -240,6 +244,7 @@ node --check plugins/DirtyRank/dirtyRank.js
 node tests/test_dirty_rank_algorithms.js
 node tests/test_dirty_rank_media.js
 node tests/test_dirty_tidy_automation.js
+node tests/test_dirty_stats.js
 ```
 
 Build the package source locally on a system with Bash and `zip`:
@@ -258,6 +263,7 @@ main/
 ├── extractScenes.zip
 ├── multiscreen.zip
 ├── dirtyRank.zip
+├── dirtyStats.zip
 └── dirtyTidy.zip
 ```
 
@@ -269,4 +275,5 @@ This repository and its plugins are distributed under the [MIT License](LICENSE)
 - [DirtyFileExtractor](plugins/DirtyFileExtractor/LICENSE)
 - [DirtyMultiscreen](plugins/DirtyMultiscreen/LICENSE)
 - [DirtyRank](plugins/DirtyRank/LICENSE)
+- [dirtyStats](plugins/DirtyStats/LICENSE)
 - [DirtyTidy](plugins/DirtyTidy/LICENSE)

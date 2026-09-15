@@ -53,6 +53,8 @@ volatility instead of relying on a capped integer score.
 - Previews appear in separate panels below the photos. Photos stay visible and
   clickable for voting unless explicitly hidden in settings. Player controls
   do not cast votes, and each preview can be closed independently.
+- Converted streams use Stash's native scene player for the full duration and
+  seeking throughout the scene, including formats such as WMV.
 - Automatic previews wait briefly for a battle to settle before loading. Leaving
   a battle or closing a preview cancels its metadata request and releases its
   video stream, so rapid choices do not leave old downloads running.
@@ -60,7 +62,9 @@ volatility instead of relying on a capped integer score.
   performers are eligible for the pool.
 - Performer names on battle cards open their Stash performer pages. Every new
   battle animates the cards and fades images in after loading, even when a
-  performer or image repeats, so the change remains unambiguous.
+  performer or image repeats, so the change remains unambiguous. In Gauntlet,
+  the left target card stays in place across votes, skips, and undo, keeping
+  its current video playing while only the right challenger card refreshes.
 - DirtyRank prepares the next information-gain matchup during browser idle time
   and preloads both profile images, making decisions advance immediately while
   preserving the full matchmaking search.

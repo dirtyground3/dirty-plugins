@@ -250,6 +250,7 @@
   function Summary(props) {
     var summary = props.summary || {};
     var values = [
+      ["All", props.total || 0, "all"],
       ["Ready", summary.ready || 0, "ready"],
       ["Moves", summary.moves || 0, "move"],
       ["Renames", summary.renames || 0, "rename"],
@@ -259,9 +260,17 @@
     ];
     return h(
       "div",
-      { className: "dirty-tidy-summary" },
+      { className: "dirty-tidy-summary", role: "group", "aria-label": "Filter preview" },
       values.map(function (value) {
-        return h("div", { className: "dirty-tidy-summary-item dirty-tidy-summary-" + value[2], key: value[0] },
+        var active = props.value === value[2];
+        return h("button", {
+          "aria-pressed": active,
+          className: "dirty-tidy-summary-item dirty-tidy-summary-" + value[2] + (active ? " dirty-tidy-summary-active" : ""),
+          disabled: props.disabled,
+          key: value[0],
+          onClick: function () { props.onChange(value[2]); },
+          type: "button",
+        },
           h("strong", null, String(value[1])),
           h("span", null, value[0])
         );
@@ -330,36 +339,6 @@
           })
         )
       )
-    );
-  }
-
-  function PreviewFilters(props) {
-    var summary = props.summary || {};
-    var filters = [
-      ["all", "All", props.total || 0],
-      ["ready", "Ready", summary.ready || 0],
-      ["warning", "Warnings", summary.warnings || 0],
-      ["blocked", "Blocked", summary.blocked || 0],
-      ["unchanged", "Unchanged", summary.unchanged || 0],
-    ];
-    return h(
-      "div",
-      { className: "dirty-tidy-filters", role: "group", "aria-label": "Filter preview by status" },
-      filters.map(function (filter) {
-        var active = props.value === filter[0];
-        return h(
-          "button",
-          {
-            "aria-pressed": active,
-            className: "dirty-tidy-filter" + (active ? " dirty-tidy-filter-active" : ""),
-            disabled: props.disabled,
-            key: filter[0],
-            onClick: function () { props.onChange(filter[0]); },
-            type: "button",
-          },
-          filter[1] + " (" + filter[2] + ")"
-        );
-      })
     );
   }
 
@@ -600,7 +579,12 @@
     var previewOperations = preview && Array.isArray(preview.operations) ? preview.operations : [];
     var filteredOperations = previewFilter === "all"
       ? previewOperations
-      : previewOperations.filter(function (operation) { return operation.status === previewFilter; });
+      : previewOperations.filter(function (operation) {
+        if (previewFilter === "move" || previewFilter === "rename") {
+          return (operation.actions || []).indexOf(previewFilter) !== -1;
+        }
+        return operation.status === previewFilter;
+      });
     var filteredTotal = filteredOperations.length;
     var previewPages = Math.max(1, Math.ceil(filteredTotal / PREVIEW_PAGE_SIZE));
     var visibleOperations = filteredOperations.slice(
@@ -749,8 +733,7 @@
               { className: "dirty-tidy-message", role: "status" },
               "This preview uses unsaved settings. Use Confirm and save before running or enabling automation."
             ),
-            h(Summary, { summary: preview.summary }),
-            h(PreviewFilters, {
+            h(Summary, {
               disabled: busy,
               onChange: changePreviewFilter,
               summary: preview.summary,

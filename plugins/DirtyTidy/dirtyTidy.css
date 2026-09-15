@@ -4,7 +4,6 @@
 
 .dirty-tidy-actions,
 .dirty-tidy-confirm,
-.dirty-tidy-filters,
 .dirty-tidy-level,
 .dirty-tidy-pagination,
 .dirty-tidy-summary {
@@ -114,9 +113,13 @@
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--dirty-ui-border-soft);
   border-radius: var(--dirty-ui-radius-small);
+  color: var(--dirty-ui-text);
+  cursor: pointer;
   display: grid;
+  font: inherit;
   min-width: 6rem;
   padding: 0.55rem 0.7rem;
+  text-align: left;
 }
 
 .dirty-tidy-summary-item strong {
@@ -136,34 +139,18 @@
   border-color: rgba(255, 193, 7, 0.55);
 }
 
-.dirty-tidy-filters {
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin-top: 0.85rem;
-}
-
-.dirty-tidy-filter {
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid var(--dirty-ui-border-soft);
-  border-radius: 999px;
-  color: var(--dirty-ui-text);
-  cursor: pointer;
-  font-size: 0.82rem;
-  padding: 0.35rem 0.7rem;
-}
-
-.dirty-tidy-filter:hover,
-.dirty-tidy-filter:focus-visible,
-.dirty-tidy-filter-active {
+.dirty-tidy-summary-item:hover,
+.dirty-tidy-summary-item:focus-visible,
+.dirty-tidy-summary-active {
   background: rgba(255, 255, 255, 0.17);
   border-color: var(--dirty-ui-border);
 }
 
-.dirty-tidy-filter-active {
+.dirty-tidy-summary-active {
   box-shadow: inset 0 0 0 1px var(--dirty-ui-border);
 }
 
-.dirty-tidy-filter:disabled {
+.dirty-tidy-summary-item:disabled {
   cursor: wait;
   opacity: 0.65;
 }

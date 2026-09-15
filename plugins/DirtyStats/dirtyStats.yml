@@ -1,0 +1,13 @@
+name: dirtyStats
+description: Explore filterable performer statistics on an exportable world map.
+version: 0.1.0
+
+ui:
+  requires:
+    - dirtyPlugins
+  javascript:
+    - vendor/echarts.min.js
+    - vendor/world.js
+    - dirtyStats.js
+  css:
+    - dirtyStats.css

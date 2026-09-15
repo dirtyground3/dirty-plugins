@@ -16,6 +16,7 @@ class SharedUIContractTests(unittest.TestCase):
             "plugins/DirtyMultiscreen/multiscreen.yml",
             "plugins/DirtyRank/dirtyRank.yml",
             "plugins/DirtyTidy/dirtyTidy.yml",
+            "plugins/DirtyStats/dirtyStats.yml",
         ):
             contents = read(manifest)
             self.assertIn("requires:", contents)

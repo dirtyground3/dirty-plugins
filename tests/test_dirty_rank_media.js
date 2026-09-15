@@ -70,7 +70,7 @@ const context = vm.createContext({
   },
 });
 let source = fs.readFileSync(path.join(__dirname, "../plugins/DirtyRank/dirtyRank.js"), "utf8");
-source = source.replace("algorithms: {", "testing: { PerformerCard, serializedSettings, LeaderboardGalleryCard, LeaderboardPodium, loadNativePerformerCard, queryPerformers }, algorithms: {");
+source = source.replace("algorithms: {", "testing: { PerformerCard, serializedSettings, LeaderboardGalleryCard, LeaderboardPodium, loadNativePerformerCard, queryPerformers, scenePlaybackUrl, needsNativePreview, NativePreviewPlayer, LoadedNativePreview }, algorithms: {");
 vm.runInContext(source, context);
 const plugin = context.window.__dirtyRankPlugin;
 const settings = plugin.algorithms.settingsFromConfiguration({});
@@ -135,6 +135,50 @@ function attachPlayer(tree, attributes) {
 }
 
 async function main() {
+  const playbackUrl = plugin.testing.scenePlaybackUrl;
+  const legacyScene = {
+    paths: { stream: "/scene/896/stream" },
+    sceneStreams: [
+      { url: "/scene/896/stream.mp4?resolution=ORIGINAL", mime_type: "video/mp4", label: "MP4" },
+      { url: "/scene/896/stream.mp4?resolution=STANDARD_HD", mime_type: "video/mp4", label: "MP4 HD (720p)" },
+    ],
+  };
+  assert.strictEqual(playbackUrl(legacyScene), legacyScene.sceneStreams[1].url,
+    "WMV originals must use Stash's browser-compatible MP4 preview");
+  assert.strictEqual(playbackUrl({ ...legacyScene, sceneStreams: [legacyScene.sceneStreams[0]] }),
+    legacyScene.sceneStreams[0].url, "MP4 remains preferred when 720p is unavailable");
+  const directMp4 = { url: "/direct.mp4", mime_type: "video/mp4", label: "Direct" };
+  assert.strictEqual(playbackUrl({ ...legacyScene, sceneStreams: [...legacyScene.sceneStreams, directMp4] }),
+    directMp4.url, "compatible direct MP4 streams avoid unnecessary transcoding");
+  assert.strictEqual(playbackUrl({ paths: legacyScene.paths }), legacyScene.paths.stream);
+  assert.strictEqual(playbackUrl(null), "");
+  assert(plugin.testing.needsNativePreview(legacyScene));
+  assert(!plugin.testing.needsNativePreview({ paths: { stream: "/scene/1/stream" } }));
+
+  // Native playback receives the actual file duration and a stable random start.
+  const fullScene = { id: "896", files: [{ duration: 3425.31 }] };
+  const nativePlayer = function () {};
+  context.window.PluginApi.components = { ScenePlayer: nativePlayer };
+  context.window.PluginApi.utils = { StashService: { useFindScene: () => ({ data: { findScene: fullScene } }) } };
+  const nativePreview = plugin.testing.NativePreviewPlayer({ media: { id: "896" } });
+  assert.strictEqual(nativePreview.props.scene, fullScene);
+  const previewState = { slots: [], effects: [], cursor: 0 };
+  active = previewState;
+  let nativeTree = plugin.testing.LoadedNativePreview(nativePreview.props);
+  let nativeProps = find(nativeTree, node => node.type === nativePlayer).props;
+  const originalStart = nativeProps.initialTimestamp;
+  assert.strictEqual(typeof nativeProps.onComplete, "function", "Stash requires a completion listener");
+  assert(originalStart >= 3425.31 * 0.3 && originalStart <= 3425.31 * 0.7);
+  active.cursor = 0;
+  nativeTree = plugin.testing.LoadedNativePreview({ ...nativePreview.props, scene: { ...fullScene } });
+  nativeProps = find(nativeTree, node => node.type === nativePlayer).props;
+  assert.strictEqual(nativeProps.initialTimestamp, originalStart, "card updates must not restart native playback");
+  active = { slots: [], effects: [], cursor: 0 };
+  nativeTree = plugin.testing.LoadedNativePreview({ scene: fullScene, marker: { seconds: 123, end_seconds: 140 } });
+  assert.strictEqual(find(nativeTree, node => node.type === nativePlayer).props.initialTimestamp, 123);
+  delete context.window.PluginApi.components;
+  delete context.window.PluginApi.utils;
+
   const hubSource = fs.readFileSync(path.join(__dirname, "../plugins/DirtyPlugins/dirtyPlugins.js"), "utf8");
   const graphqlSource = hubSource.slice(hubSource.indexOf("  function graphql("), hubSource.indexOf("  function parseMaybeJson("));
   const graphql = vm.runInNewContext("(" + graphqlSource.trim() + ")", {
