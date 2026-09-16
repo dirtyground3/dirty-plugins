@@ -1,6 +1,12 @@
-name: dirtyStats
-description: Explore filterable performer statistics on an exportable world map.
+name: DirtyStats
+description: Explore origins, growth, ages, ratings and cast connections with native filters and PNG export.
 version: 0.1.0
+
+exec:
+  - python
+  - "{pluginDir}/dirty_stats.py"
+interface: raw
+errLog: error
 
 ui:
   requires:

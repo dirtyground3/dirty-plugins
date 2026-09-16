@@ -1,19 +1,58 @@
-.dirty-stats-page { max-width: 1600px; margin: auto; padding: 1.5rem; color: var(--dirty-ui-text); }
-.dirty-stats-header, .dirty-stats-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.dirty-stats-header h1 { margin: 0; }
+.dirty-stats-page { max-width: 1600px; margin: auto; padding: .75rem; color: var(--dirty-ui-text); }
+.dirty-stats-toolbar { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex-wrap: wrap; margin-bottom: .5rem; }
 .dirty-stats-page p, .dirty-stats-summary { color: var(--dirty-ui-muted); }
-.dirty-stats-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; padding: 1rem; margin-bottom: 1rem; border: 1px solid var(--dirty-ui-border-soft); }
 .dirty-stats-field { display: flex; flex-direction: column; gap: .4rem; margin: 0; }
 .dirty-stats-field select, .dirty-stats-field input { width: 100%; }
 .dirty-stats-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
-.dirty-stats-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 1rem; }
-.dirty-stats-chart { width: 100%; height: 560px; }
-.dirty-stats-map-panel { min-width: 0; overflow: hidden; }
-.dirty-stats-table-panel { padding: 1rem; max-height: 640px; overflow: auto; }
-.dirty-stats-table-panel table { width: 100%; }
-.dirty-stats-table-panel td, .dirty-stats-table-panel th { padding: .4rem; border-bottom: 1px solid var(--dirty-ui-border-soft); }
-.dirty-stats-table-panel td:last-child, .dirty-stats-table-panel th:last-child { text-align: right; }
+.dirty-stats-chart { width: 100%; height: auto; aspect-ratio: 2 / 1; min-height: 150px; max-height: 660px; }
+.dirty-stats-growth-chart { width: 100%; height: clamp(280px, 40vw, 540px); }
+.dirty-stats-constellation-chart { width: 100%; height: clamp(520px, 68vw, 900px); }
+.dirty-stats-map-panel { position: relative; min-width: 0; overflow: hidden; }
+.dirty-stats-map-controls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .4rem .5rem; background: #242b31; }
+.dirty-stats-statistic { width: auto; max-width: 100%; height: auto; padding: .25rem .5rem; font-size: .8rem; }
+.dirty-stats-filter-statistic { order: -1; flex: 0 0 auto; margin: 0 .5rem .25rem 0; align-self: center; }
+.dirty-stats-filter-statistic { display: flex; gap: .5rem; flex-wrap: wrap; }
+.dirty-stats-performer-overlay { position: fixed; inset: 0; z-index: 1040; align-items: center; justify-content: center; padding: 1rem; }
+.dirty-stats-performer-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .65); }
+.dirty-stats-performer-dialog { position: relative; width: min(100%, 1000px); max-height: 90vh; overflow: auto; background: var(--bs-dark, #242b31); border: 1px solid var(--dirty-ui-border); border-radius: .5rem; padding: 1rem; }
+#dirty-stats-performer-dialog .filtered-list-toolbar { position: static !important; width: 100% !important; height: auto !important; flex-wrap: wrap !important; transform: none !important; }
+#dirty-stats-performer-dialog .sort-by-select,
+#dirty-stats-performer-dialog .page-size-selector,
+#dirty-stats-performer-dialog .stash-view-wrap { display: none !important; }
+#dirty-stats-performer-dialog .filtered-list-toolbar > .search-term-input { display: flex !important; flex: 1 1 240px; max-width: none !important; }
+#dirty-stats-performer-dialog .filtered-list-toolbar { justify-content: flex-start !important; gap: .5rem; }
+.dirty-stats-performer-dialog .pagination-index-container,
+.dirty-stats-performer-dialog .pagination-footer-container,
+.dirty-stats-performer-dialog .list-operations,
+.dirty-stats-performer-dialog .stash-view-wrap,
+.dirty-stats-performer-dialog .zoom-slider-container,
+.dirty-stats-performer-dialog .page-size-selector,
+.dirty-stats-performer-dialog .sort-by-select,
+.dirty-stats-performer-dialog .filtered-list-toolbar > .btn-group:not(:has(.filter-button)) { display: none !important; }
+#root .dirty-stats-page .dirty-stats-selector .dropdown-toggle { border-color: #54d5ca !important; box-shadow: inset 0 0 0 1px rgba(84, 213, 202, .25) !important; }
+#root .dirty-stats-page .dirty-stats-selector .dropdown-toggle:focus-visible { outline: 2px solid #54d5ca; outline-offset: 2px; }
+#root .dirty-stats-page.dirty-stats-native-filters .filtered-list-toolbar { flex-wrap: wrap !important; justify-content: flex-start !important; height: auto !important; width: 100% !important; row-gap: .35rem; }
+#root .dirty-stats-page.dirty-stats-native-filters .filtered-list-toolbar > .btn-group { position: relative !important; left: auto !important; right: auto !important; }
+#root .dirty-stats-page.dirty-stats-native-filters .filtered-list-toolbar > .dirty-stats-filter-statistic { height: auto !important; margin-right: .5rem !important; }
+#root .dirty-stats-page .filtered-list-toolbar > .stash-view-wrap,
+#root .dirty-stats-page .filtered-list-toolbar > .zoom-slider-container,
+#root .dirty-stats-page .filtered-list-toolbar > .page-size-selector,
+#root .dirty-stats-page .filtered-list-toolbar > .list-operations,
+#root .dirty-stats-page .filtered-list-toolbar > .btn-group:not(.sort-by-select):not(:has(.filter-button)) { display: none !important; }
+.dirty-stats-numbers { display: flex; align-items: center; gap: .3rem; margin: 0; font-size: .8rem; white-space: nowrap; }
+.dirty-stats-date-basis { display: flex; align-items: center; gap: .5rem; margin: 0; font-size: .8rem; flex-wrap: wrap; }
+.dirty-stats-export { margin-left: auto; font-size: .8rem; padding: .25rem .5rem; }
 .dirty-stats-nav svg { width: 20px; height: 20px; fill: currentColor; }
 .dirty-stats-alert { padding: 1rem; border: 1px solid var(--dirty-ui-danger); border-radius: var(--dirty-ui-radius); margin: 1rem 0; }
-@media (max-width: 900px) { .dirty-stats-layout { grid-template-columns: 1fr; } .dirty-stats-chart { height: 430px; } }
-@media (max-width: 500px) { .dirty-stats-page { padding: .75rem; } .dirty-stats-chart { height: 340px; } }
+.dirty-stats-native-filters .pagination-index-container,
+.dirty-stats-native-filters .pagination-footer-container,
+.dirty-stats-native-filters .pagination,
+.dirty-stats-native-filters .pagination-index { display: none !important; }
+.dirty-stats-content { padding-top: .5rem; min-width: 0; }
+.dirty-stats-performers { margin-top: .75rem; }
+@media (min-width: 1200px) {
+  .dirty-stats-performers .dirty-stats-performer-column { flex: 0 0 20%; max-width: 20%; }
+}
+
+.dirty-stats-scenes { margin-top: .75rem; }
+.dirty-stats-scenes .scene-card { width: 100%; margin: 0; }

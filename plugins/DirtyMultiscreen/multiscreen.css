@@ -91,12 +91,14 @@
 }
 
 .ms-nav-count {
+  display: inline-block;
   min-width: 1.35rem;
   padding: 0.08rem 0.34rem;
   border-radius: 999px;
   color: #fff;
   background: var(--dirty-ui-border);
   font-size: 0.68rem;
+  font-style: normal;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   line-height: 1.15;

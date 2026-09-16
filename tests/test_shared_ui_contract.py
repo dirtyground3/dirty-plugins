@@ -326,6 +326,7 @@ class SharedUIContractTests(unittest.TestCase):
 
         self.assertIn('className: "dirty-rank-nav-icon"', rank)
         self.assertIn('createElement("i", { className: "ms-nav-icon"', multiscreen)
+        self.assertIn('createElement(\n      "i",\n      {\n        className: `ms-nav-count', multiscreen)
 
     def test_dirty_tidy_preview_links_blocked_scenes(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
