@@ -31,7 +31,50 @@ class DirtyPluginsSettingsStorageTests(unittest.TestCase):
         self.assertEqual(result["revision"], 1)
         self.assertEqual(storage.get_plugin_settings("example", self.database), first)
         all_settings = storage.get_all_plugin_settings(self.database)
-        self.assertEqual(all_settings, {"revision": 1, "settings": {"example": first}})
+        self.assertEqual(all_settings, {
+            "revision": 1,
+            "pluginRevisions": {"example": 1},
+            "settings": {"example": first},
+        })
+
+    def test_stale_writes_are_rejected_by_the_revision_precondition(self):
+        storage.set_plugin_settings(
+            "example", {"enabled": True}, self.database, expected_revision=0
+        )
+        self.assertEqual(storage.get_plugin_revision("example", self.database), 1)
+
+        with self.assertRaises(storage.SettingsRevisionConflict):
+            storage.set_plugin_settings(
+                "example", {"enabled": False}, self.database, expected_revision=0
+            )
+        self.assertEqual(
+            storage.get_plugin_settings("example", self.database), {"enabled": True}
+        )
+
+        result = storage.set_plugin_settings(
+            "example", {"enabled": False}, self.database, expected_revision=1
+        )
+        self.assertEqual(result["revision"], 2)
+        self.assertEqual(
+            storage.get_plugin_settings("example", self.database), {"enabled": False}
+        )
+
+    def test_revisions_are_tracked_per_plugin(self):
+        storage.set_plugin_settings("first", {"a": 1}, self.database)
+        storage.set_plugin_settings("second", {"b": 2}, self.database)
+        storage.set_plugin_settings("first", {"a": 2}, self.database)
+
+        all_settings = storage.get_all_plugin_settings(self.database)
+        self.assertEqual(all_settings["pluginRevisions"], {"first": 2, "second": 1})
+        self.assertEqual(all_settings["revision"], 2)
+        self.assertEqual(storage.get_plugin_revision("first", self.database), 2)
+        self.assertEqual(storage.get_plugin_revision("second", self.database), 1)
+
+        # A newer write to another plugin must not invalidate this plugin's token.
+        storage.set_plugin_settings(
+            "first", {"a": 3}, self.database, expected_revision=2
+        )
+        self.assertEqual(storage.get_plugin_revision("first", self.database), 3)
 
     def test_saving_replaces_removed_keys_atomically(self):
         storage.set_plugin_settings("example", {"old": 1, "keep": 2}, self.database)
@@ -44,6 +87,24 @@ class DirtyPluginsSettingsStorageTests(unittest.TestCase):
         destination = Path(self.temp_dir.name) / "backup.sqlite3"
         storage.backup_database(destination, self.database)
         self.assertEqual(storage.get_plugin_settings("example", destination), {"enabled": True})
+
+    def test_plugin_settings_snapshot_pairs_revision_and_values(self):
+        storage.set_plugin_settings("example", {"enabled": True}, self.database)
+        snapshot = storage.get_plugin_settings_snapshot("example", self.database)
+        self.assertEqual(snapshot, {"revision": 1, "settings": {"enabled": True}})
+
+    def test_metadata_round_trip_keeps_namespaces_separate(self):
+        self.assertIsNone(storage.get_metadata("example.namespace", "plan", self.database))
+        storage.set_metadata("example.namespace", "plan", "first", self.database)
+        storage.set_metadata("other.namespace", "plan", "second", self.database)
+        storage.set_metadata("example.namespace", "plan", "updated", self.database)
+
+        self.assertEqual(
+            storage.get_metadata("example.namespace", "plan", self.database), "updated"
+        )
+        self.assertEqual(
+            storage.get_metadata("other.namespace", "plan", self.database), "second"
+        )
 
     def test_settings_can_reuse_a_caller_owned_connection(self):
         storage.set_plugin_settings("example", {"enabled": True}, self.database)

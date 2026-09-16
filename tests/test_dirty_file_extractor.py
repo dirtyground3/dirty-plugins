@@ -229,6 +229,94 @@ class DirtyFileExtractorTests(unittest.TestCase):
             self.assertAlmostEqual(duration, 1.5, delta=0.08)
             self.assertEqual(progress[-1], 1.0)
 
+    def test_duplicate_basenames_are_renamed_instead_of_overwritten(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            destination = root / "output"
+            first_file = root / "first" / "scene.mp4"
+            second_file = root / "second" / "scene.mp4"
+            first_file.parent.mkdir()
+            second_file.parent.mkdir()
+            first_file.write_bytes(b"first")
+            second_file.write_bytes(b"second")
+            client = FakeClient(
+                scenes={
+                    "1": {
+                        "id": "1",
+                        "title": "First",
+                        "files": [
+                            {"path": str(first_file), "basename": first_file.name}
+                        ],
+                    },
+                    "2": {
+                        "id": "2",
+                        "title": "Second",
+                        "files": [
+                            {"path": str(second_file), "basename": second_file.name}
+                        ],
+                    },
+                }
+            )
+
+            result = extractor.copy_selected(
+                client,
+                {"scene": ["1", "2"], "marker": [], "image": []},
+                {
+                    "destinationFolder": str(destination),
+                    "collisionPolicy": "rename",
+                    "maxCopySpeedMBps": 0,
+                },
+            )
+
+            self.assertEqual(result["files_copied"], 2)
+            self.assertEqual(result["files_skipped"], 0)
+            self.assertEqual((destination / "scene.mp4").read_bytes(), b"first")
+            self.assertEqual((destination / "scene (2).mp4").read_bytes(), b"second")
+
+    def test_duplicate_basenames_respect_the_skip_policy(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            destination = root / "output"
+            first_file = root / "first" / "scene.mp4"
+            second_file = root / "second" / "scene.mp4"
+            first_file.parent.mkdir()
+            second_file.parent.mkdir()
+            first_file.write_bytes(b"first")
+            second_file.write_bytes(b"second")
+            client = FakeClient(
+                scenes={
+                    "1": {
+                        "id": "1",
+                        "title": "First",
+                        "files": [
+                            {"path": str(first_file), "basename": first_file.name}
+                        ],
+                    },
+                    "2": {
+                        "id": "2",
+                        "title": "Second",
+                        "files": [
+                            {"path": str(second_file), "basename": second_file.name}
+                        ],
+                    },
+                }
+            )
+
+            result = extractor.copy_selected(
+                client,
+                {"scene": ["1", "2"], "marker": [], "image": []},
+                {
+                    "destinationFolder": str(destination),
+                    "collisionPolicy": "skip",
+                    "maxCopySpeedMBps": 0,
+                },
+            )
+
+            self.assertEqual(result["files_copied"], 1)
+            self.assertEqual(result["files_skipped"], 1)
+            self.assertEqual((destination / "scene.mp4").read_bytes(), b"first")
+            self.assertFalse((destination / "scene (2).mp4").exists())
+
     def test_missing_marker_and_image_are_reported(self):
         with tempfile.TemporaryDirectory() as temporary:
             result = extractor.copy_selected(

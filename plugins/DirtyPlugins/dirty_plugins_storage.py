@@ -16,6 +16,19 @@ SETTINGS_NAMESPACE = "dirtyPlugins.settings"
 STORAGE_SCHEMA_VERSION = 1
 
 
+class SettingsRevisionConflict(RuntimeError):
+    """Raised when a settings write does not match the expected revision."""
+
+    def __init__(self, plugin_id: str, expected: int, actual: int):
+        super().__init__(
+            f"Settings for {plugin_id} changed in another session "
+            f"(expected revision {expected}, found {actual}). Reload and retry."
+        )
+        self.plugin_id = plugin_id
+        self.expected = expected
+        self.actual = actual
+
+
 def database_path(explicit: str | Path | None = None) -> Path:
     override = explicit or os.environ.get("DIRTY_PLUGINS_DATABASE_PATH")
     return Path(override).resolve() if override else Path(__file__).with_name(DATABASE_FILENAME)
@@ -118,12 +131,59 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _plugin_revision_key(plugin_id: str) -> str:
+    return f"plugin-revision:{plugin_id}"
+
+
 def settings_revision(connection: sqlite3.Connection) -> int:
-    row = connection.execute(
-        "SELECT value FROM dirty_metadata WHERE namespace=? AND key='revision'",
+    rows = connection.execute(
+        "SELECT value FROM dirty_metadata WHERE namespace=? AND key LIKE 'plugin-revision:%'",
         (SETTINGS_NAMESPACE,),
-    ).fetchone()
-    return int(row[0]) if row else 0
+    ).fetchall()
+    return max((int(row[0]) for row in rows), default=0)
+
+
+def get_plugin_revision(
+    plugin_id: str,
+    path: str | Path | None = None,
+    connection: sqlite3.Connection | None = None,
+) -> int:
+    current = connection or connect(path)
+    try:
+        row = current.execute(
+            "SELECT value FROM dirty_metadata WHERE namespace=? AND key=?",
+            (SETTINGS_NAMESPACE, _plugin_revision_key(str(plugin_id))),
+        ).fetchone()
+        return int(row[0]) if row else 0
+    finally:
+        if connection is None:
+            current.close()
+
+
+def get_metadata(namespace: str, key: str, path: str | Path | None = None) -> str | None:
+    connection = connect(path)
+    try:
+        row = connection.execute(
+            "SELECT value FROM dirty_metadata WHERE namespace=? AND key=?",
+            (str(namespace), str(key)),
+        ).fetchone()
+        return str(row["value"]) if row else None
+    finally:
+        connection.close()
+
+
+def set_metadata(
+    namespace: str,
+    key: str,
+    value: str,
+    path: str | Path | None = None,
+) -> None:
+    with transaction(path) as connection:
+        connection.execute(
+            """INSERT INTO dirty_metadata(namespace, key, value) VALUES (?, ?, ?)
+               ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value""",
+            (str(namespace), str(key), str(value)),
+        )
 
 
 def get_plugin_settings(
@@ -143,24 +203,69 @@ def get_plugin_settings(
             current.close()
 
 
-def get_all_plugin_settings(path: str | Path | None = None) -> dict:
+def get_plugin_settings_snapshot(plugin_id: str, path: str | Path | None = None) -> dict:
+    """Read one plugin's settings and revision as a single snapshot."""
     connection = connect(path)
     try:
-        result: dict[str, dict] = {}
-        for row in connection.execute(
-            "SELECT plugin_id, setting_key, value_json FROM dirty_plugin_settings ORDER BY plugin_id, setting_key"
-        ):
-            result.setdefault(str(row["plugin_id"]), {})[str(row["setting_key"])] = json.loads(row["value_json"])
-        return {"revision": settings_revision(connection), "settings": result}
+        connection.execute("BEGIN")
+        try:
+            revision = get_plugin_revision(str(plugin_id), connection=connection)
+            settings = get_plugin_settings(str(plugin_id), connection=connection)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        return {"revision": revision, "settings": settings}
     finally:
         connection.close()
 
 
-def set_plugin_settings(plugin_id: str, values: dict, path: str | Path | None = None) -> dict:
+def get_all_plugin_settings(path: str | Path | None = None) -> dict:
+    connection = connect(path)
+    try:
+        # A single read transaction keeps the settings rows and their per-plugin
+        # revisions on the same snapshot.
+        connection.execute("BEGIN")
+        try:
+            result: dict[str, dict] = {}
+            for row in connection.execute(
+                "SELECT plugin_id, setting_key, value_json FROM dirty_plugin_settings ORDER BY plugin_id, setting_key"
+            ):
+                result.setdefault(str(row["plugin_id"]), {})[str(row["setting_key"])] = json.loads(row["value_json"])
+            revisions: dict[str, int] = {}
+            for row in connection.execute(
+                "SELECT key, value FROM dirty_metadata WHERE namespace=? AND key LIKE 'plugin-revision:%'",
+                (SETTINGS_NAMESPACE,),
+            ):
+                revisions[str(row["key"]).split(":", 1)[1]] = int(row["value"])
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        return {
+            "revision": max(revisions.values(), default=0),
+            "pluginRevisions": revisions,
+            "settings": result,
+        }
+    finally:
+        connection.close()
+
+
+def set_plugin_settings(
+    plugin_id: str,
+    values: dict,
+    path: str | Path | None = None,
+    expected_revision: int | None = None,
+) -> dict:
     if not isinstance(values, dict):
         raise TypeError("Plugin settings must be an object")
     plugin_id = str(plugin_id)
     with transaction(path) as connection:
+        current_revision = get_plugin_revision(plugin_id, connection=connection)
+        if expected_revision is not None and int(expected_revision) != current_revision:
+            raise SettingsRevisionConflict(
+                plugin_id, int(expected_revision), current_revision
+            )
         connection.execute("DELETE FROM dirty_plugin_settings WHERE plugin_id=?", (plugin_id,))
         timestamp = _timestamp()
         connection.executemany(
@@ -171,10 +276,10 @@ def set_plugin_settings(plugin_id: str, values: dict, path: str | Path | None = 
                 for key, value in values.items()
             ],
         )
-        revision = settings_revision(connection) + 1
+        revision = current_revision + 1
         connection.execute(
-            """INSERT INTO dirty_metadata(namespace, key, value) VALUES (?, 'revision', ?)
+            """INSERT INTO dirty_metadata(namespace, key, value) VALUES (?, ?, ?)
                ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value""",
-            (SETTINGS_NAMESPACE, str(revision)),
+            (SETTINGS_NAMESPACE, _plugin_revision_key(plugin_id), str(revision)),
         )
     return {"pluginId": plugin_id, "revision": revision, "settings": values}

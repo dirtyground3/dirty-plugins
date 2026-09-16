@@ -185,6 +185,22 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("dirty_plugin_settings", storage)
         self.assertIn('mode == "getAllSettings"', backend)
 
+    def test_settings_writes_carry_a_revision_precondition(self):
+        hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
+        backend = read("plugins/DirtyPlugins/dirty_plugins.py")
+        storage = read("plugins/DirtyPlugins/dirty_plugins_storage.py")
+
+        self.assertIn("expectedRevision", hub)
+        self.assertIn("pluginRevisionCache", hub)
+        self.assertIn("pluginRevisions", hub)
+        self.assertIn("configurePlugin(plugin.id, input, expectedRevision)", hub)
+        self.assertIn("expectedRevision", backend)
+        self.assertIn("SettingsRevisionConflict", backend)
+        self.assertIn("def get_plugin_revision", storage)
+        self.assertIn("expected_revision", storage)
+        self.assertIn("SettingsRevisionConflict", storage)
+        self.assertIn('connection.execute("BEGIN")', storage)
+
     def test_dirty_rank_separates_tie_from_skip_and_preserves_native_rating(self):
         script = read("plugins/DirtyRank/dirtyRank.js")
         backend = read("plugins/DirtyRank/dirty_rank.py")
@@ -304,6 +320,42 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("queryFilter[OVERALL_SORT_ACTIVE] = true", script)
         self.assertIn("filter.currentPage", script)
         self.assertIn("filter.itemsPerPage", script)
+
+    def test_multiscreen_ignores_duplicate_bundle_reloads(self):
+        multiscreen = read("plugins/DirtyMultiscreen/multiscreen.js")
+
+        self.assertIn("__dirtyMultiscreenPlugin", multiscreen)
+        self.assertIn("if (window[INSTANCE_KEY]) return;", multiscreen)
+        self.assertIn("window[INSTANCE_KEY] = { route: ROUTE_PATH };", multiscreen)
+
+    def test_multiscreen_grid_clamps_tiles_to_available_cells(self):
+        multiscreen = read("plugins/DirtyMultiscreen/multiscreen.js")
+
+        self.assertIn("rows * columns", multiscreen)
+        self.assertIn("Math.min(clampInteger(rawSettings.totalScreens", multiscreen)
+
+    def test_extractor_mutations_are_filtered_and_debounced(self):
+        script = read("plugins/DirtyFileExtractor/extractScenes.js")
+
+        self.assertNotIn("new MutationObserver(scheduleRender)", script)
+        self.assertIn("new MutationObserver(onDocumentMutations)", script)
+        self.assertIn("RELEVANT_MUTATION_SELECTOR", script)
+        self.assertIn("hasRelevantMutations", script)
+        self.assertIn("MUTATION_DEBOUNCE_MS", script)
+        self.assertIn("state.selectionSignature", script)
+        self.assertIn("state.buttonPositioned", script)
+        self.assertIn("window.clearTimeout(state.mutationTimer)", script)
+
+    def test_dirty_tidy_execution_is_limited_to_the_confirmed_plan(self):
+        tidy = read("plugins/DirtyTidy/dirtyTidy.js")
+        backend = read("plugins/DirtyTidy/dirty_tidy.py")
+
+        self.assertIn("approvedPlanDigest", tidy)
+        self.assertIn("approvedPlanDigest: preview.plan_digest || \"\"", tidy)
+        self.assertIn("record_review=True", backend)
+        self.assertIn("def save_reviewed_plan", backend)
+        self.assertIn("def load_reviewed_plan", backend)
+        self.assertIn('if approved_digest != plan["plan_digest"]', backend)
 
     def test_dirty_tidy_supports_approved_scan_and_generate_automation(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")

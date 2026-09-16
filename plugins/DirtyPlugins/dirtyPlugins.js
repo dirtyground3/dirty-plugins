@@ -91,8 +91,20 @@
   var hubApi = window.DirtyPlugins || {};
   var fieldActions = hubApi.fieldActions || Object.create(null);
   var settingsPanels = hubApi.settingsPanels || Object.create(null);
+  var pluginRevisionCache = Object.create(null);
   hubApi.fieldActions = fieldActions;
   hubApi.settingsPanels = settingsPanels;
+
+  function rememberPluginRevision(pluginId, revision) {
+    var value = Number(revision);
+    if (Number.isFinite(value)) pluginRevisionCache[pluginId] = value;
+  }
+
+  function cachedPluginRevision(pluginId) {
+    return Object.prototype.hasOwnProperty.call(pluginRevisionCache, pluginId)
+      ? pluginRevisionCache[pluginId]
+      : undefined;
+  }
   hubApi.registerFieldAction = function (pluginId, settingName, action) {
     if (!fieldActions[pluginId]) fieldActions[pluginId] = Object.create(null);
     if (fieldActions[pluginId][settingName] === action) return;
@@ -186,12 +198,26 @@
 
   function getPluginSettings(pluginId) {
     return runSharedOperation({ mode: "getSettings", pluginId: pluginId }).then(function (result) {
+      rememberPluginRevision(pluginId, result && result.revision);
       return asObject(result && result.settings);
     });
   }
 
-  function configurePlugin(pluginId, input) {
-    return runSharedOperation({ mode: "setSettings", pluginId: pluginId, settings: asObject(input) });
+  function configurePlugin(pluginId, input, expectedRevision) {
+    var args = { mode: "setSettings", pluginId: pluginId, settings: asObject(input) };
+    // Guard the read-modify-write cycle so a stale tab cannot overwrite a
+    // newer value written by another session. Callers that merged a specific
+    // read pass its revision; otherwise the latest read is used.
+    var revisionToken = expectedRevision === undefined
+      ? cachedPluginRevision(pluginId)
+      : expectedRevision;
+    if (revisionToken !== undefined && revisionToken !== null) {
+      args.expectedRevision = revisionToken;
+    }
+    return runSharedOperation(args).then(function (result) {
+      rememberPluginRevision(pluginId, result && result.revision);
+      return result;
+    });
   }
 
   function clampInteger(value, fallback, min, max) {
@@ -382,10 +408,16 @@
       "}"
     ), runSharedOperation({ mode: "getAllSettings" })]).then(function (values) {
       var data = values[0];
-      var configuration = asObject(values[1] && values[1].settings);
+      var settingsPayload = asObject(values[1]);
+      var configuration = asObject(settingsPayload.settings);
+      var revisions = asObject(settingsPayload.pluginRevisions);
+      Object.keys(revisions).forEach(function (pluginId) {
+        rememberPluginRevision(pluginId, revisions[pluginId]);
+      });
       var plugins = Array.isArray(data.plugins) ? data.plugins : [];
       return {
         configuration: configuration,
+        pluginRevisions: revisions,
         plugins: plugins
           .filter(function (plugin) {
             return MANAGED_PLUGIN_ID_SET.has(plugin.id);
@@ -833,12 +865,20 @@
 
       var previousSave = saveChainsRef.current[plugin.id] || Promise.resolve();
       var currentSave = previousSave.catch(function () {}).then(function () {
-        return configurePlugin(plugin.id, input);
+        // Use the revision of the snapshot this input was merged from so a
+        // concurrent writer is never silently overwritten.
+        var expectedRevision = snapshot.pluginRevisions
+          ? snapshot.pluginRevisions[plugin.id]
+          : undefined;
+        return configurePlugin(plugin.id, input, expectedRevision);
       });
       saveChainsRef.current[plugin.id] = currentSave;
       currentSave
         .then(function () {
           snapshot.configuration[plugin.id] = input;
+          if (snapshot.pluginRevisions) {
+            snapshot.pluginRevisions[plugin.id] = cachedPluginRevision(plugin.id);
+          }
           if (saveRevisionsRef.current[plugin.id] !== revision) return;
           setSavedDrafts(function (current) {
             var next = Object.assign({}, current);

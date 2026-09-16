@@ -31,6 +31,7 @@
     multiValueSeparator: ", ",
     automationMode: "manual",
     approvedStrategyHash: "",
+    approvedPlanDigest: "",
   };
   var VARIABLES = [
     ["title", "Title"],
@@ -86,6 +87,9 @@
     var approvedStrategyHash = /^[0-9a-f]{64}$/i.test(String(source.approvedStrategyHash || ""))
       ? String(source.approvedStrategyHash).toLowerCase()
       : "";
+    var approvedPlanDigest = /^[0-9a-f]{64}$/i.test(String(source.approvedPlanDigest || ""))
+      ? String(source.approvedPlanDigest).toLowerCase()
+      : "";
     return {
       moveEnabled: DirtyPlugins.values.coerceBoolean(source.moveEnabled, true),
       moveRequireStashId: DirtyPlugins.values.coerceBoolean(source.moveRequireStashId, false),
@@ -102,6 +106,7 @@
       multiValueSeparator: String(source.multiValueSeparator || DEFAULT_SETTINGS.multiValueSeparator),
       automationMode: automationMode,
       approvedStrategyHash: approvedStrategyHash,
+      approvedPlanDigest: approvedPlanDigest,
     };
   }
 
@@ -408,7 +413,10 @@
     function changed(update, affectsStrategy) {
       setDraft(function (current) {
         var next = Object.assign({}, current, update);
-        if (affectsStrategy !== false) next.approvedStrategyHash = "";
+        if (affectsStrategy !== false) {
+          next.approvedStrategyHash = "";
+          next.approvedPlanDigest = "";
+        }
         return next;
       });
       setConfirmed(false);
@@ -552,6 +560,7 @@
       if (!preview || !confirmed || settingsDirty || draft.automationMode === "manual") return;
       var approvedSettings = Object.assign({}, draft, {
         approvedStrategyHash: preview.strategy_hash,
+        approvedPlanDigest: preview.plan_digest || "",
       });
       setBusy(true);
       setError("");
@@ -712,8 +721,8 @@
           draft.automationMode !== "manual" && h(
             "p",
             { className: "dirty-tidy-automation-state" },
-            draft.approvedStrategyHash
-              ? "Automation is approved for the current strategy."
+            draft.approvedStrategyHash && draft.approvedPlanDigest
+              ? "Automation is approved for the current strategy and plan."
               : "Automation is inactive. Preview and review the strategy, then use Confirm and save before approving below."
           )
         ),

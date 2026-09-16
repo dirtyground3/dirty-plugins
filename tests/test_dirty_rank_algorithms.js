@@ -196,6 +196,80 @@ function performer(id, rating, deviation, matches) {
 
 {
   const performers = [
+    performer(41, 1000, 350, 0),
+    performer(42, 1000, 300, 0),
+    performer(43, 1000, 45, 20),
+    performer(44, 1400, 45, 20),
+  ];
+  const settings = Object.assign({}, baseSettings, {
+    avoidRepeatWindow: 0,
+    calibrationPercent: 0,
+    confidenceGoal: "all",
+  });
+  const originalRandom = Math.random;
+  Math.random = function () { return 0.5; };
+  const baseline = algorithms.selectPair(performers, category, "FEMALE", settings, []);
+  const baselineToken = baseline.pair.map(function (item) { return item.id; }).sort().join(":");
+  const recalled = algorithms.selectPair(
+    performers, category, "FEMALE", settings, [baselineToken]
+  );
+  const penalized = algorithms.selectPair(
+    performers, category, "FEMALE",
+    Object.assign({}, settings, { avoidRepeatWindow: 1 }), [baselineToken]
+  );
+  Math.random = originalRandom;
+
+  assert.strictEqual(
+    recalled.pair.map(function (item) { return item.id; }).sort().join(":"),
+    baselineToken,
+    "avoidRepeatWindow 0 must disable the repeat penalty for selectPair"
+  );
+  assert.notStrictEqual(
+    penalized.pair.map(function (item) { return item.id; }).sort().join(":"),
+    baselineToken,
+    "a positive avoidRepeatWindow must penalize the remembered selectPair pair"
+  );
+}
+
+{
+  const performers = [
+    performer(51, 1000, 350, 0),
+    performer(52, 1000, 45, 20),
+    performer(53, 1100, 45, 20),
+  ];
+  const settings = Object.assign({}, baseSettings, {
+    avoidRepeatWindow: 0,
+    calibrationPercent: 0,
+  });
+  const originalRandom = Math.random;
+  Math.random = function () { return 0.5; };
+  const baseline = algorithms.selectGauntletPair(
+    performers, performers[0], category, "FEMALE", settings, []
+  );
+  const baselineToken = [baseline.pair[0].id, baseline.pair[1].id].sort().join(":");
+  const recalled = algorithms.selectGauntletPair(
+    performers, performers[0], category, "FEMALE", settings, [baselineToken]
+  );
+  const penalized = algorithms.selectGauntletPair(
+    performers, performers[0], category, "FEMALE",
+    Object.assign({}, settings, { avoidRepeatWindow: 1 }), [baselineToken]
+  );
+  Math.random = originalRandom;
+
+  assert.strictEqual(
+    [recalled.pair[0].id, recalled.pair[1].id].sort().join(":"),
+    baselineToken,
+    "avoidRepeatWindow 0 must disable the repeat penalty for the gauntlet"
+  );
+  assert.notStrictEqual(
+    [penalized.pair[0].id, penalized.pair[1].id].sort().join(":"),
+    baselineToken,
+    "a positive avoidRepeatWindow must penalize the remembered gauntlet pair"
+  );
+}
+
+{
+  const performers = [
     performer(1, 1300, 40, 12),
     performer(2, 1100, 80, 10),
     performer(3, 900, 140, 8),

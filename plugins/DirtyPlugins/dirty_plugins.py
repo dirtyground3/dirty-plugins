@@ -27,7 +27,12 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         plugin_id = str(args.get("pluginId") or "")
         if plugin_id not in MANAGED_PLUGIN_IDS:
             raise PluginError(f"Unsupported Dirty plugin: {plugin_id}")
-        return {"pluginId": plugin_id, "settings": storage.get_plugin_settings(plugin_id)}
+        snapshot = storage.get_plugin_settings_snapshot(plugin_id)
+        return {
+            "pluginId": plugin_id,
+            "revision": snapshot["revision"],
+            "settings": snapshot["settings"],
+        }
     if mode == "setSettings":
         plugin_id = str(args.get("pluginId") or "")
         if plugin_id not in MANAGED_PLUGIN_IDS:
@@ -35,7 +40,18 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         values = args.get("settings")
         if not isinstance(values, dict):
             raise PluginError("Settings must be an object")
-        return storage.set_plugin_settings(plugin_id, values)
+        expected_revision = args.get("expectedRevision")
+        if expected_revision is not None:
+            try:
+                expected_revision = int(expected_revision)
+            except (TypeError, ValueError):
+                raise PluginError("expectedRevision must be an integer")
+        try:
+            return storage.set_plugin_settings(
+                plugin_id, values, expected_revision=expected_revision
+            )
+        except storage.SettingsRevisionConflict as conflict:
+            raise PluginError(str(conflict))
     if mode == "backupDatabase":
         return {"path": str(storage.backup_database())}
     raise PluginError(f"Unsupported DirtyPlugins operation mode: {mode}")

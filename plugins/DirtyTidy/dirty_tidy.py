@@ -18,6 +18,7 @@ from typing import Any, Iterable
 
 
 PLUGIN_ID = "dirtyTidy"
+REVIEW_NAMESPACE = "dirtyTidy.reviewedPlans"
 UNKNOWN_VALUE = "Unknown"
 STRATEGY_VERSION = 6
 DEFAULT_SETTINGS = {
@@ -31,6 +32,7 @@ DEFAULT_SETTINGS = {
     "multiValueSeparator": ", ",
     "automationMode": "manual",
     "approvedStrategyHash": "",
+    "approvedPlanDigest": "",
 }
 AUTOMATION_MODES = {"manual", "scan", "generate"}
 STRATEGY_SETTING_KEYS = (
@@ -330,6 +332,9 @@ def normalize_settings(raw: Any) -> dict[str, Any]:
     approved_hash = str(source.get("approvedStrategyHash") or "").strip().lower()
     if not re.fullmatch(r"[0-9a-f]{64}", approved_hash):
         approved_hash = ""
+    approved_digest = str(source.get("approvedPlanDigest") or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", approved_digest):
+        approved_digest = ""
     return {
         "moveEnabled": as_bool(source.get("moveEnabled"), True),
         "moveRequireStashId": as_bool(source.get("moveRequireStashId"), False),
@@ -341,6 +346,7 @@ def normalize_settings(raw: Any) -> dict[str, Any]:
         "multiValueSeparator": separator[:10],
         "automationMode": automation_mode,
         "approvedStrategyHash": approved_hash,
+        "approvedPlanDigest": approved_digest,
     }
 
 
@@ -352,6 +358,89 @@ def strategy_hash(settings: dict[str, Any]) -> str:
     }
     encoded = json.dumps(strategy, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _normalized_operation(operation: dict[str, Any]) -> dict[str, str]:
+    source = str(operation.get("source_path") or "")
+    destination = str(operation.get("destination_path") or "")
+    return {
+        "file_id": str(operation.get("file_id") or ""),
+        "source_path": _normalized_path(source) if source else "",
+        "destination_path": _normalized_path(destination) if destination else "",
+    }
+
+
+def operation_key(operation: dict[str, Any]) -> tuple[str, str, str]:
+    normalized = _normalized_operation(operation)
+    return (
+        normalized["file_id"],
+        normalized["source_path"],
+        normalized["destination_path"],
+    )
+
+
+def plan_digest(strategy_digest: str, operations: Iterable[dict[str, Any]]) -> str:
+    """Hash every ready operation so changed plans cannot reuse an approval."""
+    ready = sorted(
+        operation_key(operation)
+        for operation in operations
+        if operation.get("status") == "ready"
+    )
+    encoded = json.dumps(
+        {"strategyHash": strategy_digest, "operations": ready},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def save_reviewed_plan(plan: dict[str, Any]) -> None:
+    """Persist the plan a user confirmed so execution cannot exceed it."""
+    operations = [
+        _normalized_operation(operation)
+        for operation in plan.get("operations") or []
+        if operation.get("status") == "ready"
+    ]
+    payload = json.dumps(
+        {
+            "strategyHash": plan.get("strategy_hash") or "",
+            "planDigest": plan.get("plan_digest") or "",
+            "operations": operations,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    shared_storage.set_metadata(
+        REVIEW_NAMESPACE, str(plan.get("strategy_hash") or ""), payload
+    )
+
+
+def load_reviewed_plan(strategy_digest: str) -> set[tuple[str, str, str]] | None:
+    """Return the confirmed operation keys for a strategy, if one was saved."""
+    raw = shared_storage.get_metadata(REVIEW_NAMESPACE, str(strategy_digest or ""))
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    operations = payload.get("operations")
+    if not isinstance(operations, list):
+        return None
+    keys: set[tuple[str, str, str]] = set()
+    for operation in operations:
+        if not isinstance(operation, dict):
+            continue
+        keys.add(
+            (
+                str(operation.get("file_id") or ""),
+                str(operation.get("source_path") or ""),
+                str(operation.get("destination_path") or ""),
+            )
+        )
+    return keys
 
 
 def _clean_text(value: Any) -> str:
@@ -810,8 +899,10 @@ def build_plan(
     action_counts = Counter(
         action for operation in operations for action in operation.get("actions") or []
     )
+    digest = strategy_hash(settings)
     return {
-        "strategy_hash": strategy_hash(settings),
+        "strategy_hash": digest,
+        "plan_digest": plan_digest(digest, operations),
         "settings": settings,
         "total": len(operations),
         "summary": {
@@ -833,9 +924,12 @@ def preview_plan(
     per_page: int = 50,
     status_filter: str = "all",
     include_all: bool = False,
+    record_review: bool = False,
 ) -> dict[str, Any]:
     roots, scenes = client.library_snapshot()
     plan = build_plan(roots, scenes, raw_settings)
+    if record_review:
+        save_reviewed_plan(plan)
     status_filter = str(status_filter or "all").strip().lower()
     if status_filter not in PREVIEW_STATUSES:
         status_filter = "all"
@@ -875,15 +969,43 @@ def execute_plan(
     raw_settings: dict[str, Any],
     expected_hash: str,
     reporter: Reporter,
+    expected_plan_digest: str = "",
+    plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    roots, scenes = client.library_snapshot()
-    plan = build_plan(roots, scenes, raw_settings)
+    if plan is None:
+        roots, scenes = client.library_snapshot()
+        plan = build_plan(roots, scenes, raw_settings)
     if not expected_hash or expected_hash != plan["strategy_hash"]:
         raise PluginError("The confirmed preview is stale. Generate and confirm a new preview.")
+    if expected_plan_digest and expected_plan_digest != plan["plan_digest"]:
+        raise PluginError(
+            "The approved plan changed after it was approved. Generate a new preview "
+            "and approve it again."
+        )
 
     ready = [operation for operation in plan["operations"] if operation["status"] == "ready"]
+    unreviewed = 0
+    reviewed_missing = 0
+    if not expected_plan_digest:
+        # Manual execution only applies the exact operations the user confirmed.
+        # A file that was warning/blocked at preview time (or appeared later) must
+        # never move unseen.
+        reviewed_keys = load_reviewed_plan(expected_hash)
+        if reviewed_keys is None:
+            raise PluginError(
+                "The confirmed preview could not be found. Generate and confirm a new "
+                "preview before running."
+            )
+        confirmed = [
+            operation for operation in ready if operation_key(operation) in reviewed_keys
+        ]
+        unreviewed = len(ready) - len(confirmed)
+        reviewed_missing = len(reviewed_keys) - len(confirmed)
+        ready = confirmed
+
     reporter.info(
-        f"DirtyTidy will apply {len(ready)} operation(s); "
+        f"DirtyTidy will apply {len(ready)} confirmed operation(s); "
+        f"{unreviewed} operation(s) are not part of the confirmed preview, "
         f"{plan['summary']['warnings']} warning(s), {plan['summary']['blocked']} blocked, "
         f"and {plan['summary']['unchanged']} unchanged."
     )
@@ -922,8 +1044,11 @@ def execute_plan(
     )
     return {
         "strategy_hash": plan["strategy_hash"],
+        "plan_digest": plan["plan_digest"],
         "completed": len(completed),
         "failed": len(failed),
+        "unreviewed": unreviewed,
+        "reviewed_missing": reviewed_missing,
         "warnings": plan["summary"]["warnings"],
         "blocked": plan["summary"]["blocked"],
         "unchanged": plan["summary"]["unchanged"],
@@ -954,6 +1079,7 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
             int(args.get("perPage") or 50),
             str(args.get("status") or "all"),
             as_bool(args.get("includeAll"), False),
+            record_review=True,
         )
     if mode == "execute":
         stored_settings = shared_storage.get_plugin_settings(PLUGIN_ID)
@@ -980,10 +1106,36 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
             message = "DirtyTidy skipped automation because this strategy has not been approved."
             reporter.info(message)
             return {"skipped": True, "reason": message}
+        approved_digest = settings["approvedPlanDigest"]
+        if not approved_digest:
+            message = (
+                "DirtyTidy skipped automation because the approved plan is missing. "
+                "Generate a new preview and approve it again."
+            )
+            reporter.info(message)
+            return {"skipped": True, "reason": message}
+        roots, scenes = client.library_snapshot()
+        plan = build_plan(roots, scenes, settings)
+        if approved_hash != plan["strategy_hash"]:
+            message = (
+                "DirtyTidy skipped automation because the saved settings no longer "
+                "match the approved strategy."
+            )
+            reporter.info(message)
+            return {"skipped": True, "reason": message}
+        if approved_digest != plan["plan_digest"]:
+            message = (
+                "DirtyTidy skipped automation because files changed after the approved "
+                "preview. Generate a new preview and approve it again."
+            )
+            reporter.info(message)
+            return {"skipped": True, "reason": message}
         reporter.info(
             f"DirtyTidy is applying the strategy approved for completed {trigger} jobs."
         )
-        return execute_plan(client, settings, approved_hash, reporter)
+        return execute_plan(
+            client, settings, approved_hash, reporter, approved_digest, plan
+        )
     raise PluginError(f"Unsupported DirtyTidy operation mode: {mode}")
 
 

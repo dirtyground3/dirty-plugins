@@ -3,6 +3,9 @@
 
   var PLUGIN_ID = "extractScenes";
   var INSTANCE_KEY = "__extractScenesFloatingAction";
+  var MUTATION_DEBOUNCE_MS = 150;
+  var RELEVANT_MUTATION_SELECTOR =
+    ".filtered-list-toolbar, .item-list-container, .marker-wall";
   var hubApi = window.DirtyPlugins;
 
   // Stash may reload plugin assets without reloading the page. Tear down an
@@ -16,11 +19,14 @@
     browseButton: null,
     busy: false,
     button: null,
+    buttonPositioned: false,
     destroyed: false,
     frame: null,
+    mutationTimer: null,
     observer: null,
     picker: null,
     pickerRequest: 0,
+    selectionSignature: null,
   };
   var hubFieldAction = {
     label: "Browse\u2026",
@@ -107,6 +113,10 @@
   function idFromSelectionCheckbox(checkbox, kind) {
     if (kind === "marker") return markerIdFromSelectionCheckbox(checkbox);
     return idFromLinkedItem(checkbox, kind === "image" ? "images" : "scenes");
+  }
+
+  function selectionSignature(selection) {
+    return (selection.kind || "none") + ":" + selection.ids.join(",");
   }
 
   function selectedItems() {
@@ -484,6 +494,7 @@
     if (state.destroyed) return;
     var button = ensureButton();
     var selection = selectedItems();
+    state.selectionSignature = selectionSignature(selection);
     var count = selection.ids.length;
 
     if (state.busy) {
@@ -492,20 +503,25 @@
       if (button.textContent !== "Queuing extraction\u2026") {
         button.textContent = "Queuing extraction\u2026";
       }
-      button.hidden = !positionButton(button);
+      state.buttonPositioned = positionButton(button);
+      button.hidden = !state.buttonPositioned;
       return;
     }
 
     button.disabled = false;
     var shouldShow = Boolean(selection.kind) && count > 0;
     button.hidden = !shouldShow;
-    if (!shouldShow) return;
+    if (!shouldShow) {
+      state.buttonPositioned = false;
+      return;
+    }
 
     var label = count === 1
       ? "Extract selected " + selection.singular
       : "Extract " + count + " selected " + selection.plural;
     if (button.textContent !== label) button.textContent = label;
-    button.hidden = !positionButton(button);
+    state.buttonPositioned = positionButton(button);
+    button.hidden = !state.buttonPositioned;
   }
 
   function scheduleRender() {
@@ -565,6 +581,46 @@
     }
   }
 
+  function nodeInRelevantArea(node) {
+    if (!node || node.nodeType !== 1) return false;
+    if (node.matches && node.matches(RELEVANT_MUTATION_SELECTOR)) return true;
+    return Boolean(
+      node.querySelector && node.querySelector(RELEVANT_MUTATION_SELECTOR)
+    );
+  }
+
+  function hasRelevantMutations(records) {
+    for (var index = 0; index < records.length; index += 1) {
+      var added = records[index].addedNodes;
+      for (var addedIndex = 0; addedIndex < added.length; addedIndex += 1) {
+        if (nodeInRelevantArea(added[addedIndex])) return true;
+      }
+      var removed = records[index].removedNodes;
+      for (var removedIndex = 0; removedIndex < removed.length; removedIndex += 1) {
+        if (nodeInRelevantArea(removed[removedIndex])) return true;
+      }
+    }
+    return false;
+  }
+
+  function onDocumentMutations(records) {
+    if (state.destroyed || state.busy) return;
+    if (!hasRelevantMutations(records)) return;
+    if (state.mutationTimer !== null) return;
+
+    state.mutationTimer = window.setTimeout(function () {
+      state.mutationTimer = null;
+      if (state.destroyed || state.busy) return;
+      // Selection changes arrive through the capture change listener; this
+      // path only has to catch list containers and toolbars mounting or
+      // unmounting around an unchanged selection.
+      var unchanged =
+        selectionSignature(selectedItems()) === state.selectionSignature;
+      if (unchanged && state.buttonPositioned) return;
+      scheduleRender();
+    }, MUTATION_DEBOUNCE_MS);
+  }
+
   function destroy() {
     if (state.destroyed) return;
     state.destroyed = true;
@@ -573,6 +629,10 @@
     window.removeEventListener("hashchange", scheduleRender);
     window.removeEventListener("resize", scheduleRender);
     window.removeEventListener("scroll", scheduleRender, true);
+    if (state.mutationTimer !== null) {
+      window.clearTimeout(state.mutationTimer);
+      state.mutationTimer = null;
+    }
     if (state.observer) state.observer.disconnect();
     if (state.frame !== null) window.cancelAnimationFrame(state.frame);
     if (state.button) {
@@ -603,8 +663,11 @@
   window.addEventListener("scroll", scheduleRender, { capture: true, passive: true });
 
   // The observer only reads Stash's DOM and updates our body-level button. It
-  // never inserts into, replaces, or patches any React-owned element.
-  state.observer = new MutationObserver(scheduleRender);
+  // never inserts into, replaces, or patches any React-owned element. React
+  // churns thumbnails and cards constantly, so records are filtered down to
+  // list-container and toolbar structure changes, then debounced; selection
+  // changes come through the capture change listener instead.
+  state.observer = new MutationObserver(onDocumentMutations);
   state.observer.observe(document.body, { childList: true, subtree: true });
 
   window[INSTANCE_KEY] = { destroy: destroy };

@@ -565,6 +565,12 @@
     return [String(left.id), String(right.id)].sort().join(":");
   }
 
+  function recentPairWindow(recentTokens, windowSize) {
+    // slice(-0) returns the whole history, so zero must disable the penalty.
+    if (!(windowSize > 0)) return [];
+    return recentTokens.slice(-windowSize);
+  }
+
   function rankPerformers(performers, categoryId, cohort, settings) {
     return performers.filter(function (performer) {
       return String(performer.gender || "").toUpperCase() === cohort &&
@@ -1056,7 +1062,7 @@
       if (priorityDifference) return priorityDifference;
       return right.pool.deviation - left.pool.deviation;
     }).slice(0, MATCHMAKER_FOCUS_LIMIT);
-    var recent = new Set(recentTokens.slice(-settings.avoidRepeatWindow));
+    var recent = new Set(recentPairWindow(recentTokens, settings.avoidRepeatWindow));
     var calibration = Math.random() * 100 < settings.calibrationPercent;
     var evaluated = new Set();
     var best = null;
@@ -1108,7 +1114,7 @@
     if (!targetEntry || eligible.length < 2) return { pair: null, eligible: eligible.length, ranks: ranks };
 
     var targetPool = poolFor(targetEntry, category.id, cohort, settings);
-    var recent = new Set(recentTokens.slice(-settings.avoidRepeatWindow));
+    var recent = new Set(recentPairWindow(recentTokens, settings.avoidRepeatWindow));
     var calibration = Math.random() * 100 < settings.calibrationPercent;
     var best = null;
     eligible.forEach(function (opponent) {

@@ -1,4 +1,10 @@
 (() => {
+  // Stash can reload plugin assets without reloading the page. Routes and
+  // PluginApi patches cannot be unregistered, so re-running this bundle would
+  // stack duplicate nav links, patches, and count-query timers. Ignore reloads.
+  const INSTANCE_KEY = "__dirtyMultiscreenPlugin";
+  if (window[INSTANCE_KEY]) return;
+
   // plugins/DirtyMultiscreen/src/reactShim.ts
   var React = window.PluginApi.React;
   var Children = React.Children;
@@ -125,18 +131,24 @@
   );
   var clampInteger = DirtyPlugins.values.clampInteger;
   var coerceBoolean = DirtyPlugins.values.coerceBoolean;
-  var normalizeSettings = (rawSettings) => ({
-    totalScreens: clampInteger(rawSettings.totalScreens, DEFAULT_SETTINGS.totalScreens, 1, 36),
-    rows: clampInteger(rawSettings.rows, DEFAULT_SETTINGS.rows, 1, 12),
-    columns: clampInteger(rawSettings.columns, DEFAULT_SETTINGS.columns, 1, 12),
-    randomize: coerceBoolean(rawSettings.randomize, DEFAULT_SETTINGS.randomize),
-    splitScenes: coerceBoolean(rawSettings.splitScenes, DEFAULT_SETTINGS.splitScenes),
-    startMuted: coerceBoolean(rawSettings.startMuted, DEFAULT_SETTINGS.startMuted),
-    randomStart: coerceBoolean(rawSettings.randomStart, DEFAULT_SETTINGS.randomStart),
-    loopScenes: coerceBoolean(rawSettings.loopScenes, DEFAULT_SETTINGS.loopScenes),
-    markerDuration: clampInteger(rawSettings.markerDuration, DEFAULT_SETTINGS.markerDuration, 1, 600),
-    pauseWhenHidden: coerceBoolean(rawSettings.pauseWhenHidden, DEFAULT_SETTINGS.pauseWhenHidden)
-  });
+  var normalizeSettings = (rawSettings) => {
+    const rows = clampInteger(rawSettings.rows, DEFAULT_SETTINGS.rows, 1, 12);
+    const columns = clampInteger(rawSettings.columns, DEFAULT_SETTINGS.columns, 1, 12);
+    return {
+      // The CSS grid only has rows x columns cells; extra tiles would play
+      // off-screen while being clipped by the viewport.
+      totalScreens: Math.min(clampInteger(rawSettings.totalScreens, DEFAULT_SETTINGS.totalScreens, 1, 36), rows * columns),
+      rows,
+      columns,
+      randomize: coerceBoolean(rawSettings.randomize, DEFAULT_SETTINGS.randomize),
+      splitScenes: coerceBoolean(rawSettings.splitScenes, DEFAULT_SETTINGS.splitScenes),
+      startMuted: coerceBoolean(rawSettings.startMuted, DEFAULT_SETTINGS.startMuted),
+      randomStart: coerceBoolean(rawSettings.randomStart, DEFAULT_SETTINGS.randomStart),
+      loopScenes: coerceBoolean(rawSettings.loopScenes, DEFAULT_SETTINGS.loopScenes),
+      markerDuration: clampInteger(rawSettings.markerDuration, DEFAULT_SETTINGS.markerDuration, 1, 600),
+      pauseWhenHidden: coerceBoolean(rawSettings.pauseWhenHidden, DEFAULT_SETTINGS.pauseWhenHidden)
+    };
+  };
   var getPlaybackSettings = (settings) => ({
     startMuted: settings.startMuted,
     randomStart: settings.randomStart,
@@ -1377,4 +1389,5 @@
       }
     ];
   });
+  window[INSTANCE_KEY] = { route: ROUTE_PATH };
 })();

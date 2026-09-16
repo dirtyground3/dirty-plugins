@@ -129,7 +129,11 @@ const performers = [
   { id: "2", name: "Bob", country: "United States", gender: "MALE", favorite: false, rating100: null, scene_count: 0, tags: [] },
   { id: "3", name: "Carole", country: "FR", gender: "FEMALE", favorite: false, rating100: 40, scene_count: 5, tags: [] },
   { id: "4", name: "Missing", country: " ", tags: [] },
-  { id: "5", name: "Unmapped", country: "Atlantis", tags: [] }
+  { id: "5", name: "Unmapped", country: "Atlantis", tags: [] },
+  { id: "6", name: "Namibian", country: "NA", tags: [] },
+  { id: "7", name: "Not available", country: "N/A", tags: [] },
+  { id: "8", name: "Dashed", country: "-", tags: [] },
+  { id: "9", name: "Undisclosed", country: "Unknown", tags: [] }
 ];
 const native = { makeFindFilter: () => ({ q: "example", page: 8, per_page: 20, sort: "name", direction: "DESC" }), makeFilter: () => ({ gender: { value: "FEMALE", modifier: "EQUALS" }, tags: { value: ["1"], modifier: "INCLUDES_ALL" }, AND: { favorite: true } }) };
 const variables = a.performerVariables(native, 2);
@@ -213,16 +217,23 @@ assert.equal(a.scenesInPeriod(datedScenes, "created_at", datePeriod).length, 0);
 assert.equal(a.scenesInPeriod(datedScenes, "scene_date", [Date.parse("2020-05-01"), Date.parse("2020-05-01")]).length, 1);
 assert.equal(a.scenesInPeriod(datedScenes, "created_at", null).length, 2);
 const stats = a.aggregate(performers, index);
-assert.equal(a.countryPerformers(performers, "").length, 5);
+assert.equal(a.countryPerformers(performers, "").length, 9);
 assert.equal(a.countryPerformers(performers, index.us).length, 2);
 assert.equal(a.countryPerformers(performers, index.fr)[0].id, "3");
 assert.equal(a.countryPerformers(performers, index.jp).length, 0);
-assert.equal(stats.total, 5);
+assert.equal(a.countryName("NA", index), "Namibia");
+assert.equal(a.countryName("N/A", index), null);
+assert.equal(a.countryName("N.A.", index), null);
+assert.equal(a.countryName("-", index), null);
+assert.equal(a.countryName("Unknown", index), null);
+assert.equal(a.countryName("Atlantis", index), null);
+assert.equal(a.countryPerformers(performers, index[a.normalize("NA")]).map(p => p.id).join(","), "6");
+assert.equal(stats.total, 9);
 assert.equal(stats.rows[0].value, 2);
-assert.equal(stats.rows.length, 2);
-assert.equal(stats.missing, 1);
-// Unrecognized country values (e.g. Atlantis) are dropped from the map counts.
-assert.equal(stats.rows.reduce((sum, row) => sum + row.value, 0) + stats.missing, stats.total - 1);
+assert.equal(stats.rows.length, 3);
+assert.equal(stats.missing, 5);
+// Every dropped performer (blank, placeholder, or unrecognized) is counted in missing.
+assert.equal(stats.rows.reduce((sum, row) => sum + row.value, 0) + stats.missing, stats.total);
 for (const lon of [-180, -90, 0, 45, 180]) {
   for (const lat of [-90, -80, -45, 0, 45, 80, 90]) {
     const projected = a.eckertIV.project([lon, lat]);

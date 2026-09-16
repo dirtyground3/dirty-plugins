@@ -307,20 +307,31 @@ def sanitize_folder_name(
     return name[:120].rstrip(" .") or f"{item_kind}-{item_id}"
 
 
-def renamed_destination(path: Path) -> Path:
+def destination_key(path: Path) -> str:
+    """Return a case-insensitive identity for a destination path."""
+    return os.path.normcase(os.path.abspath(str(path)))
+
+
+def renamed_destination(path: Path, planned: set[str] | None = None) -> Path:
     """Return path or the first free `name (N).ext` sibling."""
-    if not path.exists():
+    planned = planned or set()
+    if not path.exists() and destination_key(path) not in planned:
         return path
     stem, suffix = path.stem, path.suffix
     index = 2
     while True:
         candidate = path.with_name(f"{stem} ({index}){suffix}")
-        if not candidate.exists():
+        if not candidate.exists() and destination_key(candidate) not in planned:
             return candidate
         index += 1
 
 
-def resolve_destination(source: Path, requested: Path, policy: str) -> tuple[Path, str]:
+def resolve_destination(
+    source: Path,
+    requested: Path,
+    policy: str,
+    planned: set[str] | None = None,
+) -> tuple[Path, str]:
     """Resolve a collision and return (destination, action)."""
     try:
         if requested.exists() and source.samefile(requested):
@@ -328,24 +339,39 @@ def resolve_destination(source: Path, requested: Path, policy: str) -> tuple[Pat
     except OSError:
         pass
 
-    if not requested.exists():
+    occupied = requested.exists() or destination_key(requested) in (planned or set())
+    if not occupied:
         return requested, "copy"
     if policy == "skip":
         return requested, "skip"
     if policy == "overwrite":
         return requested, "overwrite"
-    return renamed_destination(requested), "rename"
+    return renamed_destination(requested, planned), "rename"
 
 
-def resolve_generated_destination(requested: Path, policy: str) -> tuple[Path, str]:
+def resolve_generated_destination(
+    requested: Path,
+    policy: str,
+    planned: set[str] | None = None,
+) -> tuple[Path, str]:
     """Resolve a collision for generated media without a local source path."""
-    if not requested.exists():
+    occupied = requested.exists() or destination_key(requested) in (planned or set())
+    if not occupied:
         return requested, "extract"
     if policy == "skip":
         return requested, "skip"
     if policy == "overwrite":
         return requested, "overwrite"
-    return renamed_destination(requested), "rename"
+    return renamed_destination(requested, planned), "rename"
+
+
+def reserve_destination(path: Path) -> bool:
+    """Atomically claim an unused destination name across processes."""
+    try:
+        with path.open("xb"):
+            return True
+    except FileExistsError:
+        return False
 
 
 def marker_clip_basename(
@@ -632,6 +658,7 @@ def _copy_resolved_items(
     missing: list[dict[str, str]] = list(initial_missing)
     pending: list[dict[str, Any]] = []
     seen_sources: set[str] = set()
+    planned_destinations: set[str] = set()
     resolved_items = list(items)
     total_requested = sum(requested_counts.values())
 
@@ -694,7 +721,7 @@ def _copy_resolved_items(
             )
             requested_destination = item_destination / basename
             final_destination, action = resolve_generated_destination(
-                requested_destination, policy
+                requested_destination, policy, planned_destinations
             )
             if action == "skip":
                 skipped.append(
@@ -705,6 +732,7 @@ def _copy_resolved_items(
                     }
                 )
                 continue
+            planned_destinations.add(destination_key(final_destination))
             pending.append(
                 {
                     "kind": "marker",
@@ -733,12 +761,15 @@ def _copy_resolved_items(
 
             basename = str(file_info.get("basename") or source.name)
             requested_destination = item_destination / basename
-            final_destination, action = resolve_destination(source, requested_destination, policy)
+            final_destination, action = resolve_destination(
+                source, requested_destination, policy, planned_destinations
+            )
 
             if action in {"skip", "same-file"}:
                 skipped.append({"source": str(source), "reason": action})
                 continue
 
+            planned_destinations.add(destination_key(final_destination))
             pending.append(
                 {
                     "kind": kind,
@@ -773,6 +804,34 @@ def _copy_resolved_items(
         source = item["source_path"]
         final_destination = item["destination_path"]
         file_size = int(item["size"])
+
+        claimed = False
+        if not dry_run and policy != "overwrite":
+            claimed = reserve_destination(final_destination)
+            if not claimed:
+                # Another process claimed the planned name after planning.
+                # Release our reservation and resolve a fresh collision.
+                planned_destinations.discard(destination_key(final_destination))
+                if item["kind"] == "marker":
+                    final_destination, action = resolve_generated_destination(
+                        final_destination, policy, planned_destinations
+                    )
+                else:
+                    final_destination, action = resolve_destination(
+                        source, final_destination, policy, planned_destinations
+                    )
+                if action in {"skip", "same-file"}:
+                    skipped.append({"source": str(source), "reason": action})
+                    continue
+                if not reserve_destination(final_destination):
+                    raise PluginError(
+                        f"Destination {final_destination} was claimed by another "
+                        "process. Re-run the extraction to resolve collisions."
+                    )
+                planned_destinations.add(destination_key(final_destination))
+                claimed = True
+                item["destination_path"] = final_destination
+
         if item["kind"] == "marker":
             reporter.info(
                 f"[{index}/{len(pending)}] Extracting marker {item['marker_id']} "
@@ -786,44 +845,53 @@ def _copy_resolved_items(
             )
 
         if not dry_run:
-            if item["kind"] == "marker" and marker_clip_extractor is None:
-                raise PluginError("Marker clip extraction is unavailable")
-            file_copied = 0
+            try:
+                if item["kind"] == "marker" and marker_clip_extractor is None:
+                    raise PluginError("Marker clip extraction is unavailable")
+                file_copied = 0
 
-            def on_chunk(chunk_size: int) -> None:
-                nonlocal file_copied, last_progress_time
-                file_copied += chunk_size
-                now = time.monotonic()
-                if (
-                    use_byte_progress
-                    and now - last_progress_time >= PROGRESS_INTERVAL_SECONDS
-                ):
-                    denominator = total_bytes or max(len(pending), 1)
-                    numerator = completed_bytes + file_copied
-                    reporter.progress(numerator / denominator)
-                    last_progress_time = now
+                def on_chunk(chunk_size: int) -> None:
+                    nonlocal file_copied, last_progress_time
+                    file_copied += chunk_size
+                    now = time.monotonic()
+                    if (
+                        use_byte_progress
+                        and now - last_progress_time >= PROGRESS_INTERVAL_SECONDS
+                    ):
+                        denominator = total_bytes or max(len(pending), 1)
+                        numerator = completed_bytes + file_copied
+                        reporter.progress(numerator / denominator)
+                        last_progress_time = now
 
-            if item["kind"] == "marker":
-                def on_marker_progress(value: float) -> None:
-                    reporter.progress(
-                        ((index - 1) + min(max(float(value), 0.0), 1.0))
-                        / max(len(pending), 1)
+                if item["kind"] == "marker":
+                    def on_marker_progress(value: float) -> None:
+                        reporter.progress(
+                            ((index - 1) + min(max(float(value), 0.0), 1.0))
+                            / max(len(pending), 1)
+                        )
+
+                    marker_clip_extractor(
+                        source,
+                        final_destination,
+                        float(item["seconds"]),
+                        float(item["end_seconds"]),
+                        on_marker_progress,
                     )
-
-                marker_clip_extractor(
-                    source,
-                    final_destination,
-                    float(item["seconds"]),
-                    float(item["end_seconds"]),
-                    on_marker_progress,
-                )
-            else:
-                copy_file_chunked(
-                    source,
-                    final_destination,
-                    on_chunk,
-                    max_copy_speed_bytes,
-                )
+                else:
+                    copy_file_chunked(
+                        source,
+                        final_destination,
+                        on_chunk,
+                        max_copy_speed_bytes,
+                    )
+            except BaseException:
+                if claimed:
+                    try:
+                        if final_destination.stat().st_size == 0:
+                            final_destination.unlink()
+                    except OSError:
+                        pass
+                raise
 
         completed_bytes += file_size
         if use_byte_progress and total_bytes:

@@ -52,13 +52,27 @@
     return index;
   }
   var countries = countryIndex(world ? world.features : []);
+  function countryPlaceholder(value) {
+    var text = String(value || "").trim().toLowerCase();
+    if (!text) return true;
+    if (text === "unknown" || text === "none" || text === "?") return true;
+    if (/^[-\u2013\u2014]+$/.test(text)) return true;
+    // Only a bare 2-3 letter code may stand in for an ISO code: "N/A" and its
+    // punctuation variants must not collapse into Namibia's "NA".
+    return normalize(text) === "na" && text !== "na";
+  }
+  function countryName(value, index) {
+    var text = String(value || "").trim();
+    if (!text || countryPlaceholder(text)) return null;
+    return index[normalize(text)] || null;
+  }
   function aggregate(performers, index) {
     var counts = Object.create(null);
     var missing = 0;
     performers.forEach(function (p) {
-      if (!String(p.country || "").trim()) { missing++; return; }
-      var country = index[normalize(p.country)];
-      if (country) counts[country] = (counts[country] || 0) + 1;
+      var country = countryName(p.country, index);
+      if (!country) { missing++; return; }
+      counts[country] = (counts[country] || 0) + 1;
     });
     return { rows: Object.keys(counts).map(function (name) { return { name: name, value: counts[name] }; }).sort(function (a, b) { return b.value - a.value || a.name.localeCompare(b.name); }), missing: missing, total: performers.length };
   }
@@ -307,7 +321,7 @@
     return ids.map(function (id) { return byId.get(Number(id)); }).filter(Boolean);
   }
   function countryPerformers(performers, country) {
-    return country ? performers.filter(function (p) { return countries[normalize(p.country)] === country; }) : performers;
+    return country ? performers.filter(function (p) { return countryName(p.country, countries) === country; }) : performers;
   }
   function PerformerCards(props) {
     var state = React.useState(1), page = state[0], setPage = state[1];
@@ -387,7 +401,7 @@
       chart.setOption({ backgroundColor: "#242b31", tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.name + ": " + (Number(p.value) || 0) + " performers"; } }, visualMap: { min: 0, max: Math.max(1, stats.rows.length ? stats.rows[0].value : 0), left: 15, bottom: 15, calculable: false, orient: "horizontal", itemWidth: 8, itemHeight: 70, textGap: 5, padding: 0, text: ["More", "0"], textStyle: { color: "#ddd", fontSize: 10 }, inRange: { color: ["#364655", "#5687a2", "#54d5ca"] } }, series: [{ type: "map", map: "dirtyStatsWorld", projection: eckertIV, zoom: 1.08, layoutCenter: mapLayout(chartNode.current).layoutCenter, layoutSize: mapLayout(chartNode.current).layoutSize, roam: true, selectedMode: "single", select: { label: { color: "#fff" }, itemStyle: { areaColor: "#bc8542" } }, scaleLimit: { min: 1, max: 12 }, label: { show: labels, color: "#fff", fontSize: 10, formatter: function (p) { return Number(p.value) > 0 ? String(p.value) : ""; } }, itemStyle: { borderColor: "#788591", borderWidth: .5 }, emphasis: { label: { show: true, color: "#fff" }, itemStyle: { areaColor: "#bc8542" } }, data: world.features.map(function (feature) { return { name: feature.properties.name, value: counts.get(feature.properties.name) || 0, selected: selectedCountry === feature.properties.name }; }) }] }, true);
     }, [stats, labels, loading, error, selectedCountry]);
     return h("section", { className: "dirty-stats-content" },
-      h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading performers..." : stats.total + " performers \u00b7 " + stats.rows.length + " countries \u00b7 " + stats.missing + " missing country"),
+      h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading performers..." : stats.total + " performers \u00b7 " + stats.rows.length + " countries \u00b7 " + stats.missing + " missing or unrecognized country"),
         h("div", { className: "dirty-stats-actions" },
           h("button", { className: "btn btn-secondary dirty-ui-button", disabled: loading, onClick: function () { setRefresh(refresh + 1); } }, "Refresh"))),
       error ? h("div", { className: "dirty-stats-alert", role: "alert" }, error, " Use Refresh to retry.") : null,
@@ -1147,5 +1161,5 @@
     return h(PageComponent, { filter: props.filter });
   });
   api.patch.before("MainNavBar.UtilityItems", function (props) { return [{ children: h(React.Fragment, null, props.children, h(NavIcon)) }]; });
-  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, orderedCards: orderedCards, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, aggregateStudios: aggregateStudios } };
+  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, orderedCards: orderedCards, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, aggregateStudios: aggregateStudios } };
 })();

@@ -1,9 +1,11 @@
 import importlib.util
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).parents[1] / "plugins" / "DirtyTidy" / "dirty_tidy.py"
@@ -607,6 +609,179 @@ class DirtyTidyTests(unittest.TestCase):
 
         self.assertEqual(settings["automationMode"], "manual")
         self.assertEqual(settings["approvedStrategyHash"], "")
+        self.assertEqual(settings["approvedPlanDigest"], "")
+
+    def test_automation_mode_and_plan_digest_are_normalized(self):
+        digest = "b" * 64
+        settings = dirty_tidy.normalize_settings(
+            {
+                "automationMode": "scan",
+                "approvedStrategyHash": "A" * 64,
+                "approvedPlanDigest": digest.upper(),
+            }
+        )
+
+        self.assertEqual(settings["approvedStrategyHash"], "a" * 64)
+        self.assertEqual(settings["approvedPlanDigest"], digest)
+        self.assertEqual(
+            dirty_tidy.normalize_settings({"approvedPlanDigest": "not-a-digest"})[
+                "approvedPlanDigest"
+            ],
+            "",
+        )
+
+
+class DirtyTidyPlanIntegrityTests(unittest.TestCase):
+    class SnapshotClient:
+        def __init__(self, root, scenes):
+            self.root = root
+            self.scenes = scenes
+            self.moves = []
+
+        def library_snapshot(self):
+            return [str(self.root)], self.scenes
+
+        def move_file(self, operation):
+            self.moves.append(operation)
+            return True
+
+    def _second_scene(self, path, title, scene_id, file_id):
+        value = scene(path, id=scene_id, title=title)
+        value["files"][0]["id"] = file_id
+        return value
+
+    def test_execute_applies_only_operations_from_the_confirmed_preview(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database = root / "dirty_plugins.sqlite3"
+            ready_file = root / "ready.mp4"
+            late_file = root / "late.mp4"
+            ready_file.write_bytes(b"ready")
+
+            ready_scene = scene(ready_file, title="Ready Scene")
+            late_scene = self._second_scene(late_file, "Late Scene", "2", "20")
+            client = self.SnapshotClient(root, [ready_scene, late_scene])
+            settings = {
+                "moveEnabled": False,
+                "renameEnabled": True,
+                "renamePattern": "{title}",
+            }
+
+            with mock.patch.dict(
+                os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}
+            ):
+                preview = dirty_tidy.preview_plan(
+                    client, settings, include_all=True, record_review=True
+                )
+                self.assertEqual(preview["summary"]["ready"], 1)
+                self.assertEqual(preview["summary"]["warnings"], 1)
+
+                # The previously missing file becomes available after the preview.
+                late_file.write_bytes(b"late")
+                result = dirty_tidy.execute_plan(
+                    client, settings, preview["strategy_hash"], dirty_tidy.Reporter()
+                )
+
+            self.assertEqual(result["completed"], 1)
+            self.assertEqual(result["unreviewed"], 1)
+            self.assertEqual(
+                [operation["source_path"] for operation in client.moves],
+                [str(ready_file)],
+            )
+
+    def test_execute_requires_a_recorded_preview(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database = root / "dirty_plugins.sqlite3"
+            source = root / "video.mp4"
+            source.write_bytes(b"video")
+            client = self.SnapshotClient(root, [scene(source)])
+            settings = {
+                "moveEnabled": False,
+                "renameEnabled": True,
+                "renamePattern": "{title}",
+            }
+
+            with mock.patch.dict(
+                os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}
+            ):
+                plan = dirty_tidy.build_plan([str(root)], [scene(source)], settings)
+                with self.assertRaises(dirty_tidy.PluginError):
+                    dirty_tidy.execute_plan(
+                        client, settings, plan["strategy_hash"], dirty_tidy.Reporter()
+                    )
+
+    def test_automation_rejects_a_plan_that_changed_after_approval(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database = root / "dirty_plugins.sqlite3"
+            approved_file = root / "approved.mp4"
+            later_file = root / "later.mp4"
+            approved_file.write_bytes(b"approved")
+
+            approved_scene = scene(approved_file, title="Approved Scene")
+            later_scene = self._second_scene(later_file, "Later Scene", "2", "20")
+            settings = {
+                "moveEnabled": False,
+                "renameEnabled": True,
+                "renamePattern": "{title}",
+                "automationMode": "scan",
+            }
+
+            with mock.patch.dict(
+                os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}
+            ):
+                approved_plan = dirty_tidy.build_plan(
+                    [str(root)], [approved_scene], settings
+                )
+                later_file.write_bytes(b"later")
+                client = self.SnapshotClient(root, [approved_scene, later_scene])
+                settings["approvedStrategyHash"] = approved_plan["strategy_hash"]
+                settings["approvedPlanDigest"] = approved_plan["plan_digest"]
+
+                with self.assertRaises(dirty_tidy.PluginError):
+                    dirty_tidy.execute_plan(
+                        client,
+                        settings,
+                        approved_plan["strategy_hash"],
+                        dirty_tidy.Reporter(),
+                        approved_plan["plan_digest"],
+                    )
+
+    def test_reviewed_plan_round_trips_through_shared_storage(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database = root / "dirty_plugins.sqlite3"
+            source = root / "video.mp4"
+            source.write_bytes(b"video")
+            settings = {
+                "moveEnabled": False,
+                "renameEnabled": True,
+                "renamePattern": "{title}",
+            }
+            plan = dirty_tidy.build_plan([str(root)], [scene(source)], settings)
+
+            with mock.patch.dict(
+                os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}
+            ):
+                self.assertIsNone(
+                    dirty_tidy.load_reviewed_plan(plan["strategy_hash"])
+                )
+                dirty_tidy.save_reviewed_plan(plan)
+                reviewed = dirty_tidy.load_reviewed_plan(plan["strategy_hash"])
+
+            self.assertEqual(
+                reviewed,
+                {
+                    dirty_tidy.operation_key(
+                        next(
+                            operation
+                            for operation in plan["operations"]
+                            if operation["status"] == "ready"
+                        )
+                    )
+                },
+            )
 
 
 if __name__ == "__main__":
