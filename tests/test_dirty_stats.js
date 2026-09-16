@@ -39,6 +39,41 @@ assert.deepEqual(JSON.parse(JSON.stringify(ratingStats.rows)), [{name: "0", valu
 assert.equal(a.aggregateRatings([]).rows.length, 0);
 assert.deepEqual(JSON.parse(JSON.stringify(a.aggregateRatings([{id: "1", rating100: 80}, {id: "2", rating100: 85}, {id: "3", rating100: null}, {id: "4", rating100: 0}, {id: "5", rating100: 80}], 0.5).rows)), [{name: "0", value: 1}, {name: "8", value: 2}, {name: "8.5", value: 1}, {name: "Unrated", value: 1}]);
 assert.deepEqual(JSON.parse(JSON.stringify(a.aggregateRatings([{id: "1", rating100: 80}, {id: "2", rating100: 85}, {id: "3", rating100: null}, {id: "4", rating100: 0}, {id: "5", rating100: 80}], 1).rows)), [{name: "0", value: 1}, {name: "8", value: 2}, {name: "9", value: 1}, {name: "Unrated", value: 1}]);
+const scatter = a.aggregateScatter([
+  {id: "1", name: "Hidden gem", rating100: 90, scene_count: 3},
+  {id: "2", name: "Prolific", rating100: 95, scene_count: 80},
+  {id: "3", name: "Average", rating100: 60, scene_count: 5},
+  {id: "4", name: "Unrated", rating100: null, scene_count: 10},
+  {id: "5", name: "No scenes", rating100: 80, scene_count: null},
+  {id: "1", name: "Hidden gem", rating100: 90, scene_count: 3}
+], 8, 10);
+assert.equal(scatter.total, 5);
+assert.equal(scatter.points.length, 3);
+assert.deepEqual(JSON.parse(JSON.stringify(scatter.points.map(point => [point.id, point.rating, point.scenes, point.highlight]))), [["1", 9, 3, true], ["2", 9.5, 80, false], ["3", 6, 5, false]]);
+assert.equal(scatter.highlights, 1);
+assert.equal(scatter.missingRating, 1);
+assert.equal(scatter.missingScenes, 1);
+assert.equal(a.aggregateScatter([{id: "1", rating100: 50, scene_count: 1}], 0, 0).points[0].highlight, false);
+assert.equal(a.aggregateScatter([], 8, 10).points.length, 0);
+const studios = a.aggregateStudios([
+  {id: "s1", rating100: 90, studio: {id: "1", name: "Alpha"}, files: [{id: "f1", size: 1024}, {id: "f2", size: 1024}]},
+  {id: "s2", rating100: 80, studio: {id: "1", name: "Alpha"}, files: [{id: "f1", size: 1024}]},
+  {id: "s3", rating100: null, studio: {id: "2", name: "Beta"}, files: [{id: "f3", size: 2048}]},
+  {id: "s4", rating100: 60, studio: {id: "1", name: "Alpha"}, files: [{id: "f4", size: null}]},
+  {id: "s5", rating100: 70, studio: null, files: [{id: "f5", size: 512}]},
+  {id: "s1", rating100: 90, studio: {id: "1", name: "Alpha"}, files: [{id: "f1", size: 1024}]}
+]);
+assert.equal(studios.total, 5);
+assert.equal(studios.studios, 2);
+assert.equal(studios.missingStudio, 1);
+assert.equal(studios.missingSizes, 1);
+assert.equal(studios.totalBytes, 5120);
+assert.deepEqual(JSON.parse(JSON.stringify(studios.points.map(point => [point.id, point.name, point.scenes, point.rated, point.unrated]))), [["1", "Alpha", 3, 3, 0], ["2", "Beta", 1, 0, 1]]);
+assert.ok(Math.abs(studios.points[0].rating - 23 / 3) < 1e-9);
+assert.equal(studios.points[1].rating, null);
+assert.equal(studios.points[0].bytes, 3072);
+assert.equal(studios.points[1].bytes, 2048);
+assert.equal(a.aggregateStudios([]).points.length, 0);
 assert.equal(a.roundRating(8.4, 0.5), 8.5);
 assert.equal(a.roundRating(8.5, 1), 9);
 assert.equal(a.sceneRating({rating100: 86}, 0.5), "8.5");
@@ -186,8 +221,8 @@ assert.equal(stats.total, 5);
 assert.equal(stats.rows[0].value, 2);
 assert.equal(stats.rows.length, 2);
 assert.equal(stats.missing, 1);
-assert.equal(stats.unknown.Atlantis, 1);
-assert.equal(stats.rows.reduce((sum, row) => sum + row.value, 0) + stats.missing + Object.values(stats.unknown).reduce((x, y) => x + y, 0), stats.total);
+// Unrecognized country values (e.g. Atlantis) are dropped from the map counts.
+assert.equal(stats.rows.reduce((sum, row) => sum + row.value, 0) + stats.missing, stats.total - 1);
 for (const lon of [-180, -90, 0, 45, 180]) {
   for (const lat of [-90, -80, -45, 0, 45, 80, 90]) {
     const projected = a.eckertIV.project([lon, lat]);

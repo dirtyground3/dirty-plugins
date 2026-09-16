@@ -11,7 +11,9 @@
   var ageRoute = route + "/ages";
   var ratingRoute = route + "/ratings";
   var performerRatingRoute = route + "/performer-ratings";
+  var performerScatterRoute = route + "/performer-scatter";
   var constellationRoute = route + "/constellation";
+  var studioRoute = route + "/studios";
   var agePerformerFilter = null;
   var performerFilterEvent = "dirty-stats:performer-filter";
   // Native filters can remount the scene list; keep its date choice for this session.
@@ -22,6 +24,9 @@
   var constellationMaxPerformers = 100;
   var constellationMinShared = 1;
   var ratingRounding = 0.5;
+  var scatterMinRating = 9;
+  var scatterMaxScenes = 10;
+  var studioMinScenes = 1;
   // Keep the bundled library reference even if another plugin loads ECharts later.
   var charts = window.echarts;
   var world = window.__dirtyStatsWorld;
@@ -49,15 +54,13 @@
   var countries = countryIndex(world ? world.features : []);
   function aggregate(performers, index) {
     var counts = Object.create(null);
-    var unknown = Object.create(null);
     var missing = 0;
     performers.forEach(function (p) {
       if (!String(p.country || "").trim()) { missing++; return; }
       var country = index[normalize(p.country)];
       if (country) counts[country] = (counts[country] || 0) + 1;
-      else unknown[p.country] = (unknown[p.country] || 0) + 1;
     });
-    return { rows: Object.keys(counts).map(function (name) { return { name: name, value: counts[name] }; }).sort(function (a, b) { return b.value - a.value || a.name.localeCompare(b.name); }), missing: missing, unknown: unknown, total: performers.length };
+    return { rows: Object.keys(counts).map(function (name) { return { name: name, value: counts[name] }; }).sort(function (a, b) { return b.value - a.value || a.name.localeCompare(b.name); }), missing: missing, total: performers.length };
   }
   function fullDate(value) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return null;
@@ -112,14 +115,16 @@
   function StatisticSelector(props) {
     var history = api.libraries.ReactRouterDOM.useHistory();
     var bootstrap = api.libraries.Bootstrap, Dropdown = bootstrap.Dropdown;
-    return h(Dropdown, { as: bootstrap.ButtonGroup, className: "sort-by-select dirty-stats-selector", onSelect: function (value) { if (value && value !== props.value) history.push(value === "growth" ? growthRoute : value === "ages" ? ageRoute : value === "ratings" ? ratingRoute : value === "performerRatings" ? performerRatingRoute : value === "constellation" ? constellationRoute : route); } },
-      h(bootstrap.InputGroup.Prepend, null, h(Dropdown.Toggle, { variant: "secondary", id: "dirty-stats-statistic", "aria-label": "Statistic" }, props.value === "growth" ? "Content growth" : props.value === "ages" ? "Age at scene" : props.value === "ratings" ? "Scene ratings" : props.value === "performerRatings" ? "Performer ratings" : props.value === "constellation" ? "Cast constellation" : "Performer origin")),
+    return h(Dropdown, { as: bootstrap.ButtonGroup, className: "sort-by-select dirty-stats-selector", onSelect: function (value) { if (value && value !== props.value) history.push(value === "growth" ? growthRoute : value === "ages" ? ageRoute : value === "ratings" ? ratingRoute : value === "performerRatings" ? performerRatingRoute : value === "performerScatter" ? performerScatterRoute : value === "studios" ? studioRoute : value === "constellation" ? constellationRoute : route); } },
+      h(bootstrap.InputGroup.Prepend, null, h(Dropdown.Toggle, { variant: "secondary", id: "dirty-stats-statistic", "aria-label": "Statistic" }, props.value === "growth" ? "Content growth" : props.value === "ages" ? "Age at scene" : props.value === "ratings" ? "Scene ratings" : props.value === "performerRatings" ? "Performer ratings" : props.value === "performerScatter" ? "Rating vs scenes" : props.value === "studios" ? "Studio value map" : props.value === "constellation" ? "Cast constellation" : "Performer origin")),
       h(Dropdown.Menu, { className: "bg-secondary text-white" },
         h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "origin", active: props.value === "origin" }, "Performer origin"),
         h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "growth", active: props.value === "growth" }, "Content growth"),
         h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "ages", active: props.value === "ages" }, "Age at scene"),
         h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "ratings", active: props.value === "ratings" }, "Scene ratings"),
         h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "performerRatings", active: props.value === "performerRatings" }, "Performer ratings"),
+        h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "performerScatter", active: props.value === "performerScatter" }, "Rating vs scenes"),
+        h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "studios", active: props.value === "studios" }, "Studio value map"),
         h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "constellation", active: props.value === "constellation" }, "Cast constellation")));
   }
   function FilterStatisticSelector(props) {
@@ -381,9 +386,8 @@
       var counts = new Map(stats.rows.map(function (row) { return [row.name, row.value]; }));
       chart.setOption({ backgroundColor: "#242b31", tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.name + ": " + (Number(p.value) || 0) + " performers"; } }, visualMap: { min: 0, max: Math.max(1, stats.rows.length ? stats.rows[0].value : 0), left: 15, bottom: 15, calculable: false, orient: "horizontal", itemWidth: 8, itemHeight: 70, textGap: 5, padding: 0, text: ["More", "0"], textStyle: { color: "#ddd", fontSize: 10 }, inRange: { color: ["#364655", "#5687a2", "#54d5ca"] } }, series: [{ type: "map", map: "dirtyStatsWorld", projection: eckertIV, zoom: 1.08, layoutCenter: mapLayout(chartNode.current).layoutCenter, layoutSize: mapLayout(chartNode.current).layoutSize, roam: true, selectedMode: "single", select: { label: { color: "#fff" }, itemStyle: { areaColor: "#bc8542" } }, scaleLimit: { min: 1, max: 12 }, label: { show: labels, color: "#fff", fontSize: 10, formatter: function (p) { return Number(p.value) > 0 ? String(p.value) : ""; } }, itemStyle: { borderColor: "#788591", borderWidth: .5 }, emphasis: { label: { show: true, color: "#fff" }, itemStyle: { areaColor: "#bc8542" } }, data: world.features.map(function (feature) { return { name: feature.properties.name, value: counts.get(feature.properties.name) || 0, selected: selectedCountry === feature.properties.name }; }) }] }, true);
     }, [stats, labels, loading, error, selectedCountry]);
-    var unmapped = Object.keys(stats.unknown).reduce(function (sum, name) { return sum + stats.unknown[name]; }, 0);
     return h("section", { className: "dirty-stats-content" },
-      h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading performers..." : stats.total + " performers \u00b7 " + stats.rows.length + " countries \u00b7 " + stats.missing + " missing country \u00b7 " + unmapped + " unmapped"),
+      h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading performers..." : stats.total + " performers \u00b7 " + stats.rows.length + " countries \u00b7 " + stats.missing + " missing country"),
         h("div", { className: "dirty-stats-actions" },
           h("button", { className: "btn btn-secondary dirty-ui-button", disabled: loading, onClick: function () { setRefresh(refresh + 1); } }, "Refresh"))),
       error ? h("div", { className: "dirty-stats-alert", role: "alert" }, error, " Use Refresh to retry.") : null,
@@ -396,8 +400,7 @@
           h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-performer-origin.png"); } }, "Export PNG")),
           h("div", { ref: chartNode, className: "dirty-stats-chart", role: "img", "aria-label": "Eckert IV world map of performer counts. Hover a country for its count." })),
         h("p", null, "Click a country to filter performers. Hover for counts; scroll to zoom and drag to pan."),
-        h(PerformerCards, { performers: countryPerformers(performers, selectedCountry), country: selectedCountry, filter: props.filter, clearCountry: function () { setSelectedCountry(""); } }),
-        unmapped > 0 ? h("details", null, h("summary", null, "Unmapped country values (" + unmapped + ")"), h("ul", null, Object.keys(stats.unknown).sort().map(function (name) { return h("li", { key: name }, name + ": " + stats.unknown[name]); }))) : null) : null);
+        h(PerformerCards, { performers: countryPerformers(performers, selectedCountry), country: selectedCountry, filter: props.filter, clearCountry: function () { setSelectedCountry(""); } })) : null);
   }
   function SceneCards(props) {
     var state = React.useState(1), page = state[0], setPage = state[1];
@@ -815,6 +818,62 @@
     });
     return { total: seen.size, rows: Array.from(counts, function (item) { return { name: item[0], value: item[1] }; }).sort(function (a, b) { return a.name === "Unrated" ? 1 : b.name === "Unrated" ? -1 : Number(a.name) - Number(b.name); }) };
   }
+  function scatterBound(value) {
+    var number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : null;
+  }
+  function aggregateScatter(performers, minRating, maxScenes) {
+    var floor = scatterBound(minRating), ceiling = scatterBound(maxScenes);
+    var hasBounds = floor != null || ceiling != null;
+    var seen = new Set(), points = [], missingRating = 0, missingScenes = 0;
+    performers.forEach(function (performer) {
+      var id = String(performer.id == null ? "" : performer.id);
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      var rating = ratingNumber(performer);
+      var scenes = performer.scene_count == null || performer.scene_count === "" ? NaN : Number(performer.scene_count);
+      if (rating == null) { missingRating++; return; }
+      if (!Number.isFinite(scenes) || scenes < 0) { missingScenes++; return; }
+      var highlight = hasBounds && (floor == null || rating >= floor) && (ceiling == null || scenes <= ceiling);
+      points.push({ id: id, name: String(performer.name || "Performer #" + id), rating: rating, scenes: scenes, highlight: highlight });
+    });
+    return { points: points, total: seen.size, missingRating: missingRating, missingScenes: missingScenes, highlights: points.filter(function (point) { return point.highlight; }).length };
+  }
+  function studioSymbolSize(bytes, maxBytes) {
+    if (!(maxBytes > 0) || !(bytes > 0)) return 10;
+    return 10 + 34 * Math.sqrt(bytes / maxBytes);
+  }
+  function studioSeriesData(points, maxBytes, selected) {
+    return points.map(function (point) {
+      var active = point.id === selected;
+      return { id: point.id, name: point.name, bytes: point.bytes, unrated: point.unrated, value: [point.scenes, Math.round(point.rating * 10) / 10], symbolSize: studioSymbolSize(point.bytes, maxBytes), itemStyle: { color: "#54d5ca", opacity: .8, borderColor: active ? "#fff" : "transparent", borderWidth: active ? 2 : 0 } };
+    });
+  }
+  function aggregateStudios(scenes) {
+    var seen = new Set(), studios = new Map(), missingStudio = 0, missingSizes = 0;
+    scenes.forEach(function (scene) {
+      if (seen.has(scene.id)) return;
+      seen.add(scene.id);
+      if (!scene.studio || scene.studio.id == null || !String(scene.studio.name || "").trim()) { missingStudio++; return; }
+      var id = String(scene.studio.id);
+      if (!studios.has(id)) studios.set(id, { id: id, name: String(scene.studio.name), scenes: 0, rated: 0, ratingSum: 0, bytes: 0 });
+      var entry = studios.get(id);
+      entry.scenes++;
+      var rating = ratingNumber(scene);
+      if (rating != null) { entry.rated++; entry.ratingSum += rating; }
+      var files = new Set();
+      (scene.files || []).forEach(function (file) {
+        if (file.id != null) { if (files.has(file.id)) return; files.add(file.id); }
+        var size = file.size == null || file.size === "" ? NaN : Number(file.size);
+        if (!Number.isFinite(size) || size < 0) { missingSizes++; return; }
+        entry.bytes += size;
+      });
+    });
+    var points = Array.from(studios.values()).map(function (entry) {
+      return { id: entry.id, name: entry.name, scenes: entry.scenes, rated: entry.rated, unrated: entry.scenes - entry.rated, rating: entry.rated ? entry.ratingSum / entry.rated : null, bytes: entry.bytes };
+    }).sort(function (a, b) { return b.scenes - a.scenes || a.name.localeCompare(b.name); });
+    return { points: points, total: seen.size, studios: points.length, missingStudio: missingStudio, missingSizes: missingSizes, totalBytes: points.reduce(function (sum, point) { return sum + point.bytes; }, 0) };
+  }
   function RatingPage(props) {
     var performerMode = Boolean(props.performerMode), entity = performerMode ? "performers" : "scenes", title = performerMode ? "Performer ratings" : "Scene ratings";
     var variables = performerMode ? performerVariables : sceneVariables;
@@ -874,11 +933,160 @@
         h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Pie chart of distinct " + entity + " by rating out of ten, including unrated " + entity + "." })) : null,
       !loading && !error ? h(React.Fragment, null, selected != null ? h("p", { role: "status" }, selected === "Unrated" ? "Unrated " + entity : title + ": " + selected + "/10") : null, performerMode ? h(PerformerCards, { performers: matching, filter: props.filter }) : h(SceneCards, { scenes: matching, filter: props.filter })) : null);
   }
+  function scatterSeriesData(stats, selected) {
+    return stats.points.map(function (point) {
+      var active = point.id === selected;
+      return { id: point.id, name: point.name, value: [point.rating, point.scenes], itemStyle: { color: point.highlight ? "#f3c779" : "#54d5ca", opacity: .85, borderColor: active ? "#fff" : "transparent", borderWidth: active ? 2 : 0 } };
+    });
+  }
+  function PerformerScatterPage(props) {
+    var dataState = React.useState([]), performers = dataState[0], setPerformers = dataState[1];
+    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
+    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
+    var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
+    var minState = React.useState(function () { return scatterMinRating; }), minRating = minState[0], setMinRating = minState[1];
+    var maxState = React.useState(function () { return scatterMaxScenes; }), maxScenes = maxState[0], setMaxScenes = maxState[1];
+    var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
+    var node = React.useRef(null), chartRef = React.useRef(null);
+    var queryKey = JSON.stringify(performerVariables(props.filter, 1));
+    var stats = React.useMemo(function () { return aggregateScatter(performers, minRating, maxScenes); }, [performers, minRating, maxScenes]);
+    React.useEffect(function () { setSelected(null); }, [queryKey, minRating, maxScenes]);
+    React.useEffect(function () {
+      var controller = new AbortController();
+      setLoading(true); setError("");
+      (async function () {
+        var result = [], page = 1, total;
+        do {
+          var data = await hub.graphql("query DirtyStatsPerformerScatter($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name rating100 scene_count}}}", performerVariables(props.filter, page), { signal: controller.signal });
+          if (controller.signal.aborted) return;
+          var batch = data.findPerformers; total = batch.count;
+          if (!batch.performers.length && result.length < total) throw new Error("The performer list changed while loading. Refresh to try again.");
+          result = result.concat(batch.performers); page++;
+        } while (result.length < total);
+        if (!controller.signal.aborted) { setPerformers(result); setLoading(false); }
+      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
+      return function () { controller.abort(); };
+    }, [queryKey, refresh]);
+    React.useEffect(function () {
+      if (loading || error || !node.current || !stats.points.length) return;
+      var chart, observer;
+      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
+      try {
+        if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
+        chart = charts.init(node.current, null, { renderer: "canvas" }); chartRef.current = chart;
+        chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
+        chart.setOption({ backgroundColor: "#242b31", grid: { left: 12, right: 24, top: 22, bottom: 60, containLabel: true },
+          tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.data.name + "\nRating " + p.value[0] + "/10\n" + p.value[1] + " scene" + (p.value[1] === 1 ? "" : "s"); } },
+          xAxis: { type: "value", name: "Rating (out of 10)", nameLocation: "middle", nameGap: 28, min: 0, max: 10, nameTextStyle: { color: "#bbb" }, axisLabel: { color: "#bbb" }, axisLine: { lineStyle: { color: "#788591" } }, splitLine: { lineStyle: { color: "#364655" } } },
+          yAxis: { type: "value", name: "Scenes", nameLocation: "middle", nameGap: 45, min: 0, minInterval: 1, nameTextStyle: { color: "#bbb" }, axisLabel: { color: "#bbb" }, splitLine: { lineStyle: { color: "#364655" } } },
+          series: [{ type: "scatter", symbolSize: 9, progressive: 4000, data: scatterSeriesData(stats, selected),
+            markLine: { silent: true, symbol: "none", label: { color: "#ddd", fontSize: 10 }, lineStyle: { color: "#f3c779", type: "dashed" }, data: (minRating > 0 ? [{ xAxis: minRating, label: { formatter: "Rating " + minRating + "+" } }] : []).concat(maxScenes > 0 ? [{ yAxis: maxScenes, label: { formatter: maxScenes + " scenes" } }] : []) } }] });
+        setChartError("");
+        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
+        window.addEventListener("resize", resize);
+      } catch (err) { setChartError(err.message); }
+      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+    }, [stats, loading, error]);
+    React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: scatterSeriesData(stats, selected) }] }); }, [selected, stats, loading, error]);
+    var matching = React.useMemo(function () { return selected == null ? stats.points : stats.points.filter(function (point) { return point.id === selected; }); }, [stats, selected]);
+    return h("section", { className: "dirty-stats-content" },
+      h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading performers..." : stats.points.length + " rated performers \u00b7 " + stats.highlights + " high rating, few scenes"),
+        h("button", { className: "btn btn-secondary dirty-ui-button", disabled: loading, onClick: function () { setRefresh(refresh + 1); } }, "Refresh")),
+      error ? h("div", { className: "dirty-stats-alert", role: "alert" }, error, " Use Refresh to retry.") : null,
+      !loading && !error && stats.points.length ? h("section", { className: "dirty-stats-map-panel dirty-ui-panel", "aria-label": "Performer rating versus scene count" },
+        h("div", { className: "dirty-stats-map-controls" },
+          selected != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all performers") : null,
+          h("label", { className: "dirty-stats-date-basis" }, "Minimum rating",
+            h("select", { className: "form-control dirty-stats-statistic", value: minRating, onChange: function (event) { scatterMinRating = Number(event.target.value); setMinRating(scatterMinRating); } },
+              [0, 5, 6, 7, 8, 9].map(function (value) { return h("option", { key: value, value: value }, value ? value + "+" : "Any"); }))),
+          h("label", { className: "dirty-stats-date-basis" }, "Maximum scenes",
+            h("select", { className: "form-control dirty-stats-statistic", value: maxScenes, onChange: function (event) { scatterMaxScenes = Number(event.target.value); setMaxScenes(scatterMaxScenes); } },
+              [0, 5, 10, 20, 50, 100].map(function (value) { return h("option", { key: value, value: value }, value ? value : "Any"); }))),
+          h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: loading || Boolean(error) || Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-rating-vs-scenes.png"); } }, "Export PNG")),
+        h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Scatter plot of performer rating out of ten versus number of scenes. Highlighted points have a high rating and few scenes." })) : null,
+      chartError ? h("div", { className: "dirty-stats-alert", role: "alert" }, chartError) : null,
+      !loading && !error && !stats.points.length ? h("p", { role: "status" }, "No rated performers match these filters.") : null,
+      h("p", null, "Each dot is a distinct performer: rating out of ten on the x-axis and scene count on the y-axis. The upper-left corner holds promising performers with a high rating and few scenes; highlighted dots meet both limits. Click a dot to show that performer below."),
+      !loading && !error && (stats.missingRating || stats.missingScenes) ? h("p", { role: "status" }, stats.missingRating + " performers without a rating and " + stats.missingScenes + " with an unavailable scene count were omitted.") : null,
+      !loading && !error ? h(PerformerCards, { performers: matching, filter: props.filter, title: selected == null ? "Performers" : "Selected performer", selection: selected, clearSelection: function () { setSelected(null); }, clearLabel: "Show all performers" }) : null);
+  }
+  function StudioValuePage(props) {
+    var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
+    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
+    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
+    var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
+    var minState = React.useState(function () { return studioMinScenes; }), minScenes = minState[0], setMinScenes = minState[1];
+    var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
+    var node = React.useRef(null), chartRef = React.useRef(null);
+    var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
+    var stats = React.useMemo(function () { return aggregateStudios(scenes); }, [scenes]);
+    var points = React.useMemo(function () { return stats.points.filter(function (point) { return point.rating != null && point.scenes >= minScenes; }); }, [stats, minScenes]);
+    var maxBytes = React.useMemo(function () { return points.reduce(function (max, point) { return Math.max(max, point.bytes); }, 0); }, [points]);
+    var selectedStudio = React.useMemo(function () { return selected == null ? null : stats.points.find(function (point) { return point.id === selected; }); }, [stats, selected]);
+    var matching = React.useMemo(function () { return selected == null ? scenes : scenes.filter(function (scene) { return scene.studio && String(scene.studio.id) === selected; }); }, [scenes, selected]);
+    React.useEffect(function () { setSelected(null); }, [queryKey, minScenes]);
+    React.useEffect(function () {
+      var controller = new AbortController();
+      setLoading(true); setError("");
+      (async function () {
+        var result = [], page = 1, total;
+        do {
+          var data = await hub.graphql("query DirtyStatsStudios($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100 studio{id name} files{id size}}}}", sceneVariables(props.filter, page), { signal: controller.signal });
+          if (controller.signal.aborted) return;
+          var batch = data.findScenes; total = batch.count;
+          if (!batch.scenes.length && result.length < total) throw new Error("The scene list changed while loading. Refresh to try again.");
+          result = result.concat(batch.scenes); page++;
+        } while (result.length < total);
+        if (!controller.signal.aborted) { setScenes(result); setLoading(false); }
+      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
+      return function () { controller.abort(); };
+    }, [queryKey, refresh]);
+    React.useEffect(function () {
+      if (loading || error || !node.current || !points.length) return;
+      var chart, observer;
+      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
+      try {
+        if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
+        chart = charts.init(node.current, null, { renderer: "canvas" }); chartRef.current = chart;
+        chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
+        chart.setOption({ backgroundColor: "#242b31", grid: { left: 12, right: 24, top: 22, bottom: 60, containLabel: true },
+          tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.data.name + "\n" + p.value[0] + " scene" + (p.value[0] === 1 ? "" : "s") + "\nAverage rating " + p.value[1].toFixed(1) + "/10\n" + formatBytes(p.data.bytes) + (p.data.unrated ? "\n" + p.data.unrated + " unrated" : ""); } },
+          xAxis: { type: "value", name: "Scenes", nameLocation: "middle", nameGap: 28, min: 0, minInterval: 1, nameTextStyle: { color: "#bbb" }, axisLabel: { color: "#bbb" }, axisLine: { lineStyle: { color: "#788591" } }, splitLine: { lineStyle: { color: "#364655" } } },
+          yAxis: { type: "value", name: "Average rating (out of 10)", nameLocation: "middle", nameGap: 45, min: 0, max: 10, nameTextStyle: { color: "#bbb" }, axisLabel: { color: "#bbb" }, splitLine: { lineStyle: { color: "#364655" } } },
+          series: [{ type: "scatter", data: studioSeriesData(points, maxBytes, selected), emphasis: { itemStyle: { borderColor: "#fff", borderWidth: 2 } } }] });
+        setChartError("");
+        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
+        window.addEventListener("resize", resize);
+      } catch (err) { setChartError(err.message); }
+      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+    }, [points, maxBytes, loading, error]);
+    React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: studioSeriesData(points, maxBytes, selected) }] }); }, [selected, points, maxBytes, loading, error]);
+    var unratedStudios = stats.points.filter(function (point) { return point.rating == null; }).length;
+    return h("section", { className: "dirty-stats-content" },
+      h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading scenes..." : points.length + " studios \u00b7 " + stats.total + " matching scenes \u00b7 " + formatBytes(stats.totalBytes)),
+        h("button", { className: "btn btn-secondary dirty-ui-button", disabled: loading, onClick: function () { setRefresh(refresh + 1); } }, "Refresh")),
+      error ? h("div", { className: "dirty-stats-alert", role: "alert" }, error, " Use Refresh to retry.") : null,
+      !loading && !error && points.length ? h("section", { className: "dirty-stats-map-panel dirty-ui-panel", "aria-label": "Studio scene count versus average rating" },
+        h("div", { className: "dirty-stats-map-controls" },
+          selected != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all scenes") : null,
+          h("label", { className: "dirty-stats-date-basis" }, "Minimum scenes",
+            h("select", { className: "form-control dirty-stats-statistic", value: minScenes, onChange: function (event) { studioMinScenes = Number(event.target.value); setMinScenes(studioMinScenes); } },
+              [1, 2, 5, 10, 20].map(function (value) { return h("option", { key: value, value: value }, value === 1 ? "All" : value); }))),
+          h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: loading || Boolean(error) || Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-studio-value.png"); } }, "Export PNG")),
+        h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Scatter plot of studio scene count versus average scene rating. Bubble size represents total file size." })) : null,
+      chartError ? h("div", { className: "dirty-stats-alert", role: "alert" }, chartError) : null,
+      !loading && !error && !points.length ? h("p", { role: "status" }, "No rated studios match these filters.") : null,
+      h("p", null, "Each bubble is a studio: scene count on the x-axis, average scene rating out of ten on the y-axis, and bubble size representing total file size. Highly rated studios with few scenes appear near the upper left. Click a bubble to show that studio's scenes below."),
+      !loading && !error && (stats.missingStudio || unratedStudios || stats.missingSizes) ? h("p", { role: "status" }, stats.missingStudio + " scenes without a studio, " + unratedStudios + " studios without a rated scene and " + stats.missingSizes + " files with an unavailable size were omitted.") : null,
+      !loading && !error ? h(SceneCards, { scenes: matching, filter: props.filter, title: selectedStudio ? "Scenes by " + selectedStudio.name : "Scenes", selection: selected, clearSelection: function () { setSelected(null); }, clearLabel: "Show all scenes" }) : null);
+  }
   function DirtyStatsRoute() {
     var page = React.useRef(null);
     var location = api.libraries.ReactRouterDOM.useLocation();
-    var statistic = location.pathname === constellationRoute ? "constellation" : location.pathname === performerRatingRoute ? "performerRatings" : location.pathname === ratingRoute ? "ratings" : location.pathname === ageRoute ? "ages" : location.pathname === growthRoute ? "growth" : "origin";
-    var sceneView = statistic !== "origin" && statistic !== "performerRatings";
+    var statistic = location.pathname === performerScatterRoute ? "performerScatter" : location.pathname === studioRoute ? "studios" : location.pathname === constellationRoute ? "constellation" : location.pathname === performerRatingRoute ? "performerRatings" : location.pathname === ratingRoute ? "ratings" : location.pathname === ageRoute ? "ages" : location.pathname === growthRoute ? "growth" : "origin";
+    var sceneView = statistic !== "origin" && statistic !== "performerRatings" && statistic !== "performerScatter";
     var state = React.useState(false), ready = state[0], setReady = state[1];
     var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
     React.useEffect(function () {
@@ -922,14 +1130,22 @@
     var args = Array.prototype.slice.call(arguments), next = args.pop(), props = args[0];
     if (window.location.pathname === ageRoute && props && props.extraCriteria && props.extraCriteria.dirtyStatsAgeFilters) return h(PerformerFilterCapture, { filter: props.filter });
     if (window.location.pathname === performerRatingRoute && props && props.extraCriteria && props.extraCriteria.dirtyStats) return h(RatingPage, { filter: props.filter, performerMode: true });
+    if (window.location.pathname === performerScatterRoute && props && props.extraCriteria && props.extraCriteria.dirtyStats) return h(PerformerScatterPage, { filter: props.filter });
     if (window.location.pathname !== route || !props || !props.extraCriteria || !props.extraCriteria.dirtyStats) return next.apply(null, args);
     return h(StatsPage, { filter: props.filter });
   });
   api.patch.instead("SceneList", function () {
     var args = Array.prototype.slice.call(arguments), next = args.pop(), props = args[0];
-    if ((window.location.pathname !== growthRoute && window.location.pathname !== ageRoute && window.location.pathname !== ratingRoute && window.location.pathname !== constellationRoute) || !props || !props.filter) return next.apply(null, args);
-    return h(window.location.pathname === constellationRoute ? ConstellationPage : window.location.pathname === ratingRoute ? RatingPage : window.location.pathname === ageRoute ? AgePage : GrowthPage, { filter: props.filter });
+    var pages = {};
+    pages[constellationRoute] = ConstellationPage;
+    pages[ratingRoute] = RatingPage;
+    pages[ageRoute] = AgePage;
+    pages[growthRoute] = GrowthPage;
+    pages[studioRoute] = StudioValuePage;
+    var PageComponent = pages[window.location.pathname];
+    if (!PageComponent || !props || !props.filter) return next.apply(null, args);
+    return h(PageComponent, { filter: props.filter });
   });
   api.patch.before("MainNavBar.UtilityItems", function (props) { return [{ children: h(React.Fragment, null, props.children, h(NavIcon)) }]; });
-  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, orderedCards: orderedCards, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV } };
+  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, orderedCards: orderedCards, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, aggregateStudios: aggregateStudios } };
 })();

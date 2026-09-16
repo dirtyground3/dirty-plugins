@@ -2,8 +2,8 @@
 
 Explore Stash statistics from the **pie chart icon** in the utility navigation.
 The statistic selector offers **Performer origin**, **Content growth**,
-**Age at scene**, **Scene ratings**, **Performer ratings**, and
-**Cast constellation**.
+**Age at scene**, **Scene ratings**, **Performer ratings**,
+**Rating vs scenes**, **Studio value map**, and **Cast constellation**.
 
 **Cast constellation** uses native scene filters and their saved defaults to
 build a force-directed performer network. Node size represents the number of
@@ -29,6 +29,27 @@ have a separate slice, and the shared **Rating rounding** control adjusts how
 many slices the pie is split into. Selecting a slice filters the native
 performer cards below, with at most five per row; clicking again clears it.
 PNG export is available inside the chart.
+
+**Rating vs scenes** is a scatter plot using native performer filters and their
+saved defaults. Each dot is a distinct performer: the x-axis is the performer's
+rating out of ten and the y-axis is their scene count, so the upper-left corner
+holds promising performers with a high rating and few scenes. **Minimum rating**
+and **Maximum scenes** outline that region with dashed guide lines and highlight
+the dots that meet both limits; they start at **9+** and **10** scenes and either
+can be set to **Any**. Click a dot to show
+that performer below, or click it again to clear the selection. Unrated
+performers and performers without a scene count are omitted and reported.
+PNG export is available inside the chart.
+
+**Studio value map** is a scatter plot using native scene filters and their saved
+defaults. Each bubble is a studio: the x-axis is its number of matching scenes,
+the y-axis is the average rating out of ten of its rated scenes, and bubble size
+represents the total size of its matching files. Highly rated studios with few
+scenes appear near the upper left. **Minimum scenes** hides smaller studios;
+scenes without a studio, studios with no rated scene, and files with an
+unavailable size are omitted and reported. Click a bubble to show that studio's
+scenes below, or click it again to clear the selection. PNG export is available
+inside the chart.
 
 **Scene ratings** uses native scene filters and saved defaults to count distinct
 scenes by their rating out of ten; unrated scenes are included separately.
@@ -128,9 +149,8 @@ Performers filter. Explicit URL filters override that default, as on the
 Performers page.
 
 **Export PNG**, inside the map, saves the displayed map, including its current zoom and labels.
-Missing or unrecognized country values are reported separately,
-never assigned to a guessed country. Natural Earth's 1:110m boundaries omit some
-small territories; those values appear in the unmapped report. Country metadata
+Performers without a country are omitted from the map and reported as **missing
+country**; values are never assigned to a guessed country. Country metadata
 is interpreted as a single country, not split into guessed multiple origins.
 
 Install DirtyStats and its **DirtyPlugins** dependency from the package source,
