@@ -656,6 +656,7 @@ def _copy_resolved_items(
     copied: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
     missing: list[dict[str, str]] = list(initial_missing)
+    failed: list[dict[str, str]] = []
     pending: list[dict[str, Any]] = []
     seen_sources: set[str] = set()
     planned_destinations: set[str] = set()
@@ -884,14 +885,28 @@ def _copy_resolved_items(
                         on_chunk,
                         max_copy_speed_bytes,
                     )
-            except BaseException:
+            except BaseException as exc:
                 if claimed:
                     try:
                         if final_destination.stat().st_size == 0:
                             final_destination.unlink()
                     except OSError:
                         pass
-                raise
+                if not isinstance(exc, Exception):
+                    # Never swallow KeyboardInterrupt/SystemExit.
+                    raise
+                # A single unreadable source or failed copy must not discard the
+                # items already completed in this run.
+                reporter.error(f"[{index}/{len(pending)}] Failed {source}: {exc}")
+                failed.append(
+                    {
+                        "source": str(source),
+                        "destination": str(final_destination),
+                        "kind": str(item["kind"]),
+                        "error": str(exc),
+                    }
+                )
+                continue
 
         completed_bytes += file_size
         if use_byte_progress and total_bytes:
@@ -911,7 +926,7 @@ def _copy_resolved_items(
     reporter.progress(1.0)
     reporter.info(
         f"DirtyFileExtractor finished: {len(copied)} copied, {len(skipped)} skipped, "
-        f"{len(missing)} missing"
+        f"{len(missing)} missing, {len(failed)} failed"
     )
 
     return {
@@ -926,9 +941,11 @@ def _copy_resolved_items(
         ),
         "files_skipped": len(skipped),
         "files_missing": len(missing),
+        "files_failed": len(failed),
         "copied": copied,
         "skipped": skipped,
         "missing": missing,
+        "failed": failed,
     }
 
 

@@ -69,7 +69,26 @@ const window = {
   },
 };
 
-const context = vm.createContext({ window, console });
+const observations = [];
+let observersConstructed = 0;
+
+class FakeMutationObserver {
+  constructor(callback) {
+    observersConstructed += 1;
+    this.callback = callback;
+    this.disconnected = false;
+  }
+
+  observe(target, options) {
+    observations.push({ target, options, observer: this });
+  }
+
+  disconnect() {
+    this.disconnected = true;
+  }
+}
+
+const context = vm.createContext({ window, console, MutationObserver: FakeMutationObserver });
 const source = fs.readFileSync(
   path.join(__dirname, "..", "plugins", "DirtyMultiscreen", "multiscreen.js"),
   "utf8"
@@ -111,6 +130,23 @@ async function main() {
   assert.equal(a.normalizeSettings({ markerDuration: 10000 }).markerDuration, 600);
   assert.equal(a.normalizeSettings({ randomize: "false" }).randomize, false);
   assert.equal(a.normalizeSettings({ pauseWhenHidden: "invalid" }).pauseWhenHidden, true);
+
+  // Tile observers watch the mounted video/player subtree and must disconnect on
+  // cleanup so Stash asset reloads do not leak observers.
+  {
+    const tile = { id: "tile-1" };
+    let fired = 0;
+    const observer = a.observeSubtree(tile, () => { fired += 1; });
+
+    assert.equal(observersConstructed, 1);
+    assert.equal(observations.length, 1);
+    assert.equal(observations[0].target, tile);
+    assert.deepEqual(plain(observations[0].options), { childList: true, subtree: true });
+    observer.callback();
+    assert.equal(fired, 1);
+    observer.disconnect();
+    assert.equal(observer.disconnected, true);
+  }
 
   const items = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }, { id: "e" }];
   const reused = a.createMultiscreenPlaylists(items, 3, false, false);

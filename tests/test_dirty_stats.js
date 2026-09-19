@@ -28,6 +28,7 @@ const context = {
     clearTimeout: (handle) => clearTimeout(handle)
   },
   Intl,
+  URLSearchParams,
   console,
   setTimeout,
   clearTimeout
@@ -61,6 +62,27 @@ assert.deepEqual(JSON.parse(JSON.stringify(strongConstellation.links.map(link =>
 assert.deepEqual(JSON.parse(JSON.stringify(a.constellationScenes(constellationSource, {ids: ["a", "b"]}).map(scene => scene.id))), ["s1", "s2"]);
 assert.deepEqual(JSON.parse(JSON.stringify(a.constellationScenes(constellationSource, {ids: ["d"]}).map(scene => scene.id))), ["s4"]);
 assert.equal(a.constellationScenes(constellationSource, null).length, 4);
+// Large constellations: the node cap bounds nodes and links, and only visible
+// performers may form edges.
+const largeScene = { id: "big", performers: Array.from({ length: 6 }, (_, index) => ({ id: "p" + index, name: "P" + index })) };
+const large = a.aggregateConstellation([largeScene], 100, 1);
+assert.equal(large.nodes.length, 6);
+assert.equal(large.totalPerformers, 6);
+assert.equal(large.totalScenes, 1);
+assert.equal(large.links.length, 15, "six performers in one scene form C(6,2) pairs");
+assert.equal(large.nodes.every(node => node.collaborators === 5), true);
+const capped = a.aggregateConstellation([largeScene], 3, 1);
+assert.equal(capped.nodes.length, 3, "maximum performers caps the node set");
+assert.equal(capped.totalPerformers, 6, "the cap must not change the reported total");
+assert.equal(capped.links.length, 3, "only visible performers form links");
+assert.equal(a.aggregateConstellation([{ id: "dup", performers: [{ id: "a", name: "A" }, { id: "a", name: "A" }] }], 100, 1).nodes[0].value, 1, "a repeated performer counts once per scene");
+const sharedPairs = [
+  { id: "x", performers: [{ id: "a", name: "A" }, { id: "b", name: "B" }] },
+  { id: "y", performers: [{ id: "a", name: "A" }, { id: "b", name: "B" }] },
+  { id: "z", performers: [{ id: "a", name: "A" }, { id: "c", name: "C" }] }
+];
+assert.deepEqual(JSON.parse(JSON.stringify(a.aggregateConstellation(sharedPairs, 100, 2).links.map(link => [link.source, link.target, link.value]))), [["a", "b", 2]], "minimum shared scenes filters weaker links");
+assert.deepEqual(JSON.parse(JSON.stringify(a.aggregateConstellation([], 100, 1).nodes)), []);
 const ratingStats = a.aggregateRatings([{id: "1", rating100: 80}, {id: "2", rating100: 85}, {id: "3", rating100: null}, {id: "4", rating100: 0}, {id: "1", rating100: 80}, {id: "5", rating100: 80}]);
 assert.equal(ratingStats.total, 5);
 assert.deepEqual(JSON.parse(JSON.stringify(ratingStats.rows)), [{name: "0", value: 1}, {name: "8", value: 2}, {name: "8.5", value: 1}, {name: "Unrated", value: 1}]);
@@ -246,6 +268,22 @@ assert.equal(variables.filter.sort, "name");
 assert.equal(variables.filter.direction, "DESC");
 assert.equal(a.performerVariables({makeFindFilter: () => ({sort: "random_123", direction: "ASC"}), makeFilter: () => ({})}, 1).filter.sort, "random_123");
 assert.deepEqual(Array.from(a.orderedCards([{id: "1"}, {id: "3"}, {id: "2"}], [3, 2, 1]), card => card.id), ["3", "2", "1"]);
+assert.deepEqual(Array.from(a.orderedCards([], [1, 2])), [], "no fetched cards yields an empty list");
+assert.equal(a.orderedCards([{id: "1"}, {id: "2"}], []).length, 0);
+assert.deepEqual(Array.from(a.orderedCards([{id: "1"}, {id: "2"}], [1, 2]), card => card.id), ["1", "2"], "requested order is preserved");
+assert.deepEqual(Array.from(a.orderedCards([{id: "1"}], [1, 1]), card => card.id), ["1", "1"], "duplicate requests are preserved");
+assert.deepEqual(Array.from(a.orderedCards([{id: "1"}, {id: "2"}], [2]), card => card.id), ["2"], "unrequested cards are dropped");
+assert.deepEqual(Array.from(a.orderedCards([{id: "1"}], [2])), [], "missing ids are dropped");
+assert.deepEqual(Array.from(a.orderedCards([{id: "1"}], ["xyz"])), [], "non-numeric requests cannot match a numeric card");
+assert.deepEqual(Array.from(a.orderedCards([{id: "abc"}], ["abc"]), card => card.id), ["abc"], "non-numeric ids match by string");
+assert.deepEqual(Array.from(a.orderedCards([{id: "abc"}, {id: "def"}], ["abc"]), card => card.id), ["abc"], "distinct non-numeric ids do not collide");
+assert.deepEqual(Array.from(a.orderedCards([{id: "42"}], [42]), card => card.id), ["42"], "numeric requests match string ids");
+assert.equal(a.docsCaptureEnabled("?docsCapture=1"), true);
+assert.equal(a.docsCaptureEnabled("?foo=bar&docsCapture=1"), true);
+assert.equal(a.docsCaptureEnabled("?docsCapture=0"), false);
+assert.equal(a.docsCaptureEnabled("?docsCapture"), false);
+assert.equal(a.docsCaptureEnabled(""), false);
+assert.equal(a.docsCaptureEnabled(undefined), false);
 assert.equal(variables.performerFilter.gender.value, "FEMALE");
 assert.equal(variables.performerFilter.AND.favorite, true);
 assert.equal(variables.performerFilter.tags.value[0], "1");

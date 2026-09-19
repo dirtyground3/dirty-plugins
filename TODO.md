@@ -232,27 +232,8 @@ All remaining items are open.
   - Split data fetching / option building / presentation; merge
     `resolve_destination` and `resolve_generated_destination`.
 
-## Test gaps (highest value)
-
-- [ ] Extractor: partial failures, `samefile`, and dry-run planning
-      (collision policies and duplicate basenames are covered).
-- [ ] Multiscreen: React player/observer behavior (pure algorithms, playlists,
-      query variables, launch context, session storage and the
-      re-registration guard are covered).
-- [ ] DirtyTidy: all-failed exit behavior, reserved-name folders, empty
-      hierarchy levels, case-only renames, cp1252 stdin (preview->execute
-      plan integrity is covered).
-- [ ] Storage: migration from version 0/older/newer and corrupt JSON rows
-      (concurrent writers and `expected_revision` semantics are covered).
-- [ ] DirtyRank: raw stdin/stdout protocol e2e (record -> loadAll -> undo ->
-      resetPool); double registration after forced early exception;
-      rating-index revision ordering.
-- [ ] DirtyStats: card id/filter semantics against Stash's ID resolution,
-      docsCapture, large constellations (`N/A` country and `missing`
-      reconciliation are covered).
-
 ## Suggested fix order
 
 1. Remaining high/medium bugs (#8-#18)
 2. Performance P1-P3 (constellation, rank render math, rank fetches)
-3. Remaining performance and refactors, then the test gaps above
+3. Remaining performance and refactors

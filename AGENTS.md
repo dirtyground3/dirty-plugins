@@ -122,6 +122,7 @@ python -B -m unittest discover -s tests -v
 node --check plugins/DirtyRank/dirtyRank.js
 node tests/test_dirty_rank_algorithms.js
 node tests/test_dirty_rank_media.js
+node tests/test_dirty_rank_registration.js
 node tests/test_dirty_tidy_automation.js
 node tests/test_dirty_tidy_settings.js
 node tests/test_dirty_stats.js

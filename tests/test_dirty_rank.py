@@ -538,5 +538,90 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
             source,
         )
 
+
+class DirtyRankProtocolTests(unittest.TestCase):
+    """Drives the raw stdin/stdout plugin protocol in a real subprocess.
+
+    read_payload/emit_output bind sys.stdin/sys.stdout as default arguments at
+    import time, so a subprocess is the only faithful way to exercise main().
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.database = Path(self.temp_dir.name) / "protocol.sqlite3"
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def run_backend(self, payload):
+        environment = dict(os.environ)
+        environment["DIRTY_PLUGINS_DATABASE_PATH"] = str(self.database)
+        return subprocess.run(
+            [sys.executable, str(MODULE_PATH)],
+            input=json.dumps(payload),
+            capture_output=True,
+            check=False,
+            text=True,
+            env=environment,
+        )
+
+    def output(self, result):
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        envelope = json.loads(result.stdout)
+        self.assertIn("output", envelope, envelope)
+        # DirtyRank emits the payload as a JSON string inside the envelope.
+        return json.loads(envelope["output"])
+
+    def test_record_load_undo_and_reset_round_trip_over_stdin_stdout(self):
+        recorded = self.output(self.run_backend({"args": {
+            "mode": "record", "battleId": "battle-1", "categoryId": "appearance",
+            "cohort": "FEMALE", "leftId": "1", "rightId": "2", "outcome": "left",
+        }}))
+        self.assertFalse(recorded["duplicate"])
+
+        loaded = self.output(self.run_backend({"args": {"mode": "loadAll"}}))
+        self.assertEqual(loaded["version"], 2)
+        self.assertIn("1", loaded["states"])
+        self.assertIn("2", loaded["states"])
+
+        undone = self.output(self.run_backend({"args": {
+            "mode": "undo", "battleId": "battle-1", "categoryId": "appearance",
+            "cohort": "FEMALE", "leftId": "1", "rightId": "2",
+        }}))
+        self.assertTrue(undone["undone"])
+
+        reset = self.output(self.run_backend({"args": {
+            "mode": "resetPool", "confirm": "RESET",
+            "categoryId": "appearance", "cohort": "FEMALE",
+        }}))
+        self.assertEqual(reset["failed"], 0)
+
+    def test_unknown_mode_reports_an_error_on_stdout_and_exits_nonzero(self):
+        result = self.run_backend({"args": {"mode": "nonsense"}})
+
+        self.assertEqual(result.returncode, 1)
+        envelope = json.loads(result.stdout)
+        self.assertIn("error", envelope)
+        self.assertIn("Unsupported DirtyRank operation mode", envelope["error"])
+
+    def test_empty_input_reports_an_error(self):
+        environment = dict(os.environ)
+        environment["DIRTY_PLUGINS_DATABASE_PATH"] = str(self.database)
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH)],
+            input="",
+            capture_output=True,
+            check=False,
+            text=True,
+            env=environment,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "Stash did not provide plugin input",
+            json.loads(result.stdout)["error"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

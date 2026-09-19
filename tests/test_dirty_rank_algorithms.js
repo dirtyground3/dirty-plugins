@@ -287,4 +287,36 @@ function performer(id, rating, deviation, matches) {
   assert.strictEqual(algorithms.precisionTier({ matches: 8, deviation: 40 }, baseSettings).id, "excellent");
 }
 
+{
+  // A slow loadAll response must not erase state written by a newer vote.
+  algorithms.applyRatingIndex({
+    revision: 5,
+    states: { "1": { version: 2, revision: 5, pools: { "appearance|FEMALE": pool(1500, 100, 10) } } },
+  });
+  algorithms.applyRatingIndex({
+    revision: 2,
+    states: { "1": { version: 2, revision: 2, pools: { "appearance|FEMALE": pool(900, 300, 1) } } },
+  });
+  const staleTarget = {
+    id: "1",
+    name: "Performer 1",
+    gender: "FEMALE",
+    image_path: "/performer/1/image",
+  };
+  const stalePool = algorithms.leaderboardPoolFor(staleTarget, "appearance", "FEMALE", baseSettings);
+  assert.strictEqual(stalePool.rating, 1500, "a stale rating index response must be ignored");
+  assert.strictEqual(stalePool.matches, 10, "stale pools must not overwrite newer matches");
+
+  // A newer response still applies.
+  algorithms.applyRatingIndex({
+    revision: 6,
+    states: { "1": { version: 2, revision: 6, pools: { "appearance|FEMALE": pool(1600, 90, 11) } } },
+  });
+  assert.strictEqual(
+    algorithms.leaderboardPoolFor(staleTarget, "appearance", "FEMALE", baseSettings).rating,
+    1600,
+    "a newer rating index response must apply"
+  );
+}
+
 console.log("DirtyRank information-gain algorithm tests passed");

@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = (
@@ -327,6 +328,107 @@ class DirtyFileExtractorTests(unittest.TestCase):
             self.assertEqual(result["files_missing"], 2)
             self.assertEqual(result["missing"][0]["marker_id"], "404")
             self.assertEqual(result["missing"][1]["image_id"], "405")
+
+    def test_samefile_selection_is_skipped_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "scene.mp4"
+            source.write_bytes(b"scene")
+            client = FakeClient(
+                scenes={
+                    "1": {
+                        "id": "1",
+                        "title": "Scene",
+                        "files": [{"path": str(source), "basename": source.name}],
+                    }
+                }
+            )
+
+            # The destination folder is the source folder, so the requested
+            # destination is the source file itself.
+            result = extractor.copy_selected(
+                client,
+                {"scene": ["1"], "marker": [], "image": []},
+                {"destinationFolder": str(root), "maxCopySpeedMBps": 0},
+            )
+
+            self.assertEqual(result["files_copied"], 0)
+            self.assertEqual(result["files_skipped"], 1)
+            self.assertEqual(result["skipped"][0]["reason"], "same-file")
+            self.assertEqual(source.read_bytes(), b"scene")
+
+    def test_dry_run_plans_without_writing_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "scene.mp4"
+            source.write_bytes(b"scene")
+            destination = root / "output"
+            client = FakeClient(
+                scenes={
+                    "1": {
+                        "id": "1",
+                        "title": "Scene",
+                        "files": [{"path": str(source), "basename": source.name}],
+                    }
+                }
+            )
+
+            result = extractor.copy_selected(
+                client,
+                {"scene": ["1"], "marker": [], "image": []},
+                {"destinationFolder": str(destination), "dryRun": True, "maxCopySpeedMBps": 0},
+            )
+
+            self.assertTrue(result["dry_run"])
+            self.assertFalse(destination.exists(), "a dry run must not create the destination")
+            self.assertEqual(result["files_copied"], 1)
+            self.assertEqual(result["files_failed"], 0)
+            self.assertEqual(result["copied"][0]["action"], "dry-run")
+            self.assertEqual(result["copied"][0]["destination"], str(destination / "scene.mp4"))
+
+    def test_one_failed_copy_does_not_discard_completed_items(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            destination = root / "output"
+            good = root / "good.mp4"
+            bad = root / "bad.mp4"
+            good.write_bytes(b"good")
+            bad.write_bytes(b"bad")
+            client = FakeClient(
+                scenes={
+                    "1": {
+                        "id": "1",
+                        "title": "Good",
+                        "files": [{"path": str(good), "basename": good.name}],
+                    },
+                    "2": {
+                        "id": "2",
+                        "title": "Bad",
+                        "files": [{"path": str(bad), "basename": bad.name}],
+                    },
+                }
+            )
+
+            original = extractor.copy_file_chunked
+
+            def flaky(source, target, on_chunk, speed):
+                if Path(source).name == "bad.mp4":
+                    raise OSError("disk full")
+                return original(source, target, on_chunk, speed)
+
+            with mock.patch.object(extractor, "copy_file_chunked", flaky):
+                result = extractor.copy_selected(
+                    client,
+                    {"scene": ["1", "2"], "marker": [], "image": []},
+                    {"destinationFolder": str(destination), "maxCopySpeedMBps": 0},
+                )
+
+            self.assertEqual(result["files_copied"], 1)
+            self.assertEqual(result["files_failed"], 1)
+            self.assertEqual(result["failed"][0]["source"], str(bad))
+            self.assertIn("disk full", result["failed"][0]["error"])
+            self.assertEqual((destination / "good.mp4").read_bytes(), b"good")
+            self.assertFalse((destination / "bad.mp4").exists())
 
 
 if __name__ == "__main__":

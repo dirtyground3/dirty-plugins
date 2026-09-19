@@ -21,6 +21,11 @@
     return;
   }
   window.__dirtyCurrentPluginId = "dirtyRank";
+  // Claim the instance before any registration side effects. Stash cannot
+  // unregister patches, so if a later step throws, the next asset reload must
+  // skip re-registration instead of stacking duplicate routes and listeners.
+  // The full annotation replaces this placeholder at the end of the IIFE.
+  window[INSTANCE_KEY] = {};
   var debugLog = DirtyPlugins.debugLog || function () {};
   var debugScriptSrc = null;
   try {
@@ -311,12 +316,16 @@
   }
 
   function applyRatingIndex(payload) {
+    var revision = Number(payload && payload.revision) || 0;
+    // A vote can advance the index while a slower loadAll is in flight. Ignore a
+    // stale response so it cannot erase the newer state or lower the revision.
+    if (revision < ratingIndexRevision) return payload;
     var states = payload && payload.states && typeof payload.states === "object" ? payload.states : {};
     ratingStateIndex.clear();
     Object.keys(states).forEach(function (performerId) {
       ratingStateIndex.set(String(performerId), states[performerId]);
     });
-    ratingIndexRevision = Number(payload && payload.revision) || 0;
+    ratingIndexRevision = Math.max(ratingIndexRevision, revision);
     notifyRatingListeners();
     return payload;
   }

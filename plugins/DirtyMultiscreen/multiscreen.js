@@ -174,6 +174,13 @@
     loop: settings.loopScenes,
     pauseWhenHidden: settings.pauseWhenHidden
   });
+  // Tiles mount their video/player asynchronously. Watching the subtree keeps
+  // the range/audio effects attached without polling.
+  var observeSubtree = (target, callback) => {
+    const observer = new MutationObserver(callback);
+    observer.observe(target, { childList: true, subtree: true });
+    return observer;
+  };
   var getSceneLimit = (settings) => {
     const multiplier = settings.splitScenes ? 8 : 12;
     return Math.min(MAX_SCENE_PAGE_SIZE, Math.max(settings.totalScreens, settings.totalScreens * multiplier));
@@ -855,8 +862,7 @@
         videoElement?.addEventListener("timeupdate", handleTimeUpdate);
       };
       attachVideoElement();
-      const observer = new MutationObserver(attachVideoElement);
-      observer.observe(tile, { childList: true, subtree: true });
+      const observer = observeSubtree(tile, attachVideoElement);
       return () => {
         observer.disconnect();
         videoElement?.removeEventListener("timeupdate", handleTimeUpdate);
@@ -922,8 +928,7 @@
         applyAudioState();
       };
       attachPlayer();
-      const observer = new MutationObserver(attachPlayer);
-      observer.observe(tile, { childList: true, subtree: true });
+      const observer = observeSubtree(tile, attachPlayer);
       return () => {
         observer.disconnect();
         detachPlayer();
@@ -1424,6 +1429,7 @@
       isMarkerLaunchContext: isMarkerLaunchContext,
       isMultiscreenLaunchContext: isMultiscreenLaunchContext,
       normalizeSettings: normalizeSettings,
+      observeSubtree: observeSubtree,
       readLaunchContext: readLaunchContext,
       shuffleMultiscreenItems: shuffleMultiscreenItems,
       splitMultiscreenItemsByIndex: splitMultiscreenItemsByIndex,

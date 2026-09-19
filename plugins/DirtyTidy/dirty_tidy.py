@@ -273,8 +273,13 @@ def emit_error(error: Any, stream: Any = sys.stdout) -> None:
 
 
 def configure_standard_streams() -> None:
-    """Use UTF-8 for human-readable plugin logs when Python permits it."""
-    for stream in (sys.stdout, sys.stderr):
+    """Use UTF-8 for the plugin protocol on every standard stream.
+
+    Legacy Windows hosts may hand Stash a cp1252 stdin, which would corrupt
+    non-ASCII settings before JSON decoding. Reconfiguring stdin alongside the
+    output streams keeps the protocol UTF-8 end to end.
+    """
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if not callable(reconfigure):
             continue
@@ -798,7 +803,12 @@ def build_operation(
             rendered, missing, invalid = render_template(level, variables)
             missing_tokens.update(missing)
             invalid_tokens.update(invalid)
-            destination /= sanitize_segment(rendered)
+            segment = sanitize_segment(rendered)
+            if segment.upper() in RESERVED_WINDOWS_NAMES:
+                operation["status"] = "blocked"
+                warnings.append(f"{segment} is a reserved folder name.")
+                return operation
+            destination /= segment
         destination_folder = str(destination)
 
     destination_basename = source_basename
@@ -1156,6 +1166,21 @@ def _requested_mode(payload: Any) -> str:
     return "unknown"
 
 
+def exit_code_for(output: Any) -> int:
+    """Report an execute run that applied nothing but failed as an error.
+
+    Stash treats a nonzero plugin exit as a failure, so an all-failed run must
+    not look green in Tasks. Preview and skipped runs stay successful.
+    """
+    if (
+        isinstance(output, dict)
+        and output.get("failed")
+        and not output.get("completed")
+    ):
+        return 1
+    return 0
+
+
 def main() -> int:
     configure_standard_streams()
     reporter = StashReporter()
@@ -1170,7 +1195,7 @@ def main() -> int:
             f"DirtyTidy backend finished: mode={mode} in {int((time.monotonic() - started) * 1000)}ms"
         )
         emit_output(output)
-        return 0
+        return exit_code_for(output)
     except Exception as exc:
         reporter.error(
             f"DirtyTidy failed: mode={mode} after {int((time.monotonic() - started) * 1000)}ms: {exc}"

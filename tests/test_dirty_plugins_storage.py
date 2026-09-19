@@ -1,4 +1,6 @@
 import importlib.util
+import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -117,6 +119,85 @@ class DirtyPluginsSettingsStorageTests(unittest.TestCase):
             self.assertEqual(connection.execute("SELECT 1").fetchone()[0], 1)
         finally:
             connection.close()
+
+    def _schema_version(self):
+        connection = sqlite3.connect(self.database)
+        try:
+            row = connection.execute(
+                "SELECT version FROM dirty_schema_versions WHERE plugin_id='dirtyPlugins'"
+            ).fetchone()
+            return row[0] if row else None
+        finally:
+            connection.close()
+
+    def test_fresh_database_is_stamped_with_the_current_schema_version(self):
+        connection = storage.connect(self.database)
+        connection.close()
+
+        self.assertEqual(
+            self._schema_version(), storage.STORAGE_SCHEMA_VERSION
+        )
+
+    def test_older_schema_version_is_upgraded_in_place(self):
+        # Simulate a database created before the current schema was stamped.
+        connection = sqlite3.connect(self.database)
+        connection.executescript(
+            """
+            CREATE TABLE dirty_schema_versions (
+              plugin_id TEXT PRIMARY KEY, version INTEGER NOT NULL, applied_at TEXT NOT NULL
+            );
+            CREATE TABLE dirty_plugin_settings (
+              plugin_id TEXT NOT NULL, setting_key TEXT NOT NULL, value_json TEXT NOT NULL,
+              updated_at TEXT NOT NULL, PRIMARY KEY (plugin_id, setting_key)
+            );
+            INSERT INTO dirty_schema_versions VALUES ('dirtyPlugins', 0, '2020-01-01T00:00:00Z');
+            """
+        )
+        connection.commit()
+        connection.close()
+
+        connection = storage.connect(self.database)
+        connection.close()
+
+        self.assertEqual(self._schema_version(), storage.STORAGE_SCHEMA_VERSION)
+        # Upgrading must preserve existing settings rows.
+        storage.set_plugin_settings("example", {"enabled": True}, self.database)
+        self.assertEqual(
+            storage.get_plugin_settings("example", self.database), {"enabled": True}
+        )
+
+    def test_newer_schema_version_is_rejected(self):
+        connection = sqlite3.connect(self.database)
+        connection.executescript(
+            """
+            CREATE TABLE dirty_schema_versions (
+              plugin_id TEXT PRIMARY KEY, version INTEGER NOT NULL, applied_at TEXT NOT NULL
+            );
+            INSERT INTO dirty_schema_versions VALUES ('dirtyPlugins', 99, '2099-01-01T00:00:00Z');
+            """
+        )
+        connection.commit()
+        connection.close()
+
+        with self.assertRaises(RuntimeError) as raised:
+            storage.connect(self.database)
+        self.assertIn("newer than this runtime supports", str(raised.exception))
+
+    def test_corrupt_json_rows_fail_loudly_instead_of_returning_garbage(self):
+        storage.set_plugin_settings("example", {"enabled": True}, self.database)
+        connection = sqlite3.connect(self.database)
+        connection.execute(
+            "INSERT INTO dirty_plugin_settings(plugin_id, setting_key, value_json, updated_at) "
+            "VALUES ('example', 'broken', '{not json', '2026-01-01T00:00:00Z')"
+        )
+        connection.commit()
+        connection.close()
+
+        # The snapshot must not silently drop or mis-report the corrupt row.
+        with self.assertRaises(json.JSONDecodeError):
+            storage.get_plugin_settings("example", self.database)
+        with self.assertRaises(json.JSONDecodeError):
+            storage.get_all_plugin_settings(self.database)
 
 
 if __name__ == "__main__":

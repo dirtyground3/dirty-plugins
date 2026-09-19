@@ -184,6 +184,11 @@
   var charts = window.echarts;
   var world = window.__dirtyStatsWorld;
   var StateView = hub.react && hub.react.StateView;
+  // Documentation captures must never include uncensored media. Components read
+  // this once and drop performer/studio images when ?docsCapture=1 is present.
+  function docsCaptureEnabled(search) {
+    try { return new URLSearchParams(search || "").get("docsCapture") === "1"; } catch (err) { return false; }
+  }
   // Primary loading/error/empty states use the shared StateView so DirtyStats
   // reads like the other plugins. The fallback keeps an older hub usable.
   function StatsState(props) {
@@ -588,8 +593,10 @@
     return { filter: Object.assign({}, filter.makeFindFilter(), { page: page, per_page: 500 }), performerFilter: filter.makeFilter() };
   }
   function orderedCards(cards, ids) {
-    var byId = new Map(cards.map(function (card) { return [Number(card.id), card]; }));
-    return ids.map(function (id) { return byId.get(Number(id)); }).filter(Boolean);
+    // Compare as strings: Stash serializes IDs as strings, and numeric coercion
+    // would map every non-numeric ID to NaN and collapse them onto one key.
+    var byId = new Map(cards.map(function (card) { return [String(card.id), card]; }));
+    return ids.map(function (id) { return byId.get(String(id)); }).filter(Boolean);
   }
   function countryPerformers(performers, country) {
     return country ? performers.filter(function (p) { return countryName(p.country, countries) === country; }) : performers;
@@ -1277,7 +1284,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
     var nowState = React.useState(function () { return new Date(); }), now = nowState[0];
-    var docsCapture = React.useMemo(function () { try { return new URLSearchParams(window.location.search).get("docsCapture") === "1"; } catch (err) { return false; } }, []);
+    var docsCapture = React.useMemo(function () { return docsCaptureEnabled(window.location.search); }, []);
     var queryKey = JSON.stringify(performerVariables(props.filter, 1));
     var stats = React.useMemo(function () { return aggregateBirthdays(performers, now); }, [performers, now]);
     var upcoming = React.useMemo(function () {
@@ -1618,7 +1625,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var minState = useStatsSetting("studioMinScenes"), minScenes = minState[0], setMinScenes = minState[1];
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
     var logoState = React.useState(0), logoVersion = logoState[0], setLogoVersion = logoState[1];
-    var docsCapture = React.useMemo(function () { try { return new URLSearchParams(window.location.search).get("docsCapture") === "1"; } catch (err) { return false; } }, []);
+    var docsCapture = React.useMemo(function () { return docsCaptureEnabled(window.location.search); }, []);
     var node = React.useRef(null), chartRef = React.useRef(null);
     var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
     var stats = React.useMemo(function () { return aggregateStudios(scenes); }, [scenes]);
@@ -1771,7 +1778,7 @@ return h("main", { ref: page, className: "dirty-stats-page dirty-stats-native-fi
   });
   api.patch.before("MainNavBar.UtilityItems", function (props) { return [{ children: h(React.Fragment, null, props.children, h(NavIcon)) }]; });
   var statsSettingsReady = loadStatsSettings();
-  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, birthdayInYear: birthdayInYear, daysUntilBirthday: daysUntilBirthday, aggregateBirthdays: aggregateBirthdays, performerImageSource: performerImageSource, birthdayEntriesFor: birthdayEntriesFor, birthdayMonthCounts: birthdayMonthCounts, birthdayDayLabel: birthdayDayLabel, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, orderedCards: orderedCards, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, scatterSeriesData: scatterSeriesData, nearestScatterOption: nearestScatterOption, scatterGuideForClick: scatterGuideForClick, scatterGuideLines: scatterGuideLines, countRatingLabel: countRatingLabel, countRatingSeriesData: countRatingSeriesData, aggregateCountRating: aggregateCountRating, aggregateStudios: aggregateStudios, serializeDashboardFilter: serializeDashboardFilter, statsSettings: statsSettings, parseStatsSetting: parseStatsSetting, statsSettingsFromStorage: statsSettingsFromStorage, setStatsSetting: setStatsSetting, loadStatsSettings: loadStatsSettings } };
+  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, birthdayInYear: birthdayInYear, daysUntilBirthday: daysUntilBirthday, aggregateBirthdays: aggregateBirthdays, performerImageSource: performerImageSource, birthdayEntriesFor: birthdayEntriesFor, birthdayMonthCounts: birthdayMonthCounts, birthdayDayLabel: birthdayDayLabel, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, orderedCards: orderedCards, docsCaptureEnabled: docsCaptureEnabled, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, scatterSeriesData: scatterSeriesData, nearestScatterOption: nearestScatterOption, scatterGuideForClick: scatterGuideForClick, scatterGuideLines: scatterGuideLines, countRatingLabel: countRatingLabel, countRatingSeriesData: countRatingSeriesData, aggregateCountRating: aggregateCountRating, aggregateStudios: aggregateStudios, serializeDashboardFilter: serializeDashboardFilter, statsSettings: statsSettings, parseStatsSetting: parseStatsSetting, statsSettingsFromStorage: statsSettingsFromStorage, setStatsSetting: setStatsSetting, loadStatsSettings: loadStatsSettings } };
   window.__dirtyStatsPlugin.dashboardRoute = dashboardRoute;
   window.__dirtyStatsPlugin.settingsReady = statsSettingsReady;
   window.__dirtyStatsPlugin.getSettingExtra = getStatsSettingExtra;

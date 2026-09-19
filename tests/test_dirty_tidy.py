@@ -679,6 +679,111 @@ class DirtyTidyTests(unittest.TestCase):
             list(dirty_tidy.DEFAULT_SETTINGS["hierarchyLevels"]),
         )
 
+    def test_empty_hierarchy_levels_move_files_to_the_source_root(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "nested" / "clip.mp4"
+            source.parent.mkdir()
+            source.write_bytes(b"x")
+            settings = dirty_tidy.normalize_settings(
+                {"hierarchyLevels": [], "moveEnabled": True, "renameEnabled": False}
+            )
+            scene_data = scene(source)
+
+            operation = dirty_tidy.build_operation(
+                scene_data, scene_data["files"][0], [str(root)], settings
+            )
+
+            self.assertEqual(operation["status"], "ready")
+            self.assertEqual(operation["destination_folder"], str(root))
+            self.assertEqual(operation["destination_path"], str(root / "clip.mp4"))
+            self.assertIn("move", operation["actions"])
+
+    def test_reserved_folder_names_block_the_operation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "clip.mp4"
+            source.write_bytes(b"x")
+            settings = dirty_tidy.normalize_settings(
+                {"hierarchyLevels": ["{studio}"], "moveEnabled": True, "renameEnabled": False}
+            )
+
+            for reserved in ("CON", "aux", "NUL"):
+                scene_data = scene(source, studio={"id": "1", "name": reserved})
+                operation = dirty_tidy.build_operation(
+                    scene_data, scene_data["files"][0], [str(root)], settings
+                )
+
+                self.assertEqual(
+                    operation["status"], "blocked", f"{reserved} must not become a folder"
+                )
+                self.assertTrue(
+                    any("reserved folder" in warning for warning in operation["warnings"]),
+                    operation["warnings"],
+                )
+
+            safe_scene = scene(source, studio={"id": "1", "name": "Studio"})
+            safe = dirty_tidy.build_operation(
+                safe_scene, safe_scene["files"][0], [str(root)], settings
+            )
+            self.assertEqual(safe["status"], "ready")
+            self.assertEqual(safe["destination_folder"], str(root / "Studio"))
+
+    def test_reserved_filenames_are_still_blocked(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "clip.mp4"
+            source.write_bytes(b"x")
+            settings = dirty_tidy.normalize_settings(
+                {"moveEnabled": False, "renameEnabled": True, "renamePattern": "NUL"}
+            )
+            scene_data = scene(source)
+
+            operation = dirty_tidy.build_operation(
+                scene_data, scene_data["files"][0], [str(root)], settings
+            )
+
+            self.assertEqual(operation["status"], "blocked")
+            self.assertTrue(
+                any("reserved filename" in warning for warning in operation["warnings"]),
+                operation["warnings"],
+            )
+
+    def test_case_only_renames_are_unchanged_on_case_insensitive_filesystems(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "Clip.mp4"
+            source.write_bytes(b"x")
+            settings = dirty_tidy.normalize_settings(
+                {"moveEnabled": False, "renameEnabled": True, "renamePattern": "{title}"}
+            )
+            scene_data = scene(source, title="clip")
+
+            # Simulate Windows, where normcase folds case and the filesystem
+            # cannot rename a file to a name that differs only by case.
+            with mock.patch.object(dirty_tidy.os.path, "normcase", lambda value: value.lower()):
+                operation = dirty_tidy.build_operation(
+                    scene_data, scene_data["files"][0], [str(root)], settings
+                )
+
+            self.assertEqual(operation["destination_basename"], "clip.mp4")
+            self.assertEqual(operation["status"], "unchanged")
+
+    def test_configure_standard_streams_covers_stdin(self):
+        calls = []
+
+        class FakeStream:
+            def reconfigure(self, **kwargs):
+                calls.append(kwargs)
+
+        with mock.patch.object(dirty_tidy.sys, "stdin", FakeStream()), \
+                mock.patch.object(dirty_tidy.sys, "stdout", FakeStream()), \
+                mock.patch.object(dirty_tidy.sys, "stderr", FakeStream()):
+            dirty_tidy.configure_standard_streams()
+
+        self.assertEqual(len(calls), 3, "stdin, stdout and stderr must all be reconfigured")
+        self.assertTrue(all(call["encoding"] == "utf-8" for call in calls))
+
 
 class DirtyTidyPlanIntegrityTests(unittest.TestCase):
     class SnapshotClient:
@@ -759,6 +864,45 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
                     dirty_tidy.execute_plan(
                         client, settings, plan["strategy_hash"], dirty_tidy.Reporter()
                     )
+
+    def test_an_all_failed_execute_reports_and_exits_as_a_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database = root / "dirty_plugins.sqlite3"
+            source = root / "video.mp4"
+            source.write_bytes(b"video")
+
+            class FailingClient(self.SnapshotClient):
+                def move_file(self, operation):
+                    raise OSError("disk full")
+
+            client = FailingClient(root, [scene(source, title="Video")])
+            settings = {
+                "moveEnabled": False,
+                "renameEnabled": True,
+                "renamePattern": "{title} renamed",
+            }
+
+            with mock.patch.dict(
+                os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}
+            ):
+                preview = dirty_tidy.preview_plan(
+                    client, settings, include_all=True, record_review=True
+                )
+                result = dirty_tidy.execute_plan(
+                    client, settings, preview["strategy_hash"], dirty_tidy.Reporter()
+                )
+
+            self.assertEqual(result["completed"], 0)
+            self.assertEqual(result["failed"], preview["summary"]["ready"])
+            self.assertTrue(result["failures"])
+            self.assertEqual(dirty_tidy.exit_code_for(result), 1)
+
+        # Partial and fully successful runs stay green, as do non-execute modes.
+        self.assertEqual(dirty_tidy.exit_code_for({"completed": 1, "failed": 1}), 0)
+        self.assertEqual(dirty_tidy.exit_code_for({"completed": 1, "failed": 0}), 0)
+        self.assertEqual(dirty_tidy.exit_code_for({"skipped": True}), 0)
+        self.assertEqual(dirty_tidy.exit_code_for(None), 0)
 
     def test_automation_rejects_a_plan_that_changed_after_approval(self):
         with tempfile.TemporaryDirectory() as temporary:
