@@ -57,11 +57,18 @@
 .dirty-stats-scenes { margin-top: .75rem; }
 .dirty-stats-scenes .scene-card { width: 100%; margin: 0; }
 .dirty-stats-birthday-next { display: flex; gap: .4rem; flex-wrap: wrap; padding: .4rem .5rem 0; }
-.dirty-stats-birthday-next-item { display: flex; flex-direction: column; align-items: flex-start; gap: .1rem; border: 1px solid var(--dirty-ui-border); border-radius: var(--dirty-ui-radius); background: #2c343b; color: var(--dirty-ui-text); padding: .3rem .5rem; font-size: .75rem; text-align: left; cursor: pointer; }
+.dirty-stats-birthday-next-item { display: flex; flex-direction: row; align-items: center; gap: .5rem; border: 1px solid var(--dirty-ui-border); border-radius: var(--dirty-ui-radius); background: #2c343b; color: var(--dirty-ui-text); padding: .3rem .5rem; font-size: .75rem; text-align: left; cursor: pointer; }
 .dirty-stats-birthday-next-item:hover, .dirty-stats-birthday-next-item:focus-visible { border-color: #54d5ca; outline: none; }
+.dirty-stats-birthday-next-photo { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; background: #3a444d; }
+.dirty-stats-birthday-next-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dirty-stats-birthday-next-initial { font-weight: 600; font-size: .9rem; color: var(--dirty-ui-muted); }
+.dirty-stats-birthday-next-text { display: flex; flex-direction: column; align-items: flex-start; gap: .1rem; }
 .dirty-stats-birthday-next-name { font-weight: 600; }
 .dirty-stats-birthday-next-date { color: var(--dirty-ui-muted); font-size: .7rem; }
-.dirty-stats-calendar { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .75rem; padding: .75rem; }
+.dirty-stats-calendar { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .75rem; padding: .75rem; }
+@media (max-width: 1200px) { .dirty-stats-calendar { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .dirty-stats-calendar { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .dirty-stats-calendar { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .dirty-stats-calendar-month { background: #2c343b; border: 1px solid var(--dirty-ui-border); border-radius: var(--dirty-ui-radius); padding: .5rem; }
 .dirty-stats-calendar-month.is-current { border-color: #54d5ca; }
 .dirty-stats-calendar-month h3 { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0 0 .35rem; font-size: .8rem; color: var(--dirty-ui-text); }

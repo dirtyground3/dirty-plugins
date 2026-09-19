@@ -229,6 +229,11 @@
     if (next < today) next = birthdayInYear(today.getUTCFullYear() + 1, month, day);
     return Math.round((next.getTime() - today.getTime()) / 86400000);
   }
+  function performerImageSource(performer) {
+    var path = performer && performer.image_path ? String(performer.image_path).trim() : "";
+    if (path) return path;
+    return performer && performer.id != null && performer.id !== "" ? "/performer/" + encodeURIComponent(performer.id) + "/image" : "";
+  }
   function aggregateBirthdays(performers, now) {
     now = now == null ? new Date() : now;
     var entries = [], seen = new Set(), missing = 0;
@@ -248,7 +253,8 @@
         month: month,
         day: day,
         turns: next.getUTCFullYear() - birth.getUTCFullYear(),
-        daysUntil: daysUntil
+        daysUntil: daysUntil,
+        image: performerImageSource(performer)
       });
     });
     entries.sort(function (a, b) { return a.month - b.month || a.day - b.day || a.name.localeCompare(b.name) || a.id.localeCompare(b.id); });
@@ -1160,6 +1166,9 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
         var startWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
         var daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
         var cells = [];
+        // A factory keeps each day's click bound to its own number; a bare
+        // closure in the loop would capture the final loop value.
+        var selectDay = function (targetDay) { return function () { props.onSelect(month, targetDay); }; };
         for (var blank = 0; blank < startWeekday; blank++) cells.push(h("span", { key: "blank-" + blank, className: "dirty-stats-calendar-blank" }));
         for (var day = 1; day <= daysInMonth; day++) {
           var count = counts[day] || 0;
@@ -1175,7 +1184,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
             disabled: !count,
             "aria-pressed": isSelected,
             "aria-label": name + " " + day + (count ? ": " + count + " birthday" + (count === 1 ? "" : "s") : ": no birthdays"),
-            onClick: count ? function () { props.onSelect(month, day); } : undefined
+            onClick: count ? selectDay(day) : undefined
           }, String(day), count > 1 ? h("span", { className: "dirty-stats-calendar-count" }, count) : null));
         }
         return h("section", { key: name, className: "dirty-stats-calendar-month" + (month === nowMonth ? " is-current" : ""), "aria-label": name + (monthTotal ? ", " + monthTotal + " birthdays" : ", no birthdays") },
@@ -1192,6 +1201,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
     var nowState = React.useState(function () { return new Date(); }), now = nowState[0];
+    var docsCapture = React.useMemo(function () { try { return new URLSearchParams(window.location.search).get("docsCapture") === "1"; } catch (err) { return false; } }, []);
     var queryKey = JSON.stringify(performerVariables(props.filter, 1));
     var stats = React.useMemo(function () { return aggregateBirthdays(performers, now); }, [performers, now]);
     var upcoming = React.useMemo(function () {
@@ -1204,7 +1214,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
       (async function () {
         var result = [], page = 1, total;
         do {
-          var data = await hub.graphql("query DirtyStatsBirthdays($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name birthdate}}}", performerVariables(props.filter, page), { signal: controller.signal });
+          var data = await hub.graphql("query DirtyStatsBirthdays($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name birthdate image_path}}}", performerVariables(props.filter, page), { signal: controller.signal });
           if (controller.signal.aborted) return;
           var batch = data.findPerformers; total = batch.count;
           if (!batch.performers.length && result.length < total) throw new Error("The performer list changed while loading. Refresh to try again.");
@@ -1229,8 +1239,11 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
         h("div", { className: "dirty-stats-birthday-next", role: "list", "aria-label": "Upcoming birthdays" },
           upcoming.slice(0, 5).map(function (entry) {
             return h("button", { key: entry.id, type: "button", role: "listitem", className: "dirty-stats-birthday-next-item", onClick: function () { choose(entry.month, entry.day); } },
-              h("span", { className: "dirty-stats-birthday-next-name" }, entry.name),
-              h("span", { className: "dirty-stats-birthday-next-date" }, birthdayDayLabel(entry.month, entry.day) + " \u00b7 " + (entry.daysUntil === 0 ? "today" : "in " + entry.daysUntil + " day" + (entry.daysUntil === 1 ? "" : "s")) + " \u00b7 turns " + entry.turns));
+              h("span", { className: "dirty-stats-birthday-next-photo" },
+                !docsCapture && entry.image ? h("img", { src: entry.image, alt: "", loading: "lazy" }) : h("span", { className: "dirty-stats-birthday-next-initial", "aria-hidden": true }, (String(entry.name || "?").charAt(0) || "?").toUpperCase())),
+              h("span", { className: "dirty-stats-birthday-next-text" },
+                h("span", { className: "dirty-stats-birthday-next-name" }, entry.name),
+                h("span", { className: "dirty-stats-birthday-next-date" }, birthdayDayLabel(entry.month, entry.day) + " \u00b7 " + (entry.daysUntil === 0 ? "today" : "in " + entry.daysUntil + " day" + (entry.daysUntil === 1 ? "" : "s")) + " \u00b7 turns " + entry.turns)));
           })),
         h(BirthdayCalendar, { entries: stats.entries, year: year, selected: selected, nowMonth: nowMonth, nowDay: nowDay, onSelect: choose })) : null,
       !loading && !error && !stats.total ? h("p", { role: "status" }, "No performers match these filters.") : null,
@@ -1670,7 +1683,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
   });
   api.patch.before("MainNavBar.UtilityItems", function (props) { return [{ children: h(React.Fragment, null, props.children, h(NavIcon)) }]; });
   loadStatsSettings();
-  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, birthdayInYear: birthdayInYear, daysUntilBirthday: daysUntilBirthday, aggregateBirthdays: aggregateBirthdays, birthdayEntriesFor: birthdayEntriesFor, birthdayMonthCounts: birthdayMonthCounts, birthdayDayLabel: birthdayDayLabel, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, orderedCards: orderedCards, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, scatterSeriesData: scatterSeriesData, nearestScatterOption: nearestScatterOption, scatterGuideForClick: scatterGuideForClick, scatterGuideLines: scatterGuideLines, countRatingLabel: countRatingLabel, countRatingSeriesData: countRatingSeriesData, aggregateCountRating: aggregateCountRating, aggregateStudios: aggregateStudios, statsSettings: statsSettings, parseStatsSetting: parseStatsSetting, statsSettingsFromStorage: statsSettingsFromStorage, setStatsSetting: setStatsSetting, loadStatsSettings: loadStatsSettings } };
+  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, birthdayInYear: birthdayInYear, daysUntilBirthday: daysUntilBirthday, aggregateBirthdays: aggregateBirthdays, performerImageSource: performerImageSource, birthdayEntriesFor: birthdayEntriesFor, birthdayMonthCounts: birthdayMonthCounts, birthdayDayLabel: birthdayDayLabel, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, orderedCards: orderedCards, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, scatterSeriesData: scatterSeriesData, nearestScatterOption: nearestScatterOption, scatterGuideForClick: scatterGuideForClick, scatterGuideLines: scatterGuideLines, countRatingLabel: countRatingLabel, countRatingSeriesData: countRatingSeriesData, aggregateCountRating: aggregateCountRating, aggregateStudios: aggregateStudios, statsSettings: statsSettings, parseStatsSetting: parseStatsSetting, statsSettingsFromStorage: statsSettingsFromStorage, setStatsSetting: setStatsSetting, loadStatsSettings: loadStatsSettings } };
   debugLog("dirtyStats", "script finished registering", {
     elapsedMs: hub.debugElapsed ? hub.debugElapsed() : null,
   });

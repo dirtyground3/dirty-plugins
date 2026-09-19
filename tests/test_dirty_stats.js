@@ -208,6 +208,9 @@ assert.deepEqual(JSON.parse(JSON.stringify(birthdays.entries.map(entry => [entry
 assert.deepEqual(JSON.parse(JSON.stringify(a.birthdayEntriesFor(birthdays.entries, 1, 15).map(entry => entry.id))), ["a", "c"]);
 assert.deepEqual(JSON.parse(JSON.stringify(a.birthdayMonthCounts(birthdays.entries))), [2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 assert.equal(a.birthdayDayLabel(2, 14), "February 14");
+assert.equal(a.performerImageSource({id: "9", image_path: "/performer/9/image?t=2"}), "/performer/9/image?t=2");
+assert.equal(a.performerImageSource({id: "9"}), "/performer/9/image");
+assert.equal(a.aggregateBirthdays([{id: "9", name: "Pic", birthdate: "2000-03-01", image_path: "/performer/9/image?t=2"}], birthdayNow).entries[0].image, "/performer/9/image?t=2");
 assert.equal(a.aggregateBirthdays([], birthdayNow).entries.length, 0);
 assert.equal(a.aggregateBirthdays([{id: "1", name: "Leap", birthdate: "2000-02-29"}], new Date(Date.UTC(2025, 1, 28))).entries[0].daysUntil, 0, "Feb 29 falls on Feb 28 in non-leap years");
 const index = a.countryIndex(context.window.__dirtyStatsWorld.features);
