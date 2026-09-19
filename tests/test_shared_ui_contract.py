@@ -71,8 +71,11 @@ class SharedUIContractTests(unittest.TestCase):
             "hubApi.registerSettingsPanel",
         ):
             self.assertIn(export, hub)
-        for component in ("SettingsCard", "SettingsSection", "SettingsToggle"):
+        for component in ("IconButton", "SettingsCard", "SettingsSection", "SettingsToggle", "StateView"):
             self.assertIn(component + ": " + component, hub)
+        # StateView forwards optional ARIA roles so callers keep accessible alerts.
+        self.assertIn("role: props.role", hub)
+        self.assertIn('"aria-live": props.ariaLive', hub)
 
     def test_settings_panels_share_the_same_building_blocks(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
@@ -208,8 +211,74 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('var PLUGIN_ID = "dirtyStats"', script)
         self.assertIn("useStatsSetting", script)
         self.assertIn("hub.getPluginSettings(PLUGIN_ID)", script)
-        self.assertIn("hub.configurePlugin(PLUGIN_ID, statsSettings)", script)
+        self.assertIn("var statsSettingsSaveChain = Promise.resolve()", script)
+        self.assertIn("statsSettingsSaveChain = statsSettingsSaveChain.catch", script)
+        self.assertIn("hub.configurePlugin(PLUGIN_ID, snapshot)", script)
+        self.assertIn("dirtyNames.forEach(function (name) { merged[name] = snapshot[name]; })", script)
         self.assertIn('"dirtyStats"', backend)
+
+    def test_dirty_stats_uses_the_shared_state_view(self):
+        script = read("plugins/DirtyStats/dirtyStats.js")
+        styles = read("plugins/DirtyStats/dirtyStats.css")
+
+        # Primary loading/error/empty states reuse the shared StateView instead of
+        # bespoke alert/status markup.
+        self.assertIn("hub.react && hub.react.StateView", script)
+        self.assertIn("h(StateView,", script)
+        # The unused field rule is gone and the duplicate filter rule is merged.
+        self.assertNotIn("dirty-stats-field", styles)
+        self.assertIn(
+            ".dirty-stats-filter-statistic { display: flex; gap: .5rem; flex-wrap: wrap; order: -1;",
+            styles,
+        )
+
+    def test_dirty_stats_dashboard_is_registered_and_persisted(self):
+        script = read("plugins/DirtyStats/dirtyStats.js")
+        dashboard = read("plugins/DirtyStats/dirtyStatsDashboard.js")
+        styles = read("plugins/DirtyStats/dirtyStats.css")
+        manifest = read("plugins/DirtyStats/dirtyStats.yml")
+
+        self.assertIn('var dashboardRoute = route + "/dashboard"', script)
+        self.assertIn("dirtyStatsDashboard.js", manifest)
+        self.assertIn('core.setSettingExtra("dashboardWidgets", widgets)', dashboard)
+        self.assertIn('var SIZES = ["small", "medium", "large"]', dashboard)
+        self.assertIn("var WIDGETS = {", dashboard)
+        self.assertNotIn("dirty-stats-dashboard-size-label", dashboard)
+        self.assertIn("dirty-stats-dashboard-open-link", dashboard)
+        self.assertIn("dirty-stats-dashboard-visually-hidden", dashboard)
+        self.assertIn(".dirty-stats-dashboard-widget-header.is-compact", styles)
+        self.assertIn("DashboardFilterChooser", dashboard)
+        self.assertIn("FilteredSceneList", dashboard)
+        self.assertIn("FilteredPerformerList", dashboard)
+        self.assertIn("filter: normalizeFilter(candidate.filter)", dashboard)
+        self.assertIn("serializeDashboardFilter", script)
+        self.assertIn("dirty-stats-dashboard-drag-handle", dashboard)
+        self.assertIn('document.addEventListener("pointermove"', dashboard)
+        self.assertIn('"aria-live": "polite"', dashboard)
+        self.assertIn("reorderWidgets", dashboard)
+        self.assertIn("MAX_WIDGETS", dashboard)
+        self.assertIn("nextWidgetId", dashboard)
+        self.assertNotIn("usedStatistics", dashboard)
+        self.assertNotIn('WIDGETS[statistic].label + " · added"', dashboard)
+        self.assertIn("DashboardFilterDialog", dashboard)
+        self.assertIn("api.ReactDOM.createPortal", dashboard)
+        self.assertIn('"aria-modal": true', dashboard)
+        self.assertIn('event.key === "Escape"', dashboard)
+        self.assertIn(".dirty-stats-dashboard-dialog-backdrop", styles)
+        self.assertIn(".dirty-stats-dashboard-filter-dialog .dirty-stats-dashboard-native-filter", styles)
+        for statistic in (
+            "origin",
+            "growth",
+            "ages",
+            "ratings",
+            "performerRatings",
+            "performerScatter",
+            "countRating",
+            "studios",
+            "constellation",
+            "birthdays",
+        ):
+            self.assertIn(f"    {statistic}:", dashboard)
 
     def test_dirty_rank_separates_tie_from_skip_and_preserves_native_rating(self):
         script = read("plugins/DirtyRank/dirtyRank.js")

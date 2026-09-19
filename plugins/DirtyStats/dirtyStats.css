@@ -1,8 +1,6 @@
 .dirty-stats-page { max-width: 1600px; margin: auto; padding: .75rem; color: var(--dirty-ui-text); }
 .dirty-stats-toolbar { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex-wrap: wrap; margin-bottom: .5rem; }
 .dirty-stats-page p, .dirty-stats-summary { color: var(--dirty-ui-muted); }
-.dirty-stats-field { display: flex; flex-direction: column; gap: .4rem; margin: 0; }
-.dirty-stats-field select, .dirty-stats-field input { width: 100%; }
 .dirty-stats-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 .dirty-stats-chart { width: 100%; height: auto; aspect-ratio: 2 / 1; min-height: 150px; max-height: 660px; }
 .dirty-stats-growth-chart { width: 100%; height: clamp(280px, 40vw, 540px); }
@@ -10,8 +8,7 @@
 .dirty-stats-map-panel { position: relative; min-width: 0; overflow: hidden; }
 .dirty-stats-map-controls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .4rem .5rem; background: #242b31; }
 .dirty-stats-statistic { width: auto; max-width: 100%; height: auto; padding: .25rem .5rem; font-size: .8rem; }
-.dirty-stats-filter-statistic { order: -1; flex: 0 0 auto; margin: 0 .5rem .25rem 0; align-self: center; }
-.dirty-stats-filter-statistic { display: flex; gap: .5rem; flex-wrap: wrap; }
+.dirty-stats-filter-statistic { display: flex; gap: .5rem; flex-wrap: wrap; order: -1; flex: 0 0 auto; margin: 0 .5rem .25rem 0; align-self: center; }
 .dirty-stats-performer-overlay { position: fixed; inset: 0; z-index: 1040; align-items: center; justify-content: center; padding: 1rem; }
 .dirty-stats-performer-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .65); }
 .dirty-stats-performer-dialog { position: relative; width: min(100%, 1000px); max-height: 90vh; overflow: auto; background: var(--bs-dark, #242b31); border: 1px solid var(--dirty-ui-border); border-radius: .5rem; padding: 1rem; }
@@ -85,3 +82,90 @@
 .dirty-stats-calendar-day.has-birthday.selected { box-shadow: 0 0 0 2px #fff; }
 .dirty-stats-calendar-day.has-birthday.selected.today { box-shadow: inset 0 0 0 2px #f3c779, 0 0 0 2px #fff; }
 .dirty-stats-calendar-count { position: absolute; top: 1px; right: 2px; font-size: .55rem; color: #f3c779; }
+
+.dirty-stats-dashboard-page { max-width: 1800px; }
+.dirty-stats-dashboard-navigation { justify-content: flex-start; }
+.dirty-stats-dashboard-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin: .75rem 0 1rem; }
+.dirty-stats-dashboard-heading h1 { margin: 0; font-size: 1.65rem; }
+.dirty-stats-dashboard-heading p { margin: .25rem 0 0; }
+.dirty-stats-dashboard-picker { margin-bottom: 1rem; padding: 1rem; }
+.dirty-stats-dashboard-picker h2 { margin: 0 0 .75rem; font-size: 1.1rem; }
+.dirty-stats-dashboard-picker-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .5rem; }
+.dirty-stats-dashboard-add-settings { display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.dirty-stats-dashboard-filter-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: .5rem; }
+.dirty-stats-dashboard-filter-heading h3 { margin: 0; font-size: 1rem; }
+.dirty-stats-dashboard-filter-heading p { margin: .2rem 0 0; color: var(--dirty-ui-muted); }
+.dirty-stats-dashboard-filter-heading strong { flex: 0 0 auto; color: var(--dirty-ui-accent); font-size: .8rem; }
+.dirty-stats-dashboard-picker-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .75rem; }
+.dirty-stats-dashboard-modal-open { overflow: hidden; }
+.dirty-stats-dashboard-dialog-backdrop { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: flex-start; justify-content: center; padding: 4vh 1rem; overflow-y: auto; background: rgba(0, 0, 0, .74); }
+.dirty-stats-dashboard-filter-dialog { width: min(1120px, 100%); min-height: 430px; padding: 1rem; border: 1px solid var(--dirty-ui-border); border-radius: var(--dirty-ui-radius); background: var(--bs-dark, #242b31); box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, .48); }
+.dirty-stats-dashboard-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; padding-bottom: .65rem; border-bottom: 1px solid var(--dirty-ui-border); }
+.dirty-stats-dashboard-dialog-header h2 { margin: 0; font-size: 1.25rem; }
+.dirty-stats-dashboard-native-filter { min-height: 110px; padding: .5rem; overflow: hidden; border: 1px solid var(--dirty-ui-border); border-radius: var(--dirty-ui-radius-small); background: rgba(0, 0, 0, .12); }
+.dirty-stats-dashboard-filter-dialog .dirty-stats-dashboard-native-filter { min-height: 250px; overflow: visible; }
+.dirty-stats-dashboard-native-filter .pagination-index-container, .dirty-stats-dashboard-native-filter .pagination-footer-container { display: none; }
+.dirty-stats-dashboard-native-filter .item-list-container { min-height: 0; }
+.dirty-stats-dashboard-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+.dirty-stats-dashboard-grid.is-reordering { cursor: grabbing; user-select: none; }
+.dirty-stats-dashboard-widget { position: relative; grid-column: span 6; min-width: 0; overflow: hidden; border: 1px solid var(--dirty-ui-border); border-radius: var(--dirty-ui-radius); background: var(--bs-dark, #242b31); box-shadow: var(--dirty-ui-shadow); }
+.dirty-stats-dashboard-widget.is-dragging { z-index: 3; opacity: .58; border-color: var(--dirty-ui-accent); box-shadow: 0 0 0 2px rgba(84, 213, 202, .25), var(--dirty-ui-shadow); transform: scale(.985); }
+.dirty-stats-dashboard-widget-small { grid-column: span 3; }
+.dirty-stats-dashboard-widget-large { grid-column: span 12; }
+.dirty-stats-dashboard-widget-header { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; padding: .7rem .8rem; border-bottom: 1px solid var(--dirty-ui-border); }
+.dirty-stats-dashboard-widget-header h2 { margin: 0; font-size: 1rem; color: var(--dirty-ui-text); }
+.dirty-stats-dashboard-widget-header.is-compact { position: absolute; top: .45rem; right: .45rem; z-index: 2; padding: 0; border: 0; }
+.dirty-stats-dashboard-visually-hidden { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.dirty-stats-dashboard-widget-actions { display: flex; align-items: center; justify-content: flex-end; gap: .35rem; flex-wrap: wrap; }
+.dirty-stats-dashboard-drag-handle { cursor: grab; touch-action: none; }
+.dirty-stats-dashboard-drag-handle:active { cursor: grabbing; }
+.dirty-stats-dashboard-open-link { display: inline-flex; width: 1.85rem; height: 1.85rem; align-items: center; justify-content: center; border: 1px solid var(--dirty-ui-border); border-radius: var(--dirty-ui-radius-small); background: rgba(0, 0, 0, .22); color: var(--dirty-ui-text); font-size: 1rem; line-height: 1; text-decoration: none; }
+.dirty-stats-dashboard-open-link:hover, .dirty-stats-dashboard-open-link:focus-visible { border-color: var(--dirty-ui-accent); color: var(--dirty-ui-accent); text-decoration: none; }
+.dirty-stats-dashboard-editor { display: flex; align-items: flex-start; gap: 1rem; flex-wrap: wrap; padding: .65rem .8rem; border-bottom: 1px solid var(--dirty-ui-border); background: rgba(0, 0, 0, .13); }
+.dirty-stats-dashboard-editor fieldset { display: flex; gap: .65rem; margin: 0; padding: 0; border: 0; }
+.dirty-stats-dashboard-editor legend { width: auto; margin: 0; color: var(--dirty-ui-muted); font-size: .75rem; }
+.dirty-stats-dashboard-editor fieldset label, .dirty-stats-dashboard-check { display: flex; align-items: center; gap: .25rem; margin: 0; color: var(--dirty-ui-text); font-size: .78rem; }
+.dirty-stats-dashboard-filter-setting { display: flex; align-items: center; gap: .45rem; color: var(--dirty-ui-muted); font-size: .78rem; }
+.dirty-stats-dashboard-options { display: flex; align-items: flex-end; gap: .6rem; flex: 1 1 420px; flex-wrap: wrap; }
+.dirty-stats-dashboard-field { display: flex; flex-direction: column; gap: .2rem; min-width: 130px; margin: 0; color: var(--dirty-ui-muted); font-size: .75rem; }
+.dirty-stats-dashboard-field select { width: 100%; }
+.dirty-stats-dashboard-no-options { color: var(--dirty-ui-muted); font-size: .78rem; }
+.dirty-stats-dashboard-widget-body { min-height: 190px; padding: .7rem .8rem .8rem; }
+.dirty-stats-dashboard-widget.is-compact .dirty-stats-dashboard-metrics { padding-right: 2.2rem; }
+.dirty-stats-dashboard-widget-medium .dirty-stats-dashboard-widget-body { min-height: 300px; }
+.dirty-stats-dashboard-widget-large .dirty-stats-dashboard-widget-body { min-height: 470px; }
+.dirty-stats-dashboard-metrics { display: flex; align-items: stretch; gap: .5rem; flex-wrap: wrap; margin-bottom: .55rem; }
+.dirty-stats-dashboard-metric { display: flex; flex: 1 1 90px; min-width: 0; flex-direction: column; padding: .4rem .5rem; border-radius: var(--dirty-ui-radius-small); background: rgba(84, 213, 202, .08); }
+.dirty-stats-dashboard-metric strong { overflow: hidden; color: var(--dirty-ui-text); font-size: 1.05rem; text-overflow: ellipsis; white-space: nowrap; }
+.dirty-stats-dashboard-metric span, .dirty-stats-dashboard-metric small { color: var(--dirty-ui-muted); font-size: .68rem; }
+.dirty-stats-dashboard-chart { width: 100%; height: 145px; min-width: 0; }
+.dirty-stats-dashboard-widget-medium .dirty-stats-dashboard-chart { height: 230px; }
+.dirty-stats-dashboard-widget-large .dirty-stats-dashboard-chart { height: 390px; }
+.dirty-stats-dashboard-chart-error { color: var(--dirty-ui-danger); }
+.dirty-stats-dashboard-state { display: flex; min-height: 130px; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--dirty-ui-muted); }
+.dirty-stats-dashboard-upcoming { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .35rem; margin: 0 0 .65rem; padding: 0; list-style: none; }
+.dirty-stats-dashboard-upcoming li { display: flex; min-width: 0; flex-direction: column; padding: .35rem .45rem; border: 1px solid var(--dirty-ui-border); border-radius: var(--dirty-ui-radius-small); }
+.dirty-stats-dashboard-upcoming strong { overflow: hidden; color: var(--dirty-ui-text); font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+.dirty-stats-dashboard-upcoming span { color: var(--dirty-ui-muted); font-size: .68rem; }
+.dirty-stats-dashboard-calendars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; }
+.dirty-stats-dashboard-widget-medium .dirty-stats-dashboard-calendars { grid-template-columns: 1fr; }
+.dirty-stats-dashboard-calendar-month { min-width: 0; padding: .4rem; border: 1px solid var(--dirty-ui-border); border-radius: var(--dirty-ui-radius-small); }
+.dirty-stats-dashboard-calendar-month h4 { margin: 0 0 .3rem; color: var(--dirty-ui-text); font-size: .75rem; }
+.dirty-stats-dashboard-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.dirty-stats-dashboard-calendar-day, .dirty-stats-dashboard-calendar-blank { display: flex; aspect-ratio: 1; align-items: center; justify-content: center; border-radius: 2px; color: var(--dirty-ui-muted); font-size: .58rem; }
+.dirty-stats-dashboard-calendar-day { position: relative; }
+.dirty-stats-dashboard-calendar-day.has-birthday { background: rgba(84, 213, 202, .25); color: #fff; font-weight: 600; }
+.dirty-stats-dashboard-calendar-day small { position: absolute; top: 0; right: 1px; color: #f3c779; font-size: .45rem; }
+@media (max-width: 1199px) {
+  .dirty-stats-dashboard-widget-small { grid-column: span 6; }
+  .dirty-stats-dashboard-widget-medium, .dirty-stats-dashboard-widget-large { grid-column: span 12; }
+  .dirty-stats-dashboard-calendars { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .dirty-stats-dashboard-dialog-backdrop { padding: 0; }
+  .dirty-stats-dashboard-filter-dialog { width: 100%; min-height: 100vh; padding: 1rem; border: 0; border-radius: 0; }
+  .dirty-stats-dashboard-widget, .dirty-stats-dashboard-widget-small, .dirty-stats-dashboard-widget-medium, .dirty-stats-dashboard-widget-large { grid-column: span 12; }
+  .dirty-stats-dashboard-widget-header:not(.is-compact) { flex-direction: column; }
+  .dirty-stats-dashboard-widget-actions { justify-content: flex-start; }
+  .dirty-stats-dashboard-calendars { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

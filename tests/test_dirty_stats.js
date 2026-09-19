@@ -232,6 +232,12 @@ const performers = [
   { id: "9", name: "Undisclosed", country: "Unknown", tags: [] }
 ];
 const native = { makeFindFilter: () => ({ q: "example", page: 8, per_page: 20, sort: "name", direction: "DESC" }), makeFilter: () => ({ gender: { value: "FEMALE", modifier: "EQUALS" }, tags: { value: ["1"], modifier: "INCLUDES_ALL" }, AND: { favorite: true } }) };
+const dashboardFilter = a.serializeDashboardFilter(Object.assign({ count: () => 2 }, native));
+assert.equal(dashboardFilter.find.q, "example");
+assert.equal(dashboardFilter.find.page, undefined);
+assert.equal(dashboardFilter.find.per_page, undefined);
+assert.equal(dashboardFilter.object.gender.value, "FEMALE");
+assert.equal(dashboardFilter.count, 3, "search text contributes to the visible filter count");
 const variables = a.performerVariables(native, 2);
 assert.equal(variables.filter.q, "example");
 assert.equal(variables.filter.page, 2);
@@ -415,6 +421,20 @@ assert.equal(routes.length, 1);
   await new Promise((resolve) => setTimeout(resolve, 500));
   assert.equal(savedSettings.length, 2);
   assert.equal(savedSettings[1].settings.growthShowForecast, true);
+
+  let conflictCalls = 0;
+  context.window.DirtyPlugins.getPluginSettings = () => Promise.resolve(Object.assign({}, storedSettings, { remoteOnly: "preserved" }));
+  context.window.DirtyPlugins.configurePlugin = (pluginId, settings) => {
+    conflictCalls += 1;
+    if (conflictCalls === 1) return Promise.reject(new Error("revision conflict"));
+    savedSettings.push({ pluginId, settings: JSON.parse(JSON.stringify(settings)) });
+    return Promise.resolve({ revision: 99, settings });
+  };
+  a.setStatsSetting("growthGrouping", "year");
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  assert.equal(conflictCalls, 2, "a revision conflict must refresh and retry once");
+  assert.equal(savedSettings[2].settings.growthGrouping, "year", "the local change must win for its dirty key");
+  assert.equal(savedSettings[2].settings.remoteOnly, "preserved", "unrelated settings from another tab must survive the merge");
 
   console.log("DirtyStats country aggregation, growth, filters, persisted display settings and registration passed");
 })().catch((error) => {

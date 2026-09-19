@@ -200,14 +200,6 @@ All remaining items are open.
   - Fix: single shared defaults resource or generator-verified parity tests;
     delete or wire up the dead fields.
 
-- [ ] **R4. DirtyStats bespoke UI instead of shared primitives and dead props**
-  - Files: `plugins/DirtyStats/dirtyStats.js:1119`,
-    `plugins/DirtyStats/dirtyStats.css:4-5, 13-14`
-  - No `StateView`/`IconButton` usage (15+ bespoke alert/status sites);
-    `extraCriteria: { dirtyStats: true }` ignored by Stash;
-    `.dirty-stats-field` unused; `.dirty-stats-filter-statistic` declared
-    twice; `stats.invalidDates` dead for `created_at`/`scene_date`.
-
 - [ ] **R5. Multiscreen does not follow repo conventions**
   - File: `plugins/DirtyMultiscreen/multiscreen.js` (ES2020 syntax
     throughout vs AGENTS.md ES5 rule; ~30 unused React shim re-exports;

@@ -538,7 +538,7 @@
       (props.className ? " " + props.className : "");
     return createElement(
       "div",
-      { className: className },
+      { className: className, role: props.role, "aria-live": props.ariaLive },
       createElement(
         "div",
         { className: "dirty-ui-state-panel" },

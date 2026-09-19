@@ -1,6 +1,31 @@
 # DirtyStats
 
 Explore Stash statistics from the **pie chart icon** in the utility navigation.
+The icon opens a customizable **Dashboard** at
+`/plugins/dirty-stats/dashboard`. Add or remove any available statistic,
+reorder widgets by dragging their edit-mode handle or using the arrow controls,
+edit statistic-specific options, choose the same native scene
+or performer filters available in the full view, and select a **Small**,
+**Medium**, or **Large** presentation. The responsive twelve-column layout
+collapses to wider cards on tablets and one column on phones. Dashboard layout
+and widget options save automatically through the shared DirtyPlugins settings
+store and are restored on the next visit.
+
+Filter selection opens in a dedicated responsive dialog so native filter
+dropdowns have room to expand. The dialog becomes full-screen on narrow
+displays and can be closed with Escape, its close button, or the backdrop.
+
+Dashboard widgets summarize the selected filter, or the entire library when no
+filter is active. Small widgets emphasize key
+figures and compact visualizations, medium widgets add chart context, and large
+widgets expose the richest dashboard view and relevant controls. Use the open
+icon on a widget for detailed selections, scene or
+performer cards, and PNG export. A statistic can be added more than once, so
+each copy can represent a different filter or presentation.
+The dashboard shares compatible performer and scene requests when their filters
+match, so widgets do not independently download the same records; a failure
+remains isolated to the affected data group and filter.
+
 The statistic selector offers **Performer origin**, **Content growth**,
 **Age at scene**, **Scene ratings**, **Performer ratings**,
 **Rating vs scenes**, **Count vs rating**, **Studio value map**,
@@ -208,5 +233,7 @@ to a third-party service. Plugin code is MIT licensed; see `LICENSE`.
 
 ## Validation
 
-Run `node --check plugins/DirtyStats/dirtyStats.js` and
-`node tests/test_dirty_stats.js` from the repository root.
+Run `node --check plugins/DirtyStats/dirtyStats.js`,
+`node --check plugins/DirtyStats/dirtyStatsDashboard.js`,
+`node tests/test_dirty_stats.js`, and
+`node tests/test_dirty_stats_dashboard.js` from the repository root.
