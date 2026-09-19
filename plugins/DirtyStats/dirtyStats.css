@@ -81,5 +81,7 @@
 .dirty-stats-calendar-day.has-birthday { cursor: pointer; background: rgba(84, 213, 202, .2); color: #fff; font-weight: 600; }
 .dirty-stats-calendar-day.has-birthday:hover, .dirty-stats-calendar-day.has-birthday:focus-visible { background: rgba(84, 213, 202, .4); outline: none; }
 .dirty-stats-calendar-day.today { box-shadow: inset 0 0 0 2px #f3c779; }
-.dirty-stats-calendar-day.selected { outline: 2px solid #fff; outline-offset: 1px; }
+.dirty-stats-calendar-day.selected,
+.dirty-stats-calendar-day.has-birthday.selected { box-shadow: 0 0 0 2px #fff; }
+.dirty-stats-calendar-day.has-birthday.selected.today { box-shadow: inset 0 0 0 2px #f3c779, 0 0 0 2px #fff; }
 .dirty-stats-calendar-count { position: absolute; top: 1px; right: 2px; font-size: .55rem; color: #f3c779; }
