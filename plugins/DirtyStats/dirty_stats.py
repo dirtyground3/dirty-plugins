@@ -5,6 +5,26 @@ import json
 import os
 import shutil
 import sys
+import time
+
+
+class StashReporter:
+    """Write Stash's encoded log protocol to stderr."""
+
+    @staticmethod
+    def _write(level, message):
+        for line in str(message).splitlines() or [""]:
+            print(f"\x01{level}\x02{line}", file=sys.stderr, flush=True)
+
+    def info(self, message):
+        self._write("i", message)
+
+    def error(self, message):
+        self._write("e", message)
+
+
+def _elapsed_ms(started):
+    return int((time.monotonic() - started) * 1000)
 
 
 def volume_identity(path):
@@ -44,6 +64,8 @@ def capacities(paths, identity=volume_identity, usage=shutil.disk_usage):
 
 
 def main():
+    reporter = StashReporter()
+    started = time.monotonic()
     try:
         payload = json.load(sys.stdin)
         args = payload.get("args") or {}
@@ -52,9 +74,17 @@ def main():
         paths = args.get("paths")
         if not isinstance(paths, list) or not all(isinstance(path, str) and path for path in paths):
             raise ValueError("Source paths must be a list of nonempty strings")
-        json.dump({"output": json.dumps(capacities(paths))}, sys.stdout)
+        reporter.info(f"DirtyStats capacity started for {len(paths)} path(s)")
+        result = capacities(paths)
+        reporter.info(
+            f"DirtyStats capacity finished in {_elapsed_ms(started)}ms"
+        )
+        json.dump({"output": json.dumps(result)}, sys.stdout)
         return 0
     except Exception as exc:
+        reporter.error(
+            f"DirtyStats backend failed after {_elapsed_ms(started)}ms: {exc}"
+        )
         json.dump({"error": str(exc)}, sys.stdout)
         return 1
 

@@ -124,6 +124,7 @@ node tests/test_dirty_rank_algorithms.js
 node tests/test_dirty_rank_media.js
 node tests/test_dirty_tidy_automation.js
 node tests/test_dirty_stats.js
+node tests/test_dirty_multiscreen.js
 ```
 
 Add or update tests with behavior changes. Contract tests in `tests/` enforce
@@ -138,6 +139,35 @@ hub runtime exports.
   source to GitHub Pages via `.github/workflows/deploy.yml`. Do not commit
   generated `_site/` output.
 - Bump the plugin's `version` in its manifest for user-visible changes.
+
+## Local install (this machine)
+
+Stash runs on port `9999` with `plugins_path: C:\Users\FABIO\.stash\plugins`.
+Installed directories are the plugin IDs (not the repo directory names):
+`DirtyPlugins`→`dirtyPlugins`, `DirtyFileExtractor`→`extractScenes`,
+`DirtyMultiscreen`→`multiscreen`, `DirtyRank`→`dirtyRank`,
+`DirtyStats`→`dirtyStats`, `DirtyTidy`→`dirtyTidy`.
+
+```powershell
+# 1. Copy changed files into the installed plugin directory.
+Copy-Item -LiteralPath plugins\DirtyStats\dirtyStats.js `
+  -Destination C:\Users\FABIO\.stash\plugins\dirtyStats\dirtyStats.js -Force
+
+# 2. Reload plugins in the running Stash.
+Invoke-RestMethod -Uri http://localhost:9999/graphql -Method Post `
+  -ContentType application/json -Body (@{query='mutation { reloadPlugins }'} | ConvertTo-Json)
+
+# 3. Verify the loaded version and the served bundle.
+$body = @{query='{ plugins { id version enabled } }'} | ConvertTo-Json
+Invoke-RestMethod -Uri http://localhost:9999/graphql -Method Post `
+  -ContentType application/json -Body $body
+Invoke-WebRequest -Uri http://localhost:9999/plugin/dirtyStats/javascript -UseBasicParsing
+```
+
+Do not copy `__pycache__/`, `*.pyc`, or SQLite artifacts. Stash aggregates a
+plugin's declared JS/CSS into `/plugin/<id>/javascript` and `/plugin/<id>/css`
+(the individual source paths 404). Reloading does not refresh the browser: the
+user must hard-refresh (Ctrl+F5) the Stash tab.
 
 ## Content safety
 

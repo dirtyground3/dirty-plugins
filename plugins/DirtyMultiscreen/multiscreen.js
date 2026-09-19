@@ -3,7 +3,19 @@
   // PluginApi patches cannot be unregistered, so re-running this bundle would
   // stack duplicate nav links, patches, and count-query timers. Ignore reloads.
   const INSTANCE_KEY = "__dirtyMultiscreenPlugin";
+  if (window[INSTANCE_KEY] && window.DirtyPlugins && window.DirtyPlugins.debugLog) {
+    window.DirtyPlugins.debugLog("multiscreen", "skipped: duplicate load");
+  }
   if (window[INSTANCE_KEY]) return;
+  window.__dirtyCurrentPluginId = "multiscreen";
+  var debugLog = (window.DirtyPlugins && window.DirtyPlugins.debugLog) || function () {};
+  var debugScriptSrc = null;
+  try {
+    debugScriptSrc = (typeof document !== "undefined" && document.currentScript)
+      ? document.currentScript.src
+      : null;
+  } catch (_debugError) {}
+  debugLog("multiscreen", "script started", { script: debugScriptSrc });
 
   // plugins/DirtyMultiscreen/src/reactShim.ts
   var React = window.PluginApi.React;
@@ -74,6 +86,13 @@
   // plugins/DirtyMultiscreen/src/multiscreen.tsx
   var PluginApi = window.PluginApi;
   var DirtyPlugins = window.DirtyPlugins;
+  if (!PluginApi || !DirtyPlugins) {
+    debugLog("multiscreen", "skipped: required runtime missing", {
+      hasPluginApi: Boolean(PluginApi),
+      hasDirtyPlugins: Boolean(DirtyPlugins),
+    });
+    return;
+  }
   var GQL = PluginApi.GQL;
   var { Button } = PluginApi.libraries.Bootstrap;
   var { NavLink, useLocation } = PluginApi.libraries.ReactRouterDOM;
@@ -1389,5 +1408,30 @@
       }
     ];
   });
-  window[INSTANCE_KEY] = { route: ROUTE_PATH };
+  window[INSTANCE_KEY] = {
+    route: ROUTE_PATH,
+    algorithms: {
+      createMultiscreenPlaylists: createMultiscreenPlaylists,
+      getLaunchContextForPath: getLaunchContextForPath,
+      getMarkerItem: getMarkerItem,
+      getMarkerQueryVariables: getMarkerQueryVariables,
+      getPlaybackSettings: getPlaybackSettings,
+      getSceneItem: getSceneItem,
+      getSceneLimit: getSceneLimit,
+      getSceneQueryVariables: getSceneQueryVariables,
+      getSceneSort: getSceneSort,
+      getSceneStreamUrl: getSceneStreamUrl,
+      isMarkerLaunchContext: isMarkerLaunchContext,
+      isMultiscreenLaunchContext: isMultiscreenLaunchContext,
+      normalizeSettings: normalizeSettings,
+      readLaunchContext: readLaunchContext,
+      shuffleMultiscreenItems: shuffleMultiscreenItems,
+      splitMultiscreenItemsByIndex: splitMultiscreenItemsByIndex,
+      storeLaunchContext: storeLaunchContext
+    }
+  };
+  debugLog("multiscreen", "script finished registering", {
+    elapsedMs: DirtyPlugins.debugElapsed ? DirtyPlugins.debugElapsed() : null,
+  });
+  window.__dirtyCurrentPluginId = null;
 })();

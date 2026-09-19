@@ -9,6 +9,7 @@ import math
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 import unicodedata
@@ -1139,14 +1140,32 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
     raise PluginError(f"Unsupported DirtyTidy operation mode: {mode}")
 
 
+def _requested_mode(payload: Any) -> str:
+    args = payload.get("args") if isinstance(payload, dict) else None
+    if isinstance(args, dict):
+        return str(args.get("mode") or "execute")
+    return "unknown"
+
+
 def main() -> int:
     configure_standard_streams()
     reporter = StashReporter()
+    started = time.monotonic()
+    mode = "unknown"
     try:
-        emit_output(run(read_payload(), reporter))
+        payload = read_payload()
+        mode = _requested_mode(payload)
+        reporter.info(f"DirtyTidy backend started: mode={mode}")
+        output = run(payload, reporter)
+        reporter.info(
+            f"DirtyTidy backend finished: mode={mode} in {int((time.monotonic() - started) * 1000)}ms"
+        )
+        emit_output(output)
         return 0
     except Exception as exc:
-        reporter.error(f"DirtyTidy failed: {exc}")
+        reporter.error(
+            f"DirtyTidy failed: mode={mode} after {int((time.monotonic() - started) * 1000)}ms: {exc}"
+        )
         emit_error(exc)
         return 1
 

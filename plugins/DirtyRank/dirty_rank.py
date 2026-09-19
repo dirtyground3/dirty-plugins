@@ -7,6 +7,7 @@ import json
 import math
 import re
 import sys
+import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -904,14 +905,32 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
         connection.close()
 
 
+def _requested_mode(payload: Any) -> str:
+    args = payload.get("args") if isinstance(payload, dict) else None
+    if isinstance(args, dict):
+        return str(args.get("mode") or "record")
+    return "unknown"
+
+
 def main() -> int:
     configure_standard_streams()
     reporter = StashReporter()
+    started = time.monotonic()
+    mode = "unknown"
     try:
-        emit_output(run(read_payload(), reporter))
+        payload = read_payload()
+        mode = _requested_mode(payload)
+        reporter.info(f"DirtyRank backend started: mode={mode}")
+        output = run(payload, reporter)
+        reporter.info(
+            f"DirtyRank backend finished: mode={mode} in {int((time.monotonic() - started) * 1000)}ms"
+        )
+        emit_output(output)
         return 0
     except Exception as exc:
-        reporter.error(f"DirtyRank failed: {exc}")
+        reporter.error(
+            f"DirtyRank failed: mode={mode} after {int((time.monotonic() - started) * 1000)}ms: {exc}"
+        )
         emit_error(exc)
         return 1
 

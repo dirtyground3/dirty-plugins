@@ -12,7 +12,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | Explores origins, growth, ages, ratings, studios and cast connections with native filters and PNG export. | 0.3.0 |
+| [DirtyStats](plugins/DirtyStats/) | Explores origins, growth, ages, ratings, studios, birthdays and cast connections with native filters and PNG export. | 0.3.0 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 0.4.0 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 0.4.0 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers through category-based comparisons using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet battles, and leaderboards. | 0.7.0 |
@@ -169,8 +169,8 @@ link to the shared Dirty Plugins settings page.
 - **DirtyTidy:** configure a folder/filename strategy, generate a preview,
   review it, then use **Confirm and save** before running or enabling automation.
 - **DirtyStats:** open the pie chart icon in the utility navigation to explore
-  performer origins, scene growth, ages, ratings, or cast connections, apply
-  native filters, and export the displayed visualization as PNG.
+  performer origins, scene growth, ages, ratings, performer birthdays, or cast
+  connections, apply native filters, and export the displayed visualization as PNG.
 
 ## Manual installation
 
@@ -208,6 +208,58 @@ Standard settings save automatically after a short debounce and serialized
 writes prevent an older request from overwriting a newer value. DirtyTidy is
 the intentional exception: file-moving and renaming strategies require a fresh
 preview and confirmation.
+
+## Debugging plugin activity
+
+All Dirty plugins share a browser-side debug log so you can see exactly what
+each plugin does on ordinary Stash pages. It is written to the browser console
+with a `[DirtyPlugins]` prefix and kept in memory at
+`window.__dirtyPluginsDebugLog`. Each entry names the plugin, the hook
+(`patch.before`, `patch.after`, `patch.instead`, `register.route`, a GraphQL
+request, or a lifecycle event), the current path, and elapsed milliseconds.
+
+Open the browser developer tools (F12) on the Stash tab and filter the console
+for `DirtyPlugins`. To dump the whole collected log, including entries from
+before the console was opened, run:
+
+```js
+dirtyPluginsDumpDebugLogs()
+```
+
+The same function is available as `DirtyPlugins.dumpDebugLogs()`.
+
+Console output can be silenced without losing the in-memory log:
+
+```js
+window.__dirtyPluginsDebug = false;             // this page only
+localStorage.setItem("dirtyPluginsDebug", "0"); // persists
+```
+
+If Stash is stuck on "Loading plugins…", the last `script started` line with no
+matching `script finished registering` identifies the plugin whose script never
+finished loading.
+
+> Stash's **Troubleshooting mode** disables all plugins and custom JavaScript,
+> and only raises the *server* log level. Dirty plugin logs therefore do not
+> appear while it is active. Exit Troubleshooting mode (which reloads Stash),
+> hard-refresh the tab (Ctrl+F5), and check the browser console instead.
+
+### Server-side logs
+
+The Python backends log through Stash's plugin log protocol, so their output
+appears in Stash's own log with a `[Plugin / DirtyPlugins]`,
+`[Plugin / DirtyRank]`, `[Plugin / DirtyTidy]`, `[Plugin / DirtyStats]`, or
+`[Plugin / DirtyFileExtractor]` prefix. Every backend logs a `started` line and
+a `finished` line (with the operation mode and elapsed milliseconds), and logs
+failures. A `started` line with no matching `finished` line identifies a backend
+call that hung.
+
+To see these, keep plugins enabled and set **Settings → General → Log level** to
+`Debug` (or at least `Info`), then open **Settings → Logs**. This is separate
+from the browser-console log above. Note that Stash does not log the plugin
+asset requests themselves; to see whether the server is slow to return a
+`/plugin/<id>/javascript` bundle, use the browser's **Network** tab and watch
+that request while Stash is stuck on "Loading plugins…".
 
 ## Screenshots and content safety
 

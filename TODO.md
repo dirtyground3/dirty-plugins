@@ -359,8 +359,10 @@ Status key: `[ ]` open, `[x]` done.
 - [x] Extractor: collision policies and duplicate basenames (would have
       caught Critical #1) — covered; partial failures, `samefile`, dry-run
       planning still open.
-- [ ] Multiscreen: **zero** tests today; `normalizeSettings`, playlist/split
-      logic, launch context are pure and easily testable.
+- [x] Multiscreen: `normalizeSettings`, playlist/split logic, scene and marker
+      item mapping, query variables, launch context, session storage, and the
+      re-registration guard are covered by `tests/test_dirty_multiscreen.js`;
+      React player/observer behavior still untested.
 - [x] DirtyTidy: preview->execute plan integrity (warning/blocked becoming
       ready) — covered; all-failed exit behavior, reserved-name folders,
       empty hierarchy levels, case-only renames, cp1252 stdin still open.

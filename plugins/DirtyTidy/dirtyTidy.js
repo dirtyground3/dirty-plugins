@@ -2,11 +2,31 @@
   "use strict";
 
   var INSTANCE_KEY = "__dirtyTidyPlugin";
-  if (window[INSTANCE_KEY]) return;
+  if (window[INSTANCE_KEY]) {
+    if (window.DirtyPlugins && window.DirtyPlugins.debugLog) {
+      window.DirtyPlugins.debugLog("dirtyTidy", "skipped: duplicate load");
+    }
+    return;
+  }
 
   var PluginApi = window.PluginApi;
   var DirtyPlugins = window.DirtyPlugins;
-  if (!PluginApi || !DirtyPlugins || !DirtyPlugins.registerSettingsPanel) return;
+  if (!PluginApi || !DirtyPlugins || !DirtyPlugins.registerSettingsPanel) {
+    if (window.DirtyPlugins && window.DirtyPlugins.debugLog) {
+      window.DirtyPlugins.debugLog("dirtyTidy", "skipped: required runtime missing", {
+        hasPluginApi: Boolean(PluginApi),
+        hasDirtyPlugins: Boolean(DirtyPlugins),
+      });
+    }
+    return;
+  }
+  window.__dirtyCurrentPluginId = "dirtyTidy";
+  var debugLog = DirtyPlugins.debugLog || function () {};
+  var debugScriptSrc = null;
+  try {
+    debugScriptSrc = (typeof document !== "undefined" && document.currentScript) ? document.currentScript.src : null;
+  } catch (_debugError) {}
+  debugLog("dirtyTidy", "script started", { script: debugScriptSrc });
 
   var React = PluginApi.React;
   var h = React.createElement;
@@ -797,4 +817,8 @@
     automationMonitor: DirtyTidyAutomationMonitor,
     settingsPanel: DirtyTidySettings,
   };
+  debugLog("dirtyTidy", "script finished registering", {
+    elapsedMs: DirtyPlugins.debugElapsed ? DirtyPlugins.debugElapsed() : null,
+  });
+  window.__dirtyCurrentPluginId = null;
 })();

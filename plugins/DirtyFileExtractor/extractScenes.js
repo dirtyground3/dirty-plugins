@@ -7,13 +7,33 @@
   var RELEVANT_MUTATION_SELECTOR =
     ".filtered-list-toolbar, .item-list-container, .marker-wall";
   var hubApi = window.DirtyPlugins;
+  if (!hubApi || !hubApi.graphql) {
+    if (window.DirtyPlugins && window.DirtyPlugins.debugLog) {
+      window.DirtyPlugins.debugLog(PLUGIN_ID, "skipped: required runtime missing");
+    }
+    return;
+  }
+  window.__dirtyCurrentPluginId = PLUGIN_ID;
+  var debugLog = hubApi.debugLog || function () {};
+  var debugLogThrottled = hubApi.debugLogThrottled || function () {};
 
   // Stash may reload plugin assets without reloading the page. Tear down an
   // older instance first so observers and event handlers are never duplicated.
   var previousInstance = window[INSTANCE_KEY];
   if (previousInstance && typeof previousInstance.destroy === "function") {
+    debugLog(PLUGIN_ID, "tearing down previous instance before re-register");
     previousInstance.destroy();
   }
+  var debugScriptSrc = null;
+  try {
+    debugScriptSrc = (typeof document !== "undefined" && document.currentScript)
+      ? document.currentScript.src
+      : null;
+  } catch (_debugError) {}
+  debugLog(PLUGIN_ID, "script started", {
+    script: debugScriptSrc,
+    reRegister: Boolean(previousInstance),
+  });
 
   var state = {
     browseButton: null,
@@ -494,6 +514,11 @@
     if (state.destroyed) return;
     var button = ensureButton();
     var selection = selectedItems();
+    debugLogThrottled(PLUGIN_ID, "renderButton", {
+      path: window.location.pathname,
+      kind: selection.kind,
+      selected: selection.ids.length,
+    }, 500);
     state.selectionSignature = selectionSignature(selection);
     var count = selection.ids.length;
 
@@ -673,4 +698,9 @@
   window[INSTANCE_KEY] = { destroy: destroy };
   registerHubFieldAction();
   scheduleRender();
+  debugLog(PLUGIN_ID, "script finished registering", {
+    path: window.location.pathname,
+    elapsedMs: hubApi.debugElapsed ? hubApi.debugElapsed() : null,
+  });
+  window.__dirtyCurrentPluginId = null;
 })();

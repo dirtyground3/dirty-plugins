@@ -1,6 +1,6 @@
 name: DirtyStats
-description: Explore origins, growth, ages, ratings, studios and cast connections with native filters and PNG export.
-version: 0.3.1
+description: Explore origins, growth, ages, ratings, studios, birthdays and cast connections with native filters and PNG export.
+version: 0.4.0
 
 exec:
   - python

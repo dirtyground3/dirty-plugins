@@ -2,11 +2,33 @@
   "use strict";
 
   var INSTANCE_KEY = "__dirtyRankPlugin";
-  if (window[INSTANCE_KEY]) return;
+  if (window[INSTANCE_KEY]) {
+    if (window.DirtyPlugins && window.DirtyPlugins.debugLog) {
+      window.DirtyPlugins.debugLog("dirtyRank", "skipped: duplicate load");
+    }
+    return;
+  }
 
   var PluginApi = window.PluginApi;
   var DirtyPlugins = window.DirtyPlugins;
-  if (!PluginApi || !DirtyPlugins || !DirtyPlugins.graphql) return;
+  if (!PluginApi || !DirtyPlugins || !DirtyPlugins.graphql) {
+    if (window.DirtyPlugins && window.DirtyPlugins.debugLog) {
+      window.DirtyPlugins.debugLog("dirtyRank", "skipped: required runtime missing", {
+        hasPluginApi: Boolean(PluginApi),
+        hasDirtyPlugins: Boolean(DirtyPlugins),
+      });
+    }
+    return;
+  }
+  window.__dirtyCurrentPluginId = "dirtyRank";
+  var debugLog = DirtyPlugins.debugLog || function () {};
+  var debugScriptSrc = null;
+  try {
+    debugScriptSrc = (typeof document !== "undefined" && document.currentScript)
+      ? document.currentScript.src
+      : null;
+  } catch (_debugError) {}
+  debugLog("dirtyRank", "script started", { script: debugScriptSrc });
 
   var React = PluginApi.React;
   var h = React.createElement;
@@ -3085,4 +3107,8 @@
     overallSortLabel: OVERALL_SORT_LABEL,
     route: ROUTE_PATH,
   };
+  debugLog("dirtyRank", "script finished registering", {
+    elapsedMs: DirtyPlugins.debugElapsed ? DirtyPlugins.debugElapsed() : null,
+  });
+  window.__dirtyCurrentPluginId = null;
 })();

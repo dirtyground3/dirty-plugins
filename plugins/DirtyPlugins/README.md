@@ -36,6 +36,23 @@ confirmation workflow because its strategy can move and rename files.
 The direct URL is `/plugins/dirty-plugins`; it remains unlisted in Stash's
 navigation.
 
+## Debug logging
+
+The hub installs a shared browser-side debug log used by every Dirty plugin.
+Console lines are prefixed `[DirtyPlugins]`, and the full log is available at
+`window.__dirtyPluginsDebugLog` and through `dirtyPluginsDumpDebugLogs()` (also
+`DirtyPlugins.dumpDebugLogs()`). It records plugin lifecycle events, route and
+patch registrations, every patch invocation on ordinary Stash pages, and shared
+GraphQL requests. Set `window.__dirtyPluginsDebug = false` or
+`localStorage.setItem("dirtyPluginsDebug", "0")` to silence the console; the
+in-memory log keeps collecting. Stash's Troubleshooting mode disables all
+plugin JavaScript, so no logs appear while it is active.
+
+The hub's Python backend logs through Stash's plugin log protocol as
+`[Plugin / DirtyPlugins]`, recording a `started`/`finished` pair (mode and
+elapsed milliseconds) for every operation. Set **Settings → General → Log
+level** to `Debug` and open **Settings → Logs** to read it.
+
 ## Screenshot
 
 ![Dirty Plugins shared settings hub showing DirtyRank configuration](../../docs/images/dirty-rank-settings.png)

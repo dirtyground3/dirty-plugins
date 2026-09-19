@@ -56,3 +56,23 @@
 
 .dirty-stats-scenes { margin-top: .75rem; }
 .dirty-stats-scenes .scene-card { width: 100%; margin: 0; }
+.dirty-stats-birthday-next { display: flex; gap: .4rem; flex-wrap: wrap; padding: .4rem .5rem 0; }
+.dirty-stats-birthday-next-item { display: flex; flex-direction: column; align-items: flex-start; gap: .1rem; border: 1px solid var(--dirty-ui-border); border-radius: var(--dirty-ui-radius); background: #2c343b; color: var(--dirty-ui-text); padding: .3rem .5rem; font-size: .75rem; text-align: left; cursor: pointer; }
+.dirty-stats-birthday-next-item:hover, .dirty-stats-birthday-next-item:focus-visible { border-color: #54d5ca; outline: none; }
+.dirty-stats-birthday-next-name { font-weight: 600; }
+.dirty-stats-birthday-next-date { color: var(--dirty-ui-muted); font-size: .7rem; }
+.dirty-stats-calendar { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .75rem; padding: .75rem; }
+.dirty-stats-calendar-month { background: #2c343b; border: 1px solid var(--dirty-ui-border); border-radius: var(--dirty-ui-radius); padding: .5rem; }
+.dirty-stats-calendar-month.is-current { border-color: #54d5ca; }
+.dirty-stats-calendar-month h3 { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0 0 .35rem; font-size: .8rem; color: var(--dirty-ui-text); }
+.dirty-stats-calendar-total { color: #54d5ca; font-size: .7rem; font-weight: 600; }
+.dirty-stats-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dirty-stats-calendar-weekday { text-align: center; font-size: .6rem; color: var(--dirty-ui-muted); }
+.dirty-stats-calendar-blank { aspect-ratio: 1; }
+.dirty-stats-calendar-day { position: relative; aspect-ratio: 1; padding: 0; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--dirty-ui-muted); font-size: .7rem; line-height: 1; }
+.dirty-stats-calendar-day:disabled { cursor: default; opacity: .45; }
+.dirty-stats-calendar-day.has-birthday { cursor: pointer; background: rgba(84, 213, 202, .2); color: #fff; font-weight: 600; }
+.dirty-stats-calendar-day.has-birthday:hover, .dirty-stats-calendar-day.has-birthday:focus-visible { background: rgba(84, 213, 202, .4); outline: none; }
+.dirty-stats-calendar-day.today { box-shadow: inset 0 0 0 2px #f3c779; }
+.dirty-stats-calendar-day.selected { outline: 2px solid #fff; outline-offset: 1px; }
+.dirty-stats-calendar-count { position: absolute; top: 1px; right: 2px; font-size: .55rem; color: #f3c779; }

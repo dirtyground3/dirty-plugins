@@ -201,6 +201,16 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("SettingsRevisionConflict", storage)
         self.assertIn('connection.execute("BEGIN")', storage)
 
+    def test_dirty_stats_persists_display_settings_through_the_hub(self):
+        script = read("plugins/DirtyStats/dirtyStats.js")
+        backend = read("plugins/DirtyPlugins/dirty_plugins.py")
+
+        self.assertIn('var PLUGIN_ID = "dirtyStats"', script)
+        self.assertIn("useStatsSetting", script)
+        self.assertIn("hub.getPluginSettings(PLUGIN_ID)", script)
+        self.assertIn("hub.configurePlugin(PLUGIN_ID, statsSettings)", script)
+        self.assertIn('"dirtyStats"', backend)
+
     def test_dirty_rank_separates_tie_from_skip_and_preserves_native_rating(self):
         script = read("plugins/DirtyRank/dirtyRank.js")
         backend = read("plugins/DirtyRank/dirty_rank.py")
@@ -326,7 +336,9 @@ class SharedUIContractTests(unittest.TestCase):
 
         self.assertIn("__dirtyMultiscreenPlugin", multiscreen)
         self.assertIn("if (window[INSTANCE_KEY]) return;", multiscreen)
-        self.assertIn("window[INSTANCE_KEY] = { route: ROUTE_PATH };", multiscreen)
+        self.assertIn("window[INSTANCE_KEY] = {", multiscreen)
+        self.assertIn("route: ROUTE_PATH,", multiscreen)
+        self.assertIn("algorithms: {", multiscreen)
 
     def test_multiscreen_grid_clamps_tiles_to_available_cells(self):
         multiscreen = read("plugins/DirtyMultiscreen/multiscreen.js")

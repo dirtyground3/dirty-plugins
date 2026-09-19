@@ -1,9 +1,29 @@
 (function () {
   "use strict";
-  if (window.__dirtyStatsPlugin) return;
+  if (window.__dirtyStatsPlugin) {
+    if (window.DirtyPlugins && window.DirtyPlugins.debugLog) {
+      window.DirtyPlugins.debugLog("dirtyStats", "skipped: duplicate load");
+    }
+    return;
+  }
   var api = window.PluginApi;
   var hub = window.DirtyPlugins;
-  if (!api || !hub || !hub.graphql) return;
+  if (!api || !hub || !hub.graphql) {
+    if (window.DirtyPlugins && window.DirtyPlugins.debugLog) {
+      window.DirtyPlugins.debugLog("dirtyStats", "skipped: required runtime missing", {
+        hasPluginApi: Boolean(api),
+        hasDirtyPlugins: Boolean(hub),
+      });
+    }
+    return;
+  }
+  window.__dirtyCurrentPluginId = "dirtyStats";
+  var debugLog = hub.debugLog || function () {};
+  var debugScriptSrc = null;
+  try {
+    debugScriptSrc = (typeof document !== "undefined" && document.currentScript) ? document.currentScript.src : null;
+  } catch (_debugError) {}
+  debugLog("dirtyStats", "script started", { script: debugScriptSrc });
   var React = api.React;
   var h = React.createElement;
   var route = "/plugins/dirty-stats";
@@ -12,21 +32,128 @@
   var ratingRoute = route + "/ratings";
   var performerRatingRoute = route + "/performer-ratings";
   var performerScatterRoute = route + "/performer-scatter";
+  var countRatingRoute = route + "/count-rating";
   var constellationRoute = route + "/constellation";
   var studioRoute = route + "/studios";
+  var birthdayRoute = route + "/birthdays";
   var agePerformerFilter = null;
   var performerFilterEvent = "dirty-stats:performer-filter";
-  // Native filters can remount the scene list; keep its date choice for this session.
-  var growthDateBasis = "created_at";
-  var growthGrouping = "day";
-  var growthShowForecast = false;
-  var growthShowCapacity = true;
-  var constellationMaxPerformers = 100;
-  var constellationMinShared = 1;
-  var ratingRounding = 0.5;
-  var scatterMinRating = 9;
-  var scatterMaxScenes = 10;
-  var studioMinScenes = 1;
+  var PLUGIN_ID = "dirtyStats";
+  // Display options persist through the shared hub settings so every statistic
+  // reopens with the view the user last chose.
+  var STATS_SETTING_SPECS = {
+    showMapNumbers: { options: [false, true] },
+    sceneRatingRounding: { options: [0, 0.5, 1] },
+    performerRatingRounding: { options: [0, 0.5, 1] },
+    growthDateBasis: { options: ["created_at", "mod_time", "scene_date"] },
+    growthGrouping: { options: ["day", "month", "year"] },
+    growthShowForecast: { options: [false, true] },
+    growthShowCapacity: { options: [false, true] },
+    constellationMaxPerformers: { options: [50, 100, 200, 500, 1000] },
+    constellationMinShared: { options: [1, 2, 3, 5, 10] },
+    scatterMinRating: { options: [0, 5, 6, 7, 8, 9] },
+    scatterMaxScenes: { options: [0, 5, 10, 20, 50, 100] },
+    countRatingMetric: { options: ["play_count", "o_counter"] },
+    studioMinScenes: { options: [1, 2, 5, 10, 20] }
+  };
+  var statsSettings = {
+    showMapNumbers: false,
+    sceneRatingRounding: 0.5,
+    performerRatingRounding: 0.5,
+    growthDateBasis: "created_at",
+    growthGrouping: "day",
+    growthShowForecast: false,
+    growthShowCapacity: true,
+    constellationMaxPerformers: 100,
+    constellationMinShared: 1,
+    scatterMinRating: 9,
+    scatterMaxScenes: 10,
+    countRatingMetric: "play_count",
+    studioMinScenes: 1
+  };
+  var statsSettingsListeners = new Set();
+  var statsSettingsRevision = 0;
+  var statsSettingsSaveTimer = null;
+
+  function parseStatsSetting(name, value) {
+    var spec = STATS_SETTING_SPECS[name];
+    if (!spec) return null;
+    for (var index = 0; index < spec.options.length; index += 1) {
+      if (spec.options[index] === value) return spec.options[index];
+    }
+    for (var stringIndex = 0; stringIndex < spec.options.length; stringIndex += 1) {
+      if (String(spec.options[stringIndex]) === String(value)) return spec.options[stringIndex];
+    }
+    return null;
+  }
+
+  function notifyStatsSettings() {
+    statsSettingsRevision += 1;
+    statsSettingsListeners.forEach(function (listener) { listener(); });
+  }
+
+  function scheduleStatsSettingsSave() {
+    if (typeof hub.configurePlugin !== "function") return;
+    if (statsSettingsSaveTimer !== null) window.clearTimeout(statsSettingsSaveTimer);
+    statsSettingsSaveTimer = window.setTimeout(function () {
+      statsSettingsSaveTimer = null;
+      hub.configurePlugin(PLUGIN_ID, statsSettings).catch(function (error) {
+        console.warn("DirtyStats could not save its display settings", error);
+      });
+    }, 400);
+  }
+
+  function setStatsSetting(name, value) {
+    var next = parseStatsSetting(name, value);
+    if (next === null || statsSettings[name] === next) return;
+    statsSettings[name] = next;
+    notifyStatsSettings();
+    scheduleStatsSettingsSave();
+  }
+
+  function statsSettingsFromStorage(stored) {
+    var source = stored && typeof stored === "object" ? stored : {};
+    var parsed = {};
+    Object.keys(statsSettings).forEach(function (name) {
+      var value = parseStatsSetting(name, source[name]);
+      if (value !== null) parsed[name] = value;
+    });
+    // Older builds stored one rounding value shared by both ratings charts.
+    var legacyRounding = parseStatsSetting("sceneRatingRounding", source.ratingRounding);
+    if (legacyRounding !== null) {
+      if (parsed.performerRatingRounding === undefined) parsed.performerRatingRounding = legacyRounding;
+      if (parsed.sceneRatingRounding === undefined) parsed.sceneRatingRounding = legacyRounding;
+    }
+    return parsed;
+  }
+
+  function loadStatsSettings() {
+    if (typeof hub.getPluginSettings !== "function") return Promise.resolve();
+    return hub.getPluginSettings(PLUGIN_ID).then(function (stored) {
+      var parsed = statsSettingsFromStorage(stored);
+      var changed = false;
+      Object.keys(parsed).forEach(function (name) {
+        if (statsSettings[name] !== parsed[name]) {
+          statsSettings[name] = parsed[name];
+          changed = true;
+        }
+      });
+      if (changed) notifyStatsSettings();
+    }).catch(function (error) {
+      console.warn("DirtyStats could not load its display settings", error);
+    });
+  }
+
+  function useStatsSetting(name) {
+    var revisionState = React.useState(statsSettingsRevision);
+    var setRevision = revisionState[1];
+    React.useEffect(function () {
+      var listener = function () { setRevision(statsSettingsRevision); };
+      statsSettingsListeners.add(listener);
+      return function () { statsSettingsListeners.delete(listener); };
+    }, [setRevision]);
+    return [statsSettings[name], function (value) { setStatsSetting(name, value); }];
+  }
   // Keep the bundled library reference even if another plugin loads ECharts later.
   var charts = window.echarts;
   var world = window.__dirtyStatsWorld;
@@ -88,6 +215,60 @@
     if (scene.getUTCMonth() < birth.getUTCMonth() || (scene.getUTCMonth() === birth.getUTCMonth() && scene.getUTCDate() < birth.getUTCDate())) age--;
     return age;
   }
+  // Birthdays recur every year, so the year is stripped and Feb 29 falls back to
+  // Feb 28 in non-leap years instead of silently rolling into March.
+  function birthdayInYear(year, month, day) {
+    var date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCMonth() !== month - 1) date = new Date(Date.UTC(year, month - 1, day - 1));
+    return date;
+  }
+  function daysUntilBirthday(month, day, now) {
+    now = now == null ? new Date() : now;
+    var today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    var next = birthdayInYear(today.getUTCFullYear(), month, day);
+    if (next < today) next = birthdayInYear(today.getUTCFullYear() + 1, month, day);
+    return Math.round((next.getTime() - today.getTime()) / 86400000);
+  }
+  function aggregateBirthdays(performers, now) {
+    now = now == null ? new Date() : now;
+    var entries = [], seen = new Set(), missing = 0;
+    performers.forEach(function (performer) {
+      var id = String(performer.id == null ? "" : performer.id);
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      var birth = fullDate(performer.birthdate);
+      if (!birth) { missing++; return; }
+      var month = birth.getUTCMonth() + 1, day = birth.getUTCDate();
+      var daysUntil = daysUntilBirthday(month, day, now);
+      var next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + daysUntil * 86400000);
+      entries.push({
+        id: id,
+        name: String(performer.name || "Performer #" + id),
+        birthdate: String(performer.birthdate || ""),
+        month: month,
+        day: day,
+        turns: next.getUTCFullYear() - birth.getUTCFullYear(),
+        daysUntil: daysUntil
+      });
+    });
+    entries.sort(function (a, b) { return a.month - b.month || a.day - b.day || a.name.localeCompare(b.name) || a.id.localeCompare(b.id); });
+    return {
+      entries: entries,
+      total: seen.size,
+      valid: entries.length,
+      missing: missing,
+      today: entries.filter(function (entry) { return entry.daysUntil === 0; }).length,
+      upcoming: entries.filter(function (entry) { return entry.daysUntil <= 30; }).length
+    };
+  }
+  function birthdayEntriesFor(entries, month, day) {
+    return entries.filter(function (entry) { return entry.month === month && entry.day === day; });
+  }
+  function birthdayMonthCounts(entries) {
+    var counts = [];
+    for (var month = 1; month <= 12; month++) counts.push(entries.filter(function (entry) { return entry.month === month; }).length);
+    return counts;
+  }
   function aggregateAges(scenes) {
     var buckets = new Map(), performers = new Set(), seen = new Set(), missingSceneDates = 0, missingBirthdates = 0;
     scenes.forEach(function (scene) {
@@ -126,20 +307,38 @@
     link.click();
     link.remove();
   }
+  var STATISTIC_ROUTES = {
+    origin: route,
+    growth: growthRoute,
+    ages: ageRoute,
+    ratings: ratingRoute,
+    performerRatings: performerRatingRoute,
+    performerScatter: performerScatterRoute,
+    countRating: countRatingRoute,
+    studios: studioRoute,
+    constellation: constellationRoute,
+    birthdays: birthdayRoute
+  };
+  var STATISTIC_LABELS = {
+    origin: "Performer origin",
+    growth: "Content growth",
+    ages: "Age at scene",
+    ratings: "Scene ratings",
+    performerRatings: "Performer ratings",
+    performerScatter: "Rating vs scenes",
+    countRating: "Count vs rating",
+    studios: "Studio value map",
+    constellation: "Cast constellation",
+    birthdays: "Performer birthdays"
+  };
+  var STATISTIC_ORDER = ["origin", "growth", "ages", "ratings", "performerRatings", "performerScatter", "countRating", "studios", "constellation", "birthdays"];
   function StatisticSelector(props) {
     var history = api.libraries.ReactRouterDOM.useHistory();
     var bootstrap = api.libraries.Bootstrap, Dropdown = bootstrap.Dropdown;
-    return h(Dropdown, { as: bootstrap.ButtonGroup, className: "sort-by-select dirty-stats-selector", onSelect: function (value) { if (value && value !== props.value) history.push(value === "growth" ? growthRoute : value === "ages" ? ageRoute : value === "ratings" ? ratingRoute : value === "performerRatings" ? performerRatingRoute : value === "performerScatter" ? performerScatterRoute : value === "studios" ? studioRoute : value === "constellation" ? constellationRoute : route); } },
-      h(bootstrap.InputGroup.Prepend, null, h(Dropdown.Toggle, { variant: "secondary", id: "dirty-stats-statistic", "aria-label": "Statistic" }, props.value === "growth" ? "Content growth" : props.value === "ages" ? "Age at scene" : props.value === "ratings" ? "Scene ratings" : props.value === "performerRatings" ? "Performer ratings" : props.value === "performerScatter" ? "Rating vs scenes" : props.value === "studios" ? "Studio value map" : props.value === "constellation" ? "Cast constellation" : "Performer origin")),
+    return h(Dropdown, { as: bootstrap.ButtonGroup, className: "sort-by-select dirty-stats-selector", onSelect: function (value) { if (value && value !== props.value && STATISTIC_ROUTES[value]) history.push(STATISTIC_ROUTES[value]); } },
+      h(bootstrap.InputGroup.Prepend, null, h(Dropdown.Toggle, { variant: "secondary", id: "dirty-stats-statistic", "aria-label": "Statistic" }, STATISTIC_LABELS[props.value] || STATISTIC_LABELS.origin)),
       h(Dropdown.Menu, { className: "bg-secondary text-white" },
-        h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "origin", active: props.value === "origin" }, "Performer origin"),
-        h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "growth", active: props.value === "growth" }, "Content growth"),
-        h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "ages", active: props.value === "ages" }, "Age at scene"),
-        h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "ratings", active: props.value === "ratings" }, "Scene ratings"),
-        h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "performerRatings", active: props.value === "performerRatings" }, "Performer ratings"),
-        h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "performerScatter", active: props.value === "performerScatter" }, "Rating vs scenes"),
-        h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "studios", active: props.value === "studios" }, "Studio value map"),
-        h(Dropdown.Item, { className: "bg-secondary text-white", eventKey: "constellation", active: props.value === "constellation" }, "Cast constellation")));
+        STATISTIC_ORDER.map(function (key) { return h(Dropdown.Item, { key: key, className: "bg-secondary text-white", eventKey: key, active: props.value === key }, STATISTIC_LABELS[key]); })));
   }
   function FilterStatisticSelector(props) {
     var state = React.useState(null), toolbar = state[0], setToolbar = state[1];
@@ -357,7 +556,7 @@
     criteriaVariables.filter.sort = "id"; criteriaVariables.filter.direction = "ASC";
     var criteriaKey = JSON.stringify(criteriaVariables);
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
-    var labelState = React.useState(false), labels = labelState[0], setLabels = labelState[1];
+    var labelState = useStatsSetting("showMapNumbers"), labels = labelState[0], setLabels = labelState[1];
     var chartNode = React.useRef(null), chartRef = React.useRef(null);
     var stats = React.useMemo(function () { return aggregate(performers, countries); }, [performers]);
     React.useEffect(function () { setSelectedCountry(""); }, [criteriaKey]);
@@ -519,8 +718,8 @@
     var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
-    var maxState = React.useState(function () { return constellationMaxPerformers; }), maxPerformers = maxState[0], setMaxPerformers = maxState[1];
-    var sharedState = React.useState(function () { return constellationMinShared; }), minShared = sharedState[0], setMinShared = sharedState[1];
+    var maxState = useStatsSetting("constellationMaxPerformers"), maxPerformers = maxState[0], setMaxPerformers = maxState[1];
+    var sharedState = useStatsSetting("constellationMinShared"), minShared = sharedState[0], setMinShared = sharedState[1];
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
     var node = React.useRef(null), chartRef = React.useRef(null);
     var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
@@ -586,8 +785,8 @@
       error ? h("div", { className: "dirty-stats-alert", role: "alert" }, error) : null,
       !loading && !error && stats.nodes.length ? h("section", { className: "dirty-stats-map-panel dirty-ui-panel", "aria-label": "Cast constellation" },
         h("div", { className: "dirty-stats-map-controls" },
-          h("label", { className: "dirty-stats-date-basis" }, "Maximum performers", h("select", { className: "form-control form-control-sm", value: maxPerformers, onChange: function (event) { constellationMaxPerformers = Number(event.target.value); setMaxPerformers(constellationMaxPerformers); } }, [50, 100, 200, 500, 1000].map(function (value) { return h("option", { key: value, value: value }, value); }))),
-          h("label", { className: "dirty-stats-date-basis" }, "Minimum shared scenes", h("select", { className: "form-control form-control-sm", value: minShared, onChange: function (event) { constellationMinShared = Number(event.target.value); setMinShared(constellationMinShared); } }, [1, 2, 3, 5, 10].map(function (value) { return h("option", { key: value, value: value }, value); }))),
+          h("label", { className: "dirty-stats-date-basis" }, "Maximum performers", h("select", { className: "form-control form-control-sm", value: maxPerformers, onChange: function (event) { setMaxPerformers(Number(event.target.value)); } }, STATS_SETTING_SPECS.constellationMaxPerformers.options.map(function (value) { return h("option", { key: value, value: value }, value); }))),
+          h("label", { className: "dirty-stats-date-basis" }, "Minimum shared scenes", h("select", { className: "form-control form-control-sm", value: minShared, onChange: function (event) { setMinShared(Number(event.target.value)); } }, STATS_SETTING_SPECS.constellationMinShared.options.map(function (value) { return h("option", { key: value, value: value }, value); }))),
           selected ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all scenes") : null,
           h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-cast-constellation.png"); } }, "Export PNG")),
         h("div", { ref: node, className: "dirty-stats-constellation-chart", role: "img", "aria-label": "Network of performers connected by matching scenes. Larger performers appear in more scenes; thicker lines represent more shared scenes." })) : null,
@@ -604,7 +803,7 @@
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
     var node = React.useRef(null), chartRef = React.useRef(null);
     var capacityState = React.useState(null), capacity = capacityState[0], setCapacity = capacityState[1];
-    var showCapacityState = React.useState(function () { return growthShowCapacity; }), showCapacity = showCapacityState[0], setShowCapacity = showCapacityState[1];
+    var showCapacityState = useStatsSetting("growthShowCapacity"), showCapacity = showCapacityState[0], setShowCapacity = showCapacityState[1];
     var capacityErrorState = React.useState(""), capacityError = capacityErrorState[0], setCapacityError = capacityErrorState[1];
     React.useEffect(function () {
       var active = true;
@@ -616,9 +815,9 @@
       return function () { active = false; };
     }, [refresh]);
     var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
-    var dateState = React.useState(function () { return growthDateBasis; }), dateBasis = dateState[0], setDateBasis = dateState[1];
-    var groupingState = React.useState(function () { return growthGrouping; }), grouping = groupingState[0], setGrouping = groupingState[1];
-    var forecastState = React.useState(function () { return growthShowForecast; }), showForecast = forecastState[0], setShowForecast = forecastState[1];
+    var dateState = useStatsSetting("growthDateBasis"), dateBasis = dateState[0], setDateBasis = dateState[1];
+    var groupingState = useStatsSetting("growthGrouping"), grouping = groupingState[0], setGrouping = groupingState[1];
+    var forecastState = useStatsSetting("growthShowForecast"), showForecast = forecastState[0], setShowForecast = forecastState[1];
     var dateLabel = dateBasis === "mod_time" ? "file modification date" : dateBasis === "scene_date" ? "scene date" : "scene creation date";
     var periodState = React.useState(null), period = periodState[0], setPeriod = periodState[1];
     var anchorState = React.useState(null), anchor = anchorState[0], setAnchor = anchorState[1];
@@ -695,12 +894,12 @@
       h("section", { className: "dirty-stats-map-panel dirty-ui-panel", "aria-label": "Scene content growth" },
         h("div", { className: "dirty-stats-map-controls" },
           h("label", { className: "dirty-stats-date-basis" }, "Date basis",
-            h("select", { className: "form-control dirty-stats-statistic", value: dateBasis, onChange: function (event) { growthDateBasis = event.target.value; setDateBasis(growthDateBasis); } },
+            h("select", { className: "form-control dirty-stats-statistic", value: dateBasis, onChange: function (event) { setDateBasis(event.target.value); } },
               h("option", { value: "created_at" }, "Created at"), h("option", { value: "mod_time" }, "File modified at"), h("option", { value: "scene_date" }, "Scene date"))),
-          h("label", { className: "dirty-stats-numbers" }, h("input", { type: "checkbox", checked: showCapacity, onChange: function (event) { growthShowCapacity = event.target.checked; setShowCapacity(growthShowCapacity); } }), "Show capacity"),
-          h("label", { className: "dirty-stats-numbers" }, h("input", { type: "checkbox", checked: showForecast, onChange: function (event) { growthShowForecast = event.target.checked; setShowForecast(growthShowForecast); } }), "Show forecast"),
+          h("label", { className: "dirty-stats-numbers" }, h("input", { type: "checkbox", checked: showCapacity, onChange: function (event) { setShowCapacity(event.target.checked); } }), "Show capacity"),
+          h("label", { className: "dirty-stats-numbers" }, h("input", { type: "checkbox", checked: showForecast, onChange: function (event) { setShowForecast(event.target.checked); } }), "Show forecast"),
           h("label", { className: "dirty-stats-date-basis" }, "Group by",
-            h("select", { className: "form-control dirty-stats-statistic", value: grouping, onChange: function (event) { growthGrouping = event.target.value; setGrouping(growthGrouping); } },
+            h("select", { className: "form-control dirty-stats-statistic", value: grouping, onChange: function (event) { setGrouping(event.target.value); } },
               h("option", { value: "day" }, "Day"), h("option", { value: "month" }, "Month"), h("option", { value: "year" }, "Year"))),
           period || anchor != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setPeriod(null); setAnchor(null); } }, "Clear period") : null,
           h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: loading || Boolean(error) || Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-content-growth-" + dateBasis + ".png"); } }, "Export PNG")),
@@ -781,11 +980,11 @@
         if (!charts) throw new Error("The bundled chart library could not be loaded. Reload the Stash page.");
         chart = charts.init(node.current, null, { renderer: "canvas" }); chartRef.current = chart;
         chart.on("click", function (event) { if (event.componentType === "series" && Number.isFinite(Number(event.name))) setSelectedAge(Number(event.name)); });
-        chart.setOption({ backgroundColor: "#242b31", grid: { left: 48, right: 20, top: 22, bottom: 75, containLabel: true },
+        chart.setOption({ backgroundColor: "#242b31", grid: { left: 48, right: 20, top: 22, bottom: 55, containLabel: true },
           tooltip: { trigger: "axis", renderMode: "richText", axisPointer: { type: "shadow" }, formatter: function (items) { return "Age " + items[0].name + " years\n" + items[0].value + " distinct performers"; } },
           xAxis: { type: "category", name: "Age (years)", nameLocation: "middle", nameGap: 28, nameTextStyle: { color: "#bbb" }, data: stats.rows.map(function (row) { return String(row.age); }), axisLabel: { color: "#bbb", hideOverlap: true }, axisLine: { lineStyle: { color: "#788591" } } },
           yAxis: { type: "value", name: "Distinct performers", nameLocation: "middle", nameGap: 35, min: 0, minInterval: 1, nameTextStyle: { color: "#bbb" }, axisLabel: { color: "#bbb" }, splitLine: { lineStyle: { color: "#364655" } } },
-          dataZoom: [{ type: "inside" }, { type: "slider", bottom: 8, height: 18, borderColor: "#5687a2", textStyle: { color: "#bbb" } }],
+          dataZoom: [{ type: "inside" }],
           series: [{ name: "Distinct performers", type: "bar", barCategoryGap: "5%", itemStyle: { color: "#54d5ca" }, data: stats.rows.map(function (row) { return row.count; }) }] });
         setChartError("");
         if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
@@ -857,10 +1056,68 @@
     if (!(maxBytes > 0) || !(bytes > 0)) return 10;
     return 10 + 34 * Math.sqrt(bytes / maxBytes);
   }
+  // Studio logos are composited into circular markers so each bubble reads as the
+  // studio's logo inside a dot. Rendering uses an offscreen canvas; Stash serves the
+  // images same-origin, which keeps the PNG export free of cross-origin taint.
+  var studioImagePromises = Object.create(null);
+  var studioImages = Object.create(null);
+  var studioLogoSymbols = Object.create(null);
+  function studioImageSource(studio) {
+    var path = studio && studio.image_path ? String(studio.image_path).trim() : "";
+    if (path) return path;
+    return studio && studio.id != null && studio.id !== "" ? "/studio/" + encodeURIComponent(studio.id) + "/image" : "";
+  }
+  function loadStudioImage(path) {
+    if (!path) return Promise.resolve(null);
+    if (!studioImagePromises[path]) {
+      studioImagePromises[path] = new Promise(function (resolve) {
+        var image = new Image();
+        image.onload = function () { studioImages[path] = image; resolve(image); };
+        image.onerror = function () { resolve(null); };
+        image.src = path;
+      });
+    }
+    return studioImagePromises[path];
+  }
+  function renderStudioLogo(image, active) {
+    var size = 96, radius = size / 2 - 3, sourceWidth = image.naturalWidth || image.width, sourceHeight = image.naturalHeight || image.height;
+    if (!(sourceWidth > 0) || !(sourceHeight > 0)) return "";
+    var canvas = document.createElement("canvas");
+    canvas.width = canvas.height = size;
+    var context = canvas.getContext("2d");
+    if (!context) return "";
+    context.save();
+    context.beginPath();
+    context.arc(size / 2, size / 2, radius, 0, Math.PI * 2);
+    context.closePath();
+    context.clip();
+    var scale = Math.max(size / sourceWidth, size / sourceHeight);
+    var width = sourceWidth * scale, height = sourceHeight * scale;
+    context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+    context.restore();
+    context.beginPath();
+    context.arc(size / 2, size / 2, radius, 0, Math.PI * 2);
+    context.lineWidth = 5;
+    context.strokeStyle = active ? "#fff" : "#54d5ca";
+    context.stroke();
+    return canvas.toDataURL("image/png");
+  }
+  function studioLogoSymbol(path, active) {
+    if (!path || !studioImages[path]) return "";
+    var key = path + (active ? "|active" : "");
+    if (studioLogoSymbols[key] == null) {
+      try { studioLogoSymbols[key] = renderStudioLogo(studioImages[path], active) || ""; }
+      catch (err) { studioLogoSymbols[key] = ""; }
+    }
+    return studioLogoSymbols[key];
+  }
   function studioSeriesData(points, maxBytes, selected) {
     return points.map(function (point) {
-      var active = point.id === selected;
-      return { id: point.id, name: point.name, bytes: point.bytes, unrated: point.unrated, value: [point.scenes, Math.round(point.rating * 10) / 10], symbolSize: studioSymbolSize(point.bytes, maxBytes), itemStyle: { color: "#54d5ca", opacity: .8, borderColor: active ? "#fff" : "transparent", borderWidth: active ? 2 : 0 } };
+      var active = point.id === selected, logo = studioLogoSymbol(point.image, active);
+      var item = { id: point.id, name: point.name, bytes: point.bytes, unrated: point.unrated, value: [point.scenes, Math.round(point.rating * 10) / 10], symbolSize: studioSymbolSize(point.bytes, maxBytes) };
+      if (logo) item.symbol = "image://" + logo;
+      else item.itemStyle = { color: "#54d5ca", opacity: .8, borderColor: active ? "#fff" : "transparent", borderWidth: active ? 2 : 0 };
+      return item;
     });
   }
   function aggregateStudios(scenes) {
@@ -870,7 +1127,7 @@
       seen.add(scene.id);
       if (!scene.studio || scene.studio.id == null || !String(scene.studio.name || "").trim()) { missingStudio++; return; }
       var id = String(scene.studio.id);
-      if (!studios.has(id)) studios.set(id, { id: id, name: String(scene.studio.name), scenes: 0, rated: 0, ratingSum: 0, bytes: 0 });
+      if (!studios.has(id)) studios.set(id, { id: id, name: String(scene.studio.name), image: studioImageSource(scene.studio), scenes: 0, rated: 0, ratingSum: 0, bytes: 0 });
       var entry = studios.get(id);
       entry.scenes++;
       var rating = ratingNumber(scene);
@@ -884,9 +1141,103 @@
       });
     });
     var points = Array.from(studios.values()).map(function (entry) {
-      return { id: entry.id, name: entry.name, scenes: entry.scenes, rated: entry.rated, unrated: entry.scenes - entry.rated, rating: entry.rated ? entry.ratingSum / entry.rated : null, bytes: entry.bytes };
+      return { id: entry.id, name: entry.name, image: entry.image, scenes: entry.scenes, rated: entry.rated, unrated: entry.scenes - entry.rated, rating: entry.rated ? entry.ratingSum / entry.rated : null, bytes: entry.bytes };
     }).sort(function (a, b) { return b.scenes - a.scenes || a.name.localeCompare(b.name); });
     return { points: points, total: seen.size, studios: points.length, missingStudio: missingStudio, missingSizes: missingSizes, totalBytes: points.reduce(function (sum, point) { return sum + point.bytes; }, 0) };
+  }
+var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  var BIRTHDAY_WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
+  function birthdayDayLabel(month, day) {
+    return BIRTHDAY_MONTHS[month - 1] + " " + day;
+  }
+  function BirthdayCalendar(props) {
+    var entries = props.entries, year = props.year, selected = props.selected, nowMonth = props.nowMonth, nowDay = props.nowDay;
+    return h("div", { className: "dirty-stats-calendar" },
+      BIRTHDAY_MONTHS.map(function (name, index) {
+        var month = index + 1;
+        var counts = Object.create(null), monthTotal = 0;
+        entries.forEach(function (entry) { if (entry.month === month) { counts[entry.day] = (counts[entry.day] || 0) + 1; monthTotal++; } });
+        var startWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+        var daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+        var cells = [];
+        for (var blank = 0; blank < startWeekday; blank++) cells.push(h("span", { key: "blank-" + blank, className: "dirty-stats-calendar-blank" }));
+        for (var day = 1; day <= daysInMonth; day++) {
+          var count = counts[day] || 0;
+          var isSelected = Boolean(selected && selected.month === month && selected.day === day);
+          var classes = ["dirty-stats-calendar-day"];
+          if (count) classes.push("has-birthday");
+          if (month === nowMonth && day === nowDay) classes.push("today");
+          if (isSelected) classes.push("selected");
+          cells.push(h("button", {
+            key: "day-" + day,
+            type: "button",
+            className: classes.join(" "),
+            disabled: !count,
+            "aria-pressed": isSelected,
+            "aria-label": name + " " + day + (count ? ": " + count + " birthday" + (count === 1 ? "" : "s") : ": no birthdays"),
+            onClick: count ? function () { props.onSelect(month, day); } : undefined
+          }, String(day), count > 1 ? h("span", { className: "dirty-stats-calendar-count" }, count) : null));
+        }
+        return h("section", { key: name, className: "dirty-stats-calendar-month" + (month === nowMonth ? " is-current" : ""), "aria-label": name + (monthTotal ? ", " + monthTotal + " birthdays" : ", no birthdays") },
+          h("h3", null, h("span", null, name), monthTotal ? h("span", { className: "dirty-stats-calendar-total" }, monthTotal) : null),
+          h("div", { className: "dirty-stats-calendar-grid" },
+            BIRTHDAY_WEEKDAYS.map(function (label, weekday) { return h("span", { key: "weekday-" + weekday, className: "dirty-stats-calendar-weekday", "aria-hidden": true }, label); }),
+            cells));
+      }));
+  }
+  function BirthdayPage(props) {
+    var dataState = React.useState([]), performers = dataState[0], setPerformers = dataState[1];
+    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
+    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
+    var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
+    var nowState = React.useState(function () { return new Date(); }), now = nowState[0];
+    var queryKey = JSON.stringify(performerVariables(props.filter, 1));
+    var stats = React.useMemo(function () { return aggregateBirthdays(performers, now); }, [performers, now]);
+    var upcoming = React.useMemo(function () {
+      return stats.entries.slice().sort(function (a, b) { return a.daysUntil - b.daysUntil || a.name.localeCompare(b.name); });
+    }, [stats]);
+    React.useEffect(function () { setSelected(null); }, [queryKey]);
+    React.useEffect(function () {
+      var controller = new AbortController();
+      setLoading(true); setError("");
+      (async function () {
+        var result = [], page = 1, total;
+        do {
+          var data = await hub.graphql("query DirtyStatsBirthdays($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name birthdate}}}", performerVariables(props.filter, page), { signal: controller.signal });
+          if (controller.signal.aborted) return;
+          var batch = data.findPerformers; total = batch.count;
+          if (!batch.performers.length && result.length < total) throw new Error("The performer list changed while loading. Refresh to try again.");
+          result = result.concat(batch.performers); page++;
+        } while (result.length < total);
+        if (!controller.signal.aborted) { setPerformers(result); setLoading(false); }
+      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
+      return function () { controller.abort(); };
+    }, [queryKey, refresh]);
+    var nowMonth = now.getUTCMonth() + 1, nowDay = now.getUTCDate(), year = now.getUTCFullYear();
+    var cardPerformers = React.useMemo(function () { return selected ? birthdayEntriesFor(stats.entries, selected.month, selected.day) : stats.entries; }, [stats, selected]);
+    function choose(month, day) { setSelected(function (current) { return current && current.month === month && current.day === day ? null : { month: month, day: day }; }); }
+    var monthCounts = React.useMemo(function () { return birthdayMonthCounts(stats.entries); }, [stats]);
+    return h("section", { className: "dirty-stats-content" },
+      h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading performers..." : stats.valid + " birthdays \u00b7 " + stats.upcoming + " in the next 30 days" + (stats.missing ? " \u00b7 " + stats.missing + " missing birthdate" : "")),
+        h("button", { className: "btn btn-secondary dirty-ui-button", disabled: loading, onClick: function () { setRefresh(refresh + 1); } }, "Refresh")),
+      error ? h("div", { className: "dirty-stats-alert", role: "alert" }, error, " Use Refresh to retry.") : null,
+      !loading && !error && stats.valid ? h("section", { className: "dirty-stats-map-panel dirty-ui-panel", "aria-label": "Performer birthday calendar" },
+        h("div", { className: "dirty-stats-map-controls" },
+          h("span", { className: "dirty-stats-summary" }, "A year of birthdays (" + year + ")"),
+          selected ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all birthdays") : null),
+        h("div", { className: "dirty-stats-birthday-next", role: "list", "aria-label": "Upcoming birthdays" },
+          upcoming.slice(0, 5).map(function (entry) {
+            return h("button", { key: entry.id, type: "button", role: "listitem", className: "dirty-stats-birthday-next-item", onClick: function () { choose(entry.month, entry.day); } },
+              h("span", { className: "dirty-stats-birthday-next-name" }, entry.name),
+              h("span", { className: "dirty-stats-birthday-next-date" }, birthdayDayLabel(entry.month, entry.day) + " \u00b7 " + (entry.daysUntil === 0 ? "today" : "in " + entry.daysUntil + " day" + (entry.daysUntil === 1 ? "" : "s")) + " \u00b7 turns " + entry.turns));
+          })),
+        h(BirthdayCalendar, { entries: stats.entries, year: year, selected: selected, nowMonth: nowMonth, nowDay: nowDay, onSelect: choose })) : null,
+      !loading && !error && !stats.total ? h("p", { role: "status" }, "No performers match these filters.") : null,
+      !loading && !error && stats.total && !stats.valid ? h("p", { role: "status" }, "No matching performer has a valid full birthdate.") : null,
+      !loading && !error ? h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, monthCounts.map(function (count, index) { return count ? BIRTHDAY_MONTHS[index].slice(0, 3) + " " + count : null; }).filter(Boolean).join(" \u00b7 "))) : null,
+      h("p", null, "Each day shows how many matching performers have that birthday, across every year. Click a highlighted day to show those performers below; the panel marks today and lists the nearest birthdays first. Invalid or partial birthdates are excluded and reported."),
+      !loading && !error ? h(PerformerCards, { performers: cardPerformers, filter: props.filter, title: selected ? "Birthdays on " + birthdayDayLabel(selected.month, selected.day) : "Performers with birthdays", selection: selected, clearSelection: function () { setSelected(null); }, clearLabel: "Show all birthdays" }) : null);
   }
   function RatingPage(props) {
     var performerMode = Boolean(props.performerMode), entity = performerMode ? "performers" : "scenes", title = performerMode ? "Performer ratings" : "Scene ratings";
@@ -895,7 +1246,7 @@
     var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
     var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
-    var roundingState = React.useState(function () { return ratingRounding; }), rounding = roundingState[0], setRounding = roundingState[1];
+    var roundingState = useStatsSetting(performerMode ? "performerRatingRounding" : "sceneRatingRounding"), rounding = roundingState[0], setRounding = roundingState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
     var node = React.useRef(null), chartRef = React.useRef(null);
     var queryKey = JSON.stringify(variables(props.filter, 1));
@@ -927,7 +1278,7 @@
         chart = charts.init(node.current, null, { renderer: "canvas" }); chartRef.current = chart;
         chart.setOption({ backgroundColor: "#242b31", tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return (p.name === "Unrated" ? p.name : "Rating " + p.name + "/10") + "\n" + p.value + " " + entity + " (" + p.percent + "%)"; } },
           legend: { type: "scroll", bottom: 8, textStyle: { color: "#ddd", fontSize: 11 }, itemWidth: 12, itemHeight: 12, pageTextStyle: { color: "#ddd" } },
-          series: [{ type: "pie", radius: [0, "72%"], center: ["50%", "46%"], selectedMode: "single", label: { color: "#ddd", formatter: "{b}: {d}%" }, itemStyle: { borderColor: "#242b31", borderWidth: 2 }, data: stats.rows }] });
+          series: [{ type: "pie", radius: [0, "72%"], center: ["50%", "46%"], selectedMode: "single", label: { show: false }, labelLine: { show: false }, itemStyle: { borderColor: "#242b31", borderWidth: 2 }, data: stats.rows }] });
         chart.on("click", function (event) { if (event.componentType === "series") setSelected(function (current) { return current === event.name ? null : event.name; }); });
         if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
         window.addEventListener("resize", resize);
@@ -941,8 +1292,8 @@
       !loading && !error && stats.total ? h("section", { className: "dirty-stats-map-panel dirty-ui-panel", "aria-label": title },
           h("div", { className: "dirty-stats-map-controls" }, selected != null ? h("button", { className: "btn btn-secondary", onClick: function () { setSelected(null); } }, "Show all ratings") : null,
           h("label", { className: "dirty-stats-date-basis" }, "Rating rounding",
-            h("select", { className: "form-control dirty-stats-statistic", value: rounding, onChange: function (event) { ratingRounding = Number(event.target.value); setRounding(ratingRounding); setSelected(null); } },
-              h("option", { value: 0 }, "Exact"), h("option", { value: 0.5 }, "0.5"), h("option", { value: 1 }, "1"))),
+            h("select", { className: "form-control dirty-stats-statistic", value: rounding, onChange: function (event) { setRounding(Number(event.target.value)); setSelected(null); } },
+              STATS_SETTING_SPECS.sceneRatingRounding.options.map(function (value) { return h("option", { key: String(value), value: value }, value === 0 ? "Exact" : value); }))),
           h("button", { className: "btn btn-secondary dirty-stats-export", onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), performerMode ? "DirtyStats-performer-ratings.png" : "DirtyStats-scene-ratings.png"); } }, "Export PNG")),
         h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Pie chart of distinct " + entity + " by rating out of ten, including unrated " + entity + "." })) : null,
       !loading && !error ? h(React.Fragment, null, selected != null ? h("p", { role: "status" }, selected === "Unrated" ? "Unrated " + entity : title + ": " + selected + "/10") : null, performerMode ? h(PerformerCards, { performers: matching, filter: props.filter }) : h(SceneCards, { scenes: matching, filter: props.filter })) : null);
@@ -953,14 +1304,71 @@
       return { id: point.id, name: point.name, value: [point.rating, point.scenes], itemStyle: { color: point.highlight ? "#f3c779" : "#54d5ca", opacity: .85, borderColor: active ? "#fff" : "transparent", borderWidth: active ? 2 : 0 } };
     });
   }
+  function nearestScatterOption(options, value) {
+    var best = options[0];
+    for (var index = 1; index < options.length; index += 1) {
+      if (Math.abs(options[index] - value) < Math.abs(best - value)) best = options[index];
+    }
+    return best;
+  }
+  function scatterGuideLines(minRating, maxScenes) {
+    var lines = [];
+    STATS_SETTING_SPECS.scatterMinRating.options.forEach(function (value) {
+      if (value > 0) lines.push({ axis: "x", value: value, active: value === minRating });
+    });
+    STATS_SETTING_SPECS.scatterMaxScenes.options.forEach(function (value) {
+      if (value > 0) lines.push({ axis: "y", value: value, active: value === maxScenes });
+    });
+    return lines;
+  }
+  function scatterGuideForClick(rect, pixel) {
+    if (!rect || !pixel) return null;
+    // The x-axis is horizontal at the bottom (rating) and the y-axis vertical
+    // at the left (scenes); the nearer axis decides which guide to move.
+    var distanceToXAxis = rect.y + rect.height - pixel[1];
+    var distanceToYAxis = pixel[0] - rect.x;
+    return distanceToXAxis <= distanceToYAxis ? "scatterMinRating" : "scatterMaxScenes";
+  }
+  function scatterClickHitsPoint(chart, points, pixel) {
+    for (var index = 0; index < points.length; index += 1) {
+      var pointPixel = chart.convertToPixel({ gridIndex: 0 }, [points[index].rating, points[index].scenes]);
+      if (!pointPixel) continue;
+      if (Math.abs(pointPixel[0] - pixel[0]) <= 7 && Math.abs(pointPixel[1] - pixel[1]) <= 7) return true;
+    }
+    return false;
+  }
+  function countRatingLabel(metric) {
+    return metric === "o_counter" ? "O count" : "View count";
+  }
+  function countRatingSeriesData(stats, selected) {
+    return stats.points.map(function (point) {
+      var active = point.id === selected;
+      return { id: point.id, title: point.title, value: [point.rating, point.count], itemStyle: { color: "#54d5ca", opacity: .85, borderColor: active ? "#fff" : "transparent", borderWidth: active ? 2 : 0 } };
+    });
+  }
+  function aggregateCountRating(scenes, metric) {
+    var seen = new Set(), points = [], missingRating = 0;
+    scenes.forEach(function (scene) {
+      var id = String(scene.id == null ? "" : scene.id);
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      var rating = ratingNumber(scene);
+      if (rating == null) { missingRating++; return; }
+      var raw = metric === "o_counter" ? scene.o_counter : scene.play_count;
+      var count = Number(raw);
+      if (!Number.isFinite(count) || count < 0) count = 0;
+      points.push({ id: id, title: String(scene.title || "Scene #" + id), rating: rating, count: count });
+    });
+    return { points: points, total: seen.size, missingRating: missingRating };
+  }
   function PerformerScatterPage(props) {
     var dataState = React.useState([]), performers = dataState[0], setPerformers = dataState[1];
     var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
     var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
-    var minState = React.useState(function () { return scatterMinRating; }), minRating = minState[0], setMinRating = minState[1];
-    var maxState = React.useState(function () { return scatterMaxScenes; }), maxScenes = maxState[0], setMaxScenes = maxState[1];
+    var minState = useStatsSetting("scatterMinRating"), minRating = minState[0], setMinRating = minState[1];
+    var maxState = useStatsSetting("scatterMaxScenes"), maxScenes = maxState[0], setMaxScenes = maxState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
     var node = React.useRef(null), chartRef = React.useRef(null);
     var queryKey = JSON.stringify(performerVariables(props.filter, 1));
@@ -990,12 +1398,32 @@
         if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
         chart = charts.init(node.current, null, { renderer: "canvas" }); chartRef.current = chart;
         chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
+        chart.getZr().on("click", function (event) {
+          var pixel = [event.offsetX, event.offsetY];
+          if (!stats.points.length || !chart.containPixel({ gridIndex: 0 }, pixel)) return;
+          if (scatterClickHitsPoint(chart, stats.points, pixel)) return;
+          var value = chart.convertFromPixel({ gridIndex: 0 }, pixel);
+          if (!value || !Number.isFinite(value[0]) || !Number.isFinite(value[1])) return;
+          var rect = { x: 0, y: 0, width: chart.getWidth(), height: chart.getHeight() };
+          try {
+            var gridModel = chart.getModel().getComponent("grid");
+            if (gridModel && gridModel.coordinateSystem) rect = gridModel.coordinateSystem.getRect();
+          } catch (_error) { /* keep the container fallback */ }
+          var guide = scatterGuideForClick(rect, pixel);
+          if (guide === "scatterMinRating") {
+            setMinRating(nearestScatterOption(STATS_SETTING_SPECS.scatterMinRating.options, value[0]));
+          } else if (guide === "scatterMaxScenes") {
+            setMaxScenes(nearestScatterOption(STATS_SETTING_SPECS.scatterMaxScenes.options, value[1]));
+          }
+        });
         chart.setOption({ backgroundColor: "#242b31", grid: { left: 12, right: 24, top: 22, bottom: 60, containLabel: true },
           tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.data.name + "\nRating " + p.value[0] + "/10\n" + p.value[1] + " scene" + (p.value[1] === 1 ? "" : "s"); } },
           xAxis: { type: "value", name: "Rating (out of 10)", nameLocation: "middle", nameGap: 28, min: 0, max: 10, nameTextStyle: { color: "#bbb" }, axisLabel: { color: "#bbb" }, axisLine: { lineStyle: { color: "#788591" } }, splitLine: { lineStyle: { color: "#364655" } } },
-          yAxis: { type: "value", name: "Scenes", nameLocation: "middle", nameGap: 45, min: 0, minInterval: 1, nameTextStyle: { color: "#bbb" }, axisLabel: { color: "#bbb" }, splitLine: { lineStyle: { color: "#364655" } } },
+          yAxis: { type: "value", name: "Scenes", nameLocation: "middle", nameGap: 45, min: 0, minInterval: 1, max: function (value) { return maxScenes > 0 ? Math.max(value.max, maxScenes) : value.max; }, nameTextStyle: { color: "#bbb" }, axisLabel: { color: "#bbb" }, splitLine: { lineStyle: { color: "#364655" } } },
           series: [{ type: "scatter", symbolSize: 9, progressive: 4000, data: scatterSeriesData(stats, selected),
-            markLine: { silent: true, symbol: "none", label: { color: "#ddd", fontSize: 10 }, lineStyle: { color: "#f3c779", type: "dashed" }, data: (minRating > 0 ? [{ xAxis: minRating, label: { formatter: "Rating " + minRating + "+" } }] : []).concat(maxScenes > 0 ? [{ yAxis: maxScenes, label: { formatter: maxScenes + " scenes" } }] : []) } }] });
+            markLine: { silent: true, symbol: "none", label: { color: "#ddd", fontSize: 10 }, lineStyle: { color: "#f3c779", type: "dashed" }, data: scatterGuideLines(minRating, maxScenes).filter(function (guide) { return guide.active; }).map(function (guide) {
+              return guide.axis === "x" ? { xAxis: guide.value, label: { formatter: "Rating " + guide.value + "+" } } : { yAxis: guide.value, label: { formatter: guide.value + " scenes" } };
+            }) } }] });
         setChartError("");
         if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
         window.addEventListener("resize", resize);
@@ -1012,18 +1440,84 @@
         h("div", { className: "dirty-stats-map-controls" },
           selected != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all performers") : null,
           h("label", { className: "dirty-stats-date-basis" }, "Minimum rating",
-            h("select", { className: "form-control dirty-stats-statistic", value: minRating, onChange: function (event) { scatterMinRating = Number(event.target.value); setMinRating(scatterMinRating); } },
-              [0, 5, 6, 7, 8, 9].map(function (value) { return h("option", { key: value, value: value }, value ? value + "+" : "Any"); }))),
+            h("select", { className: "form-control dirty-stats-statistic", value: minRating, onChange: function (event) { setMinRating(Number(event.target.value)); } },
+              STATS_SETTING_SPECS.scatterMinRating.options.map(function (value) { return h("option", { key: value, value: value }, value ? value + "+" : "Any"); }))),
           h("label", { className: "dirty-stats-date-basis" }, "Maximum scenes",
-            h("select", { className: "form-control dirty-stats-statistic", value: maxScenes, onChange: function (event) { scatterMaxScenes = Number(event.target.value); setMaxScenes(scatterMaxScenes); } },
-              [0, 5, 10, 20, 50, 100].map(function (value) { return h("option", { key: value, value: value }, value ? value : "Any"); }))),
+            h("select", { className: "form-control dirty-stats-statistic", value: maxScenes, onChange: function (event) { setMaxScenes(Number(event.target.value)); } },
+              STATS_SETTING_SPECS.scatterMaxScenes.options.map(function (value) { return h("option", { key: value, value: value }, value ? value : "Any"); }))),
           h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: loading || Boolean(error) || Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-rating-vs-scenes.png"); } }, "Export PNG")),
         h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Scatter plot of performer rating out of ten versus number of scenes. Highlighted points have a high rating and few scenes." })) : null,
       chartError ? h("div", { className: "dirty-stats-alert", role: "alert" }, chartError) : null,
       !loading && !error && !stats.points.length ? h("p", { role: "status" }, "No rated performers match these filters.") : null,
-      h("p", null, "Each dot is a distinct performer: rating out of ten on the x-axis and scene count on the y-axis. The upper-left corner holds promising performers with a high rating and few scenes; highlighted dots meet both limits. Click a dot to show that performer below."),
+      h("p", null, "Each dot is a distinct performer: rating out of ten on the x-axis and scene count on the y-axis. The upper-left corner holds promising performers with a high rating and few scenes; highlighted dots meet both limits. Click a dot to show that performer below. Click empty space near the bottom (rating axis) to set the minimum rating, or near the left (scenes axis) to set the maximum scenes."),
       !loading && !error && (stats.missingRating || stats.missingScenes) ? h("p", { role: "status" }, stats.missingRating + " performers without a rating and " + stats.missingScenes + " with an unavailable scene count were omitted.") : null,
       !loading && !error ? h(PerformerCards, { performers: matching, filter: props.filter, title: selected == null ? "Performers" : "Selected performer", selection: selected, clearSelection: function () { setSelected(null); }, clearLabel: "Show all performers" }) : null);
+  }
+  function CountRatingPage(props) {
+    var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
+    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
+    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
+    var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
+    var metricState = useStatsSetting("countRatingMetric"), metric = metricState[0], setMetric = metricState[1];
+    var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
+    var node = React.useRef(null), chartRef = React.useRef(null);
+    var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
+    var stats = React.useMemo(function () { return aggregateCountRating(scenes, metric); }, [scenes, metric]);
+    React.useEffect(function () { setSelected(null); }, [queryKey, metric]);
+    React.useEffect(function () {
+      var controller = new AbortController();
+      setLoading(true); setError("");
+      (async function () {
+        var result = [], page = 1, total;
+        do {
+          var data = await hub.graphql("query DirtyStatsCountRating($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title rating100 play_count o_counter}}}", sceneVariables(props.filter, page), { signal: controller.signal });
+          if (controller.signal.aborted) return;
+          var batch = data.findScenes; total = batch.count;
+          if (!batch.scenes.length && result.length < total) throw new Error("The scene list changed while loading. Refresh to try again.");
+          result = result.concat(batch.scenes); page++;
+        } while (result.length < total);
+        if (!controller.signal.aborted) { setScenes(result); setLoading(false); }
+      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
+      return function () { controller.abort(); };
+    }, [queryKey, refresh]);
+    React.useEffect(function () {
+      if (loading || error || !node.current || !stats.points.length) return;
+      var chart, observer;
+      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
+      try {
+        if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
+        chart = charts.init(node.current, null, { renderer: "canvas" }); chartRef.current = chart;
+        chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
+        chart.setOption({ backgroundColor: "#242b31", grid: { left: 12, right: 24, top: 22, bottom: 60, containLabel: true },
+          tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.data.title + "\nScene rating " + p.value[0] + "/10\n" + p.value[1] + " " + countRatingLabel(metric).toLowerCase(); } },
+          xAxis: { type: "value", name: "Scene rating (out of 10)", nameLocation: "middle", nameGap: 28, min: 0, max: 10, nameTextStyle: { color: "#bbb" }, axisLabel: { color: "#bbb" }, axisLine: { lineStyle: { color: "#788591" } }, splitLine: { lineStyle: { color: "#364655" } } },
+          yAxis: { type: "value", name: countRatingLabel(metric), nameLocation: "middle", nameGap: 45, min: 0, minInterval: 1, nameTextStyle: { color: "#bbb" }, axisLabel: { color: "#bbb" }, splitLine: { lineStyle: { color: "#364655" } } },
+          series: [{ type: "scatter", symbolSize: 9, progressive: 4000, data: countRatingSeriesData(stats, selected), emphasis: { itemStyle: { borderColor: "#fff", borderWidth: 2 } } }] });
+        setChartError("");
+        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
+        window.addEventListener("resize", resize);
+      } catch (err) { setChartError(err.message); }
+      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+    }, [stats, metric, loading, error]);
+    React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: countRatingSeriesData(stats, selected) }] }); }, [selected, stats, metric, loading, error]);
+    var matching = React.useMemo(function () { return selected == null ? scenes : scenes.filter(function (scene) { return String(scene.id) === selected; }); }, [scenes, selected]);
+    return h("section", { className: "dirty-stats-content" },
+      h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading scenes..." : stats.points.length + " rated scenes"), h("button", { className: "btn btn-secondary dirty-ui-button", disabled: loading, onClick: function () { setRefresh(refresh + 1); } }, "Refresh")),
+      error ? h("div", { className: "dirty-stats-alert", role: "alert" }, error, " Use Refresh to retry.") : null,
+      !loading && !error && stats.points.length ? h("section", { className: "dirty-stats-map-panel dirty-ui-panel", "aria-label": "Scene rating versus " + countRatingLabel(metric).toLowerCase() },
+        h("div", { className: "dirty-stats-map-controls" },
+          selected != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all scenes") : null,
+          h("label", { className: "dirty-stats-date-basis" }, "Count",
+            h("select", { className: "form-control dirty-stats-statistic", value: metric, onChange: function (event) { setMetric(event.target.value); } },
+              STATS_SETTING_SPECS.countRatingMetric.options.map(function (value) { return h("option", { key: value, value: value }, countRatingLabel(value)); }))),
+          h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: loading || Boolean(error) || Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-" + metric + "-vs-scene-rating.png"); } }, "Export PNG")),
+        h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Scatter plot of scene rating out of ten versus scene " + countRatingLabel(metric).toLowerCase() + "." })) : null,
+      chartError ? h("div", { className: "dirty-stats-alert", role: "alert" }, chartError) : null,
+      !loading && !error && !stats.points.length ? h("p", { role: "status" }, "No rated scenes match these filters.") : null,
+      h("p", null, "Each dot is a distinct scene: scene rating out of ten on the x-axis and " + countRatingLabel(metric).toLowerCase() + " on the y-axis. Use Count to switch between the scene's view count and its O count. Click a dot to show that scene below."),
+      !loading && !error && stats.missingRating ? h("p", { role: "status" }, stats.missingRating + " scenes without a rating were omitted.") : null,
+      !loading && !error ? h(SceneCards, { scenes: matching, filter: props.filter, title: selected == null ? "Scenes" : "Selected scene", selection: selected, clearSelection: function () { setSelected(null); }, clearLabel: "Show all scenes" }) : null);
   }
   function StudioValuePage(props) {
     var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
@@ -1031,8 +1525,10 @@
     var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
-    var minState = React.useState(function () { return studioMinScenes; }), minScenes = minState[0], setMinScenes = minState[1];
+    var minState = useStatsSetting("studioMinScenes"), minScenes = minState[0], setMinScenes = minState[1];
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
+    var logoState = React.useState(0), logoVersion = logoState[0], setLogoVersion = logoState[1];
+    var docsCapture = React.useMemo(function () { try { return new URLSearchParams(window.location.search).get("docsCapture") === "1"; } catch (err) { return false; } }, []);
     var node = React.useRef(null), chartRef = React.useRef(null);
     var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
     var stats = React.useMemo(function () { return aggregateStudios(scenes); }, [scenes]);
@@ -1047,7 +1543,7 @@
       (async function () {
         var result = [], page = 1, total;
         do {
-          var data = await hub.graphql("query DirtyStatsStudios($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100 studio{id name} files{id size}}}}", sceneVariables(props.filter, page), { signal: controller.signal });
+          var data = await hub.graphql("query DirtyStatsStudios($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100 studio{id name image_path} files{id size}}}}", sceneVariables(props.filter, page), { signal: controller.signal });
           if (controller.signal.aborted) return;
           var batch = data.findScenes; total = batch.count;
           if (!batch.scenes.length && result.length < total) throw new Error("The scene list changed while loading. Refresh to try again.");
@@ -1057,6 +1553,16 @@
       })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
       return function () { controller.abort(); };
     }, [queryKey, refresh]);
+    React.useEffect(function () {
+      if (loading || error || docsCapture || !points.length) return;
+      var active = true;
+      var paths = points.map(function (point) { return point.image; }).filter(Boolean);
+      if (!paths.length) return;
+      Promise.all(paths.map(loadStudioImage)).then(function () {
+        if (active) setLogoVersion(function (version) { return version + 1; });
+      });
+      return function () { active = false; };
+    }, [points, loading, error, docsCapture]);
     React.useEffect(function () {
       if (loading || error || !node.current || !points.length) return;
       var chart, observer;
@@ -1075,8 +1581,8 @@
         window.addEventListener("resize", resize);
       } catch (err) { setChartError(err.message); }
       return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
-    }, [points, maxBytes, loading, error]);
-    React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: studioSeriesData(points, maxBytes, selected) }] }); }, [selected, points, maxBytes, loading, error]);
+    }, [points, maxBytes, loading, error, logoVersion]);
+    React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: studioSeriesData(points, maxBytes, selected) }] }); }, [selected, points, maxBytes, loading, error, logoVersion]);
     var unratedStudios = stats.points.filter(function (point) { return point.rating == null; }).length;
     return h("section", { className: "dirty-stats-content" },
       h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading scenes..." : points.length + " studios \u00b7 " + stats.total + " matching scenes \u00b7 " + formatBytes(stats.totalBytes)),
@@ -1086,8 +1592,8 @@
         h("div", { className: "dirty-stats-map-controls" },
           selected != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all scenes") : null,
           h("label", { className: "dirty-stats-date-basis" }, "Minimum scenes",
-            h("select", { className: "form-control dirty-stats-statistic", value: minScenes, onChange: function (event) { studioMinScenes = Number(event.target.value); setMinScenes(studioMinScenes); } },
-              [1, 2, 5, 10, 20].map(function (value) { return h("option", { key: value, value: value }, value === 1 ? "All" : value); }))),
+            h("select", { className: "form-control dirty-stats-statistic", value: minScenes, onChange: function (event) { setMinScenes(Number(event.target.value)); } },
+              STATS_SETTING_SPECS.studioMinScenes.options.map(function (value) { return h("option", { key: value, value: value }, value === 1 ? "All" : value); }))),
           h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: loading || Boolean(error) || Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-studio-value.png"); } }, "Export PNG")),
         h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Scatter plot of studio scene count versus average scene rating. Bubble size represents total file size." })) : null,
       chartError ? h("div", { className: "dirty-stats-alert", role: "alert" }, chartError) : null,
@@ -1099,8 +1605,8 @@
   function DirtyStatsRoute() {
     var page = React.useRef(null);
     var location = api.libraries.ReactRouterDOM.useLocation();
-    var statistic = location.pathname === performerScatterRoute ? "performerScatter" : location.pathname === studioRoute ? "studios" : location.pathname === constellationRoute ? "constellation" : location.pathname === performerRatingRoute ? "performerRatings" : location.pathname === ratingRoute ? "ratings" : location.pathname === ageRoute ? "ages" : location.pathname === growthRoute ? "growth" : "origin";
-    var sceneView = statistic !== "origin" && statistic !== "performerRatings" && statistic !== "performerScatter";
+    var statistic = location.pathname === performerScatterRoute ? "performerScatter" : location.pathname === countRatingRoute ? "countRating" : location.pathname === studioRoute ? "studios" : location.pathname === constellationRoute ? "constellation" : location.pathname === birthdayRoute ? "birthdays" : location.pathname === performerRatingRoute ? "performerRatings" : location.pathname === ratingRoute ? "ratings" : location.pathname === ageRoute ? "ages" : location.pathname === growthRoute ? "growth" : "origin";
+    var sceneView = statistic !== "origin" && statistic !== "performerRatings" && statistic !== "performerScatter" && statistic !== "birthdays";
     var state = React.useState(false), ready = state[0], setReady = state[1];
     var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
     React.useEffect(function () {
@@ -1145,6 +1651,7 @@
     if (window.location.pathname === ageRoute && props && props.extraCriteria && props.extraCriteria.dirtyStatsAgeFilters) return h(PerformerFilterCapture, { filter: props.filter });
     if (window.location.pathname === performerRatingRoute && props && props.extraCriteria && props.extraCriteria.dirtyStats) return h(RatingPage, { filter: props.filter, performerMode: true });
     if (window.location.pathname === performerScatterRoute && props && props.extraCriteria && props.extraCriteria.dirtyStats) return h(PerformerScatterPage, { filter: props.filter });
+    if (window.location.pathname === birthdayRoute && props && props.extraCriteria && props.extraCriteria.dirtyStats) return h(BirthdayPage, { filter: props.filter });
     if (window.location.pathname !== route || !props || !props.extraCriteria || !props.extraCriteria.dirtyStats) return next.apply(null, args);
     return h(StatsPage, { filter: props.filter });
   });
@@ -1156,10 +1663,16 @@
     pages[ageRoute] = AgePage;
     pages[growthRoute] = GrowthPage;
     pages[studioRoute] = StudioValuePage;
+    pages[countRatingRoute] = CountRatingPage;
     var PageComponent = pages[window.location.pathname];
     if (!PageComponent || !props || !props.filter) return next.apply(null, args);
     return h(PageComponent, { filter: props.filter });
   });
   api.patch.before("MainNavBar.UtilityItems", function (props) { return [{ children: h(React.Fragment, null, props.children, h(NavIcon)) }]; });
-  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, orderedCards: orderedCards, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, aggregateStudios: aggregateStudios } };
+  loadStatsSettings();
+  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, birthdayInYear: birthdayInYear, daysUntilBirthday: daysUntilBirthday, aggregateBirthdays: aggregateBirthdays, birthdayEntriesFor: birthdayEntriesFor, birthdayMonthCounts: birthdayMonthCounts, birthdayDayLabel: birthdayDayLabel, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, orderedCards: orderedCards, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, scatterSeriesData: scatterSeriesData, nearestScatterOption: nearestScatterOption, scatterGuideForClick: scatterGuideForClick, scatterGuideLines: scatterGuideLines, countRatingLabel: countRatingLabel, countRatingSeriesData: countRatingSeriesData, aggregateCountRating: aggregateCountRating, aggregateStudios: aggregateStudios, statsSettings: statsSettings, parseStatsSetting: parseStatsSetting, statsSettingsFromStorage: statsSettingsFromStorage, setStatsSetting: setStatsSetting, loadStatsSettings: loadStatsSettings } };
+  debugLog("dirtyStats", "script finished registering", {
+    elapsedMs: hub.debugElapsed ? hub.debugElapsed() : null,
+  });
+  window.__dirtyCurrentPluginId = null;
 })();

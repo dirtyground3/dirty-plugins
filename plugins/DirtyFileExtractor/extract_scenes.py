@@ -993,11 +993,20 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
 
 def main() -> int:
     reporter = StashReporter()
+    started = time.monotonic()
     try:
-        emit_output(run(read_payload(), reporter))
+        payload = read_payload()
+        reporter.info("DirtyFileExtractor backend started")
+        output = run(payload, reporter)
+        reporter.info(
+            f"DirtyFileExtractor backend finished in {int((time.monotonic() - started) * 1000)}ms"
+        )
+        emit_output(output)
         return 0
     except Exception as exc:  # Stash must always receive a valid protocol response.
-        reporter.error(f"DirtyFileExtractor failed: {exc}")
+        reporter.error(
+            f"DirtyFileExtractor failed after {int((time.monotonic() - started) * 1000)}ms: {exc}"
+        )
         emit_error(exc)
         return 1
 

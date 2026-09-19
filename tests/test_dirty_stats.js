@@ -2,8 +2,36 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
-const routes = [], patches = [];
-const context = { window: { PluginApi: { React: {}, libraries: {}, register: { route: (...args) => routes.push(args) }, patch: { before: (...args) => patches.push(args), instead: (...args) => patches.push(args) } }, DirtyPlugins: { graphql() {} } }, Intl };
+const routes = [], patches = [], savedSettings = [];
+const storedSettings = {
+  showMapNumbers: true,
+  sceneRatingRounding: 1,
+  performerRatingRounding: 0,
+  growthGrouping: "month",
+  constellationMaxPerformers: 500,
+  scatterMinRating: 8,
+  studioMinScenes: 5,
+  bogusSetting: "ignored"
+};
+const context = {
+  window: {
+    PluginApi: { React: {}, libraries: {}, register: { route: (...args) => routes.push(args) }, patch: { before: (...args) => patches.push(args), instead: (...args) => patches.push(args) } },
+    DirtyPlugins: {
+      graphql() {},
+      getPluginSettings: () => Promise.resolve(storedSettings),
+      configurePlugin: (pluginId, settings) => {
+        savedSettings.push({ pluginId, settings: JSON.parse(JSON.stringify(settings)) });
+        return Promise.resolve({ revision: savedSettings.length, settings });
+      }
+    },
+    setTimeout: (callback, delay) => setTimeout(callback, delay),
+    clearTimeout: (handle) => clearTimeout(handle)
+  },
+  Intl,
+  console,
+  setTimeout,
+  clearTimeout
+};
 vm.createContext(context);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/vendor/world.js", "utf8"), context);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8"), context);
@@ -55,13 +83,51 @@ assert.equal(scatter.missingRating, 1);
 assert.equal(scatter.missingScenes, 1);
 assert.equal(a.aggregateScatter([{id: "1", rating100: 50, scene_count: 1}], 0, 0).points[0].highlight, false);
 assert.equal(a.aggregateScatter([], 8, 10).points.length, 0);
+assert.equal(a.nearestScatterOption([0, 5, 6, 7, 8, 9], 7.4), 7);
+assert.equal(a.nearestScatterOption([0, 5, 6, 7, 8, 9], 4.6), 5);
+assert.equal(a.nearestScatterOption([0, 5, 10, 20, 50, 100], 13), 10);
+assert.equal(a.nearestScatterOption([0, 5, 10, 20, 50, 100], 40), 50);
+const scatterRect = {x: 50, y: 20, width: 400, height: 300};
+assert.equal(a.scatterGuideForClick(scatterRect, [250, 310]), "scatterMinRating", "clicks near the bottom move the rating guide");
+assert.equal(a.scatterGuideForClick(scatterRect, [60, 150]), "scatterMaxScenes", "clicks near the left move the scenes guide");
+assert.equal(a.scatterGuideForClick(scatterRect, [250, 150]), "scatterMinRating", "a middle click moves the nearer guide");
+assert.equal(a.scatterGuideForClick(null, [10, 10]), null);
+assert.deepEqual(JSON.parse(JSON.stringify(a.scatterGuideLines(9, 10))), [
+  {axis: "x", value: 5, active: false}, {axis: "x", value: 6, active: false},
+  {axis: "x", value: 7, active: false}, {axis: "x", value: 8, active: false},
+  {axis: "x", value: 9, active: true},
+  {axis: "y", value: 5, active: false}, {axis: "y", value: 10, active: true},
+  {axis: "y", value: 20, active: false}, {axis: "y", value: 50, active: false},
+  {axis: "y", value: 100, active: false}
+], "every selectable value must get its own guide line");
+assert.equal(a.scatterGuideLines(0, 0).some((guide) => guide.active), false, "Any values must not highlight a guide");
+const countRating = a.aggregateCountRating([
+  {id: "1", title: "One", rating100: 90, play_count: 4, o_counter: 1},
+  {id: "2", title: "Two", rating100: 50, play_count: null, o_counter: 7},
+  {id: "3", title: "Three", rating100: null, play_count: 2, o_counter: 2},
+  {id: "1", title: "One", rating100: 90, play_count: 4, o_counter: 1}
+], "play_count");
+assert.equal(countRating.total, 3);
+assert.equal(countRating.missingRating, 1);
+assert.deepEqual(JSON.parse(JSON.stringify(countRating.points)), [
+  {id: "1", title: "One", rating: 9, count: 4},
+  {id: "2", title: "Two", rating: 5, count: 0}
+]);
+assert.deepEqual(JSON.parse(JSON.stringify(a.aggregateCountRating([{id: "2", title: "Two", rating100: 50, play_count: 4, o_counter: 7}], "o_counter").points)), [
+  {id: "2", title: "Two", rating: 5, count: 7}
+]);
+assert.equal(a.countRatingLabel("play_count"), "View count");
+assert.equal(a.countRatingLabel("o_counter"), "O count");
+const countSeries = a.countRatingSeriesData(a.aggregateCountRating([{id: "1", title: "One", rating100: 90, play_count: 4, o_counter: 1}], "play_count"), "1");
+assert.deepEqual(JSON.parse(JSON.stringify(countSeries[0].value)), [9, 4], "count vs rating series uses [rating, count]");
+assert.equal(countSeries[0].id, "1");
 const studios = a.aggregateStudios([
-  {id: "s1", rating100: 90, studio: {id: "1", name: "Alpha"}, files: [{id: "f1", size: 1024}, {id: "f2", size: 1024}]},
-  {id: "s2", rating100: 80, studio: {id: "1", name: "Alpha"}, files: [{id: "f1", size: 1024}]},
+  {id: "s1", rating100: 90, studio: {id: "1", name: "Alpha", image_path: "/studio/1/image?t=1"}, files: [{id: "f1", size: 1024}, {id: "f2", size: 1024}]},
+  {id: "s2", rating100: 80, studio: {id: "1", name: "Alpha", image_path: "/studio/1/image?t=1"}, files: [{id: "f1", size: 1024}]},
   {id: "s3", rating100: null, studio: {id: "2", name: "Beta"}, files: [{id: "f3", size: 2048}]},
-  {id: "s4", rating100: 60, studio: {id: "1", name: "Alpha"}, files: [{id: "f4", size: null}]},
+  {id: "s4", rating100: 60, studio: {id: "1", name: "Alpha", image_path: "/studio/1/image?t=1"}, files: [{id: "f4", size: null}]},
   {id: "s5", rating100: 70, studio: null, files: [{id: "f5", size: 512}]},
-  {id: "s1", rating100: 90, studio: {id: "1", name: "Alpha"}, files: [{id: "f1", size: 1024}]}
+  {id: "s1", rating100: 90, studio: {id: "1", name: "Alpha", image_path: "/studio/1/image?t=1"}, files: [{id: "f1", size: 1024}]}
 ]);
 assert.equal(studios.total, 5);
 assert.equal(studios.studios, 2);
@@ -69,6 +135,7 @@ assert.equal(studios.missingStudio, 1);
 assert.equal(studios.missingSizes, 1);
 assert.equal(studios.totalBytes, 5120);
 assert.deepEqual(JSON.parse(JSON.stringify(studios.points.map(point => [point.id, point.name, point.scenes, point.rated, point.unrated]))), [["1", "Alpha", 3, 3, 0], ["2", "Beta", 1, 0, 1]]);
+assert.deepEqual(JSON.parse(JSON.stringify(studios.points.map(point => point.image))), ["/studio/1/image?t=1", "/studio/2/image"]);
 assert.ok(Math.abs(studios.points[0].rating - 23 / 3) < 1e-9);
 assert.equal(studios.points[1].rating, null);
 assert.equal(studios.points[0].bytes, 3072);
@@ -117,6 +184,32 @@ assert.equal(a.aggregateAges(eligibleScenes).performers, 1);
 assert.equal(a.performersAtAge(a.filterAgeScenes(ageScenes, []), null).length, 0);
 assert.equal(a.filterAgeScenes(ageScenes, null), ageScenes);
 assert.equal(a.performersAtAge(ageScenes, null).length, 2);
+assert.equal(a.birthdayInYear(2025, 2, 29).toISOString().slice(0, 10), "2025-02-28");
+assert.equal(a.birthdayInYear(2024, 2, 29).toISOString().slice(0, 10), "2024-02-29");
+const birthdayNow = new Date(Date.UTC(2026, 0, 15));
+assert.equal(a.daysUntilBirthday(1, 15, birthdayNow), 0);
+assert.equal(a.daysUntilBirthday(1, 16, birthdayNow), 1);
+assert.equal(a.daysUntilBirthday(1, 14, birthdayNow), 364, "a passed birthday rolls to next year");
+assert.equal(a.daysUntilBirthday(2, 14, birthdayNow), 30);
+const birthdays = a.aggregateBirthdays([
+  {id: "a", name: "Alice", birthdate: "2000-01-15"},
+  {id: "b", name: "Bob", birthdate: "1990-02-14"},
+  {id: "c", name: "Carole", birthdate: "2000-01-15"},
+  {id: "d", name: "Dan", birthdate: null},
+  {id: "e", name: "Eve", birthdate: "2000"},
+  {id: "a", name: "Alice", birthdate: "2000-01-15"}
+], birthdayNow);
+assert.equal(birthdays.total, 5);
+assert.equal(birthdays.valid, 3);
+assert.equal(birthdays.missing, 2);
+assert.equal(birthdays.today, 2);
+assert.equal(birthdays.upcoming, 3);
+assert.deepEqual(JSON.parse(JSON.stringify(birthdays.entries.map(entry => [entry.id, entry.month, entry.day, entry.turns, entry.daysUntil]))), [["a", 1, 15, 26, 0], ["c", 1, 15, 26, 0], ["b", 2, 14, 36, 30]]);
+assert.deepEqual(JSON.parse(JSON.stringify(a.birthdayEntriesFor(birthdays.entries, 1, 15).map(entry => entry.id))), ["a", "c"]);
+assert.deepEqual(JSON.parse(JSON.stringify(a.birthdayMonthCounts(birthdays.entries))), [2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+assert.equal(a.birthdayDayLabel(2, 14), "February 14");
+assert.equal(a.aggregateBirthdays([], birthdayNow).entries.length, 0);
+assert.equal(a.aggregateBirthdays([{id: "1", name: "Leap", birthdate: "2000-02-29"}], new Date(Date.UTC(2025, 1, 28))).entries[0].daysUntil, 0, "Feb 29 falls on Feb 28 in non-leap years");
 const index = a.countryIndex(context.window.__dirtyStatsWorld.features);
 assert.equal(index[a.normalize("US")], index[a.normalize("United States")]);
 assert.equal(index[a.normalize("USA")], index[a.normalize("United States of America")]);
@@ -259,4 +352,69 @@ context.window.location.pathname = "/scenes";
 assert.equal(patches[1][1]({ filter: native }, () => original), original);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8"), context);
 assert.equal(routes.length, 1);
-console.log("DirtyStats country aggregation, cumulative growth, native filters and registration passed.");
+
+(async function () {
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(a.statsSettings.showMapNumbers, true, "stored display settings must load");
+  assert.equal(a.statsSettings.sceneRatingRounding, 1);
+  assert.equal(a.statsSettings.performerRatingRounding, 0);
+  assert.equal(a.statsSettings.growthGrouping, "month");
+  assert.equal(a.statsSettings.constellationMaxPerformers, 500);
+  assert.equal(a.statsSettings.scatterMinRating, 8);
+  assert.equal(a.statsSettings.studioMinScenes, 5);
+  assert.equal(a.statsSettings.growthShowCapacity, true, "unset settings keep their defaults");
+  assert.equal(a.statsSettings.bogusSetting, undefined, "unknown stored keys are ignored");
+
+  assert.equal(a.parseStatsSetting("sceneRatingRounding", "0.5"), 0.5, "stringified numbers must coerce");
+  assert.equal(a.parseStatsSetting("scatterMinRating", 4), null, "values outside the offered options are rejected");
+  assert.equal(a.parseStatsSetting("growthGrouping", "week"), null);
+  assert.equal(a.parseStatsSetting("countRatingMetric", "o_counter"), "o_counter");
+  assert.equal(a.parseStatsSetting("countRatingMetric", "views"), null);
+  assert.equal(a.statsSettings.countRatingMetric, "play_count", "the count metric defaults to the view count");
+
+  const legacy = a.statsSettingsFromStorage({ ratingRounding: 1 });
+  assert.deepEqual(JSON.parse(JSON.stringify(legacy)), {
+    performerRatingRounding: 1,
+    sceneRatingRounding: 1
+  }, "a single legacy rounding value must migrate to both charts");
+  const overridden = a.statsSettingsFromStorage({ ratingRounding: 1, sceneRatingRounding: 0 });
+  assert.deepEqual(JSON.parse(JSON.stringify(overridden)), {
+    performerRatingRounding: 1,
+    sceneRatingRounding: 0
+  }, "an explicit new rounding value must win over the legacy value");
+  assert.deepEqual(JSON.parse(JSON.stringify(a.statsSettingsFromStorage({ ratingRounding: 2 }))), {});
+
+  a.setStatsSetting("sceneRatingRounding", 0.5);
+  a.setStatsSetting("performerRatingRounding", 1);
+  a.setStatsSetting("showMapNumbers", false);
+  a.setStatsSetting("scatterMinRating", 4);
+  a.setStatsSetting("countRatingMetric", "o_counter");
+  assert.equal(a.statsSettings.sceneRatingRounding, 0.5);
+  assert.equal(a.statsSettings.performerRatingRounding, 1);
+  assert.equal(a.statsSettings.showMapNumbers, false);
+  assert.equal(a.statsSettings.scatterMinRating, 8, "invalid changes must not stick");
+  assert.equal(a.statsSettings.countRatingMetric, "o_counter");
+
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(savedSettings.length, 1, "changes must be persisted once after the debounce");
+  assert.equal(savedSettings[0].pluginId, "dirtyStats");
+  assert.equal(savedSettings[0].settings.sceneRatingRounding, 0.5);
+  assert.equal(savedSettings[0].settings.performerRatingRounding, 1);
+  assert.equal(savedSettings[0].settings.showMapNumbers, false);
+  assert.equal(savedSettings[0].settings.countRatingMetric, "o_counter");
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(savedSettings[0].settings, "ratingRounding"),
+    false,
+    "the legacy shared rounding key must be dropped on save"
+  );
+
+  a.setStatsSetting("growthShowForecast", true);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(savedSettings.length, 2);
+  assert.equal(savedSettings[1].settings.growthShowForecast, true);
+
+  console.log("DirtyStats country aggregation, growth, filters, persisted display settings and registration passed");
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

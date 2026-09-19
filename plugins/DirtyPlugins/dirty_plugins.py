@@ -4,16 +4,46 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from typing import Any
 
 import dirty_plugins_storage as storage
 
 
-MANAGED_PLUGIN_IDS = {"extractScenes", "multiscreen", "dirtyTidy", "dirtyRank"}
+MANAGED_PLUGIN_IDS = {"extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"}
 
 
 class PluginError(RuntimeError):
     pass
+
+
+class StashReporter:
+    """Write Stash's encoded log protocol to stderr.
+
+    Stash logs these as ``[Plugin / DirtyPlugins]`` at the requested level.
+    """
+
+    @staticmethod
+    def _write(level: str, message: Any) -> None:
+        for line in str(message).splitlines() or [""]:
+            print(f"\x01{level}\x02{line}", file=sys.stderr, flush=True)
+
+    def info(self, message: str) -> None:
+        self._write("i", message)
+
+    def error(self, message: str) -> None:
+        self._write("e", message)
+
+
+def _elapsed_ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
+
+
+def _requested_mode(payload: Any) -> str:
+    args = payload.get("args") if isinstance(payload, dict) else None
+    if isinstance(args, dict):
+        return str(args.get("mode") or "getAllSettings")
+    return "unknown"
 
 
 def run(payload: dict[str, Any]) -> dict[str, Any]:
@@ -58,13 +88,24 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
+    reporter = StashReporter()
+    started = time.monotonic()
+    mode = "unknown"
     try:
         payload = json.load(sys.stdin)
+        mode = _requested_mode(payload)
+        reporter.info(f"DirtyPlugins backend started: mode={mode}")
         output = run(payload)
+        reporter.info(
+            f"DirtyPlugins backend finished: mode={mode} in {_elapsed_ms(started)}ms"
+        )
         json.dump({"output": json.dumps(output, ensure_ascii=False)}, sys.stdout, ensure_ascii=False)
         sys.stdout.write("\n")
         return 0
     except Exception as exc:
+        reporter.error(
+            f"DirtyPlugins backend failed: mode={mode} after {_elapsed_ms(started)}ms: {exc}"
+        )
         json.dump({"error": str(exc)}, sys.stdout, ensure_ascii=False)
         sys.stdout.write("\n")
         return 1
