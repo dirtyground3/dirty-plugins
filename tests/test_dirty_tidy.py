@@ -630,6 +630,55 @@ class DirtyTidyTests(unittest.TestCase):
             "",
         )
 
+    def test_normalize_settings_keeps_explicit_empty_levels_and_pattern(self):
+        # An all-empty list must stay empty: the backend would plan with no
+        # hierarchy levels, so silently restoring the defaults would make the
+        # preview's strategy hash differ from the saved settings.
+        settings = dirty_tidy.normalize_settings(
+            {
+                "hierarchyLevels": [],
+                "renamePattern": "",
+                "multiValueSeparator": None,
+                "maxFilenameLength": None,
+            }
+        )
+
+        self.assertEqual(settings["hierarchyLevels"], [])
+        self.assertEqual(settings["renamePattern"], "")
+        self.assertEqual(
+            settings["multiValueSeparator"],
+            dirty_tidy.DEFAULT_SETTINGS["multiValueSeparator"],
+        )
+        self.assertEqual(
+            settings["maxFilenameLength"],
+            dirty_tidy.DEFAULT_SETTINGS["maxFilenameLength"],
+        )
+
+    def test_normalize_settings_is_the_canonical_ui_contract(self):
+        # Mirrored by dirtyTidy.js settingsFromConfiguration; keep both sides in
+        # sync with tests/test_dirty_tidy_settings.js.
+        settings = dirty_tidy.normalize_settings(
+            {
+                "hierarchyLevels": ["  {studio} ", "", {"template": "{year}"}],
+                "renamePattern": "  {title}  ",
+                "maxFilenameLength": "250",
+                "multiValueSeparator": "abcdefghijklmnop",
+                "automationMode": " Scan ",
+                "moveEnabled": "yes",
+            }
+        )
+
+        self.assertEqual(settings["hierarchyLevels"], ["{studio}", "{year}"])
+        self.assertEqual(settings["renamePattern"], "{title}")
+        self.assertEqual(settings["maxFilenameLength"], 250)
+        self.assertEqual(settings["multiValueSeparator"], "abcdefghij")
+        self.assertEqual(settings["automationMode"], "scan")
+        self.assertIs(settings["moveEnabled"], True)
+        self.assertEqual(
+            dirty_tidy.normalize_settings({"hierarchyLevels": None})["hierarchyLevels"],
+            list(dirty_tidy.DEFAULT_SETTINGS["hierarchyLevels"]),
+        )
+
 
 class DirtyTidyPlanIntegrityTests(unittest.TestCase):
     class SnapshotClient:

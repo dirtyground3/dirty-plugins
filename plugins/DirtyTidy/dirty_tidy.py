@@ -319,12 +319,21 @@ def _parse_levels(value: Any) -> list[str]:
 
 
 def normalize_settings(raw: Any) -> dict[str, Any]:
+    """Return the canonical strategy settings.
+
+    This is the single source of truth for DirtyTidy settings. The settings
+    panel mirrors these rules client-side so the strategy hash it saves always
+    matches the plan the backend builds from the same values.
+    """
     source = raw if isinstance(raw, dict) else {}
     try:
         max_length = int(source.get("maxFilenameLength", DEFAULT_SETTINGS["maxFilenameLength"]))
     except (TypeError, ValueError):
         max_length = int(DEFAULT_SETTINGS["maxFilenameLength"])
-    separator = str(source.get("multiValueSeparator", DEFAULT_SETTINGS["multiValueSeparator"]))
+    separator_value = source.get("multiValueSeparator", DEFAULT_SETTINGS["multiValueSeparator"])
+    if separator_value is None:
+        separator_value = DEFAULT_SETTINGS["multiValueSeparator"]
+    separator = str(separator_value)
     if not separator:
         separator = str(DEFAULT_SETTINGS["multiValueSeparator"])
     automation_mode = str(source.get("automationMode") or "manual").strip().lower()

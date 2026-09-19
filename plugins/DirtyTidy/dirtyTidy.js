@@ -88,45 +88,81 @@
     ["extension", "Extension"],
   ];
 
+  // The Python backend's normalize_settings() is the single source of truth.
+  // These helpers mirror it exactly so a saved draft always hashes to the same
+  // strategy the server planned with, and so a stale preview cannot be caused
+  // by the two sides defaulting differently.
   function parseLevels(value) {
     if (typeof value === "string") {
       try { value = JSON.parse(value); } catch (_error) { value = [value]; }
     }
     if (!Array.isArray(value)) return DEFAULT_SETTINGS.hierarchyLevels.slice();
-    var levels = value.map(function (item) {
-      return typeof item === "object" && item ? item.template : item;
-    }).map(function (item) { return String(item || "").trim(); }).filter(Boolean);
-    return levels.length ? levels : DEFAULT_SETTINGS.hierarchyLevels.slice();
+    // An explicit all-empty list stays empty rather than reverting to the
+    // defaults the server would never plan with.
+    return value.map(function (item) {
+      var template = (typeof item === "object" && item) ? item.template : item;
+      return template ? String(template).trim() : "";
+    }).filter(Boolean);
+  }
+
+  function parseMaxFilenameLength(value) {
+    var number;
+    if (typeof value === "number" && Number.isFinite(value)) number = Math.trunc(value);
+    else if (typeof value === "string" && /^[+-]?\d+$/.test(value.trim())) number = parseInt(value.trim(), 10);
+    else return DEFAULT_SETTINGS.maxFilenameLength;
+    return Math.max(16, Math.min(255, number));
+  }
+
+  function parseSeparator(value) {
+    var separator = value == null ? DEFAULT_SETTINGS.multiValueSeparator : String(value);
+    if (!separator) separator = DEFAULT_SETTINGS.multiValueSeparator;
+    return separator.slice(0, 10);
+  }
+
+  function parseRenamePattern(source) {
+    if (!Object.prototype.hasOwnProperty.call(source, "renamePattern")) {
+      return DEFAULT_SETTINGS.renamePattern;
+    }
+    return source.renamePattern ? String(source.renamePattern).trim() : "";
+  }
+
+  function parseBoolean(value, fallback) {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      var normalized = value.trim().toLowerCase();
+      if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") return true;
+      if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") return false;
+      return Boolean(value);
+    }
+    if (value === null || value === undefined) return fallback;
+    if (typeof value === "number") return value !== 0;
+    return Boolean(value);
+  }
+
+  function parseAutomationMode(value) {
+    var mode = String(value == null ? "" : value).trim().toLowerCase();
+    return ["manual", "scan", "generate"].indexOf(mode) >= 0 ? mode : "manual";
+  }
+
+  function parseApprovalHash(value) {
+    var hash = String(value == null ? "" : value).trim().toLowerCase();
+    return /^[0-9a-f]{64}$/.test(hash) ? hash : "";
   }
 
   function settingsFromConfiguration(configuration) {
     var source = DirtyPlugins.values.asObject(configuration);
-    var automationMode = ["manual", "scan", "generate"].indexOf(source.automationMode) >= 0
-      ? source.automationMode
-      : "manual";
-    var approvedStrategyHash = /^[0-9a-f]{64}$/i.test(String(source.approvedStrategyHash || ""))
-      ? String(source.approvedStrategyHash).toLowerCase()
-      : "";
-    var approvedPlanDigest = /^[0-9a-f]{64}$/i.test(String(source.approvedPlanDigest || ""))
-      ? String(source.approvedPlanDigest).toLowerCase()
-      : "";
     return {
-      moveEnabled: DirtyPlugins.values.coerceBoolean(source.moveEnabled, true),
-      moveRequireStashId: DirtyPlugins.values.coerceBoolean(source.moveRequireStashId, false),
+      moveEnabled: parseBoolean(source.moveEnabled, true),
+      moveRequireStashId: parseBoolean(source.moveRequireStashId, false),
       hierarchyLevels: parseLevels(source.hierarchyLevels),
-      renameEnabled: DirtyPlugins.values.coerceBoolean(source.renameEnabled, false),
-      renameRequireStashId: DirtyPlugins.values.coerceBoolean(source.renameRequireStashId, false),
-      renamePattern: String(source.renamePattern || DEFAULT_SETTINGS.renamePattern),
-      maxFilenameLength: DirtyPlugins.values.clampInteger(
-        source.maxFilenameLength,
-        DEFAULT_SETTINGS.maxFilenameLength,
-        16,
-        255
-      ),
-      multiValueSeparator: String(source.multiValueSeparator || DEFAULT_SETTINGS.multiValueSeparator),
-      automationMode: automationMode,
-      approvedStrategyHash: approvedStrategyHash,
-      approvedPlanDigest: approvedPlanDigest,
+      renameEnabled: parseBoolean(source.renameEnabled, false),
+      renameRequireStashId: parseBoolean(source.renameRequireStashId, false),
+      renamePattern: parseRenamePattern(source),
+      maxFilenameLength: parseMaxFilenameLength(source.maxFilenameLength),
+      multiValueSeparator: parseSeparator(source.multiValueSeparator),
+      automationMode: parseAutomationMode(source.automationMode),
+      approvedStrategyHash: parseApprovalHash(source.approvedStrategyHash),
+      approvedPlanDigest: parseApprovalHash(source.approvedPlanDigest),
     };
   }
 
@@ -518,6 +554,10 @@
       runPreview(draft)
         .then(function (result) {
           setPreview(result);
+          // Adopt the backend's normalized settings so what the panel shows (and
+          // later saves) is exactly what the preview's strategy hash was built
+          // from. The server is authoritative; the client only mirrors it.
+          if (result && result.settings) setDraft(settingsFromConfiguration(result.settings));
           setPreviewFilter("all");
           setPreviewPage(1);
           setConfirmed(false);
@@ -816,6 +856,14 @@
   window[INSTANCE_KEY] = {
     automationMonitor: DirtyTidyAutomationMonitor,
     settingsPanel: DirtyTidySettings,
+    algorithms: {
+      settingsFromConfiguration: settingsFromConfiguration,
+      parseLevels: parseLevels,
+      parseMaxFilenameLength: parseMaxFilenameLength,
+      parseSeparator: parseSeparator,
+      parseRenamePattern: parseRenamePattern,
+      parseBoolean: parseBoolean,
+    },
   };
   debugLog("dirtyTidy", "script finished registering", {
     elapsedMs: DirtyPlugins.debugElapsed ? DirtyPlugins.debugElapsed() : null,
