@@ -17,7 +17,7 @@ const dashboard = context.window.__dirtyStatsDashboard;
 const helpers = dashboard.algorithms;
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
-assert.equal(Object.keys(dashboard.registry).length, 12, "every DirtyStats statistic must be available as a widget");
+assert.equal(Object.keys(dashboard.registry).length, 13, "every DirtyStats statistic must be available as a widget");
 assert.equal(dashboard.defaults.length, 5, "a curated dashboard should be created on first use");
 
 const defaults = plain(helpers.normalizeWidgets(null));
@@ -49,6 +49,7 @@ assert.deepEqual(plain(helpers.normalizeWidgets([], false)), [], "an intentional
 assert.deepEqual(plain(helpers.requiredGroups([
   { statistic: "ratings" },
   { statistic: "countRating" },
+  { statistic: "repeatOffenders" },
   { statistic: "qualityEfficiency" },
   { statistic: "tags" },
   { statistic: "origin" },

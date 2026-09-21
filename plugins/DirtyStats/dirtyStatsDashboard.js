@@ -32,13 +32,14 @@
     performerRatings: { label: "Performer ratings", route: core.route + "/performer-ratings", entity: "performers", group: "performers", size: "medium", options: { rounding: 0.5 }, choices: { rounding: [0, 0.5, 1] } },
     performerScatter: { label: "Rating vs scenes", route: core.route + "/performer-scatter", entity: "performers", group: "performers", size: "medium", options: { minRating: 9, maxScenes: 10 }, choices: { minRating: [0, 5, 6, 7, 8, 9], maxScenes: [0, 5, 10, 20, 50, 100] } },
     countRating: { label: "Count vs rating", route: core.route + "/count-rating", entity: "scenes", group: "scenes", size: "medium", options: { metric: "play_count" }, choices: { metric: ["play_count", "o_counter"] } },
+    repeatOffenders: { label: "Repeat-offender curve", route: core.route + "/repeat-offenders", entity: "scenes", group: "scenes", size: "medium", options: {}, choices: {} },
     qualityEfficiency: { label: "Quality efficiency", route: core.route + "/quality-efficiency", entity: "scenes", group: "scenes", size: "medium", options: {}, choices: {} },
     studios: { label: "Studio value map", route: core.route + "/studios", entity: "scenes", group: "scenes", size: "medium", options: { minScenes: 1 }, choices: { minScenes: [1, 2, 5, 10, 20] } },
     tags: { label: "Tag DNA", route: core.route + "/tags", entity: "scenes", group: "tags", size: "medium", options: { metric: "rating", maxTags: 50 }, choices: { metric: ["rating", "play_count"], maxTags: [0, 25, 50, 100, 200] } },
     constellation: { label: "Cast constellation", route: core.route + "/constellation", entity: "scenes", group: "cast", size: "large", options: { maxPerformers: 100, minShared: 1 }, choices: { maxPerformers: [0, 50, 100, 200, 500, 1000], minShared: [1, 2, 3, 5, 10] } },
     birthdays: { label: "Performer birthdays", route: core.route + "/birthdays", entity: "performers", group: "performers", size: "medium", options: { upcomingCount: 6 }, choices: { upcomingCount: [3, 6, 12] } }
   };
-  var WIDGET_ORDER = ["origin", "growth", "ages", "ratings", "performerRatings", "performerScatter", "countRating", "qualityEfficiency", "studios", "tags", "constellation", "birthdays"];
+  var WIDGET_ORDER = ["origin", "growth", "ages", "ratings", "performerRatings", "performerScatter", "countRating", "repeatOffenders", "qualityEfficiency", "studios", "tags", "constellation", "birthdays"];
   var DEFAULT_WIDGETS = [
     { id: "dashboard-ratings", statistic: "ratings", size: "medium", options: { rounding: 0.5 } },
     { id: "dashboard-performer-ratings", statistic: "performerRatings", size: "medium", options: { rounding: 0.5 } },
@@ -259,6 +260,16 @@
     return scatterWidget(points, widget, ["Scene rating", algorithms.countRatingLabel(widget.options.metric)], null);
   }
 
+  function repeatOffenderWidget(scenes, widget) {
+    var stats = algorithms.aggregateRepeatOffenders(scenes);
+    var data = algorithms.repeatOffenderSeriesData(stats, null);
+    var option = { backgroundColor: "transparent", grid: { left: 8, right: 12, top: 10, bottom: widget.size === "large" ? 42 : 18, containLabel: widget.size !== "small" }, tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { if (!p.data || !p.data.id) return p.seriesName; return p.data.title + "\n" + p.data.views + " views\nTop " + p.value[0].toFixed(1) + "% account for " + p.value[1].toFixed(1) + "% of views"; } }, xAxis: { type: "value", name: widget.size === "large" ? "Scenes ranked by views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: "#bbb", formatter: "{value}%" }, axisLine: { lineStyle: { color: "#788591" } }, splitLine: { show: widget.size !== "small", lineStyle: { color: "#364655" } } }, yAxis: { type: "value", name: widget.size === "large" ? "Cumulative views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: "#bbb", formatter: "{value}%" }, splitLine: { show: widget.size !== "small", lineStyle: { color: "#364655" } } }, series: [{ name: "Cumulative views", type: "line", showSymbol: false, sampling: "lttb", lineStyle: { color: "#54d5ca", width: 3 }, areaStyle: { color: "#54d5ca", opacity: .16 }, data: data, markArea: { silent: true, label: { show: widget.size === "large", color: "#ddd", formatter: "Top 5%" }, itemStyle: { color: "rgba(243,199,121,.10)" }, data: [[{ xAxis: 0 }, { xAxis: 5 }]] } }, { name: "Equal distribution", type: "line", showSymbol: false, silent: true, lineStyle: { color: "#788591", type: "dashed", width: 1 }, data: [[0, 0], [100, 100]] }] };
+    var share = Math.round(stats.topShare * 10) / 10;
+    return h(React.Fragment, null,
+      h("div", { className: "dirty-stats-dashboard-metrics" }, metric("top 5% view share", stats.totalViews ? share.toFixed(1) + "%" : "—"), metric("recorded views", stats.totalViews), widget.size === "large" ? metric("viewed scenes", stats.viewedScenes + " / " + stats.totalScenes) : null),
+      stats.totalViews ? h(Chart, { option: option, label: "Cumulative share of views by scene rank" }) : h(State, { title: "No recorded views", detail: stats.totalScenes ? "Play some scenes to reveal viewing concentration." : "No scenes match these filters." }));
+  }
+
   function qualityEfficiencyWidget(scenes, widget) {
     var stats = algorithms.aggregateQualityEfficiency(scenes);
     var chartAxes = axes(widget.size, "Minutes per GiB", "Scene rating"); chartAxes.yAxis.max = 10;
@@ -330,6 +341,7 @@
     if (widget.statistic === "performerRatings") return ratingWidget(rows, widget, "performer");
     if (widget.statistic === "performerScatter") return performerScatterWidget(rows, widget);
     if (widget.statistic === "countRating") return countRatingWidget(rows, widget);
+    if (widget.statistic === "repeatOffenders") return repeatOffenderWidget(rows, widget);
     if (widget.statistic === "qualityEfficiency") return qualityEfficiencyWidget(rows, widget);
     if (widget.statistic === "studios") return studioWidget(rows, widget);
     if (widget.statistic === "tags") return tagDnaWidget(rows, widget);

@@ -41,7 +41,7 @@ remains isolated to the affected data group and filter.
 
 The statistic selector offers **Performer origin**, **Content growth**,
 **Age at scene**, **Scene ratings**, **Performer ratings**,
-**Rating vs scenes**, **Count vs rating**, **Quality efficiency**, **Studio value map**,
+**Rating vs scenes**, **Count vs rating**, **Repeat-offender curve**, **Quality efficiency**, **Studio value map**,
 **Tag DNA**, **Cast constellation**, and **Performer birthdays**.
 Display choices such as map numbers, rating rounding, growth options, and the
 constellation, scatter, and studio limits are saved to the DirtyStats plugin
@@ -93,6 +93,16 @@ ten and the y-axis is the scene's view count or O count, chosen by the **Count**
 control and remembered for next time. Scenes without a rating are omitted and
 reported. Click a dot to show that scene below, or click it again to clear the
 selection. PNG export is available inside the chart.
+
+**Repeat-offender curve** ranks distinct scenes from most viewed to least viewed
+using native scene filters and their saved defaults. The x-axis is the cumulative
+share of matching scenes and the y-axis is their cumulative share of recorded
+views. A steep early rise reveals that a small part of the library receives most
+of the attention, while a dashed diagonal shows what an even distribution would
+look like. The summary reports the share of views belonging to the top 5% of
+matching scenes and how many scenes have never been viewed. Click a point to show
+that scene below, click it again to clear the selection, and use the range slider
+to inspect a section of the curve. PNG export is available inside the chart.
 
 **Quality efficiency** is a bubble plot using native scene filters. Each bubble
 compares a scene's rating with its storage efficiency in playable minutes per
@@ -170,7 +180,8 @@ The timeline sums current sizes of all files attached to matching scenes,
 grouped by the selected date in UTC, and displays the cumulative total through
 today. **Group by** combines additions by day, calendar month, or calendar year
 in UTC and preserves the cumulative total. The grouping survives filter changes.
-Period selection includes whole months or years when grouped.
+Period selection includes whole months or years when grouped and preserves the
+timeline's current zoom window while the selection changes.
 **Show forecast** adds a dashed projection and estimated capacity date using
 average daily additions over the past 365 days (or the selected period).
 The forecast uses daily data regardless of grouping and assumes constant growth

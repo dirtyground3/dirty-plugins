@@ -34,6 +34,7 @@
   var performerRatingRoute = route + "/performer-ratings";
   var performerScatterRoute = route + "/performer-scatter";
   var countRatingRoute = route + "/count-rating";
+  var repeatOffenderRoute = route + "/repeat-offenders";
   var qualityEfficiencyRoute = route + "/quality-efficiency";
   var constellationRoute = route + "/constellation";
   var studioRoute = route + "/studios";
@@ -494,6 +495,7 @@
     performerRatings: performerRatingRoute,
     performerScatter: performerScatterRoute,
     countRating: countRatingRoute,
+    repeatOffenders: repeatOffenderRoute,
     qualityEfficiency: qualityEfficiencyRoute,
     studios: studioRoute,
     tags: tagDnaRoute,
@@ -509,13 +511,14 @@
     performerRatings: "Performer ratings",
     performerScatter: "Rating vs scenes",
     countRating: "Count vs rating",
+    repeatOffenders: "Repeat-offender curve",
     qualityEfficiency: "Quality efficiency",
     studios: "Studio value map",
     tags: "Tag DNA",
     constellation: "Cast constellation",
     birthdays: "Performer birthdays"
   };
-  var STATISTIC_ORDER = ["dashboard", "origin", "growth", "ages", "ratings", "performerRatings", "performerScatter", "countRating", "qualityEfficiency", "studios", "tags", "constellation", "birthdays"];
+  var STATISTIC_ORDER = ["dashboard", "origin", "growth", "ages", "ratings", "performerRatings", "performerScatter", "countRating", "repeatOffenders", "qualityEfficiency", "studios", "tags", "constellation", "birthdays"];
   function StatisticSelector(props) {
     var history = api.libraries.ReactRouterDOM.useHistory();
     var bootstrap = api.libraries.Bootstrap, Dropdown = bootstrap.Dropdown;
@@ -673,6 +676,27 @@
     var before = 0, after = 0;
     points.forEach(function (point) { if (point[0] < period[0]) before = point[1]; if (point[0] <= period[1]) after = point[1]; });
     return after - before;
+  }
+  function growthDataZoomRange(option) {
+    var zoom = option && option.dataZoom && option.dataZoom[0];
+    if (!zoom) return null;
+    var minimum = Infinity, maximum = -Infinity;
+    (option.series || []).forEach(function (series) {
+      (series.data || []).forEach(function (point) {
+        var coordinates = Array.isArray(point) ? point : point && Array.isArray(point.value) ? point.value : null;
+        var value = coordinates ? Number(coordinates[0]) : NaN;
+        if (!Number.isFinite(value)) return;
+        minimum = Math.min(minimum, value); maximum = Math.max(maximum, value);
+      });
+    });
+    if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) return null;
+    var startValue = zoom.startValue == null || zoom.startValue === "" ? NaN : Number(zoom.startValue);
+    var endValue = zoom.endValue == null || zoom.endValue === "" ? NaN : Number(zoom.endValue);
+    var start = Math.max(0, Math.min(100, Number.isFinite(Number(zoom.start)) ? Number(zoom.start) : 0));
+    var end = Math.max(0, Math.min(100, Number.isFinite(Number(zoom.end)) ? Number(zoom.end) : 100));
+    if (!Number.isFinite(startValue)) startValue = minimum + (maximum - minimum) * start / 100;
+    if (!Number.isFinite(endValue)) endValue = minimum + (maximum - minimum) * end / 100;
+    return [Math.min(startValue, endValue), Math.max(startValue, endValue)];
   }
   function forecastGrowth(stats, capacity, now, period) {
     var today = growthBucket(now == null ? Date.now() : now, "day");
@@ -1024,7 +1048,7 @@ chartError ? h(StatsState, { detail: chartError, role: "alert", title: "Chart un
     var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
-    var node = React.useRef(null), chartRef = React.useRef(null);
+    var node = React.useRef(null), chartRef = React.useRef(null), periodZoomRef = React.useRef(null);
     var capacityState = React.useState(null), capacity = capacityState[0], setCapacity = capacityState[1];
     var showCapacityState = useStatsSetting("growthShowCapacity"), showCapacity = showCapacityState[0], setShowCapacity = showCapacityState[1];
     var capacityErrorState = React.useState(""), capacityError = capacityErrorState[0], setCapacityError = capacityErrorState[1];
@@ -1045,7 +1069,12 @@ chartError ? h(StatsState, { detail: chartError, role: "alert", title: "Chart un
     var periodState = React.useState(null), period = periodState[0], setPeriod = periodState[1];
     var anchorState = React.useState(null), anchor = anchorState[0], setAnchor = anchorState[1];
     var selectionRef = React.useRef(null);
+    function rememberPeriodZoom() {
+      var chart = chartRef.current;
+      periodZoomRef.current = chart && chart.getOption ? growthDataZoomRange(chart.getOption()) : null;
+    }
     selectionRef.current = function (day) {
+      rememberPeriodZoom();
       day = growthBucket(day, grouping);
       if (anchor == null) { setPeriod(null); setAnchor(day); }
       else { setPeriod([Math.min(anchor, day), growthBucketEnd(Math.max(anchor, day), grouping)]); setAnchor(null); }
@@ -1104,11 +1133,17 @@ chartError ? h(StatsState, { detail: chartError, role: "alert", title: "Chart un
     React.useEffect(function () {
       var chart = chartRef.current;
       if (!chart) return;
+      var preservedZoom = periodZoomRef.current;
       var capacityLine = showCapacity && capacity && capacity.total > 0 ? [{ yAxis: capacity.total, lineStyle: { color: "#9da8b2", type: "dashed" }, label: { show: true, position: "insideEndTop", color: "#ddd", fontSize: 10, formatter: (capacity.errors.length ? "Known capacity: " : "Capacity: ") + formatBytes(capacity.total) } }] : [];
       chart.setOption({ yAxis: { max: capacityLine.length || (showForecast && forecast.points) ? Math.max(stats.bytes, capacity.total) * 1.05 : null }, series: [{
         markLine: { silent: true, symbol: "none", label: { show: false }, lineStyle: { color: "#f3c779", type: "dashed" }, data: capacityLine.concat(anchor == null ? [] : [{ xAxis: anchor }]) },
         markArea: { silent: true, label: { show: false }, itemStyle: { color: "rgba(243,199,121,.2)" }, data: period ? [[{ xAxis: period[0] }, { xAxis: period[1] + 86400000 }]] : [] }
       }, { name: "Forecast", type: "line", showSymbol: false, lineStyle: { color: "#f3c779", type: "dashed", width: 2 }, itemStyle: { color: "#f3c779" }, data: showForecast && forecast.points ? forecast.points : [] }] });
+      if (preservedZoom && chart.dispatchAction) {
+        var zooms = (chart.getOption().dataZoom || []).map(function (_zoom, index) { return { dataZoomIndex: index, startValue: preservedZoom[0], endValue: preservedZoom[1] }; });
+        if (zooms.length) chart.dispatchAction({ type: "dataZoom", silent: true, batch: zooms });
+      }
+      periodZoomRef.current = null;
     }, [period, anchor, stats, loading, error, capacity, showCapacity, showForecast, forecast]);
     return h("section", { className: "dirty-stats-content" },
       h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading scenes..." : stats.included + " scenes \u00b7 " + formatBytes(stats.bytes) + (stats.excluded ? " \u00b7 " + stats.excluded + " excluded" : "")),
@@ -1124,7 +1159,7 @@ chartError ? h(StatsState, { detail: chartError, role: "alert", title: "Chart un
           h("label", { className: "dirty-stats-date-basis" }, "Group by",
             h("select", { className: "form-control dirty-stats-statistic", value: grouping, onChange: function (event) { setGrouping(event.target.value); } },
               h("option", { value: "day" }, "Day"), h("option", { value: "month" }, "Month"), h("option", { value: "year" }, "Year"))),
-          period || anchor != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setPeriod(null); setAnchor(null); } }, "Clear period") : null,
+          period || anchor != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { rememberPeriodZoom(); setPeriod(null); setAnchor(null); } }, "Clear period") : null,
           h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: loading || Boolean(error) || Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-content-growth-" + dateBasis + ".png"); } }, "Export PNG")),
         !loading && !error ? h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Cumulative scene file size over time, grouped by " + dateLabel + " in UTC." }) : null),
       showForecast && !loading && !error ? h("p", { className: "dirty-stats-forecast", role: "status" }, forecast.reason || "Estimated capacity date: " + new Date(forecast.reachedAt).toISOString().slice(0, 10) + " (UTC), at " + formatBytes(forecast.rate) + "/day. Reference: " + new Date(forecast.start).toISOString().slice(0, 10) + " to " + new Date(forecast.end).toISOString().slice(0, 10) + ".", " Assumes steady growth of matching content; other disk usage is not included.") : null,
@@ -1659,6 +1694,40 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     });
     return { points: points, total: seen.size, missingRating: missingRating };
   }
+  function aggregateRepeatOffenders(scenes) {
+    var seen = new Set(), rows = [], totalViews = 0;
+    scenes.forEach(function (scene) {
+      var id = String(scene && scene.id != null ? scene.id : "");
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      var views = Number(scene.play_count);
+      if (!Number.isFinite(views) || views < 0) views = 0;
+      rows.push({ id: id, title: String(scene.title || "Scene #" + id), views: views });
+      totalViews += views;
+    });
+    rows.sort(function (left, right) { return right.views - left.views || left.title.localeCompare(right.title) || left.id.localeCompare(right.id); });
+    var cumulativeViews = 0, totalScenes = rows.length;
+    rows.forEach(function (row, index) {
+      cumulativeViews += row.views;
+      row.rank = index + 1;
+      row.sceneShare = totalScenes ? row.rank * 100 / totalScenes : 0;
+      row.cumulativeViews = cumulativeViews;
+      row.viewShare = totalViews ? cumulativeViews * 100 / totalViews : 0;
+    });
+    var topCount = totalScenes ? Math.max(1, Math.ceil(totalScenes * .05)) : 0;
+    var topViews = rows.slice(0, topCount).reduce(function (sum, row) { return sum + row.views; }, 0);
+    return { rows: rows, totalScenes: totalScenes, viewedScenes: rows.filter(function (row) { return row.views > 0; }).length, totalViews: totalViews, topCount: topCount, topViews: topViews, topShare: totalViews ? topViews * 100 / totalViews : 0 };
+  }
+  function repeatOffenderSeriesData(stats, selected) {
+    return [{ value: [0, 0], rank: 0, views: 0, cumulativeViews: 0 }].concat(stats.rows.map(function (row) {
+      return { id: row.id, title: row.title, rank: row.rank, views: row.views, cumulativeViews: row.cumulativeViews, value: [row.sceneShare, row.viewShare], symbolSize: row.id === selected ? 10 : 5, itemStyle: { color: row.id === selected ? "#f3c779" : "#54d5ca", borderColor: row.id === selected ? "#fff" : "transparent", borderWidth: row.id === selected ? 2 : 0 } };
+    }));
+  }
+  function repeatOffenderRowAtShare(stats, share) {
+    if (!stats || !stats.rows || !stats.rows.length || !Number.isFinite(Number(share))) return null;
+    var index = Math.round(Math.max(0, Math.min(100, Number(share))) * stats.rows.length / 100) - 1;
+    return stats.rows[Math.max(0, Math.min(stats.rows.length - 1, index))];
+  }
   function aggregateQualityEfficiency(scenes) {
     var seen = new Set(), points = [], missingRating = 0, missingFileData = 0;
     scenes.forEach(function (scene) {
@@ -1848,6 +1917,79 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
       !loading && !error && !stats.points.length ? h(StatsState, { title: "No rated scenes match these filters." }) : null,
       h("p", null, "Each dot is a distinct scene: scene rating out of ten on the x-axis and " + countRatingLabel(metric).toLowerCase() + " on the y-axis. Use Count to switch between the scene's view count and its O count. Click a dot to show that scene below."),
       !loading && !error && stats.missingRating ? h("p", { role: "status" }, stats.missingRating + " scenes without a rating were omitted.") : null,
+      !loading && !error ? h(SceneCards, { scenes: matching, filter: props.filter, title: selected == null ? "Scenes" : "Selected scene", selection: selected, clearSelection: function () { setSelected(null); }, clearLabel: "Show all scenes" }) : null);
+  }
+  function RepeatOffenderPage(props) {
+    var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
+    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
+    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
+    var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
+    var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
+    var node = React.useRef(null), chartRef = React.useRef(null);
+    var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
+    var stats = React.useMemo(function () { return aggregateRepeatOffenders(scenes); }, [scenes]);
+    React.useEffect(function () { setSelected(null); }, [queryKey]);
+    React.useEffect(function () {
+      var controller = new AbortController();
+      setLoading(true); setError("");
+      (async function () {
+        var result = [], page = 1, total;
+        do {
+          var data = await hub.graphql("query DirtyStatsRepeatOffenders($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title play_count}}}", sceneVariables(props.filter, page), { signal: controller.signal });
+          if (controller.signal.aborted) return;
+          var batch = data.findScenes; total = batch.count;
+          if (!batch.scenes.length && result.length < total) throw new Error("The scene list changed while loading. Refresh to try again.");
+          result = result.concat(batch.scenes); page++;
+        } while (result.length < total);
+        if (!controller.signal.aborted) { setScenes(result); setLoading(false); }
+      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
+      return function () { controller.abort(); };
+    }, [queryKey, refresh]);
+    React.useEffect(function () {
+      if (loading || error || !node.current || !stats.totalViews) return;
+      var chart, observer;
+      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
+      try {
+        if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
+        chart = initStatsChart(node.current, { renderer: "canvas" }); chartRef.current = chart;
+        chart.getZr().on("click", function (event) {
+          var pixel = [event.offsetX, event.offsetY];
+          if (!chart.containPixel({ gridIndex: 0 }, pixel)) return;
+          var value = chart.convertFromPixel({ gridIndex: 0 }, pixel);
+          var row = value && repeatOffenderRowAtShare(stats, value[0]);
+          var rowPixel = row && chart.convertToPixel({ gridIndex: 0 }, [row.sceneShare, row.viewShare]);
+          if (!rowPixel || Math.abs(rowPixel[0] - pixel[0]) > 12 || Math.abs(rowPixel[1] - pixel[1]) > 12) return;
+          setSelected(function (current) { return current === row.id ? null : row.id; });
+        });
+        chart.setOption({ backgroundColor: "#242b31", grid: { left: 18, right: 28, top: 24, bottom: 68, containLabel: true },
+          tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { if (!p.data || !p.data.id) return p.seriesName; return p.data.title + "\nRank " + p.data.rank + " of " + stats.totalScenes + "\n" + p.data.views + " recorded view" + (p.data.views === 1 ? "" : "s") + "\nTop " + p.value[0].toFixed(1) + "% account for " + p.value[1].toFixed(1) + "% of views"; } },
+          xAxis: { type: "value", name: "Scenes, ranked by views (%)", nameLocation: "middle", nameGap: 32, min: 0, max: 100, nameTextStyle: { color: "#bbb" }, axisLabel: { color: "#bbb", formatter: "{value}%" }, axisLine: { lineStyle: { color: "#788591" } }, splitLine: { lineStyle: { color: "#364655" } } },
+          yAxis: { type: "value", name: "Cumulative share of views", nameLocation: "middle", nameGap: 48, min: 0, max: 100, nameTextStyle: { color: "#bbb" }, axisLabel: { color: "#bbb", formatter: "{value}%" }, splitLine: { lineStyle: { color: "#364655" } } },
+          dataZoom: [{ type: "inside", xAxisIndex: 0 }, { type: "slider", xAxisIndex: 0, bottom: 8, height: 18 }],
+          series: [{ name: "Cumulative views", type: "line", showSymbol: stats.totalScenes <= 200, symbolSize: 5, sampling: "lttb", lineStyle: { color: "#54d5ca", width: 3 }, itemStyle: { color: "#54d5ca" }, areaStyle: { color: "#54d5ca", opacity: .16 }, data: repeatOffenderSeriesData(stats, selected), markArea: { silent: true, label: { show: true, color: "#ddd", formatter: "Top 5%" }, itemStyle: { color: "rgba(243,199,121,.10)" }, data: [[{ xAxis: 0 }, { xAxis: 5 }]] } }, { name: "Equal distribution", type: "line", showSymbol: false, silent: true, lineStyle: { color: "#788591", type: "dashed", width: 1 }, data: [[0, 0], [100, 100]] }] });
+        setChartError("");
+        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
+        window.addEventListener("resize", resize);
+      } catch (err) { setChartError(err.message); }
+      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+    }, [stats, loading, error]);
+    React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: repeatOffenderSeriesData(stats, selected) }] }); }, [selected, stats, loading, error]);
+    var matching = React.useMemo(function () { return selected == null ? scenes : scenes.filter(function (scene) { return String(scene.id) === selected; }); }, [scenes, selected]);
+    var topShare = Math.round(stats.topShare * 10) / 10;
+    return h("section", { className: "dirty-stats-content" },
+      h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading scenes..." : stats.totalViews ? "Top 5% (" + stats.topCount + " scene" + (stats.topCount === 1 ? "" : "s") + ") account for " + topShare.toFixed(1) + "% of " + stats.totalViews + " recorded views" : stats.totalScenes + " scenes · no recorded views"), h("button", { className: "btn btn-secondary dirty-ui-button", disabled: loading, onClick: function () { setRefresh(refresh + 1); } }, "Refresh")),
+      error ? h(StatsState, { detail: error + " Use Refresh to retry.", role: "alert", title: "Could not load scenes" }) : null,
+      !loading && !error && stats.totalViews ? h("section", { className: "dirty-stats-map-panel dirty-ui-panel", "aria-label": "Cumulative share of views by scene rank" },
+        h("div", { className: "dirty-stats-map-controls" },
+          selected != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all scenes") : null,
+          h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-repeat-offender-curve.png"); } }, "Export PNG")),
+        h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Curve showing the cumulative share of recorded views as scenes are added from most viewed to least viewed." })) : null,
+      chartError ? h(StatsState, { detail: chartError, role: "alert", title: "Chart unavailable" }) : null,
+      !loading && !error && !stats.totalScenes ? h(StatsState, { title: "No scenes match these filters." }) : null,
+      !loading && !error && stats.totalScenes && !stats.totalViews ? h(StatsState, { title: "No recorded views match these filters.", detail: "Play some scenes to reveal how concentrated your viewing is." }) : null,
+      h("p", null, "Scenes are ranked from most viewed to least viewed. A steep early rise means a small set receives most of your attention; the dashed diagonal shows an even distribution. Click a point on the curve to show that scene below."),
+      !loading && !error && stats.totalViews ? h("p", { role: "status" }, stats.viewedScenes + " of " + stats.totalScenes + " scenes have at least one recorded view; " + (stats.totalScenes - stats.viewedScenes) + " have none.") : null,
       !loading && !error ? h(SceneCards, { scenes: matching, filter: props.filter, title: selected == null ? "Scenes" : "Selected scene", selection: selected, clearSelection: function () { setSelected(null); }, clearLabel: "Show all scenes" }) : null);
   }
   function QualityEfficiencyPage(props) {
@@ -2077,7 +2219,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var themeState = useStatsSetting("visualTheme"), visualTheme = themeState[0];
     var themeClass = statsThemeClass(visualTheme);
     var location = api.libraries.ReactRouterDOM.useLocation();
-    var statistic = location.pathname === dashboardRoute ? "dashboard" : location.pathname === performerScatterRoute ? "performerScatter" : location.pathname === countRatingRoute ? "countRating" : location.pathname === qualityEfficiencyRoute ? "qualityEfficiency" : location.pathname === studioRoute ? "studios" : location.pathname === tagDnaRoute ? "tags" : location.pathname === constellationRoute ? "constellation" : location.pathname === birthdayRoute ? "birthdays" : location.pathname === performerRatingRoute ? "performerRatings" : location.pathname === ratingRoute ? "ratings" : location.pathname === ageRoute ? "ages" : location.pathname === growthRoute ? "growth" : "origin";
+    var statistic = location.pathname === dashboardRoute ? "dashboard" : location.pathname === performerScatterRoute ? "performerScatter" : location.pathname === countRatingRoute ? "countRating" : location.pathname === repeatOffenderRoute ? "repeatOffenders" : location.pathname === qualityEfficiencyRoute ? "qualityEfficiency" : location.pathname === studioRoute ? "studios" : location.pathname === tagDnaRoute ? "tags" : location.pathname === constellationRoute ? "constellation" : location.pathname === birthdayRoute ? "birthdays" : location.pathname === performerRatingRoute ? "performerRatings" : location.pathname === ratingRoute ? "ratings" : location.pathname === ageRoute ? "ages" : location.pathname === growthRoute ? "growth" : "origin";
     var sceneView = statistic !== "origin" && statistic !== "performerRatings" && statistic !== "performerScatter" && statistic !== "birthdays";
     var state = React.useState(false), ready = state[0], setReady = state[1];
     var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
@@ -2148,6 +2290,7 @@ return h("main", { ref: page, className: "dirty-stats-page dirty-stats-native-fi
     pages[studioRoute] = StudioValuePage;
     pages[tagDnaRoute] = TagDnaPage;
     pages[countRatingRoute] = CountRatingPage;
+    pages[repeatOffenderRoute] = RepeatOffenderPage;
     pages[qualityEfficiencyRoute] = QualityEfficiencyPage;
     var PageComponent = pages[window.location.pathname];
     if (!PageComponent || !props || !props.filter) return next.apply(null, args);
@@ -2158,7 +2301,7 @@ return h("main", { ref: page, className: "dirty-stats-page dirty-stats-native-fi
     if (event && event.detail && event.detail.pluginId === PLUGIN_ID) loadStatsSettings();
   });
   var statsSettingsReady = loadStatsSettings();
-  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, birthdayInYear: birthdayInYear, daysUntilBirthday: daysUntilBirthday, aggregateBirthdays: aggregateBirthdays, performerImageSource: performerImageSource, birthdayEntriesFor: birthdayEntriesFor, birthdayDefaultSelection: birthdayDefaultSelection, birthdayAgeText: birthdayAgeText, birthdayMonthCounts: birthdayMonthCounts, birthdayDayLabel: birthdayDayLabel, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, orderedCards: orderedCards, docsCaptureEnabled: docsCaptureEnabled, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, scatterSeriesData: scatterSeriesData, nearestScatterOption: nearestScatterOption, scatterGuideForClick: scatterGuideForClick, scatterGuideLines: scatterGuideLines, countRatingLabel: countRatingLabel, countRatingSeriesData: countRatingSeriesData, aggregateCountRating: aggregateCountRating, aggregateQualityEfficiency: aggregateQualityEfficiency, qualityEfficiencySeriesData: qualityEfficiencySeriesData, qualityEfficiencySymbolSize: qualityEfficiencySymbolSize, aggregateStudios: aggregateStudios, aggregateTagDna: aggregateTagDna, tagDnaMetricValue: tagDnaMetricValue, tagDnaMetricLabel: tagDnaMetricLabel, tagDnaColor: tagDnaColor, tagDnaSeriesData: tagDnaSeriesData, tagDnaScenes: tagDnaScenes, serializeDashboardFilter: serializeDashboardFilter, statsTheme: statsTheme, themeColor: themeColor, themePalette: themePalette, statsThemeClass: statsThemeClass, themedChartOption: themedChartOption, initStatsChart: initStatsChart, statsSettings: statsSettings, parseStatsSetting: parseStatsSetting, statsSettingsFromStorage: statsSettingsFromStorage, setStatsSetting: setStatsSetting, loadStatsSettings: loadStatsSettings } };
+  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, birthdayInYear: birthdayInYear, daysUntilBirthday: daysUntilBirthday, aggregateBirthdays: aggregateBirthdays, performerImageSource: performerImageSource, birthdayEntriesFor: birthdayEntriesFor, birthdayDefaultSelection: birthdayDefaultSelection, birthdayAgeText: birthdayAgeText, birthdayMonthCounts: birthdayMonthCounts, birthdayDayLabel: birthdayDayLabel, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, growthDataZoomRange: growthDataZoomRange, orderedCards: orderedCards, docsCaptureEnabled: docsCaptureEnabled, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, scatterSeriesData: scatterSeriesData, nearestScatterOption: nearestScatterOption, scatterGuideForClick: scatterGuideForClick, scatterGuideLines: scatterGuideLines, countRatingLabel: countRatingLabel, countRatingSeriesData: countRatingSeriesData, aggregateCountRating: aggregateCountRating, aggregateRepeatOffenders: aggregateRepeatOffenders, repeatOffenderSeriesData: repeatOffenderSeriesData, repeatOffenderRowAtShare: repeatOffenderRowAtShare, aggregateQualityEfficiency: aggregateQualityEfficiency, qualityEfficiencySeriesData: qualityEfficiencySeriesData, qualityEfficiencySymbolSize: qualityEfficiencySymbolSize, aggregateStudios: aggregateStudios, aggregateTagDna: aggregateTagDna, tagDnaMetricValue: tagDnaMetricValue, tagDnaMetricLabel: tagDnaMetricLabel, tagDnaColor: tagDnaColor, tagDnaSeriesData: tagDnaSeriesData, tagDnaScenes: tagDnaScenes, serializeDashboardFilter: serializeDashboardFilter, statsTheme: statsTheme, themeColor: themeColor, themePalette: themePalette, statsThemeClass: statsThemeClass, themedChartOption: themedChartOption, initStatsChart: initStatsChart, statsSettings: statsSettings, parseStatsSetting: parseStatsSetting, statsSettingsFromStorage: statsSettingsFromStorage, setStatsSetting: setStatsSetting, loadStatsSettings: loadStatsSettings } };
   window.__dirtyStatsPlugin.dashboardRoute = dashboardRoute;
   window.__dirtyStatsPlugin.settingsReady = statsSettingsReady;
   window.__dirtyStatsPlugin.getSettingExtra = getStatsSettingExtra;

@@ -147,6 +147,29 @@ assert.equal(a.countRatingLabel("o_counter"), "O count");
 const countSeries = a.countRatingSeriesData(a.aggregateCountRating([{id: "1", title: "One", rating100: 90, play_count: 4, o_counter: 1}], "play_count"), "1");
 assert.deepEqual(JSON.parse(JSON.stringify(countSeries[0].value)), [9, 4], "count vs rating series uses [rating, count]");
 assert.equal(countSeries[0].id, "1");
+const repeatOffenders = a.aggregateRepeatOffenders([
+  {id: "a", title: "Favorite", play_count: 10},
+  {id: "b", title: "Second", play_count: 5},
+  {id: "c", title: "Unwatched", play_count: null},
+  {id: "d", title: "Third", play_count: 5},
+  {id: "a", title: "Duplicate", play_count: 99}
+]);
+assert.equal(repeatOffenders.totalScenes, 4, "repeat-offender curve counts distinct scenes");
+assert.equal(repeatOffenders.viewedScenes, 3);
+assert.equal(repeatOffenders.totalViews, 20);
+assert.equal(repeatOffenders.topCount, 1);
+assert.equal(repeatOffenders.topShare, 50);
+assert.deepEqual(JSON.parse(JSON.stringify(repeatOffenders.rows.map(row => [row.id, row.rank, row.views, row.sceneShare, row.viewShare]))), [
+  ["a", 1, 10, 25, 50], ["b", 2, 5, 50, 75], ["d", 3, 5, 75, 100], ["c", 4, 0, 100, 100]
+]);
+const repeatSeries = a.repeatOffenderSeriesData(repeatOffenders, "b");
+assert.deepEqual(JSON.parse(JSON.stringify(repeatSeries[0].value)), [0, 0], "the concentration curve starts at the origin");
+assert.equal(repeatSeries[2].itemStyle.borderColor, "#fff", "the selected scene is highlighted");
+assert.equal(a.repeatOffenderRowAtShare(repeatOffenders, 26).id, "a");
+assert.equal(a.repeatOffenderRowAtShare(repeatOffenders, 49).id, "b");
+assert.equal(a.repeatOffenderRowAtShare(repeatOffenders, 100).id, "c");
+assert.equal(a.repeatOffenderRowAtShare(repeatOffenders, NaN), null);
+assert.equal(a.aggregateRepeatOffenders([]).topShare, 0);
 const gib = 1024 ** 3;
 const efficiency = a.aggregateQualityEfficiency([
   {id: "a", title: "Balanced", rating100: 90, files: [{id: "fa", size: gib, duration: 600}]},
@@ -394,6 +417,9 @@ assert.ok(a.forecastGrowth(forecastStats, 100, forecastNow).reason.includes("alr
 assert.ok(a.forecastGrowth(forecastStats, 0, forecastNow).reason.includes("unavailable"));
 assert.ok(a.forecastGrowth(forecastStats, 200, forecastNow, [Date.parse("2026-01-02"), forecastNow]).reason.includes("No growth"));
 assert.ok(a.forecastGrowth(a.aggregateGrowth([], forecastNow), 200, forecastNow).reason.includes("No matching"));
+assert.deepEqual(JSON.parse(JSON.stringify(a.growthDataZoomRange({ dataZoom: [{ start: 25, end: 75, startValue: null, endValue: null }], series: [{ data: [[1000, 1], [5000, 2]] }, { data: [[5000, 2], [9000, 3]] }] }))), [3000, 7000], "growth zoom percentages resolve against the currently rendered time domain");
+assert.deepEqual(JSON.parse(JSON.stringify(a.growthDataZoomRange({ dataZoom: [{ startValue: 2500, endValue: 6500 }], series: [{ data: [[1000, 1], [9000, 3]] }] }))), [2500, 6500], "an explicit growth zoom window is preserved exactly");
+assert.equal(a.growthDataZoomRange({ series: [] }), null);
 assert.deepEqual(JSON.parse(JSON.stringify(yearly.points)), [[Date.parse("2025-01-01"), 0], [Date.parse("2026-01-01"), 3584]]);
 assert.equal(monthly.bytes, modified.bytes);
 assert.equal(modified.bytes, 3072);
