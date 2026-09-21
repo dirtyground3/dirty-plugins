@@ -9,12 +9,13 @@ const vm = require("vm");
 const noop = function () {};
 let active;
 const React = {
+  Fragment: "fragment",
   createElement(type, props, ...children) { return { type, props: props || {}, children: children.flat() }; },
   useState(initial) {
     const owner = active;
     const index = owner.cursor++;
     if (!(index in owner.slots)) owner.slots[index] = typeof initial === "function" ? initial() : initial;
-    return [owner.slots[index], value => { owner.slots[index] = value; }];
+    return [owner.slots[index], value => { owner.slots[index] = typeof value === "function" ? value(owner.slots[index]) : value; }];
   },
   useRef(initial) {
     const index = active.cursor++;
@@ -27,6 +28,7 @@ const React = {
     if (!old || deps.some((dep, i) => dep !== old.deps[i])) active.slots[index] = { deps, callback };
     return active.slots[index].callback;
   },
+  useMemo(factory, deps) { return React.useCallback(factory, deps)(); },
   useEffect(effect, deps) {
     const index = active.cursor++;
     const old = active.slots[index];
@@ -56,6 +58,7 @@ const runtime = {
 const context = vm.createContext({
   console,
   AbortController,
+  URLSearchParams,
   Math: Object.create(Math),
   window: {
     DirtyPlugins: runtime,
@@ -65,12 +68,14 @@ const context = vm.createContext({
       register: { route: noop }, patch: { before: noop, after: noop, instead: noop },
     },
     addEventListener: noop,
+    removeEventListener: noop,
+    location: { search: "" },
     setTimeout: callback => { timers.set(++nextTimer, callback); return nextTimer; },
     clearTimeout: id => timers.delete(id),
   },
 });
 let source = fs.readFileSync(path.join(__dirname, "../plugins/DirtyRank/dirtyRank.js"), "utf8");
-source = source.replace("algorithms: {", "testing: { PerformerCard, serializedSettings, LeaderboardGalleryCard, LeaderboardPodium, loadNativePerformerCard, queryPerformers, scenePlaybackUrl, needsNativePreview, NativePreviewPlayer, LoadedNativePreview }, algorithms: {");
+source = source.replace("algorithms: {", "testing: { PerformerCard, PrecisionBadge, serializedSettings, LeaderboardGalleryCard, LeaderboardPodium, LeaderboardGallery, LeaderboardTable, LeaderboardPagination, DirtyRankLeaderboardsRoute, loadNativePerformerCard, queryPerformers, scenePlaybackUrl, needsNativePreview, NativePreviewPlayer, LoadedNativePreview }, algorithms: {");
 vm.runInContext(source, context);
 const plugin = context.window.__dirtyRankPlugin;
 const settings = plugin.algorithms.settingsFromConfiguration({});
@@ -112,6 +117,15 @@ function find(tree, predicate) {
   return tree.children.map(child => find(child, predicate)).find(Boolean);
 }
 const byClass = (tree, name) => find(tree, node => (node.props.className || "").split(" ").includes(name));
+function findAll(tree, predicate) {
+  if (!tree || typeof tree !== "object") return [];
+  return (predicate(tree) ? [tree] : []).concat(tree.children.flatMap(child => findAll(child, predicate)));
+}
+function visibleText(tree) {
+  if (tree == null || typeof tree === "boolean") return "";
+  if (typeof tree !== "object") return String(tree);
+  return tree.children.map(visibleText).join(" ");
+}
 const video = tree => find(tree, node => node.type === "video");
 const event = () => ({ preventDefault: noop, stopPropagation() { this.stopped = true; } });
 const toggle = tree => byClass(tree, "dirty-rank-play-scene").props.onClick(event());
@@ -394,6 +408,143 @@ async function main() {
   assert(calls.at(-1).query.includes("favorite rating100 o_counter"));
   await plugin.testing.queryPerformers();
   assert(!calls.at(-1).query.includes("favorite rating100 o_counter"), "battle queries must remain lightweight");
-  console.log("DirtyRank media behavior tests passed");
+  await verifyLeaderboardDisplays();
+  console.log("DirtyRank media and leaderboard behavior tests passed");
+}
+
+async function verifyLeaderboardDisplays() {
+  const { PrecisionBadge, LeaderboardPodium, LeaderboardGallery, LeaderboardGalleryCard, LeaderboardTable, LeaderboardPagination, DirtyRankLeaderboardsRoute } = plugin.testing;
+  for (const [deviation, matches, tier] of [[350, 0, "Provisional"], [75, 12, "Refined"], [50, 20, "Excellent"], [75, 1, "Refined"]]) {
+    const badge = PrecisionBadge({ pool: { deviation, matches }, settings });
+    assert.strictEqual(visibleText(badge), tier);
+    assert.strictEqual(badge.props.title, `${tier} precision · RD ${deviation.toFixed(1)} · ${matches} ${matches === 1 ? "battle" : "battles"}`);
+  }
+  const battle = card(false);
+  battle.props.reveal = true;
+  battle.props.pool = { rating: 1400, deviation: 75, matches: 12 };
+  const battleTree = battle.render();
+  assert(!/\bRD\b|\bbattles\b/.test(visibleText(battleTree)), "battle card details belong in the confidence tooltip");
+  assert(find(battleTree, node => node.type === PrecisionBadge));
+  const ranked = Array.from({ length: 49 }, (_, i) => ({
+    id: "rank-" + (i + 1), name: "Performer " + (i + 1), gender: "FEMALE", image_path: "/portrait.svg", scene_count: 1,
+  }));
+  const props = { ranked, settings, cohort: "FEMALE", leaderboardId: "appearance", page: 1, onPageChange: noop };
+  const articleIds = tree => findAll(tree, node => node.type === "article").map(node => node.props.key);
+  for (const topCount of [3, 4, 5]) {
+    const podium = LeaderboardPodium({ ...props, topCount });
+    const expectedIds = ranked.slice(0, topCount).map(performer => performer.id);
+    assert.deepStrictEqual(articleIds(podium).sort(), expectedIds.sort());
+    assert.strictEqual(podium.props["aria-label"], { 3: "Podium", 4: "Mount Rushmore", 5: "Fingers" }[topCount]);
+    assert(!find(podium, node => node.type === "header"), "featured cards must have no decorative header");
+    assert(!/#\d|\bRD\b|\bbattles\b/.test(visibleText(podium)), "featured cards keep only scores, badges and bases");
+    assert.strictEqual(findAll(podium, node => node.type === PrecisionBadge).length, topCount);
+    assert.strictEqual(findAll(podium, node => node.props.className === "dirty-rank-podium-step").length, topCount === 3 ? 3 : 0);
+    if (topCount > 3) assert.deepStrictEqual(articleIds(podium), ranked.slice(0, topCount).map(performer => performer.id));
+    for (const [Component, pageSize] of [[LeaderboardGallery, 15], [LeaderboardTable, 25]]) {
+      const collected = [];
+      const totalPages = Math.ceil((ranked.length - topCount) / pageSize);
+      for (let page = 1; page <= totalPages; page++) {
+        const tree = Component({ ...props, topCount, page });
+        const firstRank = topCount + (page - 1) * pageSize + 1;
+        const lastRank = Math.min(firstRank + pageSize - 1, ranked.length);
+        const expectedRanks = Array.from({ length: lastRank - firstRank + 1 }, (_, i) => firstRank + i);
+        if (Component === LeaderboardGallery) {
+          const cards = findAll(tree, node => node.type === LeaderboardGalleryCard);
+          assert.deepStrictEqual(cards.map(node => node.props.rank), expectedRanks);
+          collected.push(...cards.map(node => node.props.performer.id));
+        } else {
+          assert.deepStrictEqual(findAll(tree, node => node.type === "th").map(visibleText), ["Rank", "Performer", "Rating", "Confidence"]);
+          const rows = find(tree, node => node.type === "tbody").children;
+          assert.deepStrictEqual(rows.map(node => node.children[0].children[0]), expectedRanks.map(rank => "#" + rank));
+          collected.push(...rows.map(node => node.props.key));
+        }
+        const pagination = find(tree, node => node.type === LeaderboardPagination).props;
+        assert.strictEqual(pagination.firstRank, firstRank);
+        assert.strictEqual(pagination.lastRank, lastRank);
+        assert.strictEqual(pagination.totalPages, totalPages);
+      }
+      assert.deepStrictEqual(collected, ranked.slice(topCount).map(performer => performer.id), "standings must not duplicate or omit anyone");
+      const clamped = Component({ ...props, topCount, page: 999 });
+      assert.strictEqual(find(clamped, node => node.type === LeaderboardPagination).props.page, totalPages);
+      for (const count of [0, 1, 2, topCount]) {
+        const limited = { ...props, ranked: ranked.slice(0, count), topCount };
+        assert.strictEqual(articleIds(LeaderboardPodium(limited)).length, count);
+        const empty = byClass(Component(limited), "dirty-rank-empty-standings");
+        assert(empty, "small pools should have no remaining standings");
+        assert.strictEqual(empty.children[0], count ? "Every rated performer is featured above." : "No standings yet.");
+      }
+    }
+  }
+  assert.deepStrictEqual(articleIds(LeaderboardPodium(props)), ["rank-2", "rank-1", "rank-3"], "default podium retains silver/gold/bronze order");
+  active = { slots: [], effects: [], cursor: 0 };
+  const galleryCard = LeaderboardGalleryCard({ ...props, performer: ranked[0], rank: 6 });
+  assert(!/\bRD\b|\bbattles\b|W-L-D/.test(visibleText(galleryCard)), "gallery cards hide rating detail and win/loss records");
+  assert(find(galleryCard, node => node.type === PrecisionBadge));
+
+  const stored = new Map();
+  const storageKey = "dirtyRank:leaderboardTopCount";
+  context.window.localStorage = {
+    getItem: key => stored.get(key) ?? null,
+    setItem: (key, value) => stored.set(key, value),
+  };
+  const states = Object.fromEntries(ranked.map((performer, i) => [performer.id, { pools: {
+    "appearance|FEMALE": { rating: 2000 - i * 10, deviation: 50, matches: 10, wins: 10, losses: 0, draws: 0 },
+  } }]));
+  runtime.runPluginOperation = () => Promise.resolve({ revision: 100, states });
+  response = () => Promise.resolve({ findPerformers: { performers: ranked } });
+  function route() {
+    const state = { slots: [], effects: [], cursor: 0 };
+    return () => {
+      active = state;
+      state.cursor = 0;
+      const tree = DirtyRankLeaderboardsRoute();
+      state.effects.splice(0).forEach(effect => effect());
+      return tree;
+    };
+  }
+  const selector = tree => find(tree, node => node.props.id === "dirty-rank-leaderboard-top-count");
+  let render = route();
+  render();
+  await flush();
+  let tree = render();
+  assert.strictEqual(selector(tree).props.value, 3);
+  assert.deepStrictEqual(selector(tree).children.map(node => node.children[0]), ["Podium", "Mount Rushmore", "Fingers"]);
+  for (const topCount of [4, 5, 3]) {
+    find(tree, node => node.type === LeaderboardGallery).props.onPageChange(Math.ceil((ranked.length - selector(tree).props.value) / 15));
+    tree = render();
+    selector(tree).props.onChange({ target: { value: String(topCount) } });
+    render();
+    tree = render();
+    assert.strictEqual(selector(tree).props.value, topCount);
+    assert.strictEqual(find(tree, node => node.type === LeaderboardPodium).props.topCount, topCount);
+    const gallery = find(tree, node => node.type === LeaderboardGallery);
+    assert.strictEqual(gallery.props.topCount, topCount);
+    assert.strictEqual(gallery.props.page, 1, "changing the featured count resets pagination");
+    assert.strictEqual(stored.get(storageKey), String(topCount));
+  }
+  selector(tree).props.onChange({ target: { value: "5" } });
+  find(tree, node => node.type === "button" && node.children[0] === "Table").props.onClick();
+  render();
+  tree = render();
+  assert.strictEqual(find(tree, node => node.type === LeaderboardTable).props.topCount, 5);
+
+  for (const [saved, expected] of [["5", 5], ["6", 3], ["4", 4], ["broken", 3], ["7", 3], ["4.5", 3]]) {
+    stored.set(storageKey, saved);
+    render = route();
+    render();
+    await flush();
+    assert.strictEqual(selector(render()).props.value, expected, "saved selections should be restored or safely defaulted");
+  }
+  context.window.localStorage = {
+    getItem() { throw new Error("Storage blocked"); },
+    setItem() { throw new Error("Storage blocked"); },
+  };
+  render = route();
+  render();
+  await flush();
+  tree = render();
+  assert.strictEqual(selector(tree).props.value, 3);
+  selector(tree).props.onChange({ target: { value: "5" } });
+  assert.strictEqual(selector(render()).props.value, 5, "selection must work when storage is blocked");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

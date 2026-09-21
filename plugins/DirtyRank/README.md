@@ -84,10 +84,18 @@ volatility instead of relying on a capped integer score.
   boundaries, expected information per proposed pair, and an estimate of the
   remaining battles for the selected goal.
 - A dedicated **Leaderboards** page covers every performer sex, each enabled
-  category, and the weighted overall rating. It includes a gold/silver/bronze
-  stepped podium—with gold centered highest, silver left, and bronze right—plus
-  full standings, confidence, rated coverage, stable-rating coverage, completed
-  battles, median RD, draw rate, and rating spread.
+  category, and the weighted overall rating. Choose **Podium** (the default
+  gold/silver/bronze steps), **Mount Rushmore**, or **Fingers** to feature your
+  leading performers. The choice is remembered in your browser. Mount Rushmore
+  keeps its carved-stone bases; Fingers arranges its numbered columns as
+  **5–3–1–2–4**, with first place highest in the center and each lower rank on a
+  shorter column. All three views omit decorative headers and rank labels above
+  the featured cards.
+  RD and battle counts appear in the confidence badge tooltip; win/loss records
+  are hidden. Smaller screens show the Fingers cards in rank order;
+  the remaining gallery or table starts at the next rank. Full standings,
+  confidence, rated coverage, stable-rating coverage, completed battles, median
+  RD, draw rate, and rating spread are also included.
 - A trophy button opens Leaderboards from Stash's utility navigation. It can be
   hidden in DirtyRank settings without disabling the page or its direct links.
 - Up to 25 consecutive session undos, arrow-key battle controls (← left,
@@ -117,8 +125,8 @@ prepared in the background.
 
 ![DirtyRank gold, silver, and bronze podium with performer media blurred](../../docs/images/dirty-rank-leaderboard-censored.png)
 
-The leaderboard combines its top-three podium with rating precision, completed
-battles, confidence, and full paginated standings.
+The leaderboard combines its Podium, Mount Rushmore and Fingers displays with
+rating precision, completed battles, confidence, and full paginated standings.
 
 ### Settings
 

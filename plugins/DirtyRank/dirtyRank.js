@@ -70,6 +70,12 @@
   var UNDO_HISTORY_LIMIT = 25;
   var LEADERBOARD_TABLE_PAGE_SIZE = 25;
   var LEADERBOARD_GALLERY_PAGE_SIZE = 15;
+  var LEADERBOARD_TOP_STORAGE_KEY = "dirtyRank:leaderboardTopCount";
+  var LEADERBOARD_TOP_OPTIONS = [
+    { count: 3, name: "Podium" },
+    { count: 4, name: "Mount Rushmore", theme: "rushmore" },
+    { count: 5, name: "Fingers", theme: "fingers" },
+  ];
   var CATEGORY_PREFERENCE_STORAGE_KEY = "dirtyRank:selectedCategoryByCohort";
   var CONFIGURATION_CHANGED_EVENT = "dirty-plugins:configuration-changed";
   var COHORTS = [
@@ -573,7 +579,8 @@
     var tier = props.pool.precision || precisionTier(props.pool, props.settings);
     return h("span", {
       className: "badge badge-pill text-uppercase dirty-rank-status-" + tier.id,
-      title: tier.label + " precision · RD " + props.pool.deviation.toFixed(1),
+      title: tier.label + " precision · RD " + props.pool.deviation.toFixed(1) +
+        " · " + props.pool.matches.toLocaleString() + (props.pool.matches === 1 ? " battle" : " battles"),
     }, tier.label);
   }
 
@@ -1439,8 +1446,7 @@
           }, performer.name)
         ),
         h("div", { className: "dirty-rank-card-meta d-flex flex-wrap align-items-center" },
-          h("span", null, Number(performer.scene_count || 0).toLocaleString() + " scenes"),
-          h("span", null, pool.matches.toLocaleString() + " battles")
+          h("span", null, Number(performer.scene_count || 0).toLocaleString() + " scenes")
         ),
         h("div", { className: "dirty-rank-scene-actions" },
           h("button", {
@@ -1455,7 +1461,6 @@
           reveal
             ? h(Fragment, null,
                 h("span", { className: "dirty-rank-rating-value" }, Math.round(pool.rating).toLocaleString()),
-                h("span", { className: "dirty-rank-card-meta" }, "RD " + pool.deviation.toFixed(1)),
                 h(PrecisionBadge, { pool: pool, settings: props.settings })
               )
             : h("span", { className: "dirty-rank-hidden-rating" }, "Rating revealed after your choice")
@@ -1563,8 +1568,7 @@
           h(PrecisionBadge, { pool: pool, settings: props.settings })
         ),
         h("div", { className: "dirty-rank-confidence-detail" },
-          status + " · rating " + Math.round(pool.rating).toLocaleString() + " · RD " + pool.deviation.toFixed(1) +
-          " · " + (rank ? "#" + rank + " · " : "") + pool.matches.toLocaleString() + " battles"
+          status + " · rating " + Math.round(pool.rating).toLocaleString() + (rank ? " · #" + rank : "")
         )
       ),
       h("div", {
@@ -1640,24 +1644,39 @@
     );
   }
 
+  function leaderboardTopCount(value) {
+    var count = Number(value);
+    return LEADERBOARD_TOP_OPTIONS.some(function (option) { return option.count === count; }) ? count : 3;
+  }
+
+  function preferredLeaderboardTopCount() {
+    try {
+      return leaderboardTopCount(window.localStorage.getItem(LEADERBOARD_TOP_STORAGE_KEY));
+    } catch (_error) {
+      return 3;
+    }
+  }
+
   function LeaderboardPodium(props) {
     var NativePerformerCard = PluginApi.components && PluginApi.components.PerformerCard;
-    var symbols = ["♛", "◆", "●"];
-    var top = props.ranked.slice(0, 3);
+    var topCount = leaderboardTopCount(props.topCount);
+    var showcase = LEADERBOARD_TOP_OPTIONS.filter(function (option) { return option.count === topCount; })[0];
+    var top = props.ranked.slice(0, topCount);
     var podiumOrder = [1, 0, 2];
+    var displayOrder = topCount === 3 ? podiumOrder : top.map(function (_performer, index) { return index; });
     if (!top.length) {
       return h(StateView, { title: "No rated performers", detail: "Complete a battle in this category to create its leaderboard." });
     }
-    return h("section", { "aria-label": "Top three performers", className: "dirty-rank-podium" },
-      podiumOrder.filter(function (index) { return top[index]; }).map(function (index) {
+    return h("section", {
+      "aria-label": showcase.name,
+      className: "dirty-rank-podium" + (topCount > 3 ? " dirty-rank-podium-expanded dirty-rank-showcase dirty-rank-showcase-" + showcase.theme : ""),
+      style: { "--dirty-rank-top-count": topCount },
+    },
+      displayOrder.filter(function (index) { return top[index]; }).map(function (index) {
         var performer = top[index];
         var pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
         return h("article", { className: "dirty-rank-podium-place d-flex flex-column dirty-rank-podium-" + (index + 1), key: performer.id },
           h("div", { className: NativePerformerCard ? "dirty-rank-native-card" : "dirty-rank-podium-card" },
-            h("div", { className: "dirty-rank-podium-medal d-flex align-items-center justify-content-center" },
-              h("span", { "aria-hidden": "true" }, symbols[index]),
-              h("strong", null, "#" + (index + 1))
-            ),
             NativePerformerCard ? h(NativePerformerCard, { performer: performer }) : h(NavLink, { className: "dirty-rank-podium-image-link", to: "/performers/" + performer.id },
               performer.image_path
                 ? h("img", { alt: "", className: "dirty-rank-podium-image", loading: "lazy", src: performer.image_path })
@@ -1667,14 +1686,14 @@
               !NativePerformerCard && h(NavLink, { className: "dirty-rank-podium-name text-truncate", to: "/performers/" + performer.id }, performer.name),
               h("span", { className: "dirty-rank-eyebrow" }, "Score"),
               h("strong", { className: "dirty-rank-podium-rating" }, Math.round(pool.rating).toLocaleString()),
-              h("span", { className: "dirty-rank-podium-detail" },
-                "RD " + pool.deviation.toFixed(1) + " · " + pool.matches.toLocaleString() + " battles"
-              ),
               h(PrecisionBadge, { pool: pool, settings: props.settings })
             )
           ),
-          h("div", { "aria-hidden": "true", className: "dirty-rank-podium-step" },
+          topCount === 3 && h("div", { "aria-hidden": "true", className: "dirty-rank-podium-step" },
             h("span", null, index + 1)
+          ),
+          topCount > 3 && h("div", { "aria-hidden": "true", className: "dirty-rank-showcase-base" },
+            h("span", null, topCount === 4 ? ["I", "II", "III", "IV"][index] : index + 1)
           )
         );
       })
@@ -1703,14 +1722,17 @@
     );
   }
 
-  function paginatedLeaderboard(ranked, page, pageSize) {
-    var remaining = ranked.slice(3);
+  function paginatedLeaderboard(ranked, page, pageSize, topCount) {
+    var featuredCount = leaderboardTopCount(topCount);
+    var remaining = ranked.slice(featuredCount);
     var totalPages = Math.max(1, Math.ceil(remaining.length / pageSize));
     var currentPage = Math.max(1, Math.min(totalPages, page));
     var start = (currentPage - 1) * pageSize;
     return {
       currentPage: currentPage,
       items: remaining.slice(start, start + pageSize),
+      firstRank: featuredCount + start + 1,
+      lastRank: featuredCount + start + Math.min(pageSize, remaining.length - start),
       start: start,
       total: remaining.length,
       totalPages: totalPages,
@@ -1728,24 +1750,21 @@
   }
 
   function LeaderboardTable(props) {
-    var page = paginatedLeaderboard(props.ranked, props.page, LEADERBOARD_TABLE_PAGE_SIZE);
+    var page = paginatedLeaderboard(props.ranked, props.page, LEADERBOARD_TABLE_PAGE_SIZE, props.topCount);
     return h("section", { className: "dirty-rank-standings-panel dirty-ui-feature-card" },
       h(LeaderboardPanelHeading, { eyebrow: "Full category results", total: props.ranked.length }),
       !page.total
-        ? h("div", { className: "dirty-rank-empty-standings" }, props.ranked.length ? "Every rated performer is on the podium." : "No standings yet.")
+        ? h("div", { className: "dirty-rank-empty-standings" }, props.ranked.length ? "Every rated performer is featured above." : "No standings yet.")
         : h("div", { className: "dirty-rank-table-wrap" },
             h("table", { className: "table table-hover mb-0 dirty-rank-standings-table" },
               h("thead", null, h("tr", null,
                 h("th", { scope: "col" }, "Rank"),
                 h("th", { scope: "col" }, "Performer"),
                 h("th", { scope: "col" }, "Rating"),
-                h("th", { scope: "col" }, "RD"),
-                h("th", { scope: "col" }, "Battles"),
-                h("th", { scope: "col" }, "W-L-D"),
                 h("th", { scope: "col" }, "Confidence")
               )),
               h("tbody", null, page.items.map(function (performer, offset) {
-                var rank = page.start + offset + 4;
+                var rank = page.firstRank + offset;
                 var pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
                 return h("tr", { key: performer.id },
                   h("td", { className: "dirty-rank-table-rank" }, "#" + rank),
@@ -1756,16 +1775,13 @@
                     h("span", { className: "text-truncate" }, performer.name)
                   )),
                   h("td", { className: "dirty-rank-table-rating" }, Math.round(pool.rating).toLocaleString()),
-                  h("td", null, pool.deviation.toFixed(1)),
-                  h("td", null, pool.matches.toLocaleString()),
-                  h("td", null, pool.wins.toLocaleString() + "-" + pool.losses.toLocaleString() + "-" + pool.draws.toLocaleString()),
                   h("td", null, h(PrecisionBadge, { pool: pool, settings: props.settings }))
                 );
               }))
             ),
             h(LeaderboardPagination, {
-              firstRank: page.start + 4,
-              lastRank: page.start + page.items.length + 3,
+              firstRank: page.firstRank,
+              lastRank: page.lastRank,
               onPageChange: props.onPageChange,
               page: page.currentPage,
               totalPages: page.totalPages,
@@ -1807,23 +1823,18 @@
           h(PrecisionBadge, { pool: pool, settings: props.settings })
         ),
         h("div", { className: "dirty-rank-gallery-rating-row d-flex align-items-baseline" },
-          h("strong", null, Math.round(pool.rating).toLocaleString()),
-          h("span", null, "RD " + pool.deviation.toFixed(1))
-        ),
-        h("div", { className: "dirty-rank-gallery-detail" },
-          pool.matches.toLocaleString() + " battles · " +
-          pool.wins.toLocaleString() + "-" + pool.losses.toLocaleString() + "-" + pool.draws.toLocaleString() + " W-L-D"
+          h("strong", null, Math.round(pool.rating).toLocaleString())
         )
       )
     );
   }
 
   function LeaderboardGallery(props) {
-    var page = paginatedLeaderboard(props.ranked, props.page, LEADERBOARD_GALLERY_PAGE_SIZE);
+    var page = paginatedLeaderboard(props.ranked, props.page, LEADERBOARD_GALLERY_PAGE_SIZE, props.topCount);
     return h("section", { className: "dirty-rank-standings-panel dirty-ui-feature-card" },
       h(LeaderboardPanelHeading, { eyebrow: "Portrait standings", total: props.ranked.length }),
       !page.total
-        ? h("div", { className: "dirty-rank-empty-standings" }, props.ranked.length ? "Every rated performer is on the podium." : "No standings yet.")
+        ? h("div", { className: "dirty-rank-empty-standings" }, props.ranked.length ? "Every rated performer is featured above." : "No standings yet.")
         : h(Fragment, null,
             h("div", { className: "dirty-rank-gallery-grid" }, page.items.map(function (performer, offset) {
               return h(LeaderboardGalleryCard, {
@@ -1831,13 +1842,13 @@
                 key: performer.id,
                 leaderboardId: props.leaderboardId,
                 performer: performer,
-                rank: page.start + offset + 4,
+                rank: page.firstRank + offset,
                 settings: props.settings,
               });
             })),
             h(LeaderboardPagination, {
-              firstRank: page.start + 4,
-              lastRank: page.start + page.items.length + 3,
+              firstRank: page.firstRank,
+              lastRank: page.lastRank,
               onPageChange: props.onPageChange,
               page: page.currentPage,
               totalPages: page.totalPages,
@@ -1871,6 +1882,9 @@
     var pageState = useState(1);
     var page = pageState[0];
     var setPage = pageState[1];
+    var topCountState = useState(preferredLeaderboardTopCount);
+    var topCount = topCountState[0];
+    var setTopCount = topCountState[1];
 
     var load = useCallback(function () {
       setLoading(true);
@@ -1912,7 +1926,7 @@
     }, [cohort, leaderboardId, performers, settings]);
     useEffect(function () { setPage(1); }, [cohort, leaderboardId, viewMode]);
     var pageSize = viewMode === "gallery" ? LEADERBOARD_GALLERY_PAGE_SIZE : LEADERBOARD_TABLE_PAGE_SIZE;
-    var totalPages = data ? Math.max(1, Math.ceil(Math.max(0, data.ranked.length - 3) / pageSize)) : 1;
+    var totalPages = data ? Math.max(1, Math.ceil(Math.max(0, data.ranked.length - topCount) / pageSize)) : 1;
     useEffect(function () {
       if (page > totalPages) setPage(totalPages);
     }, [page, totalPages]);
@@ -1961,6 +1975,26 @@
                 enabledCategories.map(function (category) { return h("option", { key: category.id, value: category.id }, category.name); })
               )
             ),
+            h("div", { className: "dirty-rank-control" },
+              h("label", { htmlFor: "dirty-rank-leaderboard-top-count" }, "Featured performers"),
+              h("select", {
+                className: "form-control",
+                id: "dirty-rank-leaderboard-top-count",
+                onChange: function (event) {
+                  var nextCount = leaderboardTopCount(event.target.value);
+                  setTopCount(nextCount);
+                  setPage(1);
+                  try {
+                    window.localStorage.setItem(LEADERBOARD_TOP_STORAGE_KEY, String(nextCount));
+                  } catch (_error) {
+                    // Keep the selection usable when browser storage is unavailable.
+                  }
+                },
+                value: topCount,
+              }, LEADERBOARD_TOP_OPTIONS.map(function (option) {
+                return h("option", { key: option.count, value: option.count }, option.name);
+              }))
+            ),
             h("div", { className: "dirty-rank-control dirty-rank-leaderboards-view" },
               h("label", null, "View"),
               h("div", { "aria-label": "Leaderboard view", className: "btn-group dirty-rank-view-toggle", role: "group" },
@@ -2005,10 +2039,10 @@
             ? h(ConfidenceIndicator, { category: selectedCategory, cohort: cohort, performers: performers, settings: settings })
             : h(OverallConfidence, { cohort: cohort, performers: performers, settings: settings })
         ),
-        h(LeaderboardPodium, { cohort: cohort, leaderboardId: leaderboardId, ranked: data.ranked, settings: settings }),
+        h(LeaderboardPodium, { cohort: cohort, leaderboardId: leaderboardId, ranked: data.ranked, settings: settings, topCount: topCount }),
         viewMode === "gallery"
-          ? h(LeaderboardGallery, { cohort: cohort, leaderboardId: leaderboardId, onPageChange: setPage, page: page, ranked: data.ranked, settings: settings })
-          : h(LeaderboardTable, { cohort: cohort, leaderboardId: leaderboardId, onPageChange: setPage, page: page, ranked: data.ranked, settings: settings })
+          ? h(LeaderboardGallery, { cohort: cohort, leaderboardId: leaderboardId, onPageChange: setPage, page: page, ranked: data.ranked, settings: settings, topCount: topCount })
+          : h(LeaderboardTable, { cohort: cohort, leaderboardId: leaderboardId, onPageChange: setPage, page: page, ranked: data.ranked, settings: settings, topCount: topCount })
       )
     );
   }

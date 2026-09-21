@@ -470,7 +470,9 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('"Median RD"', source)
         self.assertIn('"Draw rate"', source)
         podium = source[source.index("function LeaderboardPodium(props)") : source.index("function LeaderboardTable")]
-        self.assertIn('h("strong", null, "#" + (index + 1))', podium)
+        self.assertNotIn("dirty-rank-podium-medal", podium)
+        self.assertNotIn("dirty-rank-showcase-heading", podium)
+        self.assertIn("h(PrecisionBadge", podium)
         self.assertIn("var podiumOrder = [1, 0, 2]", source)
         self.assertIn("dirty-rank-podium-step", source)
         self.assertIn('useState("gallery")', source)

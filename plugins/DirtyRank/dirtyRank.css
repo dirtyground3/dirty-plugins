@@ -979,21 +979,119 @@
   height: 2.35rem;
 }
 
-.dirty-rank-podium-medal {
-  background: rgba(0, 0, 0, 0.34);
-  gap: 0.5rem;
-  letter-spacing: 0.04em;
-  padding: 0.55rem;
-  text-transform: uppercase;
+.dirty-rank-podium-expanded {
+  align-items: stretch;
+  grid-template-columns: repeat(var(--dirty-rank-top-count), minmax(0, 1fr));
 }
 
-.dirty-rank-podium-medal span {
-  color: var(--dirty-rank-accent-strong);
-  font-size: 1.1rem;
+.dirty-rank-podium-expanded .dirty-rank-podium-place {
+  align-self: stretch;
+  grid-column: auto;
+  grid-row: auto;
+  order: 0;
 }
 
-.dirty-rank-podium-medal strong {
-  font-size: 0.72rem;
+.dirty-rank-podium-expanded .dirty-rank-podium-card {
+  border-radius: calc(var(--dirty-ui-radius) * 1.5);
+}
+
+.dirty-rank-showcase {
+  --dirty-rank-showcase-rgb: 205, 185, 149;
+  align-items: end;
+  background: radial-gradient(ellipse at 50% 100%, rgba(var(--dirty-rank-showcase-rgb), 0.13), transparent 65%), var(--dirty-ui-surface);
+  border: 1px solid rgba(var(--dirty-rank-showcase-rgb), 0.28);
+  border-radius: calc(var(--dirty-ui-radius) * 1.5);
+  box-shadow: var(--dirty-ui-shadow);
+  isolation: isolate;
+  overflow: hidden;
+  padding: 1rem;
+  position: relative;
+}
+
+.dirty-rank-showcase::before {
+  background: repeating-linear-gradient(160deg, transparent 0 38px, rgba(var(--dirty-rank-showcase-rgb), 0.04) 39px 40px, transparent 41px 79px);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+}
+
+.dirty-rank-showcase .dirty-rank-podium-place {
+  align-self: end;
+}
+
+.dirty-rank-showcase .dirty-rank-podium-place > :first-child {
+  background: var(--dirty-ui-surface);
+  border: 1px solid rgba(var(--dirty-rank-showcase-rgb), 0.3);
+  border-radius: var(--dirty-ui-radius) var(--dirty-ui-radius) 0 0;
+  box-shadow: 0 0.6rem 1.5rem rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+}
+
+.dirty-rank-showcase .dirty-rank-podium-rating {
+  color: rgb(var(--dirty-rank-showcase-rgb));
+}
+
+.dirty-rank-showcase-base {
+  align-items: center;
+  background: linear-gradient(130deg, rgba(var(--dirty-rank-showcase-rgb), 0.26), rgba(var(--dirty-rank-showcase-rgb), 0.06) 48%, rgba(var(--dirty-rank-showcase-rgb), 0.2));
+  border-top: 1px solid rgba(var(--dirty-rank-showcase-rgb), 0.4);
+  color: rgb(var(--dirty-rank-showcase-rgb));
+  display: flex;
+  height: 3.5rem;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.dirty-rank-showcase-rushmore .dirty-rank-showcase-base {
+  clip-path: polygon(0 0, 100% 0, 96% 45%, 100% 100%, 60% 91%, 34% 100%, 0 90%, 5% 42%);
+  font: 700 1.6rem Georgia, serif;
+  text-shadow: 0 2px 1px rgba(0, 0, 0, 0.8);
+}
+
+.dirty-rank-showcase-rushmore .dirty-rank-podium-2 .dirty-rank-showcase-base,
+.dirty-rank-showcase-rushmore .dirty-rank-podium-3 .dirty-rank-showcase-base {
+  height: 4.5rem;
+}
+
+.dirty-rank-showcase-fingers {
+  --dirty-rank-showcase-rgb: 232, 165, 192;
+  border-bottom: 0.65rem solid rgba(var(--dirty-rank-showcase-rgb), 0.28);
+  border-bottom-left-radius: 12% 2.5rem;
+  border-bottom-right-radius: 12% 2.5rem;
+}
+
+.dirty-rank-showcase-fingers::before {
+  background: repeating-radial-gradient(ellipse at 50% 110%, transparent 0 27px, rgba(var(--dirty-rank-showcase-rgb), 0.045) 28px 29px, transparent 30px 48px);
+}
+
+.dirty-rank-showcase-fingers .dirty-rank-podium-place > :first-child {
+  border-radius: 3rem 3rem 0 0;
+}
+
+.dirty-rank-showcase-fingers .dirty-rank-showcase-base {
+  border-radius: 0 0 0.75rem 0.75rem;
+  font-size: 1.6rem;
+  font-weight: 900;
+  height: 2.5rem;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.38);
+}
+
+.dirty-rank-showcase-fingers .dirty-rank-podium-1 .dirty-rank-showcase-base {
+  height: 7.5rem;
+}
+
+.dirty-rank-showcase-fingers .dirty-rank-podium-2 .dirty-rank-showcase-base {
+  height: 6rem;
+}
+
+.dirty-rank-showcase-fingers .dirty-rank-podium-3 .dirty-rank-showcase-base {
+  height: 5.5rem;
+}
+
+.dirty-rank-showcase-fingers .dirty-rank-podium-4 .dirty-rank-showcase-base {
+  height: 4rem;
 }
 
 .dirty-rank-podium-image-link {
@@ -1047,11 +1145,6 @@
   color: var(--dirty-rank-accent-strong);
   font-size: 1.45rem;
   font-variant-numeric: tabular-nums;
-}
-
-.dirty-rank-podium-detail {
-  color: var(--dirty-ui-muted);
-  font-size: 0.76rem;
 }
 
 .dirty-rank-status-refined,
@@ -1341,10 +1434,6 @@
 }
 
 .dirty-rank-gallery-rating-row span,
-.dirty-rank-gallery-detail {
-  color: var(--dirty-ui-muted);
-  font-size: 0.76rem;
-}
 
 @media (prefers-reduced-motion: reduce) {
   .dirty-rank-gallery-card,
@@ -1510,6 +1599,32 @@
   width: 1.25rem;
 }
 
+@media (min-width: 68.001rem) {
+  .dirty-rank-showcase-fingers .dirty-rank-podium-place {
+    grid-row: 1;
+  }
+
+  .dirty-rank-showcase-fingers .dirty-rank-podium-1 {
+    grid-column: 3;
+  }
+
+  .dirty-rank-showcase-fingers .dirty-rank-podium-2 {
+    grid-column: 4;
+  }
+
+  .dirty-rank-showcase-fingers .dirty-rank-podium-3 {
+    grid-column: 2;
+  }
+
+  .dirty-rank-showcase-fingers .dirty-rank-podium-4 {
+    grid-column: 5;
+  }
+
+  .dirty-rank-showcase-fingers .dirty-rank-podium-5 {
+    grid-column: 1;
+  }
+}
+
 @media (max-width: 68rem) {
   .dirty-rank-shell {
     grid-template-columns: 1fr;
@@ -1525,6 +1640,18 @@
 
   .dirty-rank-gallery-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dirty-rank-podium-expanded {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dirty-rank-showcase-rushmore {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dirty-rank-showcase .dirty-rank-podium-place .dirty-rank-showcase-base {
+    height: 3rem;
   }
 }
 
@@ -1571,6 +1698,10 @@
     padding-top: 0;
   }
 
+  .dirty-rank-showcase {
+    padding: 0.65rem;
+  }
+
   .dirty-rank-podium-place {
     grid-column: 1;
     grid-row: auto;
@@ -1604,13 +1735,6 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 0.3rem;
-  }
-
-  .dirty-rank-standings-table th:nth-child(4),
-  .dirty-rank-standings-table td:nth-child(4),
-  .dirty-rank-standings-table th:nth-child(6),
-  .dirty-rank-standings-table td:nth-child(6) {
-    display: none;
   }
 
   .dirty-rank-gallery-grid {
