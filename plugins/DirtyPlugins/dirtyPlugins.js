@@ -21,9 +21,9 @@
   var SETTINGS_PANELS_CHANGED_EVENT = "dirty-plugins:settings-panels-changed";
   var UNSAVED_SETTINGS_MESSAGE = "You have unsaved Dirty Plugins settings. Leave without saving them?";
 
-  var MANAGED_PLUGIN_IDS = ["extractScenes", "multiscreen", "dirtyTidy", "dirtyRank"];
+  var MANAGED_PLUGIN_IDS = ["extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"];
   var MANAGED_PLUGIN_ID_SET = new Set(MANAGED_PLUGIN_IDS);
-  var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank"];
+  var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"];
   var MAIN_PAGE_PLUGIN_ID_SET = new Set(MAIN_PAGE_PLUGIN_IDS);
   var PLUGIN_SETTING_ORDER = {
     extractScenes: [
@@ -44,6 +44,9 @@
       "loopScenes",
       "markerDuration",
       "pauseWhenHidden",
+    ],
+    dirtyStats: [
+      "visualTheme",
     ],
   };
   var PLUGIN_DEFAULTS = {
@@ -66,6 +69,9 @@
       markerDuration: 30,
       pauseWhenHidden: true,
     },
+    dirtyStats: {
+      visualTheme: "classic",
+    },
   };
   var FIELD_OPTIONS = {
     extractScenes: {
@@ -73,6 +79,15 @@
         { value: "rename", label: "Rename the new file" },
         { value: "skip", label: "Skip the new file" },
         { value: "overwrite", label: "Overwrite the existing file" },
+      ],
+    },
+    dirtyStats: {
+      visualTheme: [
+        { value: "classic", label: "Midnight (original)" },
+        { value: "candy", label: "Candy Pop" },
+        { value: "tropical", label: "Tropical Punch" },
+        { value: "arcade", label: "Retro Arcade" },
+        { value: "paper", label: "Paper Picnic" },
       ],
     },
   };

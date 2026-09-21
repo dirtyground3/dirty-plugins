@@ -15,12 +15,12 @@ hooks. Runtime database and WAL files are excluded from plugin packages and
 remain in the installed DirtyPlugins directory across ordinary updates.
 
 The database is also the authoritative settings store for DirtyFileExtractor,
-DirtyMultiscreen, DirtyTidy, and DirtyRank. The Stash manifests retain setting
+DirtyMultiscreen, DirtyTidy, DirtyRank, and DirtyStats. The Stash manifests retain setting
 definitions so the shared hub can render typed controls, but Stash's plugin
 configuration values are not read or written by Dirty plugins.
 
 Managed plugins currently include DirtyFileExtractor, DirtyMultiscreen,
-DirtyTidy, and DirtyRank. DirtyRank uses a custom hub panel for its categories,
+DirtyTidy, DirtyRank, and DirtyStats. DirtyRank uses a custom hub panel for its categories,
 performer cohort, Glicko-2 parameters, and guarded data tools.
 
 The page has no navigation entry. Open it using the link shown in the normal

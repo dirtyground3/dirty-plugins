@@ -17,7 +17,7 @@ const dashboard = context.window.__dirtyStatsDashboard;
 const helpers = dashboard.algorithms;
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
-assert.equal(Object.keys(dashboard.registry).length, 10, "every DirtyStats statistic must be available as a widget");
+assert.equal(Object.keys(dashboard.registry).length, 12, "every DirtyStats statistic must be available as a widget");
 assert.equal(dashboard.defaults.length, 5, "a curated dashboard should be created on first use");
 
 const defaults = plain(helpers.normalizeWidgets(null));
@@ -29,9 +29,11 @@ const normalized = plain(helpers.normalizeWidgets([
   { id: "one", statistic: "growth", size: "huge", options: { grouping: "week", dateBasis: "mod_time", showCapacity: "true" } },
   { id: "two", statistic: "growth", size: "small" },
   { id: "three", statistic: "unknown", size: "large" },
-  { id: "four", statistic: "ratings", size: "small", options: { rounding: "1" }, filter: { find: { q: "favorite", page: 9, per_page: 12 }, object: { favorite: true }, count: 2 } }
+  { id: "four", statistic: "ratings", size: "small", options: { rounding: "1" }, filter: { find: { q: "favorite", page: 9, per_page: 12 }, object: { favorite: true }, count: 2 } },
+  { id: "five", statistic: "tags", size: "medium", options: { metric: "play_count", maxTags: "0" } },
+  { id: "six", statistic: "constellation", size: "large", options: { maxPerformers: "0", minShared: 2 } }
 ]));
-assert.equal(normalized.length, 3, "duplicate statistics are allowed while unknown types are rejected");
+assert.equal(normalized.length, 5, "duplicate statistics are allowed while unknown types are rejected");
 assert.equal(normalized[0].size, "large", "invalid sizes must use the statistic default");
 assert.equal(normalized[0].options.grouping, "month", "invalid options must use their defaults");
 assert.equal(normalized[0].options.dateBasis, "mod_time");
@@ -39,15 +41,19 @@ assert.equal(normalized[0].options.showCapacity, true);
 assert.equal(normalized[1].statistic, "growth", "a second widget may use the same statistic");
 assert.equal(normalized[2].options.rounding, 1, "stringified persisted values must coerce to an allowed option");
 assert.deepEqual(normalized[2].filter, { find: { q: "favorite" }, object: { favorite: true }, count: 2 }, "widget filters must persist without pagination state");
+assert.deepEqual(normalized[3].options, { metric: "play_count", maxTags: 0 }, "Tag DNA widget options must normalize and persist its unlimited choice");
+assert.deepEqual(normalized[4].options, { maxPerformers: 0, minShared: 2 }, "Cast constellation must normalize and persist its all-performers choice");
 assert.equal(helpers.nextWidgetId("ratings", [{id: "dashboard-ratings"}, {id: "dashboard-ratings-2"}]), "dashboard-ratings-3");
 
 assert.deepEqual(plain(helpers.normalizeWidgets([], false)), [], "an intentionally empty dashboard must remain empty");
 assert.deepEqual(plain(helpers.requiredGroups([
   { statistic: "ratings" },
   { statistic: "countRating" },
+  { statistic: "qualityEfficiency" },
+  { statistic: "tags" },
   { statistic: "origin" },
   { statistic: "birthdays" }
-])), ["performers", "scenes"], "compatible widgets must share dashboard datasets");
+])), ["performers", "scenes", "tags"], "compatible widgets share dashboard datasets while tag payloads load only for Tag DNA");
 const resources = plain(helpers.requiredResources([
   { statistic: "ratings", filter: { find: {}, object: {}, count: 0 } },
   { statistic: "countRating", filter: { find: {}, object: {}, count: 0 } },

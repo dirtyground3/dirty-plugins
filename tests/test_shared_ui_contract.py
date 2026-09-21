@@ -116,7 +116,7 @@ class SharedUIContractTests(unittest.TestCase):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
 
         self.assertIn(
-            'var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank"]',
+            'var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"]',
             hub,
         )
         self.assertIn('"data-dirty-plugin-id": props.pluginId', hub)
@@ -206,6 +206,9 @@ class SharedUIContractTests(unittest.TestCase):
 
     def test_dirty_stats_persists_display_settings_through_the_hub(self):
         script = read("plugins/DirtyStats/dirtyStats.js")
+        styles = read("plugins/DirtyStats/dirtyStats.css")
+        manifest = read("plugins/DirtyStats/dirtyStats.yml")
+        hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
         backend = read("plugins/DirtyPlugins/dirty_plugins.py")
 
         self.assertIn('var PLUGIN_ID = "dirtyStats"', script)
@@ -216,6 +219,22 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("hub.configurePlugin(PLUGIN_ID, snapshot)", script)
         self.assertIn("dirtyNames.forEach(function (name) { merged[name] = snapshot[name]; })", script)
         self.assertIn('"dirtyStats"', backend)
+        self.assertIn("visualTheme:", manifest)
+        self.assertIn('visualTheme: "classic"', hub)
+        self.assertIn('{ value: "paper", label: "Paper Picnic" }', hub)
+        self.assertIn('visualTheme: { options: ["classic", "candy", "tropical", "arcade", "paper"] }', script)
+        for theme in ("candy", "tropical", "arcade", "paper"):
+            self.assertIn(".dirty-stats-theme-" + theme, styles)
+        self.assertIn("initStatsChart", script)
+        self.assertIn("birthdayDefaultSelection", script)
+        self.assertIn('var qualityEfficiencyRoute = route + "/quality-efficiency"', script)
+        self.assertIn("aggregateQualityEfficiency", script)
+        self.assertIn("qualityEfficiencySymbolSize", script)
+        self.assertNotIn("qualityEfficiencyFrontierData", script)
+        self.assertNotIn("dirty-stats-frontier-key", styles)
+        self.assertIn("death_date image_path", script)
+        self.assertIn("dirty-stats-memorial-label", styles)
+        self.assertIn("would have turned", script)
 
     def test_dirty_stats_uses_the_shared_state_view(self):
         script = read("plugins/DirtyStats/dirtyStats.js")
@@ -258,6 +277,9 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("reorderWidgets", dashboard)
         self.assertIn("MAX_WIDGETS", dashboard)
         self.assertIn("nextWidgetId", dashboard)
+        self.assertIn('label: "Theme"', dashboard)
+        self.assertIn('editing ? h(React.Fragment, null,', dashboard)
+        self.assertNotIn('"Refresh all"', dashboard)
         self.assertNotIn("usedStatistics", dashboard)
         self.assertNotIn('WIDGETS[statistic].label + " · added"', dashboard)
         self.assertIn("DashboardFilterDialog", dashboard)
@@ -265,7 +287,10 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('"aria-modal": true', dashboard)
         self.assertIn('event.key === "Escape"', dashboard)
         self.assertIn(".dirty-stats-dashboard-dialog-backdrop", styles)
+        self.assertIn(".dirty-stats-dashboard-dialog-backdrop { position: fixed; inset: 0; z-index: 1030;", styles)
         self.assertIn(".dirty-stats-dashboard-filter-dialog .dirty-stats-dashboard-native-filter", styles)
+        self.assertNotIn('widget.size === "large" ? "" : "dirty-stats-dashboard-visually-hidden"', dashboard)
+        self.assertIn(".dirty-stats-dashboard-widget-header.is-compact h2", styles)
         for statistic in (
             "origin",
             "growth",
@@ -274,7 +299,9 @@ class SharedUIContractTests(unittest.TestCase):
             "performerRatings",
             "performerScatter",
             "countRating",
+            "qualityEfficiency",
             "studios",
+            "tags",
             "constellation",
             "birthdays",
         ):

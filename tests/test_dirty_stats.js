@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const routes = [], patches = [], savedSettings = [];
 const storedSettings = {
+  visualTheme: "candy",
   showMapNumbers: true,
   sceneRatingRounding: 1,
   performerRatingRounding: 0,
@@ -11,6 +12,8 @@ const storedSettings = {
   constellationMaxPerformers: 500,
   scatterMinRating: 8,
   studioMinScenes: 5,
+  tagDnaColorMetric: "play_count",
+  tagDnaMaxTags: 100,
   bogusSetting: "ignored"
 };
 const context = {
@@ -75,6 +78,7 @@ const capped = a.aggregateConstellation([largeScene], 3, 1);
 assert.equal(capped.nodes.length, 3, "maximum performers caps the node set");
 assert.equal(capped.totalPerformers, 6, "the cap must not change the reported total");
 assert.equal(capped.links.length, 3, "only visible performers form links");
+assert.equal(a.aggregateConstellation([largeScene], 0, 1).nodes.length, 6, "zero displays all performers");
 assert.equal(a.aggregateConstellation([{ id: "dup", performers: [{ id: "a", name: "A" }, { id: "a", name: "A" }] }], 100, 1).nodes[0].value, 1, "a repeated performer counts once per scene");
 const sharedPairs = [
   { id: "x", performers: [{ id: "a", name: "A" }, { id: "b", name: "B" }] },
@@ -143,6 +147,24 @@ assert.equal(a.countRatingLabel("o_counter"), "O count");
 const countSeries = a.countRatingSeriesData(a.aggregateCountRating([{id: "1", title: "One", rating100: 90, play_count: 4, o_counter: 1}], "play_count"), "1");
 assert.deepEqual(JSON.parse(JSON.stringify(countSeries[0].value)), [9, 4], "count vs rating series uses [rating, count]");
 assert.equal(countSeries[0].id, "1");
+const gib = 1024 ** 3;
+const efficiency = a.aggregateQualityEfficiency([
+  {id: "a", title: "Balanced", rating100: 90, files: [{id: "fa", size: gib, duration: 600}]},
+  {id: "b", title: "Compact", rating100: 80, files: [{id: "fb", size: gib, duration: 1200}]},
+  {id: "c", title: "Dominated", rating100: 70, files: [{id: "fc", size: gib, duration: 300}]},
+  {id: "d", title: "Same quality, worse efficiency", rating100: 90, files: [{id: "fd", size: gib, duration: 480}]},
+  {id: "e", title: "Premium", rating100: 100, files: [{id: "fe", size: gib, duration: 240}]},
+  {id: "f", title: "Unrated", rating100: null, files: [{id: "ff", size: gib, duration: 600}]},
+  {id: "g", title: "No file data", rating100: 60, files: [{id: "fg", size: 0, duration: 600}]},
+  {id: "a", title: "Duplicate", rating100: 10, files: [{id: "duplicate", size: gib, duration: 60}]}
+]);
+assert.equal(efficiency.total, 7);
+assert.equal(efficiency.points.length, 5);
+assert.equal(efficiency.missingRating, 1);
+assert.equal(efficiency.missingFileData, 1);
+assert.equal(efficiency.points.find(point => point.id === "a").efficiency, 10);
+assert.equal(a.qualityEfficiencySeriesData(efficiency).every(point => point.itemStyle.color === "#54d5ca"), true, "quality-efficiency bubbles use one neutral treatment");
+assert.ok(a.qualityEfficiencySymbolSize(gib, 4 * gib) < a.qualityEfficiencySymbolSize(4 * gib, 4 * gib), "larger files receive larger bubbles");
 const studios = a.aggregateStudios([
   {id: "s1", rating100: 90, studio: {id: "1", name: "Alpha", image_path: "/studio/1/image?t=1"}, files: [{id: "f1", size: 1024}, {id: "f2", size: 1024}]},
   {id: "s2", rating100: 80, studio: {id: "1", name: "Alpha", image_path: "/studio/1/image?t=1"}, files: [{id: "f1", size: 1024}]},
@@ -163,6 +185,29 @@ assert.equal(studios.points[1].rating, null);
 assert.equal(studios.points[0].bytes, 3072);
 assert.equal(studios.points[1].bytes, 2048);
 assert.equal(a.aggregateStudios([]).points.length, 0);
+const tagDna = a.aggregateTagDna([
+  {id: "s1", rating100: 90, play_count: 4, tags: [{id: "a", name: "Alpha"}, {id: "b", name: "Beta"}, {id: "a", name: "Alpha"}]},
+  {id: "s2", rating100: 70, play_count: 2, tags: [{id: "a", name: "Alpha"}]},
+  {id: "s3", rating100: null, play_count: 10, tags: [{id: "b", name: "Beta"}]},
+  {id: "s4", rating100: 100, play_count: 1, tags: []},
+  {id: "s1", rating100: 10, play_count: 100, tags: [{id: "c", name: "Duplicate-only"}]}
+]);
+assert.equal(tagDna.totalScenes, 4);
+assert.equal(tagDna.taggedScenes, 3);
+assert.equal(tagDna.untaggedScenes, 1);
+assert.equal(tagDna.tags, 2);
+assert.equal(tagDna.assignments, 4, "a tag counts once per distinct scene");
+assert.deepEqual(JSON.parse(JSON.stringify(tagDna.rows.map(row => [row.id, row.scenes, row.rated, row.unrated, row.plays, row.playsPerScene]))), [["a", 2, 2, 0, 6, 3], ["b", 2, 1, 1, 14, 7]]);
+assert.equal(tagDna.rows[0].rating, 8);
+assert.equal(tagDna.rows[1].rating, 9);
+assert.equal(a.tagDnaMetricLabel("rating"), "Average rating");
+assert.equal(a.tagDnaMetricLabel("play_count"), "Views per scene");
+assert.equal(a.tagDnaSeriesData(tagDna, "rating", 1, "a").length, 1);
+assert.equal(a.tagDnaSeriesData(tagDna, "rating", 1, "a")[0].itemStyle.borderColor, "#fff");
+assert.equal(a.tagDnaSeriesData(tagDna, "rating", 0, null).length, 2, "zero removes the tag limit");
+assert.deepEqual(JSON.parse(JSON.stringify(a.tagDnaScenes([
+  {id: "s1", tags: [{id: "a"}]}, {id: "s1", tags: [{id: "a"}]}, {id: "s2", tags: [{id: "b"}]}
+], "a").map(scene => scene.id))), ["s1"]);
 assert.equal(a.roundRating(8.4, 0.5), 8.5);
 assert.equal(a.roundRating(8.5, 1), 9);
 assert.equal(a.sceneRating({rating100: 86}, 0.5), "8.5");
@@ -215,7 +260,7 @@ assert.equal(a.daysUntilBirthday(1, 14, birthdayNow), 364, "a passed birthday ro
 assert.equal(a.daysUntilBirthday(2, 14, birthdayNow), 30);
 const birthdays = a.aggregateBirthdays([
   {id: "a", name: "Alice", birthdate: "2000-01-15"},
-  {id: "b", name: "Bob", birthdate: "1990-02-14"},
+  {id: "b", name: "Bob", birthdate: "1990-02-14", death_date: "2024-03-02"},
   {id: "c", name: "Carole", birthdate: "2000-01-15"},
   {id: "d", name: "Dan", birthdate: null},
   {id: "e", name: "Eve", birthdate: "2000"},
@@ -228,13 +273,25 @@ assert.equal(birthdays.today, 2);
 assert.equal(birthdays.upcoming, 3);
 assert.deepEqual(JSON.parse(JSON.stringify(birthdays.entries.map(entry => [entry.id, entry.month, entry.day, entry.turns, entry.daysUntil]))), [["a", 1, 15, 26, 0], ["c", 1, 15, 26, 0], ["b", 2, 14, 36, 30]]);
 assert.deepEqual(JSON.parse(JSON.stringify(a.birthdayEntriesFor(birthdays.entries, 1, 15).map(entry => entry.id))), ["a", "c"]);
+assert.deepEqual(JSON.parse(JSON.stringify(a.birthdayDefaultSelection(birthdays, birthdayNow))), {month: 1, day: 15, today: true});
+assert.deepEqual(JSON.parse(JSON.stringify(a.birthdayEntriesFor(birthdays.entries, 1, 15, true).map(entry => entry.id))), ["a", "c"]);
+assert.equal(a.birthdayDefaultSelection({today: 0}, birthdayNow), null);
+assert.equal(birthdays.entries.find(entry => entry.id === "b").deceased, true);
+assert.equal(birthdays.entries.find(entry => entry.id === "b").deathDate, "2024-03-02");
+assert.equal(birthdays.entries.find(entry => entry.id === "a").deceased, false);
+assert.equal(a.birthdayAgeText(birthdays.entries.find(entry => entry.id === "a")), "turns 26");
+assert.equal(a.birthdayAgeText(birthdays.entries.find(entry => entry.id === "b")), "would have turned 36");
 assert.deepEqual(JSON.parse(JSON.stringify(a.birthdayMonthCounts(birthdays.entries))), [2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 assert.equal(a.birthdayDayLabel(2, 14), "February 14");
 assert.equal(a.performerImageSource({id: "9", image_path: "/performer/9/image?t=2"}), "/performer/9/image?t=2");
 assert.equal(a.performerImageSource({id: "9"}), "/performer/9/image");
 assert.equal(a.aggregateBirthdays([{id: "9", name: "Pic", birthdate: "2000-03-01", image_path: "/performer/9/image?t=2"}], birthdayNow).entries[0].image, "/performer/9/image?t=2");
 assert.equal(a.aggregateBirthdays([], birthdayNow).entries.length, 0);
-assert.equal(a.aggregateBirthdays([{id: "1", name: "Leap", birthdate: "2000-02-29"}], new Date(Date.UTC(2025, 1, 28))).entries[0].daysUntil, 0, "Feb 29 falls on Feb 28 in non-leap years");
+const leapBirthdayNow = new Date(Date.UTC(2025, 1, 28));
+const leapBirthdays = a.aggregateBirthdays([{id: "1", name: "Leap", birthdate: "2000-02-29"}], leapBirthdayNow);
+assert.equal(leapBirthdays.entries[0].daysUntil, 0, "Feb 29 falls on Feb 28 in non-leap years");
+assert.deepEqual(JSON.parse(JSON.stringify(a.birthdayDefaultSelection(leapBirthdays, leapBirthdayNow))), {month: 2, day: 28, today: true});
+assert.equal(a.birthdayEntriesFor(leapBirthdays.entries, 2, 28, true)[0].id, "1", "the today selection includes observed leap-day birthdays");
 const index = a.countryIndex(context.window.__dirtyStatsWorld.features);
 assert.equal(index[a.normalize("US")], index[a.normalize("United States")]);
 assert.equal(index[a.normalize("USA")], index[a.normalize("United States of America")]);
@@ -402,6 +459,12 @@ assert.equal(routes.length, 1);
 
 (async function () {
   await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(a.statsSettings.visualTheme, "candy");
+  assert.equal(a.statsTheme().label, "Candy Pop");
+  assert.equal(a.statsTheme("unknown").key, "classic", "unknown themes fall back to the original look");
+  assert.equal(a.statsThemeClass(), "dirty-stats-theme-candy");
+  assert.equal(a.themePalette().length, 8);
+  assert.equal(a.themedChartOption({ color: "#54d5ca", label: { color: "#ddd" } }).color, "#ff79c6");
   assert.equal(a.statsSettings.showMapNumbers, true, "stored display settings must load");
   assert.equal(a.statsSettings.sceneRatingRounding, 1);
   assert.equal(a.statsSettings.performerRatingRounding, 0);
@@ -409,14 +472,21 @@ assert.equal(routes.length, 1);
   assert.equal(a.statsSettings.constellationMaxPerformers, 500);
   assert.equal(a.statsSettings.scatterMinRating, 8);
   assert.equal(a.statsSettings.studioMinScenes, 5);
+  assert.equal(a.statsSettings.tagDnaColorMetric, "play_count");
+  assert.equal(a.statsSettings.tagDnaMaxTags, 100);
   assert.equal(a.statsSettings.growthShowCapacity, true, "unset settings keep their defaults");
   assert.equal(a.statsSettings.bogusSetting, undefined, "unknown stored keys are ignored");
 
   assert.equal(a.parseStatsSetting("sceneRatingRounding", "0.5"), 0.5, "stringified numbers must coerce");
+  assert.equal(a.parseStatsSetting("constellationMaxPerformers", "0"), 0, "the all-performers option must persist");
   assert.equal(a.parseStatsSetting("scatterMinRating", 4), null, "values outside the offered options are rejected");
   assert.equal(a.parseStatsSetting("growthGrouping", "week"), null);
   assert.equal(a.parseStatsSetting("countRatingMetric", "o_counter"), "o_counter");
   assert.equal(a.parseStatsSetting("countRatingMetric", "views"), null);
+  assert.equal(a.parseStatsSetting("tagDnaMaxTags", "200"), 200);
+  assert.equal(a.parseStatsSetting("tagDnaMaxTags", "0"), 0, "the unlimited tag option must persist");
+  assert.equal(a.parseStatsSetting("visualTheme", "paper"), "paper");
+  assert.equal(a.parseStatsSetting("visualTheme", "formal"), null);
   assert.equal(a.statsSettings.countRatingMetric, "play_count", "the count metric defaults to the view count");
 
   const legacy = a.statsSettingsFromStorage({ ratingRounding: 1 });

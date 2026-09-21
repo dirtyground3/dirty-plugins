@@ -2,7 +2,8 @@
 
 Explore Stash statistics from the **pie chart icon** in the utility navigation.
 The icon opens a customizable **Dashboard** at
-`/plugins/dirty-stats/dashboard`. Add or remove any available statistic,
+`/plugins/dirty-stats/dashboard`. Choose **Edit dashboard** to change its
+theme, add or remove any available statistic,
 reorder widgets by dragging their edit-mode handle or using the arrow controls,
 edit statistic-specific options, choose the same native scene
 or performer filters available in the full view, and select a **Small**,
@@ -10,6 +11,14 @@ or performer filters available in the full view, and select a **Small**,
 collapses to wider cards on tablets and one column on phones. Dashboard layout
 and widget options save automatically through the shared DirtyPlugins settings
 store and are restored on the next visit.
+
+DirtyStats can wear five visual themes. **Midnight** preserves the original
+look, while **Candy Pop**, **Tropical Punch**, **Retro Arcade**, and the light
+**Paper Picnic** theme give pages, dashboard cards, controls, calendars, Tag
+DNA, and charts their own colors and character. Choose a theme while editing
+the dashboard or from the **Visual theme** control on the DirtyStats tab in the
+shared DirtyPlugins settings page; the choice saves automatically and applies
+the next time DirtyStats is opened.
 
 Filter selection opens in a dedicated responsive dialog so native filter
 dropdowns have room to expand. The dialog becomes full-screen on narrow
@@ -22,14 +31,18 @@ widgets expose the richest dashboard view and relevant controls. Use the open
 icon on a widget for detailed selections, scene or
 performer cards, and PNG export. A statistic can be added more than once, so
 each copy can represent a different filter or presentation.
+
+Every widget keeps a compact title row. Small and medium cards use reduced
+type, spacing, and icon sizing so the title consumes as little chart space as
+possible.
 The dashboard shares compatible performer and scene requests when their filters
 match, so widgets do not independently download the same records; a failure
 remains isolated to the affected data group and filter.
 
 The statistic selector offers **Performer origin**, **Content growth**,
 **Age at scene**, **Scene ratings**, **Performer ratings**,
-**Rating vs scenes**, **Count vs rating**, **Studio value map**,
-**Cast constellation**, and **Performer birthdays**.
+**Rating vs scenes**, **Count vs rating**, **Quality efficiency**, **Studio value map**,
+**Tag DNA**, **Cast constellation**, and **Performer birthdays**.
 Display choices such as map numbers, rating rounding, growth options, and the
 constellation, scatter, and studio limits are saved to the DirtyStats plugin
 settings and restored the next time the page is opened.
@@ -45,8 +58,8 @@ again clears the selection. The graph can be panned, zoomed, and rearranged by
 dragging performers.
 
 **Maximum performers** keeps large libraries readable by displaying the most
-frequent 50, 100, 200, 500, or 1,000 performers while scene cards continue to
-use the complete filtered scene set. The force layout adapts its spacing, node
+frequent 50, 100, 200, 500, or 1,000 performers, while **All** removes the
+limit; scene cards continue to use the complete filtered scene set. The force layout adapts its spacing, node
 size, label count, edge opacity, and initial zoom to the selected graph size.
 **Minimum shared scenes** hides weaker connections.
 These settings remain selected when scene filters change and are restored on the
@@ -81,6 +94,13 @@ control and remembered for next time. Scenes without a rating are omitted and
 reported. Click a dot to show that scene below, or click it again to clear the
 selection. PNG export is available inside the chart.
 
+**Quality efficiency** is a bubble plot using native scene filters. Each bubble
+compares a scene's rating with its storage efficiency in playable minutes per
+GiB, while bubble area represents its actual total file size. All scenes use
+the same visual treatment. Scenes need a rating, file size, and duration to
+participate; omissions are reported. Click a bubble to show that scene below,
+and use **Export PNG** to save the chart.
+
 **Studio value map** is a scatter plot using native scene filters and their saved
 defaults. Each bubble is a studio: the x-axis is its number of matching scenes,
 the y-axis is the average rating out of ten of its rated scenes, and bubble size
@@ -92,6 +112,18 @@ scenes without a studio, studios with no rated scene, and files with an
 unavailable size are omitted and reported. Click a bubble to show that studio's
 scenes below, or click it again to clear the selection. PNG export is available
 inside the chart.
+
+**Tag DNA** is an interactive treemap using native scene filters and their saved
+defaults. Rectangle area represents the number of distinct matching scenes carrying
+the tag. Color can represent either the tag's average scene rating or average views
+per scene, making common, highly rated, and frequently revisited themes visible at
+a glance. Tags without rated scenes remain gray in rating mode. **Maximum tags**
+keeps large libraries readable by showing the 25, 50, 100, or 200 most common tags,
+or **All** removes the limit;
+the summary continues to report the complete tag and untagged-scene totals. Click a
+rectangle to show that tag's scene cards below, or click it again to clear the
+selection. Both display choices are remembered, and PNG export is available inside
+the chart.
 
 **Scene ratings** uses native scene filters and saved defaults to count distinct
 scenes by their rating out of ten; unrated scenes are included separately.
@@ -124,6 +156,10 @@ is a small grid; days with a birthday are highlighted and show how many
 performers share the date, the current month and day are marked, and the
 nearest birthdays are listed first above the calendar. Click a highlighted day
 to show those performers below, or click it again to clear the selection.
+When matching performers have a birthday today, that day and its performers are
+selected automatically on first load. Deceased performers use "would have
+turned" wording and an **In memoriam** double-border treatment in the upcoming
+list and performer cards.
 Birthdays recur every year, so only the month and day are used; February 29
 falls back to February 28 in non-leap years. Performers with missing, partial,
 or invalid birthdates are excluded and reported. The performer filter block
