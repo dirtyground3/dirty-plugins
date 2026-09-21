@@ -1033,6 +1033,14 @@
   color: rgb(var(--dirty-rank-showcase-rgb));
 }
 
+@media (min-width: 48.001rem) {
+  .dirty-rank-showcase .dirty-rank-native-card .performer-card-image,
+  .dirty-rank-showcase .dirty-rank-podium-image-link {
+    aspect-ratio: 1 / 2;
+    height: auto;
+  }
+}
+
 .dirty-rank-showcase-base {
   align-items: center;
   background: linear-gradient(130deg, rgba(var(--dirty-rank-showcase-rgb), 0.26), rgba(var(--dirty-rank-showcase-rgb), 0.06) 48%, rgba(var(--dirty-rank-showcase-rgb), 0.2));

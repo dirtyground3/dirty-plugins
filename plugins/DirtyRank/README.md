@@ -89,8 +89,9 @@ volatility instead of relying on a capped integer score.
   leading performers. The choice is remembered in your browser. Mount Rushmore
   keeps its carved-stone bases; Fingers arranges its numbered columns as
   **5–3–1–2–4**, with first place highest in the center and each lower rank on a
-  shorter column. All three views omit decorative headers and rank labels above
-  the featured cards.
+  shorter column. Mount Rushmore and Fingers stretch their portraits taller to
+  fill the extra room. All three views omit decorative headers and rank labels
+  above the featured cards.
   RD and battle counts appear in the confidence badge tooltip; win/loss records
   are hidden. Smaller screens show the Fingers cards in rank order;
   the remaining gallery or table starts at the next rank. Full standings,
