@@ -22,6 +22,9 @@ assert.equal(dashboard.defaults.length, 5, "a curated dashboard should be create
 
 const defaults = plain(helpers.normalizeWidgets(null));
 assert.equal(defaults.length, 5);
+assert.equal(helpers.dashboardNeedsInitialSave(2, defaults), false, "opening an existing dashboard must not save again");
+assert.equal(helpers.dashboardNeedsInitialSave(1, defaults), true, "older dashboard layouts are migrated and saved");
+assert.equal(helpers.dashboardNeedsInitialSave(2, null), true, "a new dashboard is saved once");
 assert.deepEqual(defaults.map((widget) => widget.statistic), ["ratings", "performerRatings", "growth", "origin", "birthdays"]);
 assert.ok(defaults.every((widget) => widget.filter.count === 0), "migrated default widgets use the full library");
 

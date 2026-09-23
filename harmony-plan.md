@@ -87,6 +87,23 @@ PerformerCard. Documentation capture skips that native load entirely.
 Treemap labels now choose light or dark text from each cell's actual fill. The
 Stats test measures at least 4.5:1 contrast for low/high cells across all five
 themes; both the dashboard and full Tag DNA view use those same data items.
+The next H14 pass subscribes every full-view chart to the existing Stats theme
+change signal. Theme changes rebuild chart presentation without repeating its
+GraphQL query, while page-owned selection state remains in place. Full-view
+chart chrome now reads effective CSS roles for surfaces, axes, grids, labels,
+and accents; map and categorical data colours retain their distinct meaning.
+The literal adapter remains temporarily for older data-series helpers. Growth
+captures its active data-zoom window before a chart is replaced and reapplies
+it after the theme refresh. Other chart-instance interactions still need
+focused live review.
+Live dashboard reload exposed a remaining H10 false-save path: normalizing
+stored widgets could differ in serialization even with the current schema.
+The initial hydration now skips persistence for an existing version-2 widget
+array, while fresh and older layouts still save their migration once.
+After installing 0.6.22, the Tag DNA full view rendered in both Arcade and
+Paper Picnic with theme-appropriate chart colours and readable cell labels.
+The original Arcade preference was restored. A fresh dashboard reload showed
+no pending or saved message, confirming the false-save fix in running Stash.
 
 ## Delivery approach
 

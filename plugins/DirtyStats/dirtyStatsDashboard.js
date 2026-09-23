@@ -121,6 +121,10 @@
     return result;
   }
 
+  function dashboardNeedsInitialSave(version, widgets) {
+    return version !== DASHBOARD_VERSION || !Array.isArray(widgets);
+  }
+
   function nextWidgetId(statistic, widgets) {
     var usedIds = new Set((widgets || []).map(function (widget) { return widget.id; }));
     var base = "dashboard-" + statistic, id = base, suffix = 2;
@@ -299,7 +303,7 @@
   function repeatOffenderWidget(scenes, widget) {
     var stats = algorithms.aggregateRepeatOffenders(scenes);
     var data = algorithms.repeatOffenderSeriesData(stats, null);
-    var option = { backgroundColor: "transparent", grid: { left: 8, right: 12, top: 10, bottom: widget.size === "large" ? 42 : 18, containLabel: widget.size !== "small" }, tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { if (!p.data || !p.data.id) return p.seriesName; return p.data.title + "\n" + p.data.views + " views\nTop " + p.value[0].toFixed(1) + "% account for " + p.value[1].toFixed(1) + "% of views"; } }, xAxis: { type: "value", name: widget.size === "large" ? "Scenes ranked by views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: "{value}%" }, axisLine: { lineStyle: { color: algorithms.themeColor("border") } }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, yAxis: { type: "value", name: widget.size === "large" ? "Cumulative views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: "{value}%" }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, series: [{ name: "Cumulative views", type: "line", showSymbol: false, sampling: "lttb", lineStyle: { color: algorithms.themeColor("primary"), width: 3 }, areaStyle: { color: algorithms.themeColor("primary"), opacity: .16 }, data: data, markArea: { silent: true, label: { show: widget.size === "large", color: algorithms.themeColor("text"), formatter: "Top 5%" }, itemStyle: { color: "rgba(243,199,121,.10)" }, data: [[{ xAxis: 0 }, { xAxis: 5 }]] } }, { name: "Equal distribution", type: "line", showSymbol: false, silent: true, lineStyle: { color: algorithms.themeColor("border"), type: "dashed", width: 1 }, data: [[0, 0], [100, 100]] }] };
+    var option = { backgroundColor: "transparent", grid: { left: 8, right: 12, top: 10, bottom: widget.size === "large" ? 42 : 18, containLabel: widget.size !== "small" }, tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { if (!p.data || !p.data.id) return p.seriesName; return p.data.title + "\n" + p.data.views + " views\nTop " + p.value[0].toFixed(1) + "% account for " + p.value[1].toFixed(1) + "% of views"; } }, xAxis: { type: "value", name: widget.size === "large" ? "Scenes ranked by views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: "{value}%" }, axisLine: { lineStyle: { color: algorithms.themeColor("border") } }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, yAxis: { type: "value", name: widget.size === "large" ? "Cumulative views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: "{value}%" }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, series: [{ name: "Cumulative views", type: "line", showSymbol: false, sampling: "lttb", lineStyle: { color: algorithms.themeColor("primary"), width: 3 }, areaStyle: { color: algorithms.themeColor("primary"), opacity: .16 }, data: data, markArea: { silent: true, label: { show: widget.size === "large", color: algorithms.themeColor("text"), formatter: "Top 5%" }, itemStyle: { color: algorithms.themeColor("accent"), opacity: .10 }, data: [[{ xAxis: 0 }, { xAxis: 5 }]] } }, { name: "Equal distribution", type: "line", showSymbol: false, silent: true, lineStyle: { color: algorithms.themeColor("border"), type: "dashed", width: 1 }, data: [[0, 0], [100, 100]] }] };
     var share = Math.round(stats.topShare * 10) / 10;
     return h(React.Fragment, null,
       h("div", { className: "dirty-stats-dashboard-metrics" }, metric("top 5% view share", stats.totalViews ? share.toFixed(1) + "%" : "—"), metric("recorded views", stats.totalViews), widget.size === "large" ? metric("viewed scenes", stats.viewedScenes + " / " + stats.totalScenes) : null),
@@ -562,6 +566,7 @@
     var dragState = React.useState(null), draggingId = dragState[0], setDraggingId = dragState[1];
     var announcementState = React.useState(""), dragAnnouncement = announcementState[0], setDragAnnouncement = announcementState[1];
     var dragCleanup = React.useRef(null);
+    var initialSave = React.useRef(null);
     var resourcesState = React.useState({}), resources = resourcesState[0], setResources = resourcesState[1];
     React.useEffect(function () {
       var active = true;
@@ -569,6 +574,7 @@
         if (!active) return;
         var storedVersion = core.getSettingExtra("dashboardSchemaVersion", 0);
         var storedWidgets = core.getSettingExtra("dashboardWidgets", null);
+        initialSave.current = dashboardNeedsInitialSave(storedVersion, storedWidgets);
         setWidgets(normalizeWidgets(storedWidgets, storedVersion !== DASHBOARD_VERSION));
         setReady(true);
       });
@@ -576,6 +582,9 @@
     }, []);
     React.useEffect(function () {
       if (!ready) return;
+      var saveLoadedState = initialSave.current;
+      initialSave.current = null;
+      if (saveLoadedState === false) return;
       core.setSettingExtra("dashboardSchemaVersion", DASHBOARD_VERSION);
       core.setSettingExtra("dashboardWidgets", widgets);
     }, [ready, widgets]);
@@ -699,5 +708,5 @@
         h("div", { className: "dirty-stats-dashboard-grid" + (editing ? " is-editing" : "") + (draggingId ? " is-reordering" : "") }, widgets.map(function (widget, index) { return h(DashboardWidget, { key: widget.id, widget: widget, index: index, editing: editing, dragging: draggingId === widget.id, resources: resources, onDragStart: function (event) { startDrag(index, event); }, onDragKeyDown: function (event) { moveWithKeyboard(index, event); }, onRemove: function () { remove(index); }, onTitle: function (title) { replace(index, { title: title }); }, onSize: function (size) { replace(index, { size: size }); }, onFilter: function () { beginFilterEdit(index); }, onOptions: function (options) { replace(index, { options: normalizeOptions(WIDGETS[widget.statistic], options) }); } }); })));
   }
 
-  window.__dirtyStatsDashboard = { Component: DashboardPage, Widget: DashboardWidget, FilterChooser: DashboardFilterChooser, widgetOptions: WidgetOptions, algorithms: { normalizeWidgets: normalizeWidgets, normalizeOptions: normalizeOptions, normalizeFilter: normalizeFilter, widgetTitle: widgetTitle, widgetHeightUnits: widgetHeightUnits, requiredGroups: requiredGroups, requiredResources: requiredResources, resourceKey: resourceKey, fetchPages: fetchPages, reorderWidgets: reorderWidgets, nextWidgetId: nextWidgetId }, registry: WIDGETS, defaults: DEFAULT_WIDGETS, maxWidgets: MAX_WIDGETS };
+  window.__dirtyStatsDashboard = { Component: DashboardPage, Widget: DashboardWidget, FilterChooser: DashboardFilterChooser, widgetOptions: WidgetOptions, algorithms: { normalizeWidgets: normalizeWidgets, dashboardNeedsInitialSave: dashboardNeedsInitialSave, normalizeOptions: normalizeOptions, normalizeFilter: normalizeFilter, widgetTitle: widgetTitle, widgetHeightUnits: widgetHeightUnits, requiredGroups: requiredGroups, requiredResources: requiredResources, resourceKey: resourceKey, fetchPages: fetchPages, reorderWidgets: reorderWidgets, nextWidgetId: nextWidgetId }, registry: WIDGETS, defaults: DEFAULT_WIDGETS, maxWidgets: MAX_WIDGETS };
 })();
