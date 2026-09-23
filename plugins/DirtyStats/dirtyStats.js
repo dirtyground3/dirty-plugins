@@ -155,54 +155,12 @@
     return "dirty-stats-theme-" + statsTheme(value).key;
   }
 
-  function themedChartOption(value, seen, sourceAliases) {
-    var aliases = sourceAliases;
-    if (!aliases) {
-      var theme = Object.assign({}, statsTheme());
-      ["background", "panel", "panelAlt", "primary", "secondary", "accent", "highlight", "text", "muted", "grid", "border", "selection", "soft", "softer"].forEach(function (name) { theme[name] = themeColor(name); });
-      aliases = {
-      "#242b31": theme.background,
-      "#2c343b": theme.panel,
-      "#54d5ca": theme.primary,
-      "#5687a2": theme.secondary,
-      "#f3c779": theme.accent,
-      "#bc8542": theme.highlight,
-      "#364655": theme.grid,
-      "#788591": theme.border,
-      "#59636c": theme.grid,
-      "#9da8b2": theme.muted,
-      "#bbb": theme.muted,
-      "#ddd": theme.text,
-      "#eee": theme.text,
-      "#fff": theme.selection,
-      "#ffffff": theme.selection,
-      "rgba(243,199,121,.2)": theme.soft
-      };
-      theme.palette.forEach(function (color, index) {
-        var key = STATS_THEMES.classic.palette[index].toLowerCase();
-        if (!Object.prototype.hasOwnProperty.call(aliases, key)) aliases[key] = color;
-      });
-    }
-    if (typeof value === "string") return aliases[value.toLowerCase()] || value;
-    if (!value || typeof value !== "object") return value;
-    var visited = seen || new Set();
-    if (visited.has(value)) return value;
-    visited.add(value);
-    if (Array.isArray(value)) {
-      value.forEach(function (item, index) { value[index] = themedChartOption(item, visited, aliases); });
-    } else {
-      Object.keys(value).forEach(function (name) { value[name] = themedChartOption(value[name], visited, aliases); });
-    }
-    return value;
-  }
-
   function initStatsChart(node, options) {
     var chart = charts.init(node, null, options || { renderer: "canvas" });
     var setOption = chart.setOption.bind(chart);
     var getDataURL = chart.getDataURL && chart.getDataURL.bind(chart);
     chart.setOption = function () {
       var args = Array.prototype.slice.call(arguments);
-      args[0] = themedChartOption(args[0]);
       if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches && args[0] && typeof args[0] === "object") args[0].animation = false;
       return setOption.apply(chart, args);
     };
@@ -2379,7 +2337,7 @@ return h("main", { ref: page, className: "dirty-stats-page dirty-stats-native-fi
     if (event && event.detail && event.detail.pluginId === PLUGIN_ID) loadStatsSettings();
   });
   var statsSettingsReady = loadStatsSettings();
-  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, birthdayInYear: birthdayInYear, daysUntilBirthday: daysUntilBirthday, aggregateBirthdays: aggregateBirthdays, performerImageSource: performerImageSource, birthdayEntriesFor: birthdayEntriesFor, birthdayDefaultSelection: birthdayDefaultSelection, birthdayAgeText: birthdayAgeText, birthdayMonthCounts: birthdayMonthCounts, birthdayDayLabel: birthdayDayLabel, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, growthDataZoomRange: growthDataZoomRange, orderedCards: orderedCards, docsCaptureEnabled: docsCaptureEnabled, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, scatterSeriesData: scatterSeriesData, nearestScatterOption: nearestScatterOption, scatterGuideForClick: scatterGuideForClick, scatterGuideLines: scatterGuideLines, countRatingLabel: countRatingLabel, countRatingSeriesData: countRatingSeriesData, aggregateCountRating: aggregateCountRating, aggregateRepeatOffenders: aggregateRepeatOffenders, repeatOffenderSeriesData: repeatOffenderSeriesData, repeatOffenderRowAtShare: repeatOffenderRowAtShare, aggregateQualityEfficiency: aggregateQualityEfficiency, qualityEfficiencySeriesData: qualityEfficiencySeriesData, qualityEfficiencySymbolSize: qualityEfficiencySymbolSize, aggregateStudios: aggregateStudios, aggregateTagDna: aggregateTagDna, tagDnaMetricValue: tagDnaMetricValue, tagDnaMetricLabel: tagDnaMetricLabel, tagDnaColor: tagDnaColor, tagDnaSeriesData: tagDnaSeriesData, tagDnaScenes: tagDnaScenes, serializeDashboardFilter: serializeDashboardFilter, statsTheme: statsTheme, themeColor: themeColor, themePalette: themePalette, statsThemeClass: statsThemeClass, themedChartOption: themedChartOption, initStatsChart: initStatsChart, statsSettings: statsSettings, parseStatsSetting: parseStatsSetting, statsSettingsFromStorage: statsSettingsFromStorage, setStatsSetting: setStatsSetting, loadStatsSettings: loadStatsSettings } };
+  window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, birthdayInYear: birthdayInYear, daysUntilBirthday: daysUntilBirthday, aggregateBirthdays: aggregateBirthdays, performerImageSource: performerImageSource, birthdayEntriesFor: birthdayEntriesFor, birthdayDefaultSelection: birthdayDefaultSelection, birthdayAgeText: birthdayAgeText, birthdayMonthCounts: birthdayMonthCounts, birthdayDayLabel: birthdayDayLabel, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, growthDataZoomRange: growthDataZoomRange, orderedCards: orderedCards, docsCaptureEnabled: docsCaptureEnabled, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, scatterSeriesData: scatterSeriesData, nearestScatterOption: nearestScatterOption, scatterGuideForClick: scatterGuideForClick, scatterGuideLines: scatterGuideLines, countRatingLabel: countRatingLabel, countRatingSeriesData: countRatingSeriesData, aggregateCountRating: aggregateCountRating, aggregateRepeatOffenders: aggregateRepeatOffenders, repeatOffenderSeriesData: repeatOffenderSeriesData, repeatOffenderRowAtShare: repeatOffenderRowAtShare, aggregateQualityEfficiency: aggregateQualityEfficiency, qualityEfficiencySeriesData: qualityEfficiencySeriesData, qualityEfficiencySymbolSize: qualityEfficiencySymbolSize, aggregateStudios: aggregateStudios, aggregateTagDna: aggregateTagDna, tagDnaMetricValue: tagDnaMetricValue, tagDnaMetricLabel: tagDnaMetricLabel, tagDnaColor: tagDnaColor, tagDnaSeriesData: tagDnaSeriesData, tagDnaScenes: tagDnaScenes, serializeDashboardFilter: serializeDashboardFilter, statsTheme: statsTheme, themeColor: themeColor, themePalette: themePalette, statsThemeClass: statsThemeClass, initStatsChart: initStatsChart, statsSettings: statsSettings, parseStatsSetting: parseStatsSetting, statsSettingsFromStorage: statsSettingsFromStorage, setStatsSetting: setStatsSetting, loadStatsSettings: loadStatsSettings } };
   window.__dirtyStatsPlugin.dashboardRoute = dashboardRoute;
   window.__dirtyStatsPlugin.getSaveStatus = function () { return Object.assign({}, statsSettingsSaveStatus); };
   window.__dirtyStatsPlugin.settingsReady = statsSettingsReady;

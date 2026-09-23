@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const routes = [], patches = [], savedSettings = [];
 const notifications = [];
+const chartOptions = [];
 const storedSettings = {
   visualTheme: "candy",
   showMapNumbers: true,
@@ -19,6 +20,10 @@ const storedSettings = {
 };
 const context = {
   window: {
+    echarts: { init: () => ({
+      setOption: (option) => chartOptions.push(option),
+      getDataURL: (options) => options.backgroundColor
+    }) },
     PluginApi: { React: {}, libraries: {}, register: { route: (...args) => routes.push(args) }, patch: { before: (...args) => patches.push(args), instead: (...args) => patches.push(args) } },
     DirtyPlugins: {
       graphql() {},
@@ -512,11 +517,18 @@ assert.equal(routes.length, 1);
   assert.equal(a.statsTheme("unknown").key, "classic", "unknown themes fall back to the install default");
   assert.equal(a.statsThemeClass(), "dirty-stats-theme-candy");
   assert.equal(a.themePalette().length, 8);
-  assert.equal(a.themedChartOption({ color: "#54d5ca", label: { color: "#ddd" } }).color, "#ff82cb");
   context.document = { querySelector: () => ({}) };
   context.window.DirtyPlugins.theme.readRole = (_page, property) => property === "--dirty-stats-primary" ? "#123456" : "";
   assert.equal(a.themeColor("primary"), "#123456", "charts read the effective CSS theme role");
-  assert.equal(a.themedChartOption({ color: "#54d5ca" }).color, "#123456");
+  const chart = a.initStatsChart({});
+  chart.setOption({ itemStyle: { color: a.themeColor("primary"), borderColor: "#fff" } });
+  assert.equal(chartOptions[0].itemStyle.color, "#123456", "chart presentation reads effective CSS roles");
+  assert.equal(chartOptions[0].itemStyle.borderColor, "#fff", "intentional data outlines retain their colour");
+  assert.equal(chart.getDataURL({ type: "png" }), a.themeColor("background"), "exports use the effective theme background");
+  context.window.matchMedia = () => ({ matches: true });
+  chart.setOption({ series: [] });
+  assert.equal(chartOptions[1].animation, false, "reduced-motion mode disables chart animation");
+  delete context.window.matchMedia;
   delete context.document;
   delete context.window.DirtyPlugins.theme.readRole;
   assert.equal(a.statsSettings.showMapNumbers, true, "stored display settings must load");

@@ -39,7 +39,7 @@ The approved Rank pilot is the visual reference. The hub exports one `classic`/M
 | DirtyFileExtractor | Shared action styling; folder picker now traps/restores focus, locks background scroll, and masks paths in capture mode. | DOM integration and Stash's settings entry point remain local. |
 | DirtyMultiscreen | One shared navigation link, deduplicated native player loading, keyboard-visible overlays, and opaque capture cover. | Edge-to-edge black playback and ScenePlayer remain native/specialized. |
 
-The safe synthetic `tests/fixtures/dirty_suite_harmony.html` fixture covers the shared controls and plugin samples without private media. Automated behaviour and source checks are complete for this batch; live visual checks across Stash themes, 200% zoom, nested native filter popups, and chart interactions remain in the verification matrix below. The legacy literal-to-role chart adapter and Stats stylesheet specificity can be consolidated further after those checks.
+The safe synthetic `tests/fixtures/dirty_suite_harmony.html` fixture covers the shared controls and plugin samples without private media. Automated behaviour and source checks are complete for this batch; live visual checks across Stash themes, 200% zoom, and chart interactions remain in the verification matrix below. Stats stylesheet specificity can be consolidated after those checks.
 
 The next H09/H13/H18 pass adds one shared React dialog and DOM dialog manager.
 FileExtractor's folder picker and both Stats filter dialogs now share initial
@@ -48,7 +48,7 @@ Stats yields keyboard handling to an open native filter popup. Named layer
 tokens retain the integrated Stats levels below native popups and the separate
 standalone picker level. The new [UI guide](plugins/DirtyPlugins/STYLE.md)
 documents component recipes, themes, dependencies, and capture review. Live
-nested-popup and zoom checks remain necessary before marking H09/H11 complete.
+dashboard-dialog and zoom checks remain necessary before marking H09/H11 complete.
 The live Stats check also found that Stash drops `docsCapture=1` when its native
 filter changes the route query. Capture mode now stays active for that page
 session until an explicit `docsCapture=0` or a full reload without the flag;
@@ -56,10 +56,11 @@ the synthetic contract covers this transition. In the running Stash age view,
 the performer cards stayed hidden after Stash rewrote the URL. The performer
 filter dialog focused its Done action, kept keyboard focus within the dialog,
 yielded Escape to Stash's nested Edit Filter popup, then closed and restored
-focus to its trigger. Dashboard-dialog, 200% zoom, and cross-theme checks remain.
+focus to its trigger. The dashboard dialog is verified below; 200% zoom and
+broader cross-theme checks remain.
 The Stats dashboard's common axis helper now takes muted, border, and grid
-colours directly from effective CSS roles. Other chart options still use the
-legacy literal adapter and remain a separate H14 cleanup.
+colours directly from effective CSS roles. Other chart options now read those
+roles directly too.
 The H11 contrast pass measured common Stats text roles against base, panel,
 and alternate-panel surfaces for all five themes. Paper Picnic's teal and
 muted text, Candy/Tropical primary accents, and Paper calendar count text now
@@ -75,8 +76,7 @@ Dashboard chart chrome now reads effective Stats theme roles directly for
 labels, axes, grids, and accents. Rating slices use the Stats categorical
 palette explicitly. A theme-switch test covers both types of colour, and a
 chart error keeps its mount node so a later option can recover. Full-view
-charts still rely on the legacy literal adapter; the remaining H14 lifecycle
-and theme-refresh review is open.
+theme refresh and chart interactions still need focused H14 review.
 The H10 follow-up avoids a dashboard save when its loaded schema and widgets
 are unchanged. A real dashboard edit now enters the shared pending/saving/saved
 feedback sequence; repeated equal values do not write again. The Stats test
@@ -92,8 +92,7 @@ change signal. Theme changes rebuild chart presentation without repeating its
 GraphQL query, while page-owned selection state remains in place. Full-view
 chart chrome now reads effective CSS roles for surfaces, axes, grids, labels,
 and accents; map and categorical data colours retain their distinct meaning.
-The literal adapter remains temporarily for older data-series helpers. Growth
-captures its active data-zoom window before a chart is replaced and reapplies
+Growth captures its active data-zoom window before a chart is replaced and reapplies
 it after the theme refresh. Other chart-instance interactions still need
 focused live review.
 Live dashboard reload exposed a remaining H10 false-save path: normalizing
@@ -104,6 +103,17 @@ After installing 0.6.22, the Tag DNA full view rendered in both Arcade and
 Paper Picnic with theme-appropriate chart colours and readable cell labels.
 The original Arcade preference was restored. A fresh dashboard reload showed
 no pending or saved message, confirming the false-save fix in running Stash.
+The FileExtractor folder picker was opened in running Stash capture mode: the
+path and all ten visible folder names were masked, initial focus landed on
+Close, Tab stayed in the picker, and Escape returned focus to Browse. The
+dashboard filter dialog also focused Close, wrapped Shift+Tab to Cancel, and
+returned focus to Change filters on Escape while native result cards stayed
+hidden in capture mode. Responsive checks remain open. Stats chart options now
+use explicit CSS roles without the older recursive literal-colour remapper,
+which also preserves intentional white data outlines in light themes. The
+chart adapter still handles reduced motion and export backgrounds; its focused
+test covers those paths. The Tag DNA treemap rendered in running Stash after
+0.6.23 was installed. Interactive chart state still needs live review.
 
 ## Delivery approach
 

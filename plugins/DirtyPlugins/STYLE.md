@@ -43,7 +43,9 @@ radius, shadow, and control-height tokens. Read effective CSS values with
 `DirtyPlugins.theme.readRole(root, property)` when JavaScript must draw chart
 chrome; do not inspect `CSSStyleSheet.cssRules`, which can throw for a Stash
 theme stylesheet from another origin. Stats' category palettes and ECharts
-options stay in Stats. `DirtyPlugins.theme.defaultKey` is `classic` (Midnight);
+options stay in Stats. Chart presentation reads CSS roles when options are
+built; literal white and black remain available for data outlines and labels.
+`DirtyPlugins.theme.defaultKey` is `classic` (Midnight);
 a valid saved Stats theme wins, and an unknown value falls back visually
 without rewriting storage.
 
