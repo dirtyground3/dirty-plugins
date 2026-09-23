@@ -120,6 +120,12 @@ proposed path plus sensitive notes. No confirm/run action was invoked.
 DirtyMultiscreen's four live player panes displayed opaque documentation
 covers over the native players, including while the players were loading.
 Neither capture was saved to the repository.
+At 360px, the live Stats dashboard and DirtyTidy settings had no page-level
+horizontal overflow. The Tidy card's description was cramped by its version
+badge, so the shared settings header now stacks its metadata below the text
+at the existing mobile breakpoint. The running hub 0.4.12 showed the full
+description width and no horizontal overflow after reload. The 200% browser
+zoom check remains open.
 
 ## Delivery approach
 

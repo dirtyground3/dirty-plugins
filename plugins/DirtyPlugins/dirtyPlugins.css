@@ -761,6 +761,12 @@ body.dirty-ui-modal-open {
 }
 
 @media (max-width: 48rem) {
+  .dirty-plugins-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
   .dirty-plugins-setting {
     grid-template-columns: minmax(0, 1fr);
     row-gap: 0.5rem;
