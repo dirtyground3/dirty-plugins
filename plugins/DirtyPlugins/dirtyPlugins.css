@@ -34,6 +34,11 @@
   --dirty-ui-space-4: 1rem;
   --dirty-ui-space-6: 1.5rem;
   --dirty-ui-space-8: 2rem;
+  /* Native filter popups need to rise above integrated Stats dialogs. */
+  --dirty-ui-layer-integrated-dialog: 1030;
+  --dirty-ui-layer-integrated-dialog-raised: 1040;
+  --dirty-ui-layer-standalone-dialog: 12000;
+  --dirty-ui-layer-toast: 12050;
 }
 
 /* Keep host-theme text and surfaces available to the suite's own controls. */
@@ -531,7 +536,7 @@
   justify-content: center;
   padding: 1rem;
   position: fixed;
-  z-index: 12000;
+  z-index: var(--dirty-ui-layer-standalone-dialog);
 }
 
 body.dirty-ui-modal-open {
@@ -556,7 +561,7 @@ body.dirty-ui-modal-open {
   pointer-events: none;
   position: fixed;
   right: 1rem;
-  z-index: 12050;
+  z-index: var(--dirty-ui-layer-toast);
 }
 
 .dirty-ui-toast {

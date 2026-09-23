@@ -7,6 +7,8 @@ const vm = require("node:vm");
 
 const noop = function () {};
 const React = {
+  useRef(value) { return { current: value || null }; },
+  useEffect: noop,
   createElement(type, props, ...children) {
     const flat = children.flat();
     const nextProps = { ...(props || {}) };
@@ -74,6 +76,10 @@ assert.match(quietButton.props.className, /dirty-ui-control-quiet/);
 const alert = ui.SaveStatus({ state: "error", message: "Save failed" });
 assert.equal(alert.props.role, "alert");
 assert.equal(alert.props["data-state"], "error");
+const sharedDialog = ui.Dialog({ open: false, ariaLabel: "Filters", children: "Filter content" });
+assert.equal(sharedDialog.children[1].props.role, "dialog");
+assert.equal(sharedDialog.children[1].props["aria-label"], "Filters");
+assert.equal(sharedDialog.props.style.display, "none");
 
 const navigation = ui.NavAction({ to: "/plugins/dirty-rank", label: "Rank battles", icon: "⚔" });
 assert.equal(navigation.type, "a");
@@ -109,12 +115,56 @@ assert.equal(bodyClasses.has("dirty-ui-modal-open"), true, "a second dialog keep
 unlockSecond();
 assert.equal(bodyClasses.has("dirty-ui-modal-open"), false);
 
+const keydownListeners = new Set();
+document.addEventListener = (name, listener) => { if (name === "keydown") keydownListeners.add(listener); };
+document.removeEventListener = (name, listener) => { if (name === "keydown") keydownListeners.delete(listener); };
+document.querySelectorAll = () => [];
+const opener = { isConnected: true, focus() { document.activeElement = this; } };
+const managedDialog = { ...dialog, querySelector: () => firstFocus };
+document.activeElement = opener;
+let closed = 0;
+const releaseDialog = hub.ui.manageDialog({ dialog: managedDialog, opener, onClose() { closed += 1; }, allowNativePopup: true });
+assert.equal(document.activeElement, firstFocus, "a managed dialog focuses its first control");
+assert.equal(bodyClasses.has("dirty-ui-modal-open"), true);
+let topClosed = 0;
+const topDialog = { ...dialog, querySelector: () => lastFocus };
+const releaseTop = hub.ui.manageDialog({ dialog: topDialog, opener: firstFocus, onClose() { topClosed += 1; } });
+for (const listener of keydownListeners) listener({ key: "Escape", preventDefault() {} });
+assert.equal(closed, 0, "only the top dialog handles Escape");
+assert.equal(topClosed, 1);
+releaseTop();
+const nativePopup = { classList: { contains: name => name === "show" }, contains: () => false };
+document.querySelectorAll = () => [nativePopup];
+for (const listener of keydownListeners) listener({ key: "Escape", preventDefault() {} });
+assert.equal(closed, 0, "an open native popup keeps Escape for itself");
+document.querySelectorAll = () => [];
+for (const listener of keydownListeners) listener({ key: "Escape", preventDefault() {} });
+assert.equal(closed, 1);
+releaseDialog();
+releaseDialog();
+assert.equal(document.activeElement, opener, "dialog cleanup restores the opener once");
+assert.equal(bodyClasses.has("dirty-ui-modal-open"), false);
+assert.equal(keydownListeners.size, 0);
+const emptyDialog = { querySelector: () => null, focus() { document.activeElement = this; } };
+const releaseEmpty = hub.ui.manageDialog({ dialog: emptyDialog, opener });
+assert.equal(document.activeElement, emptyDialog, "a dialog without controls remains focusable");
+releaseEmpty();
+
 assert.equal(hub.captureEnabled("?docsCapture=1"), true);
 assert.equal(hub.captureEnabled("?censorMedia=1"), true);
 assert.equal(hub.captureEnabled("?docsCapture=0"), false);
 assert.equal(hub.captureUrl("/plugins/dirty-stats", "?docsCapture=1"), "/plugins/dirty-stats?docsCapture=1");
 assert.equal(hub.captureUrl("/plugins/dirty-plugins?plugin=dirtyTidy", "?censorMedia=1"), "/plugins/dirty-plugins?plugin=dirtyTidy&docsCapture=1");
 assert.equal(hub.captureUrl("/plugins/dirty-stats?docsCapture=0", "?docsCapture=1"), "/plugins/dirty-stats?docsCapture=1");
+window.location.search = "?docsCapture=1";
+assert.equal(hub.captureEnabled(window.location.search), true);
+window.location.search = "?sortby=date&sortdir=asc";
+assert.equal(hub.captureEnabled(window.location.search), true, "capture survives Stash's filter URL rewrite in this page");
+assert.equal(hub.captureUrl("/plugins/dirty-stats/dashboard"), "/plugins/dirty-stats/dashboard?docsCapture=1");
+window.location.search = "?docsCapture=0";
+assert.equal(hub.captureEnabled(window.location.search), false, "an explicit off switch ends the capture session");
+window.location.search = "";
+assert.equal(hub.captureEnabled(window.location.search), false);
 
 async function checkNativeLoading() {
   const NativeCard = function NativeCard() {};

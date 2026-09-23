@@ -111,6 +111,21 @@ assert.equal(editNodes.filter((node) => node.type === "button").length, 3, "the 
 assert.ok(!editNodes.some((node) => node.type === "Link" || node.type === "input" && node.props.type === "radio"), "edit mode hides the full view link and size radios");
 assert.ok(viewNodes.some((node) => node.type === "Link"), "the full view link returns outside edit mode");
 assert.ok(!viewNodes.some((node) => node.type === "input" && node.props.className === "dirty-stats-dashboard-title-input"), "the title is plain text outside edit mode");
+let chartTheme = { text: "#f0f0f0", primary: "#54d5ca" };
+context.window.__dirtyStatsPlugin.algorithms.themeColor = name => chartTheme[name];
+context.window.__dirtyStatsPlugin.algorithms.themePalette = () => [chartTheme.primary, "#f3c779"];
+context.window.__dirtyStatsPlugin.algorithms.aggregateRatings = () => ({ rows: [{ name: "8", value: 1 }], total: 1 });
+const chartWidget = helpers.normalizeWidgets([{ statistic: "ratings", size: "large" }])[0];
+const chartResources = { [helpers.resourceKey(chartWidget)]: { loading: false, rows: [{}] } };
+function chartOption() {
+  const tree = dashboard.Widget({ ...widgetProps, widget: chartWidget, resources: chartResources, editing: false });
+  return nodes(tree).find((node) => node.type && node.type.name === "Chart").props.option;
+}
+assert.equal(chartOption().legend.textStyle.color, "#f0f0f0", "dashboard chart text reads its current theme role");
+assert.equal(chartOption().color[0], "#54d5ca", "categorical colours come from the Stats palette");
+chartTheme = { text: "#3b3440", primary: "#0b7274" };
+assert.equal(chartOption().legend.textStyle.color, "#3b3440", "chart chrome refreshes with the effective theme");
+assert.equal(chartOption().color[0], "#0b7274", "chart data colours refresh with the selected palette");
 const cardOptions = nodes(dashboard.widgetOptions({ widget: normalized[5], onChange() {} }));
 assert.ok(cardOptions.some((node) => node.type.name === "NumberControl" && node.props.label === "Cards to display"), "performer cards expose a free numeric count instead of a fixed list");
 
@@ -125,6 +140,33 @@ for (const definition of Object.values(dashboard.registry)) {
   assert.ok(["scenes", "performers"].includes(definition.entity));
   assert.ok(definition.route.startsWith("/plugins/dirty-stats"));
 }
+
+context.window.location = { search: "?docsCapture=1" };
+context.window.PluginApi.React.useState = value => [value, () => {}];
+context.window.PluginApi.React.useRef = value => ({ current: value });
+context.window.PluginApi.React.useEffect = () => {};
+context.window.__dirtyStatsPlugin.algorithms.docsCaptureEnabled = () => true;
+const capturedFilters = dashboard.FilterChooser({ entity: "scenes", onChange() {} });
+assert.match(capturedFilters.props.className, /dirty-stats-capture-filter/);
+assert.match(capturedFilters.children[0], /Native filter results are hidden/, "capture mode does not mount potentially explicit native results");
+const cardWidget = normalized[5];
+const cardResource = { [helpers.resourceKey(cardWidget)]: { loading: false, rows: [{ id: "42" }] } };
+const cardRenderer = nodes(dashboard.Widget({ ...widgetProps, widget: cardWidget, resources: cardResource, editing: false }))
+  .find((node) => node.type && node.type.name === "PerformerCardWidget").type;
+let cardEffect, nativeLoads = 0, querySkipped = false;
+context.window.PluginApi.React.useEffect = effect => { cardEffect = effect; };
+context.window.PluginApi.components = {};
+context.window.PluginApi.GQL = { useFindPerformersQuery: ({ skip }) => { querySkipped = skip; return { loading: true }; } };
+context.window.DirtyPlugins.native = { ensureComponents: () => { nativeLoads += 1; return Promise.resolve([]); } };
+cardRenderer({ widget: cardWidget, rows: [{ id: "42" }] });
+cardEffect();
+assert.equal(nativeLoads, 0, "capture mode does not load native performer cards");
+assert.equal(querySkipped, true, "capture mode does not query native cards");
+context.window.location.search = "";
+context.window.__dirtyStatsPlugin.algorithms.docsCaptureEnabled = () => false;
+cardRenderer({ widget: cardWidget, rows: [{ id: "42" }] });
+cardEffect();
+assert.equal(nativeLoads, 1, "dashboard cards use the shared Stash component loader");
 
 context.window.DirtyPlugins.graphql = async (query, variables) => {
   assert.match(query, /DirtyStatsDashboardPerformerCards/, "the card widget uses its own limited performer query");

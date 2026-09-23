@@ -22,7 +22,6 @@
   var SIZE_LABELS = { small: "Small", medium: "Medium", large: "Large" };
   var THEME_VALUES = ["classic", "candy", "tropical", "arcade", "paper"];
   var THEME_LABELS = { classic: "Midnight", candy: "Candy Pop", tropical: "Tropical Punch", arcade: "Retro Arcade", paper: "Paper Picnic" };
-  var COLORS = ["#54d5ca", "#5687a2", "#f3c779", "#bc8542", "#8eb8f5", "#f29aaa", "#d9a6e8", "#aeb8c2"];
   var DASHBOARD_VERSION = 2;
   var MAX_WIDGETS = 24;
   var MAX_CARD_COUNT = 500;
@@ -218,15 +217,20 @@
       } catch (chartError) { setError(chartError.message); }
       return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); };
     }, [props.option, props.map]);
-    return error ? h("p", { className: "dirty-stats-dashboard-chart-error", role: "alert" }, error) : h("div", { ref: node, className: "dirty-stats-dashboard-chart", role: "img", "aria-label": props.label });
+    return h(React.Fragment, null,
+      error ? h("p", { className: "dirty-stats-dashboard-chart-error", role: "alert" }, error) : null,
+      h("div", { ref: node, className: "dirty-stats-dashboard-chart", role: "img", "aria-label": props.label, "aria-hidden": error ? "true" : undefined }));
   }
 
   function axes(size, xName, yName) {
     var detailed = size === "large";
+    var muted = algorithms.themeColor("muted");
+    var border = algorithms.themeColor("border");
+    var grid = algorithms.themeColor("grid");
     return {
       grid: { left: detailed ? 14 : 6, right: 10, top: 12, bottom: detailed ? 42 : 18, containLabel: detailed },
-      xAxis: { type: "value", name: detailed ? xName : "", nameLocation: "middle", nameGap: 28, axisLabel: { show: size !== "small", color: "#bbb" }, axisLine: { lineStyle: { color: "#788591" } }, splitLine: { show: size !== "small", lineStyle: { color: "#364655" } } },
-      yAxis: { type: "value", name: detailed ? yName : "", nameLocation: "middle", nameGap: 42, axisLabel: { show: size !== "small", color: "#bbb" }, splitLine: { show: size !== "small", lineStyle: { color: "#364655" } } }
+      xAxis: { type: "value", name: detailed ? xName : "", nameLocation: "middle", nameGap: 28, axisLabel: { show: size !== "small", color: muted }, axisLine: { lineStyle: { color: border } }, splitLine: { show: size !== "small", lineStyle: { color: grid } } },
+      yAxis: { type: "value", name: detailed ? yName : "", nameLocation: "middle", nameGap: 42, axisLabel: { show: size !== "small", color: muted }, splitLine: { show: size !== "small", lineStyle: { color: grid } } }
     };
   }
 
@@ -238,7 +242,7 @@
     var stats = algorithms.aggregateRatings(items, widget.options.rounding);
     var rated = stats.rows.filter(function (row) { return row.name !== "Unrated"; }).reduce(function (sum, row) { return sum + row.value; }, 0);
     var data = stats.rows.map(function (row) { return { name: row.name === "Unrated" ? "Unrated" : row.name + "/10", value: row.value }; });
-    var option = { backgroundColor: "transparent", color: COLORS, tooltip: { trigger: "item", renderMode: "richText" }, legend: { show: widget.size === "large", type: "scroll", bottom: 0, textStyle: { color: "#ddd" } }, series: [{ type: "pie", radius: widget.size === "small" ? ["58%", "82%"] : ["34%", "70%"], center: ["50%", widget.size === "large" ? "43%" : "50%"], label: { show: widget.size !== "small", color: "#ddd", formatter: widget.size === "large" ? "{b}: {c}" : "{b}" }, data: data }] };
+    var option = { backgroundColor: "transparent", color: algorithms.themePalette(), tooltip: { trigger: "item", renderMode: "richText" }, legend: { show: widget.size === "large", type: "scroll", bottom: 0, textStyle: { color: algorithms.themeColor("text") } }, series: [{ type: "pie", radius: widget.size === "small" ? ["58%", "82%"] : ["34%", "70%"], center: ["50%", widget.size === "large" ? "43%" : "50%"], label: { show: widget.size !== "small", color: algorithms.themeColor("text"), formatter: widget.size === "large" ? "{b}: {c}" : "{b}" }, data: data }] };
     return h(React.Fragment, null,
       h("div", { className: "dirty-stats-dashboard-metrics" }, metric(entity + "s", stats.total), metric("rated", stats.total ? Math.round(rated * 100 / stats.total) + "%" : "0%")),
       stats.total ? h(Chart, { option: option, label: entity + " rating distribution" }) : h(State, { title: "No " + entity + "s", detail: "The library has no data for this statistic." }));
@@ -250,10 +254,10 @@
     var top = stats.rows.slice(0, widget.size === "small" ? 5 : 8);
     var option;
     if (widget.size === "small" || !world) {
-      option = { backgroundColor: "transparent", grid: { left: 4, right: 8, top: 4, bottom: 4, containLabel: true }, xAxis: { type: "value", show: false }, yAxis: { type: "category", inverse: true, data: top.map(function (row) { return row.name; }), axisLabel: { color: "#ddd", width: 90, overflow: "truncate" }, axisLine: { show: false }, axisTick: { show: false } }, series: [{ type: "bar", data: top.map(function (row) { return row.value; }), itemStyle: { color: "#54d5ca", borderRadius: [0, 3, 3, 0] }, label: { show: true, position: "right", color: "#ddd" } }] };
+      option = { backgroundColor: "transparent", grid: { left: 4, right: 8, top: 4, bottom: 4, containLabel: true }, xAxis: { type: "value", show: false }, yAxis: { type: "category", inverse: true, data: top.map(function (row) { return row.name; }), axisLabel: { color: algorithms.themeColor("text"), width: 90, overflow: "truncate" }, axisLine: { show: false }, axisTick: { show: false } }, series: [{ type: "bar", data: top.map(function (row) { return row.value; }), itemStyle: { color: algorithms.themeColor("primary"), borderRadius: [0, 3, 3, 0] }, label: { show: true, position: "right", color: algorithms.themeColor("text") } }] };
     } else {
       var counts = new Map(stats.rows.map(function (row) { return [row.name, row.value]; }));
-      option = { backgroundColor: "transparent", tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.name + ": " + (Number(p.value) || 0); } }, visualMap: { show: widget.size === "large", min: 0, max: Math.max(1, top.length ? top[0].value : 0), left: 8, bottom: 6, textStyle: { color: "#ddd" }, inRange: { color: ["#364655", "#5687a2", "#54d5ca"] } }, series: [{ type: "map", map: "dirtyStatsDashboardWorld", projection: algorithms.eckertIV, roam: widget.size === "large", label: { show: widget.size === "large" && widget.options.showNumbers, color: "#fff", formatter: function (p) { return Number(p.value) > 0 ? String(p.value) : ""; } }, itemStyle: { borderColor: "#788591", borderWidth: .5 }, emphasis: { itemStyle: { areaColor: "#bc8542" } }, data: world.features.map(function (feature) { return { name: feature.properties.name, value: counts.get(feature.properties.name) || 0 }; }) }] };
+      option = { backgroundColor: "transparent", tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.name + ": " + (Number(p.value) || 0); } }, visualMap: { show: widget.size === "large", min: 0, max: Math.max(1, top.length ? top[0].value : 0), left: 8, bottom: 6, textStyle: { color: algorithms.themeColor("text") }, inRange: { color: [algorithms.themeColor("grid"), algorithms.themeColor("secondary"), algorithms.themeColor("primary")] } }, series: [{ type: "map", map: "dirtyStatsDashboardWorld", projection: algorithms.eckertIV, roam: widget.size === "large", label: { show: widget.size === "large" && widget.options.showNumbers, color: "#fff", formatter: function (p) { return Number(p.value) > 0 ? String(p.value) : ""; } }, itemStyle: { borderColor: algorithms.themeColor("border"), borderWidth: .5 }, emphasis: { itemStyle: { areaColor: algorithms.themeColor("highlight") } }, data: world.features.map(function (feature) { return { name: feature.properties.name, value: counts.get(feature.properties.name) || 0 }; }) }] };
     }
     return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("performers", stats.total), metric("countries", stats.rows.length), metric("top country", top.length ? top[0].name : "—")), h(Chart, { option: option, map: widget.size !== "small", label: "Performer origin distribution" }));
   }
@@ -262,27 +266,27 @@
     var stats = algorithms.aggregateGrowth(scenes, null, widget.options.dateBasis, widget.options.grouping);
     var daily = algorithms.aggregateGrowth(scenes, null, widget.options.dateBasis, "day");
     var forecast = algorithms.forecastGrowth(daily, capacity && capacity.total);
-    var option = { backgroundColor: "transparent", useUTC: true, grid: { left: 8, right: 14, top: 12, bottom: widget.size === "large" ? 45 : 20, containLabel: widget.size !== "small" }, tooltip: { trigger: "axis", renderMode: "richText" }, xAxis: { type: "time", axisLabel: { show: widget.size !== "small", color: "#bbb", hideOverlap: true }, axisLine: { lineStyle: { color: "#788591" } } }, yAxis: { type: "value", min: 0, axisLabel: { show: widget.size !== "small", color: "#bbb", formatter: algorithms.formatBytes }, splitLine: { show: widget.size !== "small", lineStyle: { color: "#364655" } } }, dataZoom: widget.size === "large" ? [{ type: "inside" }, { type: "slider", bottom: 5, height: 16 }] : [], series: [{ type: "line", step: "end", showSymbol: false, lineStyle: { color: "#54d5ca", width: 2 }, areaStyle: { color: "#54d5ca", opacity: .15 }, data: stats.points, markLine: { silent: true, symbol: "none", data: widget.options.showCapacity && capacity && capacity.total > 0 ? [{ yAxis: capacity.total, label: { color: "#ddd", formatter: "Capacity " + algorithms.formatBytes(capacity.total) }, lineStyle: { color: "#9da8b2", type: "dashed" } }] : [] } }] };
-    if (widget.options.showForecast && forecast.points) option.series.push({ name: "Forecast", type: "line", showSymbol: false, lineStyle: { color: "#f3c779", type: "dashed", width: 2 }, data: forecast.points });
+    var option = { backgroundColor: "transparent", useUTC: true, grid: { left: 8, right: 14, top: 12, bottom: widget.size === "large" ? 45 : 20, containLabel: widget.size !== "small" }, tooltip: { trigger: "axis", renderMode: "richText" }, xAxis: { type: "time", axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), hideOverlap: true }, axisLine: { lineStyle: { color: algorithms.themeColor("border") } } }, yAxis: { type: "value", min: 0, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: algorithms.formatBytes }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, dataZoom: widget.size === "large" ? [{ type: "inside" }, { type: "slider", bottom: 5, height: 16 }] : [], series: [{ type: "line", step: "end", showSymbol: false, lineStyle: { color: algorithms.themeColor("primary"), width: 2 }, areaStyle: { color: algorithms.themeColor("primary"), opacity: .15 }, data: stats.points, markLine: { silent: true, symbol: "none", data: widget.options.showCapacity && capacity && capacity.total > 0 ? [{ yAxis: capacity.total, label: { color: algorithms.themeColor("text"), formatter: "Capacity " + algorithms.formatBytes(capacity.total) }, lineStyle: { color: algorithms.themeColor("muted"), type: "dashed" } }] : [] } }] };
+    if (widget.options.showForecast && forecast.points) option.series.push({ name: "Forecast", type: "line", showSymbol: false, lineStyle: { color: algorithms.themeColor("accent"), type: "dashed", width: 2 }, data: forecast.points });
     return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("library size", algorithms.formatBytes(stats.bytes)), metric("included scenes", stats.included), widget.size === "large" && widget.options.showForecast && forecast.reachedAt ? metric("capacity estimate", new Date(forecast.reachedAt).toISOString().slice(0, 10)) : stats.excluded ? metric("excluded", stats.excluded) : null), stats.points.length ? h(Chart, { option: option, label: "Cumulative content growth" }) : h(State, { title: "No dated content", detail: "No files have usable dates and sizes." }));
   }
 
   function ageWidget(scenes, widget) {
     var stats = algorithms.aggregateAges(scenes);
     var common = stats.rows.reduce(function (best, row) { return !best || row.count > best.count ? row : best; }, null);
-    var option = { backgroundColor: "transparent", grid: { left: 8, right: 8, top: 8, bottom: widget.size === "large" ? 38 : 18, containLabel: widget.size !== "small" }, tooltip: { trigger: "axis", renderMode: "richText" }, xAxis: { type: "category", name: widget.size === "large" ? "Age" : "", data: stats.rows.map(function (row) { return row.age; }), axisLabel: { show: widget.size !== "small", color: "#bbb", interval: "auto" }, axisLine: { lineStyle: { color: "#788591" } } }, yAxis: { type: "value", name: widget.size === "large" ? "Performers" : "", minInterval: 1, axisLabel: { show: widget.size !== "small", color: "#bbb" }, splitLine: { show: widget.size !== "small", lineStyle: { color: "#364655" } } }, dataZoom: widget.size === "large" ? [{ type: "inside" }] : [], series: [{ type: "bar", data: stats.rows.map(function (row) { return row.count; }), itemStyle: { color: "#54d5ca" } }] };
+    var option = { backgroundColor: "transparent", grid: { left: 8, right: 8, top: 8, bottom: widget.size === "large" ? 38 : 18, containLabel: widget.size !== "small" }, tooltip: { trigger: "axis", renderMode: "richText" }, xAxis: { type: "category", name: widget.size === "large" ? "Age" : "", data: stats.rows.map(function (row) { return row.age; }), axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), interval: "auto" }, axisLine: { lineStyle: { color: algorithms.themeColor("border") } } }, yAxis: { type: "value", name: widget.size === "large" ? "Performers" : "", minInterval: 1, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted") }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, dataZoom: widget.size === "large" ? [{ type: "inside" }] : [], series: [{ type: "bar", data: stats.rows.map(function (row) { return row.count; }), itemStyle: { color: algorithms.themeColor("primary") } }] };
     return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("performers", stats.performers), metric("most common age", common ? common.age : "—", common ? common.count + " performers" : ""), widget.size === "large" ? metric("scenes", stats.scenes) : null), stats.rows.length ? h(Chart, { option: option, label: "Performer ages at scene date" }) : h(State, { title: "No age data", detail: "Scene dates and full performer birthdates are required." }));
   }
 
   function scatterWidget(points, widget, names, highlighted) {
     var chartAxes = axes(widget.size, names[0], names[1]);
-    var option = { backgroundColor: "transparent", grid: chartAxes.grid, xAxis: chartAxes.xAxis, yAxis: chartAxes.yAxis, tooltip: { trigger: "item", renderMode: "richText" }, series: [{ type: "scatter", symbolSize: widget.size === "small" ? 5 : 8, progressive: 4000, data: points, itemStyle: { color: "#54d5ca", opacity: .75 } }] };
+    var option = { backgroundColor: "transparent", grid: chartAxes.grid, xAxis: chartAxes.xAxis, yAxis: chartAxes.yAxis, tooltip: { trigger: "item", renderMode: "richText" }, series: [{ type: "scatter", symbolSize: widget.size === "small" ? 5 : 8, progressive: 4000, data: points, itemStyle: { color: algorithms.themeColor("primary"), opacity: .75 } }] };
     return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("points", points.length), highlighted != null ? metric("highlighted", highlighted) : null), points.length ? h(Chart, { option: option, label: names[0] + " versus " + names[1] }) : h(State, { title: "No rated data", detail: "No matching records contain the required values." }));
   }
 
   function performerScatterWidget(performers, widget) {
     var stats = algorithms.aggregateScatter(performers, widget.options.minRating, widget.options.maxScenes);
-    var points = stats.points.map(function (point) { return { name: point.name, value: [point.rating, point.scenes], itemStyle: { color: point.highlight ? "#f3c779" : "#54d5ca" } }; });
+    var points = stats.points.map(function (point) { return { name: point.name, value: [point.rating, point.scenes], itemStyle: { color: point.highlight ? algorithms.themeColor("accent") : algorithms.themeColor("primary") } }; });
     return scatterWidget(points, widget, ["Rating", "Scenes"], stats.highlights);
   }
 
@@ -295,7 +299,7 @@
   function repeatOffenderWidget(scenes, widget) {
     var stats = algorithms.aggregateRepeatOffenders(scenes);
     var data = algorithms.repeatOffenderSeriesData(stats, null);
-    var option = { backgroundColor: "transparent", grid: { left: 8, right: 12, top: 10, bottom: widget.size === "large" ? 42 : 18, containLabel: widget.size !== "small" }, tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { if (!p.data || !p.data.id) return p.seriesName; return p.data.title + "\n" + p.data.views + " views\nTop " + p.value[0].toFixed(1) + "% account for " + p.value[1].toFixed(1) + "% of views"; } }, xAxis: { type: "value", name: widget.size === "large" ? "Scenes ranked by views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: "#bbb", formatter: "{value}%" }, axisLine: { lineStyle: { color: "#788591" } }, splitLine: { show: widget.size !== "small", lineStyle: { color: "#364655" } } }, yAxis: { type: "value", name: widget.size === "large" ? "Cumulative views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: "#bbb", formatter: "{value}%" }, splitLine: { show: widget.size !== "small", lineStyle: { color: "#364655" } } }, series: [{ name: "Cumulative views", type: "line", showSymbol: false, sampling: "lttb", lineStyle: { color: "#54d5ca", width: 3 }, areaStyle: { color: "#54d5ca", opacity: .16 }, data: data, markArea: { silent: true, label: { show: widget.size === "large", color: "#ddd", formatter: "Top 5%" }, itemStyle: { color: "rgba(243,199,121,.10)" }, data: [[{ xAxis: 0 }, { xAxis: 5 }]] } }, { name: "Equal distribution", type: "line", showSymbol: false, silent: true, lineStyle: { color: "#788591", type: "dashed", width: 1 }, data: [[0, 0], [100, 100]] }] };
+    var option = { backgroundColor: "transparent", grid: { left: 8, right: 12, top: 10, bottom: widget.size === "large" ? 42 : 18, containLabel: widget.size !== "small" }, tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { if (!p.data || !p.data.id) return p.seriesName; return p.data.title + "\n" + p.data.views + " views\nTop " + p.value[0].toFixed(1) + "% account for " + p.value[1].toFixed(1) + "% of views"; } }, xAxis: { type: "value", name: widget.size === "large" ? "Scenes ranked by views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: "{value}%" }, axisLine: { lineStyle: { color: algorithms.themeColor("border") } }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, yAxis: { type: "value", name: widget.size === "large" ? "Cumulative views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: "{value}%" }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, series: [{ name: "Cumulative views", type: "line", showSymbol: false, sampling: "lttb", lineStyle: { color: algorithms.themeColor("primary"), width: 3 }, areaStyle: { color: algorithms.themeColor("primary"), opacity: .16 }, data: data, markArea: { silent: true, label: { show: widget.size === "large", color: algorithms.themeColor("text"), formatter: "Top 5%" }, itemStyle: { color: "rgba(243,199,121,.10)" }, data: [[{ xAxis: 0 }, { xAxis: 5 }]] } }, { name: "Equal distribution", type: "line", showSymbol: false, silent: true, lineStyle: { color: algorithms.themeColor("border"), type: "dashed", width: 1 }, data: [[0, 0], [100, 100]] }] };
     var share = Math.round(stats.topShare * 10) / 10;
     return h(React.Fragment, null,
       h("div", { className: "dirty-stats-dashboard-metrics" }, metric("top 5% view share", stats.totalViews ? share.toFixed(1) + "%" : "—"), metric("recorded views", stats.totalViews), widget.size === "large" ? metric("viewed scenes", stats.viewedScenes + " / " + stats.totalScenes) : null),
@@ -320,7 +324,7 @@
     var maxBytes = Math.max.apply(null, [1].concat(points.map(function (point) { return point.bytes; })));
     var data = points.map(function (point) { return { name: point.name, bytes: point.bytes, value: [point.scenes, Math.round(point.rating * 10) / 10], symbolSize: 8 + 28 * Math.sqrt(point.bytes / maxBytes) }; });
     var chartAxes = axes(widget.size, "Scenes", "Average rating"); chartAxes.yAxis.max = 10;
-    var option = { backgroundColor: "transparent", grid: chartAxes.grid, xAxis: chartAxes.xAxis, yAxis: chartAxes.yAxis, tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.name + "\n" + p.value[0] + " scenes\nRating " + p.value[1] + "/10\n" + algorithms.formatBytes(p.data.bytes); } }, series: [{ type: "scatter", data: data, label: { show: widget.size === "large" && points.length <= 20, formatter: "{b}", color: "#ddd", position: "right" }, itemStyle: { color: "#54d5ca", opacity: .8 } }] };
+    var option = { backgroundColor: "transparent", grid: chartAxes.grid, xAxis: chartAxes.xAxis, yAxis: chartAxes.yAxis, tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.name + "\n" + p.value[0] + " scenes\nRating " + p.value[1] + "/10\n" + algorithms.formatBytes(p.data.bytes); } }, series: [{ type: "scatter", data: data, label: { show: widget.size === "large" && points.length <= 20, formatter: "{b}", color: algorithms.themeColor("text"), position: "right" }, itemStyle: { color: algorithms.themeColor("primary"), opacity: .8 } }] };
     return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("studios", points.length), metric("scene storage", algorithms.formatBytes(stats.totalBytes))), data.length ? h(Chart, { option: option, label: "Studio scene count versus average rating" }) : h(State, { title: "No rated studios", detail: "No studios meet this widget's minimum scene count." }));
   }
 
@@ -339,7 +343,7 @@
     var limit = configuredLimit === 0 ? 0 : widget.size === "small" ? Math.min(30, configuredLimit) : widget.size === "medium" ? Math.min(60, configuredLimit) : configuredLimit;
     var stats = algorithms.aggregateConstellation(scenes, limit, widget.options.minShared);
     var largest = Math.max.apply(null, [1].concat(stats.nodes.map(function (node) { return node.value; })));
-    var option = { backgroundColor: "transparent", tooltip: { trigger: "item", renderMode: "richText" }, series: [{ type: "graph", layout: "force", roam: widget.size === "large", draggable: widget.size === "large", data: stats.nodes.map(function (node, index) { return { id: node.id, name: node.name, value: node.value, symbolSize: 7 + 24 * Math.sqrt(node.value / largest), itemStyle: { color: node.genderColor }, label: { show: widget.size === "large" && index < 15, color: "#ddd", position: "right" } }; }), links: stats.links.map(function (link) { return { source: link.source, target: link.target, value: link.value, lineStyle: { color: "#5687a2", opacity: .25, width: 1 + Math.log(link.value) / Math.log(2) } }; }), force: { initLayout: "circular", repulsion: widget.size === "small" ? 70 : 150, edgeLength: widget.size === "small" ? 35 : 70, gravity: .05, layoutAnimation: true }, emphasis: { focus: "adjacency" } }] };
+    var option = { backgroundColor: "transparent", tooltip: { trigger: "item", renderMode: "richText" }, series: [{ type: "graph", layout: "force", roam: widget.size === "large", draggable: widget.size === "large", data: stats.nodes.map(function (node, index) { return { id: node.id, name: node.name, value: node.value, symbolSize: 7 + 24 * Math.sqrt(node.value / largest), itemStyle: { color: node.genderColor }, label: { show: widget.size === "large" && index < 15, color: algorithms.themeColor("text"), position: "right" } }; }), links: stats.links.map(function (link) { return { source: link.source, target: link.target, value: link.value, lineStyle: { color: algorithms.themeColor("secondary"), opacity: .25, width: 1 + Math.log(link.value) / Math.log(2) } }; }), force: { initLayout: "circular", repulsion: widget.size === "small" ? 70 : 150, edgeLength: widget.size === "small" ? 35 : 70, gravity: .05, layoutAnimation: true }, emphasis: { focus: "adjacency" } }] };
     return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("performers", stats.totalPerformers), metric("connections", stats.links.length), metric("scenes", stats.totalScenes)), stats.nodes.length ? h(Chart, { option: option, label: "Cast constellation network" }) : h(State, { title: "No cast connections", detail: "No performer connections meet this widget's threshold." }));
   }
 
@@ -367,17 +371,14 @@
     var readyState = React.useState(Boolean(api.components.PerformerCard)), ready = readyState[0], setReady = readyState[1];
     var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
     React.useEffect(function () {
+      if (docsCapture || !ids.length) return;
       if (api.components.PerformerCard) { setReady(true); return; }
       var active = true;
-      if (!api.utils || !api.utils.loadComponents || !api.loadableComponents.Performers) { setError("Stash's native performer cards are unavailable."); return; }
-      api.utils.loadComponents([api.loadableComponents.Performers]).then(function () {
-        if (active) {
-          if (api.components.PerformerCard) setReady(true);
-          else setError("Stash's native performer cards could not be loaded.");
-        }
+      hub.native.ensureComponents("Performers", ["PerformerCard"]).then(function () {
+        if (active) setReady(true);
       }).catch(function (loadError) { if (active) setError(loadError.message || String(loadError)); });
       return function () { active = false; };
-    }, []);
+    }, [docsCapture, ids.length]);
     var query = api.GQL.useFindPerformersQuery({
       variables: { performer_ids: ids, filter: { page: 1, per_page: props.widget.options.cardCount }, performer_filter: {} },
       skip: docsCapture || !ready || !ids.length
@@ -484,11 +485,13 @@
   }
 
   function DashboardFilterChooser(props) {
+    var docsCapture = algorithms.docsCaptureEnabled(window.location.search);
     var readyState = React.useState(false), ready = readyState[0], setReady = readyState[1];
     var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
     var changeRef = React.useRef(props.onChange);
     changeRef.current = props.onChange;
     React.useEffect(function () {
+      if (docsCapture) return;
       var active = true;
       window.__dirtyStatsDashboardFilterActive = props.entity;
       window.__dirtyStatsDashboardFilterListener = function (entity, filter) {
@@ -505,7 +508,9 @@
         if (window.__dirtyStatsDashboardFilterActive === props.entity) window.__dirtyStatsDashboardFilterActive = null;
         window.__dirtyStatsDashboardFilterListener = null;
       };
-    }, [props.entity]);
+    }, [props.entity, docsCapture]);
+    if (docsCapture) return h("div", { className: "dirty-stats-dashboard-native-filter dirty-stats-capture-filter", role: "note" },
+      "Native filter results are hidden while capturing documentation.");
     if (error) return h(State, { title: "Filters unavailable", detail: error, role: "alert" });
     if (!ready) return h(State, { title: "Loading " + props.entity + " filters…" });
     var FilteredList = props.entity === "performers" ? api.components.FilteredPerformerList : api.components.FilteredSceneList;
@@ -514,28 +519,15 @@
   }
 
   function DashboardFilterDialog(props) {
-    var dialog = React.useRef(null);
-    React.useEffect(function () {
-      var previous = document.activeElement;
-      var unlockScroll = hub.ui.lockBodyScroll();
-      var focusTimer = window.setTimeout(function () {
-        var first = dialog.current && dialog.current.querySelector("button, input, select, [tabindex=\"0\"]");
-        if (first) first.focus();
-      }, 0);
-      return function () {
-        window.clearTimeout(focusTimer);
-        unlockScroll();
-        if (previous && typeof previous.focus === "function") previous.focus();
-      };
-    }, []);
-    function keyDown(event) {
-      if (event.key === "Escape") { event.preventDefault(); props.onClose(); return; }
-      hub.ui.trapDialogTab(event, dialog.current);
-    }
-    return api.ReactDOM.createPortal(h("div", { className: "dirty-stats-dashboard-dialog-backdrop " + algorithms.statsThemeClass(), onMouseDown: function (event) { if (event.target === event.currentTarget) props.onClose(); } },
-      h("section", { ref: dialog, className: "dirty-stats-dashboard-filter-dialog dirty-ui-panel", role: "dialog", "aria-modal": true, "aria-labelledby": props.labelId, onKeyDown: keyDown },
-        h("header", { className: "dirty-stats-dashboard-dialog-header" }, h("h2", { id: props.labelId }, props.title), h("button", { type: "button", className: "dirty-ui-icon-button dirty-ui-icon-button-compact", onClick: props.onClose, "aria-label": "Close filter dialog" }, "×")),
-        props.children)), document.body);
+    return h(sharedReact.Dialog, {
+      backdropClassName: "dirty-stats-dashboard-dialog-backdrop " + algorithms.statsThemeClass(),
+      className: "dirty-stats-dashboard-filter-dialog dirty-ui-panel",
+      labelledBy: props.labelId,
+      allowNativePopup: true,
+      onClose: props.onClose,
+    },
+      h("header", { className: "dirty-stats-dashboard-dialog-header" }, h("h2", { id: props.labelId }, props.title), h("button", { type: "button", className: "dirty-ui-icon-button dirty-ui-icon-button-compact", onClick: props.onClose, "aria-label": "Close filter dialog" }, "×")),
+      props.children);
   }
 
   function DashboardWidget(props) {
@@ -707,5 +699,5 @@
         h("div", { className: "dirty-stats-dashboard-grid" + (editing ? " is-editing" : "") + (draggingId ? " is-reordering" : "") }, widgets.map(function (widget, index) { return h(DashboardWidget, { key: widget.id, widget: widget, index: index, editing: editing, dragging: draggingId === widget.id, resources: resources, onDragStart: function (event) { startDrag(index, event); }, onDragKeyDown: function (event) { moveWithKeyboard(index, event); }, onRemove: function () { remove(index); }, onTitle: function (title) { replace(index, { title: title }); }, onSize: function (size) { replace(index, { size: size }); }, onFilter: function () { beginFilterEdit(index); }, onOptions: function (options) { replace(index, { options: normalizeOptions(WIDGETS[widget.statistic], options) }); } }); })));
   }
 
-  window.__dirtyStatsDashboard = { Component: DashboardPage, Widget: DashboardWidget, widgetOptions: WidgetOptions, algorithms: { normalizeWidgets: normalizeWidgets, normalizeOptions: normalizeOptions, normalizeFilter: normalizeFilter, widgetTitle: widgetTitle, widgetHeightUnits: widgetHeightUnits, requiredGroups: requiredGroups, requiredResources: requiredResources, resourceKey: resourceKey, fetchPages: fetchPages, reorderWidgets: reorderWidgets, nextWidgetId: nextWidgetId }, registry: WIDGETS, defaults: DEFAULT_WIDGETS, maxWidgets: MAX_WIDGETS };
+  window.__dirtyStatsDashboard = { Component: DashboardPage, Widget: DashboardWidget, FilterChooser: DashboardFilterChooser, widgetOptions: WidgetOptions, algorithms: { normalizeWidgets: normalizeWidgets, normalizeOptions: normalizeOptions, normalizeFilter: normalizeFilter, widgetTitle: widgetTitle, widgetHeightUnits: widgetHeightUnits, requiredGroups: requiredGroups, requiredResources: requiredResources, resourceKey: resourceKey, fetchPages: fetchPages, reorderWidgets: reorderWidgets, nextWidgetId: nextWidgetId }, registry: WIDGETS, defaults: DEFAULT_WIDGETS, maxWidgets: MAX_WIDGETS };
 })();

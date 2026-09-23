@@ -283,8 +283,14 @@ metric components, and visible pending/saving/saved/error feedback for display
 settings. Its five saved visual themes remain available. Charts read their
 semantic colours from the effective page CSS, and reduced-motion mode disables
 chart animation. Native Stash filters and performer/scene cards remain native.
+Both filter dialogs use the shared DirtyPlugins dialog lifecycle; nested Stash
+filter popups keep their own keyboard focus and Escape handling.
+Common text and accent roles have measured contrast on every solid theme
+surface; the small calendar count labels use a dedicated readable accent.
 For safe documentation views, open a Stats route with `?docsCapture=1`; native
 cards are replaced with placeholders and the capture mode follows suite links.
+Dashboard filter dialogs also use a placeholder in capture mode so their
+native result lists cannot expose media.
 
 Future statistics will use the same selector with their own filters and optional
 settings: scene bitrates. That view is not implemented yet.

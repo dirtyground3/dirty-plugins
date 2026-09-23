@@ -41,6 +41,53 @@ The approved Rank pilot is the visual reference. The hub exports one `classic`/M
 
 The safe synthetic `tests/fixtures/dirty_suite_harmony.html` fixture covers the shared controls and plugin samples without private media. Automated behaviour and source checks are complete for this batch; live visual checks across Stash themes, 200% zoom, nested native filter popups, and chart interactions remain in the verification matrix below. The legacy literal-to-role chart adapter and Stats stylesheet specificity can be consolidated further after those checks.
 
+The next H09/H13/H18 pass adds one shared React dialog and DOM dialog manager.
+FileExtractor's folder picker and both Stats filter dialogs now share initial
+focus, Tab containment, Escape handling, stacked scroll lock, and focus return;
+Stats yields keyboard handling to an open native filter popup. Named layer
+tokens retain the integrated Stats levels below native popups and the separate
+standalone picker level. The new [UI guide](plugins/DirtyPlugins/STYLE.md)
+documents component recipes, themes, dependencies, and capture review. Live
+nested-popup and zoom checks remain necessary before marking H09/H11 complete.
+The live Stats check also found that Stash drops `docsCapture=1` when its native
+filter changes the route query. Capture mode now stays active for that page
+session until an explicit `docsCapture=0` or a full reload without the flag;
+the synthetic contract covers this transition. In the running Stash age view,
+the performer cards stayed hidden after Stash rewrote the URL. The performer
+filter dialog focused its Done action, kept keyboard focus within the dialog,
+yielded Escape to Stash's nested Edit Filter popup, then closed and restored
+focus to its trigger. Dashboard-dialog, 200% zoom, and cross-theme checks remain.
+The Stats dashboard's common axis helper now takes muted, border, and grid
+colours directly from effective CSS roles. Other chart options still use the
+legacy literal adapter and remain a separate H14 cleanup.
+The H11 contrast pass measured common Stats text roles against base, panel,
+and alternate-panel surfaces for all five themes. Paper Picnic's teal and
+muted text, Candy/Tropical primary accents, and Paper calendar count text now
+meet 4.5:1 in those solid-surface pairs. Dense calendar counts are larger.
+Translucent overlays, graph labels, zoom, and narrow-screen checks remain.
+The live dashboard check found native result cards inside its filter dialog
+during capture mode. That dialog now renders a synthetic results placeholder
+instead, while normal filter selection remains native. A regression test
+guards the capture branch. The running Stash dialog was reopened after reload:
+it showed only the placeholder, retained its close/cancel actions, and Escape
+returned focus to the Change filters button.
+Dashboard chart chrome now reads effective Stats theme roles directly for
+labels, axes, grids, and accents. Rating slices use the Stats categorical
+palette explicitly. A theme-switch test covers both types of colour, and a
+chart error keeps its mount node so a later option can recover. Full-view
+charts still rely on the legacy literal adapter; the remaining H14 lifecycle
+and theme-refresh review is open.
+The H10 follow-up avoids a dashboard save when its loaded schema and widgets
+are unchanged. A real dashboard edit now enters the shared pending/saving/saved
+feedback sequence; repeated equal values do not write again. The Stats test
+covers both paths.
+The dashboard performer-card widget now uses the shared native component loader,
+so it shares in-flight loads with the full Stats view and keeps Stash's actual
+PerformerCard. Documentation capture skips that native load entirely.
+Treemap labels now choose light or dark text from each cell's actual fill. The
+Stats test measures at least 4.5:1 contrast for low/high cells across all five
+themes; both the dashboard and full Tag DNA view use those same data items.
+
 ## Delivery approach
 
 Build outward from DirtyPlugins: agree the visual rules, extend small shared primitives, migrate actual consumers, then remove duplication. Each change should leave the suite usable with its native Stash integrations and existing settings. Keep component additions additive until their consumers have migrated.

@@ -232,6 +232,24 @@ assert.equal(a.tagDnaMetricLabel("play_count"), "Views per scene");
 assert.equal(a.tagDnaSeriesData(tagDna, "rating", 1, "a").length, 1);
 assert.equal(a.tagDnaSeriesData(tagDna, "rating", 1, "a")[0].itemStyle.borderColor, a.statsTheme().selection);
 assert.equal(a.tagDnaSeriesData(tagDna, "rating", 0, null).length, 2, "zero removes the tag limit");
+function treemapContrast(item) {
+  const channels = item.itemStyle.color.match(/\d+/g).map(Number);
+  const linear = channels.map(channel => {
+    const value = channel / 255;
+    return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
+  });
+  const luminance = linear[0] * .2126 + linear[1] * .7152 + linear[2] * .0722;
+  return item.label.color === "#fff" ? 1.05 / (luminance + .05) : (luminance + .05) / .05;
+}
+const savedTagTheme = a.statsSettings.visualTheme;
+for (const theme of ["classic", "candy", "tropical", "arcade", "paper"]) {
+  a.statsSettings.visualTheme = theme;
+  const samples = { rows: [{ id: "low", name: "Low", rating: 0, scenes: 1 }, { id: "high", name: "High", rating: 10, scenes: 1 }] };
+  for (const item of a.tagDnaSeriesData(samples, "rating", 0, null)) {
+    assert(treemapContrast(item) >= 4.5, `${theme} treemap label must contrast with its own cell`);
+  }
+}
+a.statsSettings.visualTheme = savedTagTheme;
 assert.deepEqual(JSON.parse(JSON.stringify(a.tagDnaScenes([
   {id: "s1", tags: [{id: "a"}]}, {id: "s1", tags: [{id: "a"}]}, {id: "s2", tags: [{id: "b"}]}
 ], "a").map(scene => scene.id))), ["s1"]);
@@ -494,7 +512,7 @@ assert.equal(routes.length, 1);
   assert.equal(a.statsTheme("unknown").key, "classic", "unknown themes fall back to the install default");
   assert.equal(a.statsThemeClass(), "dirty-stats-theme-candy");
   assert.equal(a.themePalette().length, 8);
-  assert.equal(a.themedChartOption({ color: "#54d5ca", label: { color: "#ddd" } }).color, "#ff79c6");
+  assert.equal(a.themedChartOption({ color: "#54d5ca", label: { color: "#ddd" } }).color, "#ff82cb");
   context.document = { querySelector: () => ({}) };
   context.window.DirtyPlugins.theme.readRole = (_page, property) => property === "--dirty-stats-primary" ? "#123456" : "";
   assert.equal(a.themeColor("primary"), "#123456", "charts read the effective CSS theme role");
@@ -597,6 +615,16 @@ assert.equal(routes.length, 1);
   a.setStatsSetting("growthGrouping", "day");
   await new Promise((resolve) => setTimeout(resolve, 500));
   assert.equal(context.window.__dirtyStatsPlugin.getSaveStatus().state, "saved", "a later valid edit recovers from a failed save");
+
+  const savedBeforeDashboard = savedSettings.length;
+  context.window.__dirtyStatsPlugin.setSettingExtra("dashboardWidgets", [{ id: "saved-widget" }]);
+  assert.equal(context.window.__dirtyStatsPlugin.getSaveStatus().state, "pending", "dashboard edits show pending feedback");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(savedSettings.length, savedBeforeDashboard + 1, "a changed dashboard persists once");
+  assert.deepEqual(savedSettings.at(-1).settings.dashboardWidgets, [{ id: "saved-widget" }]);
+  context.window.__dirtyStatsPlugin.setSettingExtra("dashboardWidgets", [{ id: "saved-widget" }]);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(savedSettings.length, savedBeforeDashboard + 1, "reopening an unchanged dashboard does not write or show a false save");
 
   console.log("DirtyStats country aggregation, growth, filters, persisted display settings and registration passed");
 })().catch((error) => {

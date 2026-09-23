@@ -11,6 +11,9 @@ the visual tokens used by the Dirty plugins.
 
 ## UI contract
 
+The contributor recipes, tokens, dialog layers, native-component boundary,
+and capture checklist are in [STYLE.md](STYLE.md).
+
 DirtyRank established the shared visual reference. Use
 `DirtyPlugins.react.Button`, `Field`, `IconButton`, `SaveStatus`, `Badge`,
 `Metric`, `Pagination`, and `NavAction` for suite-owned controls. Keep content
@@ -43,8 +46,10 @@ loads and reports unavailable components; it does not replace native performer
 cards, scene players, or their theme behaviour. Use
 `DirtyPlugins.native.ensureComponents(loadableName, requiredNames)` when one
 Stash module registers several components, as the Stats filters do.
-`DirtyPlugins.ui.trapDialogTab` and `lockBodyScroll` cover keyboard looping and
-stacked scroll locks for suite-owned dialogs. `DirtyPlugins.captureEnabled`
+`DirtyPlugins.react.Dialog` and `DirtyPlugins.ui.manageDialog` share focus,
+Escape, stacked scroll locks, and focus restoration across React and DOM
+dialogs. A dialog containing Stash filters uses `allowNativePopup` so a native
+popup can take focus. `DirtyPlugins.captureEnabled`
 accepts `docsCapture=1` and Rank's legacy `censorMedia=1`; `captureUrl` carries
 capture mode through suite navigation. Capture pages still need opaque covers
 for media and private paths before a screenshot is saved.

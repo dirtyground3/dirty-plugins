@@ -108,10 +108,14 @@ ui:
 
 ## Dependencies
 
-Add a library only when it clearly earns its place, and only if it is already
-available through the Stash `PluginApi` runtime. Prefer the shared DirtyPlugins
-code and small, plain implementations over new dependencies. Avoid cluttering
-the assets and the UI.
+Prefer libraries already available through Stash `PluginApi`, the shared
+DirtyPlugins code, and small plain implementations. DirtyStats has one existing
+exception: its bundled ECharts 5.6.0 and Natural Earth map data, with notices
+under `plugins/DirtyStats/vendor/`. Keep those assets local to Stats; the other
+plugins and the hub must not load a chart library. A new dependency needs a
+clear use case, license inventory, offline packaging, and no equivalent shared
+or native Stash capability. See `plugins/DirtyPlugins/STYLE.md` for the UI
+component and theme conventions.
 
 ## Testing
 
@@ -123,9 +127,12 @@ node --check plugins/DirtyRank/dirtyRank.js
 node tests/test_dirty_rank_algorithms.js
 node tests/test_dirty_rank_media.js
 node tests/test_dirty_rank_registration.js
+node tests/test_dirty_ui_pilot.js
 node tests/test_dirty_tidy_automation.js
 node tests/test_dirty_tidy_settings.js
 node tests/test_dirty_stats.js
+node tests/test_dirty_stats_dashboard.js
+node tests/test_dirty_stats_contrast.js
 node tests/test_dirty_multiscreen.js
 ```
 

@@ -343,21 +343,12 @@
 
   function closeFolderPicker() {
     state.pickerRequest += 1;
-    document.removeEventListener("keydown", onPickerKeydown);
     var picker = state.picker;
     if (picker && picker.backdrop.parentNode) {
       picker.backdrop.parentNode.removeChild(picker.backdrop);
     }
     state.picker = null;
-    if (picker && picker.unlockScroll) picker.unlockScroll();
-    if (picker && picker.returnFocus && picker.returnFocus.isConnected && typeof picker.returnFocus.focus === "function") picker.returnFocus.focus();
-  }
-
-  function onPickerKeydown(event) {
-    var picker = state.picker;
-    if (!picker) return;
-    if (event.key === "Escape") { event.preventDefault(); closeFolderPicker(); return; }
-    hubApi.ui.trapDialogTab(event, picker.dialog);
+    if (picker && picker.releaseDialog) picker.releaseDialog();
   }
 
   function saveDestinationFolder(picker) {
@@ -505,12 +496,14 @@
     var opener = event.currentTarget || document.activeElement;
     closeFolderPicker();
     var picker = createFolderPicker();
-    picker.returnFocus = opener;
     state.picker = picker;
     document.body.appendChild(picker.backdrop);
-    picker.unlockScroll = hubApi.ui.lockBodyScroll();
-    document.addEventListener("keydown", onPickerKeydown);
-    picker.closeButton.focus();
+    picker.releaseDialog = hubApi.ui.manageDialog({
+      dialog: picker.dialog,
+      initialFocus: picker.closeButton,
+      onClose: closeFolderPicker,
+      opener: opener,
+    });
 
     getSettings()
       .then(function (settings) {

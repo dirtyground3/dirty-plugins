@@ -102,17 +102,17 @@
     },
     candy: {
       key: "candy", label: "Candy Pop", background: "#32243d", panel: "#432c50", panelAlt: "#51355e",
-      primary: "#ff79c6", secondary: "#7ee7e7", accent: "#ffd166", highlight: "#b894ff",
+      primary: "#ff82cb", secondary: "#7ee7e7", accent: "#ffd166", highlight: "#b894ff",
       text: "#fff5fc", muted: "#dbc5dd", grid: "#62456b", border: "#9f78a7", selection: "#ffffff",
-      soft: "rgba(255, 121, 198, .22)", softer: "rgba(255, 121, 198, .10)", tagLow: [98, 69, 107], tagHigh: [255, 209, 102],
-      palette: ["#ff79c6", "#7ee7e7", "#ffd166", "#b894ff", "#ff9f68", "#82e6a8", "#ff8fab", "#9eb5ff"]
+      soft: "rgba(255, 130, 203, .22)", softer: "rgba(255, 130, 203, .10)", tagLow: [98, 69, 107], tagHigh: [255, 209, 102],
+      palette: ["#ff82cb", "#7ee7e7", "#ffd166", "#b894ff", "#ff9f68", "#82e6a8", "#ff8fab", "#9eb5ff"]
     },
     tropical: {
       key: "tropical", label: "Tropical Punch", background: "#173f43", panel: "#20545a", panelAlt: "#286269",
-      primary: "#5de2c5", secondary: "#49a9d8", accent: "#ffd166", highlight: "#ff7f6e",
+      primary: "#65e8ca", secondary: "#49a9d8", accent: "#ffd166", highlight: "#ff7f6e",
       text: "#fff9e8", muted: "#c5ddd5", grid: "#356f71", border: "#72a59d", selection: "#ffffff",
-      soft: "rgba(93, 226, 197, .22)", softer: "rgba(93, 226, 197, .10)", tagLow: [53, 111, 113], tagHigh: [255, 127, 110],
-      palette: ["#5de2c5", "#ff7f6e", "#ffd166", "#49a9d8", "#f78fb3", "#8dd17e", "#f29e4c", "#8c9eff"]
+      soft: "rgba(101, 232, 202, .22)", softer: "rgba(101, 232, 202, .10)", tagLow: [53, 111, 113], tagHigh: [255, 127, 110],
+      palette: ["#65e8ca", "#ff7f6e", "#ffd166", "#49a9d8", "#f78fb3", "#8dd17e", "#f29e4c", "#8c9eff"]
     },
     arcade: {
       key: "arcade", label: "Retro Arcade", background: "#171128", panel: "#25183c", panelAlt: "#2d1d49",
@@ -123,10 +123,10 @@
     },
     paper: {
       key: "paper", label: "Paper Picnic", background: "#fff4dc", panel: "#fffaf0", panelAlt: "#f7e7c1",
-      primary: "#0f8b8d", secondary: "#5c7cba", accent: "#f2b134", highlight: "#e76f51",
-      text: "#3b3440", muted: "#736777", grid: "#e0cfaa", border: "#b9a986", selection: "#3b3440",
-      soft: "rgba(15, 139, 141, .18)", softer: "rgba(15, 139, 141, .08)", tagLow: [224, 207, 170], tagHigh: [231, 111, 81],
-      palette: ["#0f8b8d", "#e76f51", "#f2b134", "#5c7cba", "#9b6aa2", "#6a994e", "#d76d93", "#657786"]
+      primary: "#0b7274", secondary: "#5c7cba", accent: "#f2b134", highlight: "#e76f51",
+      text: "#3b3440", muted: "#706474", grid: "#e0cfaa", border: "#b9a986", selection: "#3b3440",
+      soft: "rgba(11, 114, 116, .18)", softer: "rgba(11, 114, 116, .08)", tagLow: [224, 207, 170], tagHigh: [231, 111, 81],
+      palette: ["#0b7274", "#e76f51", "#f2b134", "#5c7cba", "#9b6aa2", "#6a994e", "#d76d93", "#657786"]
     }
   };
 
@@ -631,24 +631,23 @@
     var state = React.useState(false), open = state[0], setOpen = state[1];
     var model = useAgePerformerFilter(), close = React.useRef(null), trigger = React.useRef(null);
     var count = model ? model.count() + (model.makeFindFilter().q ? 1 : 0) : 0;
-    React.useEffect(function () {
-      if (!open) return;
-      var unlockScroll = hub.ui.lockBodyScroll();
-      if (close.current) close.current.focus();
-      function escape(event) { if (event.key === "Escape" && !document.querySelector(".modal.show")) setOpen(false); }
-      window.addEventListener("keydown", escape);
-      return function () { window.removeEventListener("keydown", escape); unlockScroll(); if (trigger.current) trigger.current.focus(); };
-    }, [open]);
     return h(React.Fragment, null,
       h("button", { ref: trigger, type: "button", className: "btn btn-secondary dirty-ui-button", "aria-haspopup": "dialog", "aria-expanded": open, onClick: function () { setOpen(true); } }, "Performer filters" + (count ? " (" + count + ")" : "")),
-      api.ReactDOM.createPortal(h("div", { className: "dirty-stats-performer-overlay " + statsThemeClass(), style: { display: open ? "flex" : "none" } },
-        h("div", { className: "dirty-stats-performer-backdrop", onClick: function () { setOpen(false); } }),
-        h("section", { id: "dirty-stats-performer-dialog", className: "dirty-stats-performer-dialog dirty-stats-page dirty-stats-native-filters", role: "dialog", "aria-modal": true, "aria-label": "Performer filters", onKeyDown: function (event) {
-          hub.ui.trapDialogTab(event, event.currentTarget);
-        } },
-          h("div", { className: "dirty-stats-toolbar" }, h("h2", { className: "h5" }, "Performer filters"), h("button", { ref: close, className: "btn btn-secondary dirty-ui-button", onClick: function () { setOpen(false); } }, "Done")),
-          h("p", null, "Choose which performers contribute to the age histogram and cards. Scene filters remain active. Changes apply immediately."),
-          h(api.components.FilteredPerformerList, { alterQuery: false, extraCriteria: { dirtyStatsAgeFilters: true } }))), document.body));
+      h(hub.react.Dialog, {
+        open: open,
+        id: "dirty-stats-performer-dialog",
+        backdropClassName: "dirty-stats-performer-overlay " + statsThemeClass(),
+        backdrop: h("div", { className: "dirty-stats-performer-backdrop", onClick: function () { setOpen(false); } }),
+        className: "dirty-stats-performer-dialog dirty-stats-page dirty-stats-native-filters",
+        ariaLabel: "Performer filters",
+        initialFocusRef: close,
+        openerRef: trigger,
+        allowNativePopup: true,
+        onClose: function () { setOpen(false); },
+      },
+        h("div", { className: "dirty-stats-toolbar" }, h("h2", { className: "h5" }, "Performer filters"), h("button", { ref: close, type: "button", className: "btn btn-secondary dirty-ui-button", onClick: function () { setOpen(false); } }, "Done")),
+        h("p", null, "Choose which performers contribute to the age histogram and cards. Scene filters remain active. Changes apply immediately."),
+        h(api.components.FilteredPerformerList, { alterQuery: false, extraCriteria: { dirtyStatsAgeFilters: true } })));
   }
   function filterAgeScenes(scenes, ids) {
     if (ids == null) return scenes;
@@ -997,8 +996,12 @@
   }
 
   function setStatsSettingExtra(name, value) {
+    if (Object.prototype.hasOwnProperty.call(statsSettingsExtras, name) &&
+        JSON.stringify(statsSettingsExtras[name]) === JSON.stringify(value)) return;
     statsSettingsExtras[name] = value;
     statsSettingsDirtyNames.add(name);
+    statsSettingsEditRevision += 1;
+    setStatsSettingsSaveStatus("pending", "Unsaved display settings.");
     scheduleStatsSettingsSave();
   }
   function ConstellationPage(props) {
@@ -1487,12 +1490,30 @@ chartError ? h(StatsState, { detail: chartError, role: "alert", title: "Chart un
     var low = statsTheme().tagLow, high = statsTheme().tagHigh;
     return "rgb(" + low.map(function (channel, index) { return Math.round(channel + (high[index] - channel) * ratio); }).join(",") + ")";
   }
+  function chartLabelColor(background) {
+    var value = String(background || "");
+    var hex = /^#([0-9a-f]{6})$/i.exec(value);
+    var rgb = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(value);
+    var channels = hex ? [1, 3, 5].map(function (offset) { return parseInt(hex[1].slice(offset - 1, offset + 1), 16); }) :
+      rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] : null;
+    if (!channels) return themeColor("text");
+    var linear = channels.map(function (channel) {
+      var normalized = channel / 255;
+      return normalized <= .04045 ? normalized / 12.92 : Math.pow((normalized + .055) / 1.055, 2.4);
+    });
+    var luminance = linear[0] * .2126 + linear[1] * .7152 + linear[2] * .0722;
+    return luminance > .179 ? "#000" : "#fff";
+  }
   function tagDnaSeriesData(stats, metric, maxTags, selected) {
     var limit = Number(maxTags);
     var rows = Number.isFinite(limit) && limit > 0 ? stats.rows.slice(0, limit) : stats.rows.slice();
     var maximum = metric === "play_count" ? Math.max.apply(null, [0].concat(rows.map(function (row) { return row.playsPerScene; }))) : 10;
     return rows.map(function (row) {
-      return { id: row.id, name: row.name, value: row.scenes, rating: row.rating, rated: row.rated, unrated: row.unrated, plays: row.plays, playsPerScene: row.playsPerScene, sceneIds: row.sceneIds, itemStyle: { color: tagDnaColor(row, metric, maximum), borderColor: row.id === selected ? themeColor("selection") : themeColor("background"), borderWidth: row.id === selected ? 4 : 2 } };
+      var fill = tagDnaColor(row, metric, maximum);
+      var labelColor = chartLabelColor(fill);
+      return { id: row.id, name: row.name, value: row.scenes, rating: row.rating, rated: row.rated, unrated: row.unrated, plays: row.plays, playsPerScene: row.playsPerScene, sceneIds: row.sceneIds,
+        label: { color: labelColor, textBorderColor: labelColor === "#fff" ? "rgba(0,0,0,.65)" : "rgba(255,255,255,.65)", textBorderWidth: 1 },
+        itemStyle: { color: fill, borderColor: row.id === selected ? themeColor("selection") : themeColor("background"), borderWidth: row.id === selected ? 4 : 2 } };
     });
   }
   function tagDnaScenes(scenes, tagId) {

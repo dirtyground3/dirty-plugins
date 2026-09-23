@@ -550,6 +550,86 @@
     };
   }
 
+  var activeDialogs = [];
+  function manageDialog(options) {
+    var dialog = options && options.dialog;
+    if (!dialog) return function () {};
+    var opener = options.opener || document.activeElement;
+    var unlockScroll = lockBodyScroll();
+    var entry = { dialog: dialog };
+    var released = false;
+    activeDialogs.push(entry);
+
+    function nativePopupIsActive() {
+      if (!options.allowNativePopup || !document.querySelectorAll) return false;
+      return Array.prototype.some.call(document.querySelectorAll('.modal.show, .dropdown-menu.show, [role="dialog"][aria-modal="true"]'), function (popup) {
+        return popup !== dialog &&
+          (popup.classList && popup.classList.contains("show") ||
+            !dialog.contains(popup) && popup.contains(document.activeElement));
+      });
+    }
+    function onKeydown(event) {
+      if (activeDialogs[activeDialogs.length - 1] !== entry || nativePopupIsActive()) return;
+      if (event.key === "Escape") {
+        if (options.onClose) { event.preventDefault(); options.onClose(); }
+      } else {
+        trapDialogTab(event, dialog);
+      }
+    }
+
+    if (document.addEventListener) document.addEventListener("keydown", onKeydown, true);
+    var initial = options.initialFocus;
+    if (typeof initial === "function") initial = initial();
+    if (!initial && dialog.querySelector) initial = dialog.querySelector('button, input, select, textarea, a[href], [tabindex="0"]');
+    if (initial && typeof initial.focus === "function") initial.focus();
+    else if (typeof dialog.focus === "function") dialog.focus();
+    return function () {
+      if (released) return;
+      released = true;
+      if (document.removeEventListener) document.removeEventListener("keydown", onKeydown, true);
+      var index = activeDialogs.indexOf(entry);
+      if (index !== -1) activeDialogs.splice(index, 1);
+      unlockScroll();
+      if (opener && opener.isConnected !== false && typeof opener.focus === "function") opener.focus();
+    };
+  }
+
+  function Dialog(props) {
+    var dialog = useRef(null);
+    useEffect(function () {
+      if (props.open === false) return;
+      return manageDialog({
+        dialog: dialog.current,
+        initialFocus: props.initialFocusRef && props.initialFocusRef.current,
+        opener: props.openerRef && props.openerRef.current,
+        onClose: props.onClose,
+        allowNativePopup: props.allowNativePopup,
+      });
+    }, [props.open]);
+    var content = createElement("div", {
+      className: props.backdropClassName || "dirty-ui-backdrop",
+      style: props.open === false ? { display: "none" } : undefined,
+      onMouseDown: function (event) {
+        if (event.target === event.currentTarget && props.onClose) props.onClose();
+      },
+    },
+      props.backdrop,
+      createElement("section", {
+        ref: dialog,
+        id: props.id,
+        className: props.className || "dirty-ui-dialog",
+        role: "dialog",
+        "aria-modal": true,
+        "aria-label": props.ariaLabel,
+        "aria-labelledby": props.labelledBy,
+        tabIndex: -1,
+      }, props.children)
+    );
+    return PluginApi.ReactDOM && PluginApi.ReactDOM.createPortal
+      ? PluginApi.ReactDOM.createPortal(content, document.body)
+      : content;
+  }
+
   function Glyph(props) {
     if (FontAwesomeIcon && props.icon) {
       return createElement(FontAwesomeIcon, { icon: props.icon });
@@ -806,7 +886,7 @@
     coerceBoolean: coerceBoolean,
     parseMaybeJson: parseMaybeJson,
   };
-  hubApi.ui = { notify: notify, trapDialogTab: trapDialogTab, lockBodyScroll: lockBodyScroll };
+  hubApi.ui = { notify: notify, trapDialogTab: trapDialogTab, lockBodyScroll: lockBodyScroll, manageDialog: manageDialog };
   hubApi.theme = hubApi.theme || {};
   hubApi.theme.defaultKey = DEFAULT_VISUAL_THEME;
   hubApi.theme.readRole = function (root, propertyName) {
@@ -816,6 +896,7 @@
   hubApi.react = {
     Badge: Badge,
     Button: Button,
+    Dialog: Dialog,
     Field: Field,
     Glyph: Glyph,
     IconButton: IconButton,
@@ -875,16 +956,27 @@
       });
     },
   };
+  var captureInThisPage = false;
   hubApi.captureEnabled = function (search) {
     try {
-      var query = new URLSearchParams(search || "");
-      return query.get("docsCapture") === "1" || query.get("censorMedia") === "1";
+      var currentSearch = window.location && window.location.search || "";
+      var query = new URLSearchParams(search == null ? currentSearch : search);
+      var currentLocation = search == null || search === currentSearch;
+      if (query.get("docsCapture") === "0" || query.get("censorMedia") === "0") {
+        if (currentLocation) captureInThisPage = false;
+        return false;
+      }
+      if (query.get("docsCapture") === "1" || query.get("censorMedia") === "1") {
+        if (currentLocation) captureInThisPage = true;
+        return true;
+      }
+      return currentLocation && captureInThisPage;
     } catch (_error) {
       return false;
     }
   };
   hubApi.captureUrl = function (to, search) {
-    if (typeof to !== "string" || !hubApi.captureEnabled(search == null ? window.location && window.location.search : search)) return to;
+    if (typeof to !== "string" || !hubApi.captureEnabled(search == null ? undefined : search)) return to;
     if (/[?&](docsCapture|censorMedia)=1(?:&|#|$)/.test(to)) return to;
     if (/[?&]docsCapture=/.test(to)) return to.replace(/([?&]docsCapture=)[^&#]*/, function (_match, prefix) { return prefix + "1"; });
     var hash = to.indexOf("#"), beforeHash = hash < 0 ? to : to.slice(0, hash), afterHash = hash < 0 ? "" : to.slice(hash);
