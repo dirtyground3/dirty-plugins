@@ -16,7 +16,7 @@ const window = {
   },
   DirtyPlugins: {
     registerSettingsPanel: noop,
-    react: { SettingsCard: noop, SettingsSection: noop, SettingsToggle: noop },
+    react: { SettingsCard: noop, SettingsSection: noop, SettingsToggle: noop, Field: noop, Pagination: noop, IconButton: noop },
     values: {
       asObject: (value) => (value && typeof value === "object" && !Array.isArray(value) ? value : {}),
     },

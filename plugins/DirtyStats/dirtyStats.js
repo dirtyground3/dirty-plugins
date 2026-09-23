@@ -43,6 +43,7 @@
   var agePerformerFilter = null;
   var performerFilterEvent = "dirty-stats:performer-filter";
   var PLUGIN_ID = "dirtyStats";
+  var DEFAULT_THEME = hub.theme && hub.theme.defaultKey || "classic";
   // Display options persist through the shared hub settings so every statistic
   // reopens with the view the user last chose.
   var STATS_SETTING_SPECS = {
@@ -64,7 +65,7 @@
     tagDnaMaxTags: { options: [0, 25, 50, 100, 200] }
   };
   var statsSettings = {
-    visualTheme: "arcade",
+    visualTheme: DEFAULT_THEME,
     showMapNumbers: false,
     sceneRatingRounding: 0.5,
     performerRatingRounding: 0.5,
@@ -87,6 +88,10 @@
   var statsSettingsSaveChain = Promise.resolve();
   var statsSettingsDirtyNames = new Set();
   var statsSettingsExtras = {};
+  var statsSettingsEditRevision = 0;
+  var statsSettingsSaveStatus = { state: "", message: "" };
+  var statsSaveStatusListeners = new Set();
+  var statsSaveStatusRevision = 0;
   var STATS_THEMES = {
     classic: {
       key: "classic", label: "Midnight", background: "#242b31", panel: "#2c343b", panelAlt: "#303941",
@@ -126,11 +131,20 @@
   };
 
   function statsTheme(value) {
-    return STATS_THEMES[value || statsSettings.visualTheme] || STATS_THEMES.arcade;
+    return STATS_THEMES[value || statsSettings.visualTheme] || STATS_THEMES[DEFAULT_THEME] || STATS_THEMES.classic;
   }
 
   function themeColor(name) {
-    return statsTheme()[name];
+    var propertyNames = {
+      background: "--dirty-stats-bg", panel: "--dirty-stats-panel", panelAlt: "--dirty-stats-panel-alt",
+      primary: "--dirty-stats-primary", secondary: "--dirty-stats-secondary", accent: "--dirty-stats-accent",
+      highlight: "--dirty-stats-highlight", text: "--dirty-stats-text", muted: "--dirty-stats-muted",
+      grid: "--dirty-stats-grid", border: "--dirty-stats-border", selection: "--dirty-stats-selection",
+      soft: "--dirty-stats-soft", softer: "--dirty-stats-softer"
+    };
+    var page = typeof document !== "undefined" && document.querySelector ? document.querySelector(".dirty-stats-page") : null;
+    var readRole = hub.theme && hub.theme.readRole;
+    return page && readRole && propertyNames[name] ? readRole(page, propertyNames[name]) || statsTheme()[name] : statsTheme()[name];
   }
 
   function themePalette() {
@@ -141,9 +155,12 @@
     return "dirty-stats-theme-" + statsTheme(value).key;
   }
 
-  function themedChartOption(value, seen) {
-    var theme = statsTheme();
-    var aliases = {
+  function themedChartOption(value, seen, sourceAliases) {
+    var aliases = sourceAliases;
+    if (!aliases) {
+      var theme = Object.assign({}, statsTheme());
+      ["background", "panel", "panelAlt", "primary", "secondary", "accent", "highlight", "text", "muted", "grid", "border", "selection", "soft", "softer"].forEach(function (name) { theme[name] = themeColor(name); });
+      aliases = {
       "#242b31": theme.background,
       "#2c343b": theme.panel,
       "#54d5ca": theme.primary,
@@ -160,19 +177,21 @@
       "#fff": theme.selection,
       "#ffffff": theme.selection,
       "rgba(243,199,121,.2)": theme.soft
-    };
-    theme.palette.forEach(function (color, index) {
-      aliases[STATS_THEMES.classic.palette[index].toLowerCase()] = color;
-    });
+      };
+      theme.palette.forEach(function (color, index) {
+        var key = STATS_THEMES.classic.palette[index].toLowerCase();
+        if (!Object.prototype.hasOwnProperty.call(aliases, key)) aliases[key] = color;
+      });
+    }
     if (typeof value === "string") return aliases[value.toLowerCase()] || value;
     if (!value || typeof value !== "object") return value;
     var visited = seen || new Set();
     if (visited.has(value)) return value;
     visited.add(value);
     if (Array.isArray(value)) {
-      value.forEach(function (item, index) { value[index] = themedChartOption(item, visited); });
+      value.forEach(function (item, index) { value[index] = themedChartOption(item, visited, aliases); });
     } else {
-      Object.keys(value).forEach(function (name) { value[name] = themedChartOption(value[name], visited); });
+      Object.keys(value).forEach(function (name) { value[name] = themedChartOption(value[name], visited, aliases); });
     }
     return value;
   }
@@ -184,6 +203,7 @@
     chart.setOption = function () {
       var args = Array.prototype.slice.call(arguments);
       args[0] = themedChartOption(args[0]);
+      if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches && args[0] && typeof args[0] === "object") args[0].animation = false;
       return setOption.apply(chart, args);
     };
     if (getDataURL) chart.getDataURL = function (optionsValue) {
@@ -209,6 +229,12 @@
     statsSettingsListeners.forEach(function (listener) { listener(); });
   }
 
+  function setStatsSettingsSaveStatus(state, message) {
+    statsSettingsSaveStatus = { state: state, message: message };
+    statsSaveStatusRevision += 1;
+    statsSaveStatusListeners.forEach(function (listener) { listener(); });
+  }
+
   function scheduleStatsSettingsSave() {
     if (typeof hub.configurePlugin !== "function") return;
     if (statsSettingsSaveTimer !== null) window.clearTimeout(statsSettingsSaveTimer);
@@ -218,7 +244,9 @@
       statsSettingsDirtyNames.clear();
       if (!dirtyNames.length) return;
       var snapshot = Object.assign({}, statsSettingsExtras, statsSettings);
+      var saveRevision = statsSettingsEditRevision;
       statsSettingsSaveChain = statsSettingsSaveChain.catch(function () {}).then(function () {
+        setStatsSettingsSaveStatus("saving", "Saving display settings…");
         return hub.configurePlugin(PLUGIN_ID, snapshot);
       }).catch(function () {
         // Another Stash tab may have saved this plugin after our last read.
@@ -229,10 +257,16 @@
           delete merged.ratingRounding;
           return hub.configurePlugin(PLUGIN_ID, merged);
         });
+      }).then(function () {
+        if (saveRevision === statsSettingsEditRevision && !statsSettingsDirtyNames.size) setStatsSettingsSaveStatus("saved", "Display settings saved.");
+        else setStatsSettingsSaveStatus("pending", "Unsaved display settings.");
       }).catch(function (error) {
         dirtyNames.forEach(function (name) { statsSettingsDirtyNames.add(name); });
+        setStatsSettingsSaveStatus("error", "Could not save display settings. Retry or reload this page.");
         console.warn("DirtyStats could not save its display settings", error);
-        if (typeof hub.notify === "function") hub.notify("DirtyStats settings changed in another tab and could not be merged. Reload before editing again.", { tone: "error" });
+        if (hub.ui && typeof hub.ui.notify === "function") {
+          hub.ui.notify("DirtyStats display settings could not be saved. Retry or reload this page.", { tone: "error" });
+        }
       });
     }, 400);
   }
@@ -242,7 +276,9 @@
     if (next === null || statsSettings[name] === next) return;
     statsSettings[name] = next;
     statsSettingsDirtyNames.add(name);
+    statsSettingsEditRevision += 1;
     notifyStatsSettings();
+    setStatsSettingsSaveStatus("pending", "Unsaved display settings.");
     scheduleStatsSettingsSave();
   }
 
@@ -293,6 +329,18 @@
     }, [setRevision]);
     return [statsSettings[name], function (value) { setStatsSetting(name, value); }];
   }
+  function StatsSaveStatus() {
+    var revisionState = React.useState(statsSaveStatusRevision), setRevision = revisionState[1];
+    React.useEffect(function () {
+      var listener = function () { setRevision(statsSaveStatusRevision); };
+      statsSaveStatusListeners.add(listener);
+      return function () { statsSaveStatusListeners.delete(listener); };
+    }, [setRevision]);
+    if (!statsSettingsSaveStatus.message) return null;
+    return h("div", { className: "dirty-stats-save-feedback" },
+      h(hub.react.SaveStatus, statsSettingsSaveStatus),
+      statsSettingsSaveStatus.state === "error" ? h(hub.react.Button, { compact: true, onClick: scheduleStatsSettingsSave }, "Retry") : null);
+  }
   // Keep the bundled library reference even if another plugin loads ECharts later.
   var charts = window.echarts;
   var world = window.__dirtyStatsWorld;
@@ -300,6 +348,7 @@
   // Documentation captures must never include uncensored media. Components read
   // this once and drop performer/studio images when ?docsCapture=1 is present.
   function docsCaptureEnabled(search) {
+    if (hub.captureEnabled) return hub.captureEnabled(search);
     try { return new URLSearchParams(search || "").get("docsCapture") === "1"; } catch (err) { return false; }
   }
   // Primary loading/error/empty states use the shared StateView so DirtyStats
@@ -522,7 +571,7 @@
   function StatisticSelector(props) {
     var history = api.libraries.ReactRouterDOM.useHistory();
     var bootstrap = api.libraries.Bootstrap, Dropdown = bootstrap.Dropdown;
-    return h(Dropdown, { as: bootstrap.ButtonGroup, className: "sort-by-select dirty-stats-selector", onSelect: function (value) { if (value && value !== props.value && STATISTIC_ROUTES[value]) history.push(STATISTIC_ROUTES[value]); } },
+    return h(Dropdown, { as: bootstrap.ButtonGroup, className: "sort-by-select dirty-stats-selector", onSelect: function (value) { if (value && value !== props.value && STATISTIC_ROUTES[value]) history.push(hub.captureUrl(STATISTIC_ROUTES[value])); } },
       h(bootstrap.InputGroup.Prepend, null, h(Dropdown.Toggle, { variant: "secondary", id: "dirty-stats-statistic", "aria-label": "Statistic" }, STATISTIC_LABELS[props.value] || STATISTIC_LABELS.origin)),
       h(Dropdown.Menu, { className: "bg-secondary text-white" },
         STATISTIC_ORDER.map(function (key) { return h(Dropdown.Item, { key: key, className: "bg-secondary text-white", eventKey: key, active: props.value === key }, STATISTIC_LABELS[key]); })));
@@ -584,23 +633,20 @@
     var count = model ? model.count() + (model.makeFindFilter().q ? 1 : 0) : 0;
     React.useEffect(function () {
       if (!open) return;
+      var unlockScroll = hub.ui.lockBodyScroll();
       if (close.current) close.current.focus();
       function escape(event) { if (event.key === "Escape" && !document.querySelector(".modal.show")) setOpen(false); }
       window.addEventListener("keydown", escape);
-      return function () { window.removeEventListener("keydown", escape); if (trigger.current) trigger.current.focus(); };
+      return function () { window.removeEventListener("keydown", escape); unlockScroll(); if (trigger.current) trigger.current.focus(); };
     }, [open]);
     return h(React.Fragment, null,
-      h("button", { ref: trigger, type: "button", className: "btn btn-secondary", "aria-haspopup": "dialog", "aria-expanded": open, onClick: function () { setOpen(true); } }, "Performer filters" + (count ? " (" + count + ")" : "")),
+      h("button", { ref: trigger, type: "button", className: "btn btn-secondary dirty-ui-button", "aria-haspopup": "dialog", "aria-expanded": open, onClick: function () { setOpen(true); } }, "Performer filters" + (count ? " (" + count + ")" : "")),
       api.ReactDOM.createPortal(h("div", { className: "dirty-stats-performer-overlay " + statsThemeClass(), style: { display: open ? "flex" : "none" } },
         h("div", { className: "dirty-stats-performer-backdrop", onClick: function () { setOpen(false); } }),
         h("section", { id: "dirty-stats-performer-dialog", className: "dirty-stats-performer-dialog dirty-stats-page dirty-stats-native-filters", role: "dialog", "aria-modal": true, "aria-label": "Performer filters", onKeyDown: function (event) {
-          if (event.key !== "Tab") return;
-          var items = Array.from(event.currentTarget.querySelectorAll('button, input, select, a[href], [tabindex="0"]')).filter(function (item) { return !item.disabled && item.getClientRects().length; });
-          if (!items.length) return;
-          if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); }
-          else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); }
+          hub.ui.trapDialogTab(event, event.currentTarget);
         } },
-          h("div", { className: "dirty-stats-toolbar" }, h("h2", { className: "h5" }, "Performer filters"), h("button", { ref: close, className: "btn btn-secondary", onClick: function () { setOpen(false); } }, "Done")),
+          h("div", { className: "dirty-stats-toolbar" }, h("h2", { className: "h5" }, "Performer filters"), h("button", { ref: close, className: "btn btn-secondary dirty-ui-button", onClick: function () { setOpen(false); } }, "Done")),
           h("p", null, "Choose which performers contribute to the age histogram and cards. Scene filters remain active. Changes apply immediately."),
           h(api.components.FilteredPerformerList, { alterQuery: false, extraCriteria: { dirtyStatsAgeFilters: true } }))), document.body));
   }
@@ -754,6 +800,7 @@
   }
   function PerformerCards(props) {
     var state = React.useState(1), page = state[0], setPage = state[1];
+    var docsCapture = docsCaptureEnabled(window.location.search);
     var ids = props.performers.map(function (p) { return Number(p.id); });
     var key = JSON.stringify(ids);
     React.useEffect(function () { setPage(1); }, [key]);
@@ -763,23 +810,20 @@
     var deceasedIds = new Set(props.performers.filter(function (performer) { return performer && (performer.deceased || performer.death_date); }).map(function (performer) { return String(performer.id); }));
     var query = api.GQL.useFindPerformersQuery({
       variables: { performer_ids: pageIds, filter: Object.assign({}, props.filter ? props.filter.makeFindFilter() : { sort: "name", direction: "ASC" }, { page: current, per_page: 24 }), performer_filter: props.filter ? props.filter.makeFilter() : {} },
-      skip: !ids.length
+      skip: docsCapture || !ids.length
     });
     var cards = orderedCards(query.data && query.data.findPerformers ? query.data.findPerformers.performers : [], pageIds);
     return h("section", { className: "dirty-stats-performers", "aria-label": "Matching performers" },
       h("div", { className: "dirty-stats-toolbar" }, h("h2", { className: "h5" }, props.title ? props.title + " (" + ids.length + ")" : props.country ? "Performers from " + props.country + " (" + ids.length + ")" : "Performers (" + ids.length + ")"),
         (props.country || props.selection != null) ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: props.clearCountry || props.clearSelection }, props.clearLabel || "Show all countries") : null),
-      !ids.length ? h(StatsState, { detail: "No performers match this selection and the current filters.", title: "No performers" }) : query.loading ? h(StatsState, { detail: "Loading performer cards…", title: "Loading" }) : query.error ? h(StatsState, { detail: query.error.message, role: "alert", title: "Could not load performer cards" }) :
+      docsCapture ? h(StatsState, { title: "Performer cards hidden", detail: "Cards are hidden while capturing documentation." }) : !ids.length ? h(StatsState, { detail: "No performers match this selection and the current filters.", title: "No performers" }) : query.loading ? h(StatsState, { detail: "Loading performer cards…", title: "Loading" }) : query.error ? h(StatsState, { detail: query.error.message, role: "alert", title: "Could not load performer cards" }) :
         h("div", { className: "row" }, cards.map(function (performer) {
           var deceased = deceasedIds.has(String(performer.id));
           return h("div", { key: performer.id, className: "col-6 col-md-4 col-lg-3 dirty-stats-performer-column mb-3" + (deceased ? " is-deceased" : "") },
             deceased ? h("span", { className: "dirty-stats-memorial-label" }, "In memoriam") : null,
             h(api.components.PerformerCard, { performer: performer }));
         })),
-      ids.length > 24 ? h("nav", { className: "dirty-stats-toolbar", "aria-label": "Performer pages" },
-        h("button", { className: "btn btn-secondary", disabled: current <= 1, onClick: function () { setPage(current - 1); } }, "Previous"),
-        h("span", null, "Page " + current + " of " + pages),
-        h("button", { className: "btn btn-secondary", disabled: current >= pages, onClick: function () { setPage(current + 1); } }, "Next")) : null);
+      !docsCapture && ids.length > 24 ? h(hub.react.Pagination, { page: current, totalPages: pages, onPageChange: setPage, ariaLabel: "Performer pages" }) : null);
   }
   function StatsPage(props) {
     var dataState = React.useState([]), performers = dataState[0], setPerformers = dataState[1];
@@ -853,6 +897,7 @@
   }
   function SceneCards(props) {
     var state = React.useState(1), page = state[0], setPage = state[1];
+    var docsCapture = docsCaptureEnabled(window.location.search);
     var ids = props.scenes.map(function (scene) { return Number(scene.id); });
     var key = JSON.stringify(ids);
     React.useEffect(function () { setPage(1); }, [key]);
@@ -860,18 +905,15 @@
     var pageIds = ids.slice((current - 1) * 24, current * 24);
     var query = api.GQL.useFindScenesQuery({
       variables: { scene_ids: pageIds, filter: Object.assign({}, props.filter.makeFindFilter(), { page: current, per_page: 24 }), scene_filter: props.filter.makeFilter() },
-      skip: !ids.length
+      skip: docsCapture || !ids.length
     });
     var cards = orderedCards(query.data && query.data.findScenes ? query.data.findScenes.scenes : [], pageIds);
     return h("section", { className: "dirty-stats-scenes", "aria-label": "Matching scenes" },
       h("div", { className: "dirty-stats-toolbar" }, h("h2", { className: "h5" }, (props.title || "Scenes") + " (" + ids.length + ")"),
         props.selection ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: props.clearSelection }, props.clearLabel || "Show all scenes") : null),
-      !ids.length ? h(StatsState, { detail: "No scenes match these filters.", title: "No scenes" }) : query.loading ? h(StatsState, { detail: "Loading scene cards…", title: "Loading" }) : query.error ? h(StatsState, { detail: query.error.message, role: "alert", title: "Could not load scene cards" }) :
+      docsCapture ? h(StatsState, { title: "Scene cards hidden", detail: "Cards are hidden while capturing documentation." }) : !ids.length ? h(StatsState, { detail: "No scenes match these filters.", title: "No scenes" }) : query.loading ? h(StatsState, { detail: "Loading scene cards…", title: "Loading" }) : query.error ? h(StatsState, { detail: query.error.message, role: "alert", title: "Could not load scene cards" }) :
         h("div", { className: "row" }, cards.map(function (scene) { return h("div", { key: scene.id, className: "col-12 col-sm-6 col-lg-4 col-xl-3 mb-3" }, h(api.components.SceneCard, { scene: scene })); })),
-      ids.length > 24 ? h("nav", { className: "dirty-stats-toolbar", "aria-label": "Scene pages" },
-        h("button", { className: "btn btn-secondary", disabled: current <= 1, onClick: function () { setPage(current - 1); } }, "Previous"),
-        h("span", null, "Page " + current + " of " + pages),
-        h("button", { className: "btn btn-secondary", disabled: current >= pages, onClick: function () { setPage(current + 1); } }, "Next")) : null);
+      !docsCapture && ids.length > 24 ? h(hub.react.Pagination, { page: current, totalPages: pages, onPageChange: setPage, ariaLabel: "Scene pages" }) : null);
   }
   var constellationGenderStyles = {
     FEMALE: { label: "Female", color: "#f29aaa" },
@@ -1032,8 +1074,8 @@
 error ? h(StatsState, { detail: error, role: "alert", title: "Could not build the constellation" }) : null,
       !loading && !error && stats.nodes.length ? h("section", { className: "dirty-stats-map-panel dirty-ui-panel", "aria-label": "Cast constellation" },
         h("div", { className: "dirty-stats-map-controls" },
-          h("label", { className: "dirty-stats-date-basis" }, "Maximum performers", h("select", { className: "form-control form-control-sm", value: maxPerformers, onChange: function (event) { setMaxPerformers(Number(event.target.value)); } }, STATS_SETTING_SPECS.constellationMaxPerformers.options.map(function (value) { return h("option", { key: value, value: value }, value === 0 ? "All" : value); }))),
-          h("label", { className: "dirty-stats-date-basis" }, "Minimum shared scenes", h("select", { className: "form-control form-control-sm", value: minShared, onChange: function (event) { setMinShared(Number(event.target.value)); } }, STATS_SETTING_SPECS.constellationMinShared.options.map(function (value) { return h("option", { key: value, value: value }, value); }))),
+          h("label", { className: "dirty-stats-date-basis" }, "Maximum performers", h("select", { className: "form-control form-control-sm dirty-ui-select", value: maxPerformers, onChange: function (event) { setMaxPerformers(Number(event.target.value)); } }, STATS_SETTING_SPECS.constellationMaxPerformers.options.map(function (value) { return h("option", { key: value, value: value }, value === 0 ? "All" : value); }))),
+          h("label", { className: "dirty-stats-date-basis" }, "Minimum shared scenes", h("select", { className: "form-control form-control-sm dirty-ui-select", value: minShared, onChange: function (event) { setMinShared(Number(event.target.value)); } }, STATS_SETTING_SPECS.constellationMinShared.options.map(function (value) { return h("option", { key: value, value: value }, value); }))),
           selected ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all scenes") : null,
           h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-cast-constellation.png"); } }, "Export PNG")),
         h("div", { ref: node, className: "dirty-stats-constellation-chart", role: "img", "aria-label": "Network of performers connected by matching scenes. Larger performers appear in more scenes; thicker lines represent more shared scenes." })) : null,
@@ -1152,12 +1194,12 @@ chartError ? h(StatsState, { detail: chartError, role: "alert", title: "Chart un
       h("section", { className: "dirty-stats-map-panel dirty-ui-panel", "aria-label": "Scene content growth" },
         h("div", { className: "dirty-stats-map-controls" },
           h("label", { className: "dirty-stats-date-basis" }, "Date basis",
-            h("select", { className: "form-control dirty-stats-statistic", value: dateBasis, onChange: function (event) { setDateBasis(event.target.value); } },
+            h("select", { className: "form-control dirty-ui-select dirty-stats-statistic", value: dateBasis, onChange: function (event) { setDateBasis(event.target.value); } },
               h("option", { value: "created_at" }, "Created at"), h("option", { value: "mod_time" }, "File modified at"), h("option", { value: "scene_date" }, "Scene date"))),
           h("label", { className: "dirty-stats-numbers" }, h("input", { type: "checkbox", checked: showCapacity, onChange: function (event) { setShowCapacity(event.target.checked); } }), "Show capacity"),
           h("label", { className: "dirty-stats-numbers" }, h("input", { type: "checkbox", checked: showForecast, onChange: function (event) { setShowForecast(event.target.checked); } }), "Show forecast"),
           h("label", { className: "dirty-stats-date-basis" }, "Group by",
-            h("select", { className: "form-control dirty-stats-statistic", value: grouping, onChange: function (event) { setGrouping(event.target.value); } },
+            h("select", { className: "form-control dirty-ui-select dirty-stats-statistic", value: grouping, onChange: function (event) { setGrouping(event.target.value); } },
               h("option", { value: "day" }, "Day"), h("option", { value: "month" }, "Month"), h("option", { value: "year" }, "Year"))),
           period || anchor != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { rememberPeriodZoom(); setPeriod(null); setAnchor(null); } }, "Clear period") : null,
           h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: loading || Boolean(error) || Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-content-growth-" + dateBasis + ".png"); } }, "Export PNG")),
@@ -1619,15 +1661,15 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     }, [stats, loading, error]);
     React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: stats.rows.map(function (row) { return Object.assign({}, row, { selected: row.name === selected }); }) }] }); }, [selected, stats, loading, error]);
     return h("section", { className: "dirty-stats-content" },
-      h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading " + entity + "..." : stats.total + " matching " + entity), h("button", { className: "btn btn-secondary", disabled: loading, onClick: function () { setRefresh(refresh + 1); } }, "Refresh")),
+      h("div", { className: "dirty-stats-toolbar" }, h("span", { className: "dirty-stats-summary", role: "status" }, loading ? "Loading " + entity + "..." : stats.total + " matching " + entity), h("button", { className: "btn btn-secondary dirty-ui-button", disabled: loading, onClick: function () { setRefresh(refresh + 1); } }, "Refresh")),
       error ? h(StatsState, { detail: error, role: "alert", title: "Could not load " + entity }) : null,
       !loading && !error && !stats.total ? h(StatsState, { title: "No " + entity + " match these filters." }) : null,
       !loading && !error && stats.total ? h("section", { className: "dirty-stats-map-panel dirty-ui-panel", "aria-label": title },
-          h("div", { className: "dirty-stats-map-controls" }, selected != null ? h("button", { className: "btn btn-secondary", onClick: function () { setSelected(null); } }, "Show all ratings") : null,
+          h("div", { className: "dirty-stats-map-controls" }, selected != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all ratings") : null,
           h("label", { className: "dirty-stats-date-basis" }, "Rating rounding",
-            h("select", { className: "form-control dirty-stats-statistic", value: rounding, onChange: function (event) { setRounding(Number(event.target.value)); setSelected(null); } },
+            h("select", { className: "form-control dirty-ui-select dirty-stats-statistic", value: rounding, onChange: function (event) { setRounding(Number(event.target.value)); setSelected(null); } },
               STATS_SETTING_SPECS.sceneRatingRounding.options.map(function (value) { return h("option", { key: String(value), value: value }, value === 0 ? "Exact" : value); }))),
-          h("button", { className: "btn btn-secondary dirty-stats-export", onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), performerMode ? "DirtyStats-performer-ratings.png" : "DirtyStats-scene-ratings.png"); } }, "Export PNG")),
+          h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), performerMode ? "DirtyStats-performer-ratings.png" : "DirtyStats-scene-ratings.png"); } }, "Export PNG")),
         h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Pie chart of distinct " + entity + " by rating out of ten, including unrated " + entity + "." })) : null,
       !loading && !error ? h(React.Fragment, null, selected != null ? h("p", { role: "status" }, selected === "Unrated" ? "Unrated " + entity : title + ": " + selected + "/10") : null, performerMode ? h(PerformerCards, { performers: matching, filter: props.filter }) : h(SceneCards, { scenes: matching, filter: props.filter })) : null);
   }
@@ -1840,10 +1882,10 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
         h("div", { className: "dirty-stats-map-controls" },
           selected != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all performers") : null,
           h("label", { className: "dirty-stats-date-basis" }, "Minimum rating",
-            h("select", { className: "form-control dirty-stats-statistic", value: minRating, onChange: function (event) { setMinRating(Number(event.target.value)); } },
+            h("select", { className: "form-control dirty-ui-select dirty-stats-statistic", value: minRating, onChange: function (event) { setMinRating(Number(event.target.value)); } },
               STATS_SETTING_SPECS.scatterMinRating.options.map(function (value) { return h("option", { key: value, value: value }, value ? value + "+" : "Any"); }))),
           h("label", { className: "dirty-stats-date-basis" }, "Maximum scenes",
-            h("select", { className: "form-control dirty-stats-statistic", value: maxScenes, onChange: function (event) { setMaxScenes(Number(event.target.value)); } },
+            h("select", { className: "form-control dirty-ui-select dirty-stats-statistic", value: maxScenes, onChange: function (event) { setMaxScenes(Number(event.target.value)); } },
               STATS_SETTING_SPECS.scatterMaxScenes.options.map(function (value) { return h("option", { key: value, value: value }, value ? value : "Any"); }))),
           h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: loading || Boolean(error) || Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-rating-vs-scenes.png"); } }, "Export PNG")),
         h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Scatter plot of performer rating out of ten versus number of scenes. Highlighted points have a high rating and few scenes." })) : null,
@@ -1909,7 +1951,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
         h("div", { className: "dirty-stats-map-controls" },
           selected != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all scenes") : null,
           h("label", { className: "dirty-stats-date-basis" }, "Count",
-            h("select", { className: "form-control dirty-stats-statistic", value: metric, onChange: function (event) { setMetric(event.target.value); } },
+            h("select", { className: "form-control dirty-ui-select dirty-stats-statistic", value: metric, onChange: function (event) { setMetric(event.target.value); } },
               STATS_SETTING_SPECS.countRatingMetric.options.map(function (value) { return h("option", { key: value, value: value }, countRatingLabel(value)); }))),
           h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: loading || Boolean(error) || Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-" + metric + "-vs-scene-rating.png"); } }, "Export PNG")),
         h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Scatter plot of scene rating out of ten versus scene " + countRatingLabel(metric).toLowerCase() + "." })) : null,
@@ -2132,7 +2174,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
         h("div", { className: "dirty-stats-map-controls" },
           selected != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all scenes") : null,
           h("label", { className: "dirty-stats-date-basis" }, "Minimum scenes",
-            h("select", { className: "form-control dirty-stats-statistic", value: minScenes, onChange: function (event) { setMinScenes(Number(event.target.value)); } },
+            h("select", { className: "form-control dirty-ui-select dirty-stats-statistic", value: minScenes, onChange: function (event) { setMinScenes(Number(event.target.value)); } },
               STATS_SETTING_SPECS.studioMinScenes.options.map(function (value) { return h("option", { key: value, value: value }, value === 1 ? "All" : value); }))),
           h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: loading || Boolean(error) || Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-studio-value.png"); } }, "Export PNG")),
         h("div", { ref: node, className: "dirty-stats-growth-chart", role: "img", "aria-label": "Scatter plot of studio scene count versus average scene rating. Bubble size represents total file size." })) : null,
@@ -2201,10 +2243,10 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
         h("div", { className: "dirty-stats-map-controls" },
           selected != null ? h("button", { className: "btn btn-secondary dirty-ui-button", onClick: function () { setSelected(null); } }, "Show all scenes") : null,
           h("label", { className: "dirty-stats-date-basis" }, "Color by",
-            h("select", { className: "form-control dirty-stats-statistic", value: metric, onChange: function (event) { setMetric(event.target.value); } },
+            h("select", { className: "form-control dirty-ui-select dirty-stats-statistic", value: metric, onChange: function (event) { setMetric(event.target.value); } },
               STATS_SETTING_SPECS.tagDnaColorMetric.options.map(function (value) { return h("option", { key: value, value: value }, tagDnaMetricLabel(value)); }))),
           h("label", { className: "dirty-stats-date-basis" }, "Maximum tags",
-            h("select", { className: "form-control dirty-stats-statistic", value: maxTags, onChange: function (event) { setMaxTags(Number(event.target.value)); } },
+            h("select", { className: "form-control dirty-ui-select dirty-stats-statistic", value: maxTags, onChange: function (event) { setMaxTags(Number(event.target.value)); } },
               STATS_SETTING_SPECS.tagDnaMaxTags.options.map(function (value) { return h("option", { key: value, value: value }, value || "All"); }))),
           h("span", { className: "dirty-stats-tag-color-key", title: "Darker cells have a lower value; gold cells have a higher value." }, h("span", null, "Lower"), h("i", { "aria-hidden": true }), h("span", null, "Higher")),
           h("button", { className: "btn btn-secondary dirty-ui-button dirty-stats-export", disabled: loading || Boolean(error) || Boolean(chartError), onClick: function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#242b31" }), "DirtyStats-tag-dna.png"); } }, "Export PNG")),
@@ -2229,22 +2271,11 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
       if (statistic === "dashboard") { setReady(true); return function () { active = false; }; }
       (async function () {
         if (sceneView) {
-          if (!api.components.FilteredSceneList || !api.components.SceneCard) {
-            if (!api.utils || !api.utils.loadComponents || !api.loadableComponents.SceneList) throw new Error("This Stash version does not expose the native scene filters.");
-            await api.utils.loadComponents([api.loadableComponents.SceneList]);
-          }
-          if (!api.components.FilteredSceneList || !api.components.SceneCard) throw new Error("Stash's native scene filters or cards could not be loaded.");
+          await hub.native.ensureComponents("SceneList", ["FilteredSceneList", "SceneCard"]);
         } else {
-          if (!api.components.FilteredPerformerList || !api.components.PerformerCard) {
-            if (!api.utils || !api.utils.loadComponents || !api.loadableComponents.Performers) throw new Error("This Stash version does not expose the native performer filters.");
-            await api.utils.loadComponents([api.loadableComponents.Performers]);
-          }
-          if (!api.components.FilteredPerformerList || !api.components.PerformerCard) throw new Error("Stash's native performer filter component could not be loaded.");
+          await hub.native.ensureComponents("Performers", ["FilteredPerformerList", "PerformerCard"]);
         }
-        if (statistic === "ages" && (!api.components.PerformerCard || !api.components.FilteredPerformerList)) {
-          await api.utils.loadComponents([api.loadableComponents.Performers]);
-          if (!api.components.PerformerCard || !api.components.FilteredPerformerList) throw new Error("Stash's native performer filters and cards could not be loaded.");
-        }
+        if (statistic === "ages") await hub.native.ensureComponents("Performers", ["FilteredPerformerList", "PerformerCard"]);
         if (active) setReady(true);
       })().catch(function (err) { if (active) setError(err.message); });
       return function () { active = false; };
@@ -2252,23 +2283,25 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     if (statistic === "dashboard") {
       var Dashboard = window.__dirtyStatsDashboard && window.__dirtyStatsDashboard.Component;
       return h("main", { ref: page, className: "dirty-stats-page dirty-stats-dashboard-page " + themeClass },
+        h(StatsSaveStatus),
         Dashboard ? h(Dashboard, { selector: h(StatisticSelector, { value: statistic }) }) : h("p", { role: "status" }, "Loading dashboard..."));
     }
 return h("main", { ref: page, className: "dirty-stats-page dirty-stats-native-filters " + themeClass },
+      h(StatsSaveStatus),
       ready ? h(FilterStatisticSelector, { page: page, value: statistic }) : null,
       // extraCriteria is a private hint for DirtyStats' own SceneList/PerformerList
       // patches: Stash passes it through untouched and never interprets the key.
       error ? h(StatsState, { detail: error, role: "alert", title: "Could not load the native filters" }) : ready && (statistic !== "ages" || api.components.PerformerCard) && (sceneView ? api.components.FilteredSceneList : api.components.FilteredPerformerList) ? h(sceneView ? api.components.FilteredSceneList : api.components.FilteredPerformerList, { key: statistic, view: sceneView ? "scenes" : "performers", alterQuery: true, extraCriteria: { dirtyStats: true } }) : h(StatsState, { detail: "Loading filters…", title: "Loading" }));
   }
   function NavIcon() {
-    return h(api.libraries.ReactRouterDOM.NavLink, { to: dashboardRoute, className: "nav-utility dirty-stats-nav", title: "DirtyStats", "aria-label": "Open DirtyStats dashboard" },
-      h("button", { type: "button", title: "DirtyStats", className: "minimal d-flex align-items-center h-100 btn btn-primary dirty-stats-nav-button" }, h("svg", { viewBox: "0 0 24 24", "aria-hidden": true },
+    return h(hub.react.NavAction, { to: dashboardRoute, label: "Open DirtyStats dashboard", className: "dirty-stats-nav dirty-stats-nav-button", icon:
+      h("svg", { viewBox: "0 0 24 24", "aria-hidden": true },
         h("rect", { x: 2, y: 2, width: 20, height: 20, rx: 0.3, fill: "#f7f0ff" }),
         h("rect", { x: 3, y: 3, width: 18, height: 18, fill: "#060607" }),
         h("rect", { x: 3, y: 3, width: 11, height: 10, fill: "#e40606" }),
         h("rect", { x: 16, y: 3, width: 5, height: 5, fill: "#faf710" }),
         h("rect", { x: 16, y: 10, width: 5, height: 11, fill: "#060784" }),
-        h("rect", { x: 3, y: 15, width: 5, height: 6, fill: "#faf710" }))));
+        h("rect", { x: 3, y: 15, width: 5, height: 6, fill: "#faf710" })) });
   }
   api.register.route(route, DirtyStatsRoute);
   api.patch.instead("PerformerList", function () {
@@ -2305,6 +2338,7 @@ return h("main", { ref: page, className: "dirty-stats-page dirty-stats-native-fi
   var statsSettingsReady = loadStatsSettings();
   window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, birthdayInYear: birthdayInYear, daysUntilBirthday: daysUntilBirthday, aggregateBirthdays: aggregateBirthdays, performerImageSource: performerImageSource, birthdayEntriesFor: birthdayEntriesFor, birthdayDefaultSelection: birthdayDefaultSelection, birthdayAgeText: birthdayAgeText, birthdayMonthCounts: birthdayMonthCounts, birthdayDayLabel: birthdayDayLabel, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, growthDataZoomRange: growthDataZoomRange, orderedCards: orderedCards, docsCaptureEnabled: docsCaptureEnabled, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, scatterSeriesData: scatterSeriesData, nearestScatterOption: nearestScatterOption, scatterGuideForClick: scatterGuideForClick, scatterGuideLines: scatterGuideLines, countRatingLabel: countRatingLabel, countRatingSeriesData: countRatingSeriesData, aggregateCountRating: aggregateCountRating, aggregateRepeatOffenders: aggregateRepeatOffenders, repeatOffenderSeriesData: repeatOffenderSeriesData, repeatOffenderRowAtShare: repeatOffenderRowAtShare, aggregateQualityEfficiency: aggregateQualityEfficiency, qualityEfficiencySeriesData: qualityEfficiencySeriesData, qualityEfficiencySymbolSize: qualityEfficiencySymbolSize, aggregateStudios: aggregateStudios, aggregateTagDna: aggregateTagDna, tagDnaMetricValue: tagDnaMetricValue, tagDnaMetricLabel: tagDnaMetricLabel, tagDnaColor: tagDnaColor, tagDnaSeriesData: tagDnaSeriesData, tagDnaScenes: tagDnaScenes, serializeDashboardFilter: serializeDashboardFilter, statsTheme: statsTheme, themeColor: themeColor, themePalette: themePalette, statsThemeClass: statsThemeClass, themedChartOption: themedChartOption, initStatsChart: initStatsChart, statsSettings: statsSettings, parseStatsSetting: parseStatsSetting, statsSettingsFromStorage: statsSettingsFromStorage, setStatsSetting: setStatsSetting, loadStatsSettings: loadStatsSettings } };
   window.__dirtyStatsPlugin.dashboardRoute = dashboardRoute;
+  window.__dirtyStatsPlugin.getSaveStatus = function () { return Object.assign({}, statsSettingsSaveStatus); };
   window.__dirtyStatsPlugin.settingsReady = statsSettingsReady;
   window.__dirtyStatsPlugin.getSettingExtra = getStatsSettingExtra;
   window.__dirtyStatsPlugin.setSettingExtra = setStatsSettingExtra;

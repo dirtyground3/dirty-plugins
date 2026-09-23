@@ -17,13 +17,14 @@ Leave a widget's title blank to use its default name. In edit mode, the header
 shows the reorder handle and a compact remove button; the full-view link appears
 only outside edit mode.
 
-DirtyStats can wear five visual themes. **Retro Arcade** is the fresh-install
-default. **Midnight**, **Candy Pop**, **Tropical Punch**, and the light
+DirtyStats can wear five visual themes. **Midnight** is the fresh-install
+default shared with the DirtyPlugins hub. **Retro Arcade**, **Candy Pop**, **Tropical Punch**, and the light
 **Paper Picnic** theme give pages, dashboard cards, controls, calendars, Tag
 DNA, and charts their own colors and character. Choose a theme while editing
 the dashboard or from the **Visual theme** control on the DirtyStats tab in the
 shared DirtyPlugins settings page; the choice saves automatically and applies
-the next time DirtyStats is opened.
+the next time DirtyStats is opened. Saved choices remain unchanged. An absent or
+unrecognized theme value resolves to Midnight without rewriting the stored value.
 
 Filter selection opens in a dedicated responsive dialog so native filter
 dropdowns have room to expand. The dialog becomes full-screen on narrow
@@ -276,6 +277,14 @@ or copy both sibling directories to Stash's plugins directory, reload plugins,
 and refresh the browser. Python is required for source capacity; no extra Python
 packages or external chart service are required.
 The repository's package builder discovers `dirtyStats.yml` automatically.
+
+DirtyStats uses the suite's rounded action/select controls, shared field and
+metric components, and visible pending/saving/saved/error feedback for display
+settings. Its five saved visual themes remain available. Charts read their
+semantic colours from the effective page CSS, and reduced-motion mode disables
+chart animation. Native Stash filters and performer/scene cards remain native.
+For safe documentation views, open a Stats route with `?docsCapture=1`; native
+cards are replaced with placeholders and the capture mode follows suite links.
 
 Future statistics will use the same selector with their own filters and optional
 settings: scene bitrates. That view is not implemented yet.

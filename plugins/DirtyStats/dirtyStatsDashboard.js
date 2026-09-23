@@ -14,6 +14,9 @@
   var world = window.__dirtyStatsWorld;
   var sharedReact = hub.react || {};
   var StateView = sharedReact.StateView;
+  var Field = sharedReact.Field;
+  var Toggle = sharedReact.SettingsToggle;
+  var controlId = 0;
   var Link = api.libraries.ReactRouterDOM.Link;
   var SIZES = ["small", "medium", "large"];
   var SIZE_LABELS = { small: "Small", medium: "Medium", large: "Large" };
@@ -218,7 +221,7 @@
   }
 
   function metric(label, value, detail) {
-    return h("div", { className: "dirty-stats-dashboard-metric" }, h("strong", null, value), h("span", null, label), detail ? h("small", null, detail) : null);
+    return h(sharedReact.Metric, { className: "dirty-stats-dashboard-metric", label: label, value: value, detail: detail });
   }
 
   function ratingWidget(items, widget, entity) {
@@ -408,11 +411,15 @@
   }
 
   function SelectControl(props) {
-    return h("label", { className: "dirty-stats-dashboard-field" + (props.className ? " " + props.className : "") }, h("span", null, props.label), h("select", { className: "form-control form-control-sm", value: props.value, onChange: function (event) { props.onChange(event.target.value); } }, props.values.map(function (value) { return h("option", { key: String(value), value: value }, props.labels && props.labels[value] != null ? props.labels[value] : String(value)); })));
+    var id = React.useRef(null);
+    if (!id.current) id.current = "dirty-stats-dashboard-control-" + (++controlId);
+    return h(Field, { id: id.current, label: props.label, className: "dirty-stats-dashboard-field" + (props.className ? " " + props.className : "") },
+      h("select", { className: "form-control form-control-sm dirty-ui-select", value: props.value, onChange: function (event) { props.onChange(event.target.value); } },
+        props.values.map(function (value) { return h("option", { key: String(value), value: value }, props.labels && props.labels[value] != null ? props.labels[value] : String(value)); })));
   }
 
   function CheckControl(props) {
-    return h("label", { className: "dirty-stats-dashboard-check" }, h("input", { type: "checkbox", checked: props.value, onChange: function (event) { props.onChange(event.target.checked); } }), h("span", null, props.label));
+    return h(Toggle, { className: "dirty-stats-dashboard-check", checked: props.value, label: props.label, onChange: props.onChange });
   }
 
   function WidgetOptions(props) {
@@ -461,11 +468,7 @@
       (async function () {
         var componentName = props.entity === "performers" ? "FilteredPerformerList" : "FilteredSceneList";
         var loadableName = props.entity === "performers" ? "Performers" : "SceneList";
-        if (!api.components[componentName]) {
-          if (!api.utils || !api.utils.loadComponents || !api.loadableComponents[loadableName]) throw new Error("This Stash version does not expose the native " + props.entity + " filters.");
-          await api.utils.loadComponents([api.loadableComponents[loadableName]]);
-        }
-        if (!api.components[componentName]) throw new Error("Stash's native " + props.entity + " filters could not be loaded.");
+        await hub.native.ensureComponents(loadableName, [componentName]);
         if (active) setReady(true);
       })().catch(function (loadError) { if (active) setError(loadError.message || String(loadError)); });
       return function () {
@@ -485,29 +488,24 @@
     var dialog = React.useRef(null);
     React.useEffect(function () {
       var previous = document.activeElement;
-      document.body.classList.add("dirty-stats-dashboard-modal-open");
+      var unlockScroll = hub.ui.lockBodyScroll();
       var focusTimer = window.setTimeout(function () {
         var first = dialog.current && dialog.current.querySelector("button, input, select, [tabindex=\"0\"]");
         if (first) first.focus();
       }, 0);
       return function () {
         window.clearTimeout(focusTimer);
-        document.body.classList.remove("dirty-stats-dashboard-modal-open");
+        unlockScroll();
         if (previous && typeof previous.focus === "function") previous.focus();
       };
     }, []);
     function keyDown(event) {
       if (event.key === "Escape") { event.preventDefault(); props.onClose(); return; }
-      if (event.key !== "Tab" || !dialog.current) return;
-      var items = Array.from(dialog.current.querySelectorAll('button, input, select, a[href], [tabindex="0"]')).filter(function (item) { return !item.disabled && item.getClientRects().length; });
-      if (!items.length) return;
-      var first = items[0], last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      hub.ui.trapDialogTab(event, dialog.current);
     }
     return api.ReactDOM.createPortal(h("div", { className: "dirty-stats-dashboard-dialog-backdrop " + algorithms.statsThemeClass(), onMouseDown: function (event) { if (event.target === event.currentTarget) props.onClose(); } },
       h("section", { ref: dialog, className: "dirty-stats-dashboard-filter-dialog dirty-ui-panel", role: "dialog", "aria-modal": true, "aria-labelledby": props.labelId, onKeyDown: keyDown },
-        h("header", { className: "dirty-stats-dashboard-dialog-header" }, h("h2", { id: props.labelId }, props.title), h("button", { type: "button", className: "btn btn-secondary btn-sm", onClick: props.onClose, "aria-label": "Close filter dialog" }, "×")),
+        h("header", { className: "dirty-stats-dashboard-dialog-header" }, h("h2", { id: props.labelId }, props.title), h("button", { type: "button", className: "dirty-ui-icon-button dirty-ui-icon-button-compact", onClick: props.onClose, "aria-label": "Close filter dialog" }, "×")),
         props.children)), document.body);
   }
 
@@ -521,13 +519,13 @@
           h("input", { type: "text", className: "dirty-stats-dashboard-title-input", value: widget.title || "", placeholder: definition.label, maxLength: 100, "aria-label": definition.label + " widget title", onChange: function (event) { props.onTitle(event.target.value); } }) :
           h("h2", { title: title }, title)),
         h("div", { className: "dirty-stats-dashboard-widget-actions" },
-          props.editing || widget.statistic === "performerCards" ? null : h(Link, { className: "dirty-stats-dashboard-open-link", to: definition.route, title: "Open " + definition.label + " full view", "aria-label": "Open " + definition.label + " full view" }, h("span", { "aria-hidden": true }, "↗")),
+          props.editing || widget.statistic === "performerCards" ? null : h(Link, { className: "dirty-stats-dashboard-open-link", to: hub.captureUrl(definition.route), title: "Open " + definition.label + " full view", "aria-label": "Open " + definition.label + " full view" }, h("span", { "aria-hidden": true }, "↗")),
           props.editing ? h(React.Fragment, null,
-            h("button", { type: "button", className: "btn btn-secondary btn-sm dirty-stats-dashboard-drag-handle", title: "Drag to reorder; arrow keys also move this widget", "aria-label": "Reorder " + title + "; use arrow keys or drag", onPointerDown: props.onDragStart, onKeyDown: props.onDragKeyDown }, h("span", { "aria-hidden": true }, "⠿")),
-            h("button", { type: "button", className: "btn btn-danger btn-sm dirty-stats-dashboard-remove", title: "Remove widget", "aria-label": "Remove " + title + " widget", onClick: props.onRemove }, h("span", { "aria-hidden": true }, "×"))) : null)),
+            h("button", { type: "button", className: "dirty-ui-icon-button dirty-ui-icon-button-compact dirty-stats-dashboard-drag-handle", title: "Drag to reorder; arrow keys also move this widget", "aria-label": "Reorder " + title + "; use arrow keys or drag", onPointerDown: props.onDragStart, onKeyDown: props.onDragKeyDown }, h("span", { "aria-hidden": true }, "⠿")),
+            h("button", { type: "button", className: "dirty-ui-icon-button dirty-ui-icon-button-compact dirty-ui-icon-button-danger dirty-stats-dashboard-remove", title: "Remove widget", "aria-label": "Remove " + title + " widget", onClick: props.onRemove }, h("span", { "aria-hidden": true }, "×"))) : null)),
       props.editing ? h("div", { className: "dirty-stats-dashboard-editor", role: "group", "aria-label": definition.label + " widget settings" },
         h(SelectControl, { label: "Size", value: widget.size, values: SIZES, labels: SIZE_LABELS, onChange: props.onSize }),
-        h("div", { className: "dirty-stats-dashboard-filter-setting" }, h("span", null, filterSummary(widget.filter, definition.entity)), h("button", { type: "button", className: "btn btn-secondary btn-sm", onClick: props.onFilter }, "Change filters")),
+        h("div", { className: "dirty-stats-dashboard-filter-setting" }, h("span", null, filterSummary(widget.filter, definition.entity)), h("button", { type: "button", className: "btn btn-secondary dirty-ui-button dirty-ui-control-compact", onClick: props.onFilter }, "Change filters")),
         h("div", { className: "dirty-stats-dashboard-options" }, h(WidgetOptions, { widget: widget, onChange: props.onOptions }))) : null,
       h("div", { className: "dirty-stats-dashboard-widget-body" }, renderWidget(widget, props.resources)));
   }
@@ -650,11 +648,11 @@
     if (!ready) return h(State, { title: "Loading dashboard…" });
     return h("section", { className: "dirty-stats-dashboard", "aria-label": "DirtyStats dashboard" },
       h("div", { className: "dirty-stats-dashboard-heading" }, props.selector,
-        h("div", { className: "dirty-stats-actions" },
+        h("div", { className: "dirty-stats-actions dirty-ui-control-row" },
           editing ? h(React.Fragment, null,
             h(SelectControl, { className: "dirty-stats-dashboard-theme", label: "Theme", value: algorithms.statsSettings.visualTheme, values: THEME_VALUES, labels: THEME_LABELS, onChange: function (theme) { algorithms.setStatsSetting("visualTheme", theme); } }),
-            h("button", { type: "button", className: "btn btn-secondary dirty-ui-button", disabled: !adding && widgets.length >= MAX_WIDGETS, onClick: toggleAdding }, adding ? "Close widget picker" : "Add widget")) : null,
-          h("button", { type: "button", className: "btn btn-primary dirty-ui-button", onClick: toggleEditing }, editing ? "Done editing" : "Edit dashboard"))),
+            h("button", { type: "button", className: "btn btn-secondary dirty-ui-button dirty-ui-control", disabled: !adding && widgets.length >= MAX_WIDGETS, onClick: toggleAdding }, adding ? "Close widget picker" : "Add widget")) : null,
+          h("button", { type: "button", className: "btn btn-primary dirty-ui-button dirty-ui-control", onClick: toggleEditing }, editing ? "Done editing" : "Edit dashboard"))),
       h("p", { className: "dirty-stats-dashboard-visually-hidden", role: "status", "aria-live": "polite" }, dragAnnouncement),
       adding ? h("section", { className: "dirty-stats-dashboard-picker dirty-ui-panel", "aria-label": "Add a statistic widget" },
         h("h2", null, "Add widget"),
@@ -662,7 +660,7 @@
         h("div", { className: "dirty-stats-dashboard-picker-grid" }, WIDGET_ORDER.map(function (statistic) { return h("button", { key: statistic, type: "button", className: "btn btn-secondary dirty-ui-button", disabled: widgets.length >= MAX_WIDGETS, onClick: function () { beginAdd(statistic); } }, WIDGETS[statistic].label); }))) : null,
       draft ? h(DashboardFilterDialog, { labelId: "dirty-stats-add-widget-dialog", title: "Add " + WIDGETS[draft.statistic].label, onClose: function () { setDraft(null); } },
         h("div", { className: "dirty-stats-dashboard-add-settings" },
-          h("label", { className: "dirty-stats-dashboard-field dirty-stats-dashboard-title-field" }, h("span", null, "Custom title"), h("input", { type: "text", className: "form-control form-control-sm", value: draft.title || "", placeholder: WIDGETS[draft.statistic].label, maxLength: 100, onChange: function (event) { updateDraft({ title: event.target.value }); } })),
+          h(Field, { id: "dirty-stats-widget-title", label: "Custom title", className: "dirty-stats-dashboard-field dirty-stats-dashboard-title-field" }, h("input", { type: "text", className: "form-control form-control-sm", value: draft.title || "", placeholder: WIDGETS[draft.statistic].label, maxLength: 100, onChange: function (event) { updateDraft({ title: event.target.value }); } })),
           h(SelectControl, { label: "Size", value: draft.size, values: SIZES, labels: SIZE_LABELS, onChange: function (size) { updateDraft({ size: size }); } }),
           h("div", { className: "dirty-stats-dashboard-options" }, h(WidgetOptions, { widget: draft, onChange: function (options) { updateDraft({ options: normalizeOptions(WIDGETS[draft.statistic], options) }); } }))),
         h("div", { className: "dirty-stats-dashboard-filter-heading" }, h("div", null, h("h3", null, "Filters"), h("p", null, "Use the same native filters as the full view. Changes apply to this widget only.")), draft.filter ? h("strong", null, filterSummary(draft.filter, WIDGETS[draft.statistic].entity)) : null),

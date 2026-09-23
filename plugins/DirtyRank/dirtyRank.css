@@ -1,12 +1,8 @@
 .dirty-rank-route {
-  --dirty-rank-accent: #d8a64b;
-  --dirty-rank-accent-strong: #ffc45c;
-  --dirty-rank-cool: #68b8cf;
+  --dirty-rank-accent: var(--dirty-ui-emphasis);
+  --dirty-rank-accent-strong: var(--dirty-ui-emphasis-strong);
+  --dirty-rank-cool: var(--dirty-ui-accent);
   color: var(--dirty-ui-text);
-  margin: 0 auto;
-  max-width: 92rem;
-  min-height: calc(100vh - 4rem);
-  padding: 1.5rem 1rem 4rem;
 }
 
 .dirty-rank-shell {
@@ -649,31 +645,35 @@
 
 .dirty-rank-leaderboards-shell {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
 }
 
-.dirty-rank-leaderboards-shell > :not(.dirty-rank-leaderboard-disclosure),
-.dirty-rank-leaderboard-disclosure[open] {
-  grid-column: 1 / -1;
+/* Some Stash themes tag generic wrappers as filters and force them to flex. */
+.dirty-rank-route .dirty-rank-leaderboards-shell[data-stash-filter] {
+  display: grid !important;
 }
 
 .dirty-rank-leaderboards-header {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  flex-direction: column;
   gap: 0.5rem;
   padding: 0.5rem;
 }
 
 .dirty-rank-leaderboards-heading {
-  display: contents;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
 }
 
 .dirty-rank-leaderboards-links {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  order: 3;
 }
 
 .dirty-rank-leaderboards-header .dirty-rank-title {
@@ -682,15 +682,12 @@
 }
 
 .dirty-rank-leaderboards-controls {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 0.5rem;
   min-width: 0;
+  width: 100%;
 }
 
 .dirty-rank-leaderboards-controls > .dirty-rank-control {
-  flex: 0 1 14rem;
+  flex: 1 1 12rem;
   min-width: 0;
 }
 
@@ -700,7 +697,7 @@
 }
 
 .dirty-rank-leaderboards-controls > .dirty-rank-leaderboards-search {
-  flex: 1 1 12rem;
+  flex: 1 1 15rem;
 }
 
 .dirty-rank-leaderboards-controls .dirty-rank-view-toggle {
@@ -709,7 +706,6 @@
 
 .dirty-rank-leaderboards-controls .dirty-rank-view-toggle > .btn {
   margin-left: 0;
-  border-radius: var(--dirty-ui-radius);
 }
 
 .dirty-rank-leaderboards-controls label {
@@ -726,8 +722,6 @@
 .dirty-rank-leaderboards-controls .form-control {
   min-width: 0;
   width: 100%;
-  height: 2.25rem;
-  padding: 0.25rem 0.65rem;
   font-size: 0.85rem;
 }
 
@@ -735,34 +729,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2.25rem;
-  padding: 0.25rem 0.65rem;
   line-height: 1.2;
   text-align: center;
 }
 
 @media (max-width: 48rem) {
-  .dirty-rank-leaderboards-header {
-    gap: 0.5rem;
-  }
-
-  .dirty-rank-leaderboards-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    width: 100%;
-  }
-
-  .dirty-rank-leaderboards-controls {
-    display: flex;
-    flex-wrap: wrap;
-    width: 100%;
-  }
-
   .dirty-rank-leaderboards-controls > .dirty-rank-control {
     flex: 1 1 7rem;
-    width: auto;
   }
 
   .dirty-rank-leaderboards-controls > .dirty-rank-leaderboards-view {
@@ -825,6 +798,12 @@
   font-size: clamp(1.25rem, 2.3vw, 1.8rem);
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dirty-rank-stat .dirty-ui-metric-value {
+  color: var(--dirty-rank-accent-strong);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1090,6 +1069,16 @@
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.38);
 }
 
+.dirty-rank-route .dirty-ui-control,
+.dirty-rank-settings-card .dirty-ui-control {
+  min-width: 2.5rem;
+}
+
+.dirty-rank-route .dirty-ui-control:focus-visible,
+.dirty-rank-settings-card .dirty-ui-control:focus-visible {
+  outline-color: var(--dirty-ui-focus);
+}
+
 .dirty-rank-showcase-fingers .dirty-rank-podium-1 .dirty-rank-showcase-base {
   height: 7.5rem;
 }
@@ -1194,7 +1183,7 @@
 }
 
 .dirty-rank-table-wrap {
-  overflow-x: auto;
+  min-width: 0;
 }
 
 .dirty-rank-standings-table {
@@ -1203,22 +1192,12 @@
 
 .dirty-rank-standings-table th,
 .dirty-rank-standings-table td {
-  border-bottom: 1px solid var(--dirty-ui-border-soft);
-  padding: 0.62rem 0.8rem;
   text-align: left;
   white-space: nowrap;
 }
 
 .dirty-rank-standings-table th {
   background: rgba(0, 0, 0, 0.16);
-  color: var(--dirty-ui-muted);
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.dirty-rank-standings-table tbody tr:last-child td {
-  border-bottom: 0;
 }
 
 .dirty-rank-table-rank {
@@ -1338,6 +1317,41 @@
   filter: blur(42px) saturate(0.45) brightness(0.72);
 }
 
+/* Native Stash players and cards can add media elements without a Rank CSS class. */
+.dirty-rank-censored-media .dirty-rank-native-preview video,
+.dirty-rank-censored-media .dirty-rank-native-card video,
+.dirty-rank-censored-media .dirty-rank-native-card img {
+  filter: blur(42px) saturate(0.45) brightness(0.72);
+}
+
+/* Capture mode fails closed if a Stash theme uses a background image or canvas. */
+.dirty-rank-censored-media .dirty-rank-native-card,
+.dirty-rank-censored-media .dirty-rank-native-preview,
+.dirty-rank-censored-media img,
+.dirty-rank-censored-media video,
+.dirty-rank-censored-media canvas {
+  visibility: hidden !important;
+}
+
+.dirty-rank-censored-media .dirty-rank-native-card {
+  position: relative;
+}
+
+.dirty-rank-censored-media .dirty-rank-native-card::after {
+  align-items: center;
+  background: var(--dirty-ui-surface-raised);
+  border: 1px dashed var(--dirty-ui-border);
+  border-radius: var(--dirty-ui-radius);
+  color: var(--dirty-ui-muted);
+  content: "Media hidden for documentation";
+  display: flex;
+  font-size: 0.8rem;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+  visibility: visible !important;
+}
+
 .dirty-rank-gallery-card {
   background: rgba(0, 0, 0, 0.17);
   border: 1px solid var(--dirty-ui-border-soft);
@@ -1445,7 +1459,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-.dirty-rank-gallery-rating-row span,
+.dirty-rank-gallery-rating-row span {
+  color: var(--dirty-ui-muted);
+  font-size: 0.78rem;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .dirty-rank-gallery-card,
@@ -1485,24 +1502,18 @@
 }
 
 .dirty-rank-field {
-  align-content: start;
   display: grid;
   gap: 0.3rem;
 }
 
-.dirty-rank-field .form-control {
-  min-height: 2.35rem;
-}
-
 .dirty-rank-field label {
-  font-size: 0.84rem;
   font-weight: 650;
   margin: 0;
 }
 
 .dirty-rank-field-help {
   color: var(--dirty-ui-muted);
-  font-size: 0.76rem;
+  font-size: 0.8rem;
   margin: 0;
 }
 
@@ -1581,8 +1592,6 @@
 }
 
 .dirty-rank-settings-status {
-  color: var(--dirty-ui-muted);
-  font-size: 0.82rem;
   margin-right: auto;
 }
 
@@ -1592,13 +1601,7 @@
 }
 
 .dirty-rank-nav-button {
-  justify-content: center;
   font-size: 1.15rem;
-  line-height: 1;
-  min-width: 2.5rem;
-  padding-left: 0;
-  padding-right: 0;
-  text-align: center;
 }
 
 .dirty-rank-nav-icon {
@@ -1608,6 +1611,12 @@
   height: 1.25rem;
   justify-content: center;
   line-height: 1;
+  width: 1.25rem;
+}
+
+.dirty-rank-nav-icon svg {
+  display: block;
+  height: 1.25rem;
   width: 1.25rem;
 }
 

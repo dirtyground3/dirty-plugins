@@ -41,7 +41,7 @@ function browser(storage = new Map()) {
     },
     DirtyPlugins: {
       registerSettingsPanel: noop,
-      react: { SettingsCard: noop, SettingsSection: noop, SettingsToggle: noop },
+      react: { SettingsCard: noop, SettingsSection: noop, SettingsToggle: noop, Field: noop, Pagination: noop, IconButton: noop },
       values: {
         asObject: value => value,
         coerceBoolean: (value, fallback) => value === undefined ? fallback : value,

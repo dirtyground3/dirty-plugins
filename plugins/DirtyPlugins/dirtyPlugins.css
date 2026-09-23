@@ -3,29 +3,411 @@
   --dirty-ui-border: rgba(255, 255, 255, 0.18);
   --dirty-ui-border-soft: rgba(255, 255, 255, 0.1);
   --dirty-ui-danger: #ff7b7b;
+  --dirty-ui-danger-action: #efb950;
+  --dirty-ui-danger-action-hover: #ffd271;
+  --dirty-ui-on-danger-action: #38250d;
   --dirty-ui-muted: rgba(255, 255, 255, 0.66);
   --dirty-ui-radius: 0.4rem;
   --dirty-ui-radius-small: 0.25rem;
   --dirty-ui-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.42);
   --dirty-ui-success: #72d79b;
+  --dirty-ui-success-surface: #20593b;
+  --dirty-ui-error-surface: #682b2b;
+  --dirty-ui-warning-surface: #7a5a00;
+  --dirty-ui-on-warning: #fff3cd;
   --dirty-ui-surface: rgba(0, 0, 0, 0.16);
   --dirty-ui-surface-raised: var(--bs-dark, #242b31);
   --dirty-ui-text: rgba(255, 255, 255, 0.92);
+  --dirty-ui-accent: #54d5ca;
+  --dirty-ui-accent-strong: #79e5dc;
+  --dirty-ui-emphasis: #f3c779;
+  --dirty-ui-emphasis-strong: #ffd786;
+  --dirty-ui-warning: #ffd86b;
+  --dirty-ui-info: #86cfe0;
+  --dirty-ui-focus: #79e5dc;
+  --dirty-ui-on-accent: #102025;
+  --dirty-ui-control-height: 2.5rem;
+  --dirty-ui-radius-large: 0.6rem;
+  --dirty-ui-space-1: 0.25rem;
+  --dirty-ui-space-2: 0.5rem;
+  --dirty-ui-space-3: 0.75rem;
+  --dirty-ui-space-4: 1rem;
+  --dirty-ui-space-6: 1.5rem;
+  --dirty-ui-space-8: 2rem;
+}
+
+/* Keep host-theme text and surfaces available to the suite's own controls. */
+.dirty-ui-pilot {
+  --dirty-ui-text: var(--bs-body-color, rgba(255, 255, 255, 0.92));
+  --dirty-ui-muted: var(--bs-secondary-color, rgba(255, 255, 255, 0.66));
+  --dirty-ui-surface-raised: var(--bs-body-bg, #242b31);
+  --dirty-ui-border-soft: var(--bs-border-color, rgba(255, 255, 255, 0.1));
 }
 
 .dirty-ui-button {
   align-items: center;
-  border-radius: var(--dirty-ui-radius-small);
+  border-radius: 0.75rem;
   display: inline-flex;
   gap: 0.4rem;
   justify-content: center;
+  min-height: var(--dirty-ui-control-height);
+  padding: 0.45rem 0.85rem;
+  line-height: 1.25;
   transition: background-color 140ms ease, border-color 140ms ease,
     opacity 140ms ease;
 }
 
+.dirty-ui-button.dirty-ui-control-compact {
+  min-height: 2rem;
+  padding: 0.3rem 0.6rem;
+}
+
+.dirty-ui-button,
+.dirty-ui-button:hover,
+.dirty-ui-button:focus-visible,
+.dirty-ui-button:active {
+  text-decoration: none !important;
+}
+
+.dirty-ui-control {
+  min-height: var(--dirty-ui-control-height);
+  padding: 0.45rem 0.85rem;
+  line-height: 1.25;
+}
+
+.dirty-ui-control-compact {
+  min-height: 2rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+/* Use on toolbars with suite-owned selects and actions; native Stash controls are untouched. */
+.dirty-ui-control-row {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dirty-ui-space-2);
+}
+
+.dirty-ui-control-row .dirty-ui-control {
+  box-sizing: border-box;
+  height: var(--dirty-ui-control-height);
+  min-height: var(--dirty-ui-control-height);
+  padding: 0.45rem 0.85rem;
+}
+
+.dirty-ui-select,
+.dirty-ui-field select.form-control,
+.dirty-ui-control-row select.form-control,
+.dirty-ui-control-row input.form-control:not([type="number"]) {
+  box-sizing: border-box;
+  height: var(--dirty-ui-control-height);
+  min-height: var(--dirty-ui-control-height);
+  padding: 0.18rem 0.55rem;
+}
+
+.dirty-ui-select,
+.dirty-ui-field select.form-control,
+.dirty-ui-control-row select.form-control {
+  border-radius: 0.75rem;
+}
+
+.dirty-ui-control:focus-visible,
+.dirty-ui-button:focus-visible,
+.dirty-ui-select:focus-visible,
+.dirty-ui-icon-button:focus-visible,
+.dirty-ui-nav-action:focus-visible,
+.dirty-ui-pagination button:focus-visible {
+  outline: 2px solid var(--dirty-ui-focus);
+  outline-offset: 2px;
+}
+
+.dirty-ui-control[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.75;
+}
+
+.dirty-ui-button:disabled,
+.dirty-ui-button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+.dirty-ui-control-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: inherit;
+}
+
+.dirty-ui-control-quiet:hover:not(:disabled) {
+  background: var(--dirty-ui-surface);
+  color: inherit;
+}
+
+.dirty-ui-button {
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.18);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: background-color 140ms ease, border-color 140ms ease,
+    box-shadow 140ms ease, opacity 140ms ease, transform 140ms ease;
+}
+
+.dirty-ui-button:hover:not(:disabled) {
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.18);
+  transform: translateY(-2px);
+}
+
+.dirty-ui-button:active:not(:disabled) {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transform: translateY(1px);
+}
+
+.dirty-ui-button.btn-primary {
+  background: linear-gradient(135deg, var(--dirty-ui-accent-strong), var(--dirty-ui-accent));
+  border-color: var(--dirty-ui-accent);
+  color: var(--dirty-ui-on-accent);
+}
+
+.dirty-ui-button.btn-primary:hover:not(:disabled) {
+  background: var(--dirty-ui-accent-strong);
+  border-color: var(--dirty-ui-accent-strong);
+}
+
+.dirty-ui-button.btn-secondary {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.04));
+  border-color: var(--dirty-ui-border);
+  color: var(--dirty-ui-text);
+}
+
+.dirty-ui-button.btn-secondary:hover:not(:disabled) {
+  background: var(--dirty-ui-surface-raised);
+  border-color: var(--dirty-ui-accent);
+  color: var(--dirty-ui-text);
+}
+
+.dirty-ui-button.btn-danger {
+  background: var(--dirty-ui-danger-action);
+  border-color: var(--dirty-ui-danger-action);
+  box-shadow: none;
+  color: var(--dirty-ui-on-danger-action);
+}
+
+.dirty-ui-button.btn-danger:hover:not(:disabled) {
+  background: var(--dirty-ui-danger-action-hover);
+  border-color: var(--dirty-ui-danger-action-hover);
+  box-shadow: none;
+  color: var(--dirty-ui-on-danger-action);
+}
+
+.dirty-ui-button.btn-danger:active:not(:disabled) {
+  box-shadow: none;
+}
+
+.dirty-ui-page-shell {
+  margin: 0 auto;
+  max-width: 72rem;
+  min-height: calc(100vh - 4rem);
+  padding: var(--dirty-ui-space-6) var(--dirty-ui-space-4) var(--dirty-ui-space-8);
+  width: 100%;
+}
+
+.dirty-ui-page-shell-wide {
+  max-width: 92rem;
+}
+
+.dirty-ui-page-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dirty-ui-space-4);
+  justify-content: space-between;
+}
+
+.dirty-ui-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dirty-ui-space-2);
+}
+
+.dirty-ui-table-wrap {
+  overflow-x: auto;
+}
+
+.dirty-ui-table th,
+.dirty-ui-table td {
+  border-bottom: 1px solid var(--dirty-ui-border-soft);
+  padding: 0.62rem 0.8rem;
+}
+
+.dirty-ui-table th {
+  color: var(--dirty-ui-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dirty-ui-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.dirty-ui-field {
+  align-content: start;
+  display: grid;
+  gap: var(--dirty-ui-space-1);
+  min-width: 0;
+}
+
+.dirty-ui-field label {
+  font-size: 0.875rem;
+  font-weight: 650;
+  margin: 0;
+}
+
+.dirty-ui-field .form-control {
+  min-height: 2.35rem;
+}
+
+.dirty-ui-pilot .dirty-ui-field input[type="number"] {
+  height: 1.9rem;
+  min-height: 1.9rem;
+  padding: 0.1rem 0.25rem;
+}
+
+.dirty-ui-field-help,
+.dirty-ui-field-error {
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.dirty-ui-field-help {
+  color: var(--dirty-ui-muted);
+}
+
+.dirty-ui-field-error {
+  color: var(--dirty-ui-danger);
+}
+
+.dirty-ui-field [aria-invalid="true"] {
+  border-color: var(--dirty-ui-danger);
+}
+
+.dirty-ui-field .form-control:focus-visible {
+  outline: 2px solid var(--dirty-ui-focus);
+  outline-offset: 1px;
+}
+
+.dirty-ui-save-status {
+  align-items: center;
+  color: var(--dirty-ui-muted);
+  display: inline-flex;
+  font-size: 0.85rem;
+  gap: var(--dirty-ui-space-2);
+}
+
+.dirty-ui-save-status[data-state="error"] {
+  color: var(--dirty-ui-danger);
+}
+
+.dirty-ui-save-status[data-state="pending"] {
+  color: var(--dirty-ui-warning);
+}
+
+.dirty-ui-save-status[data-state="saving"] {
+  color: var(--dirty-ui-info);
+}
+
+.dirty-ui-pagination {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dirty-ui-space-2);
+  justify-content: space-between;
+}
+
+.dirty-ui-pagination-summary {
+  color: var(--dirty-ui-muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.dirty-ui-badge {
+  border: 1px solid var(--dirty-ui-border-soft);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 700;
+  gap: var(--dirty-ui-space-1);
+  line-height: 1.2;
+  padding: 0.24rem 0.55rem;
+}
+
+.dirty-ui-metric {
+  display: grid;
+  gap: var(--dirty-ui-space-1);
+  min-width: 0;
+  padding: var(--dirty-ui-space-4);
+}
+
+.dirty-ui-metric-label {
+  color: var(--dirty-ui-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dirty-ui-metric-value {
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.dirty-ui-metric-detail {
+  color: var(--dirty-ui-muted);
+  font-size: 0.8rem;
+}
+
+.dirty-ui-nav-action {
+  align-items: center;
+  border-radius: var(--dirty-ui-radius-small);
+  color: inherit;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 2.5rem;
+  min-width: 2.5rem;
+  padding: var(--dirty-ui-space-2);
+  text-decoration: none;
+}
+
+.dirty-ui-nav-action:hover,
+.dirty-ui-nav-action:focus-visible,
+.dirty-ui-nav-action.active {
+  background: var(--dirty-ui-surface);
+  color: var(--dirty-ui-accent);
+  text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dirty-ui-button,
+  .dirty-ui-icon-button {
+    transition: none;
+  }
+
+  .dirty-ui-button,
+  .dirty-ui-button:hover:not(:disabled),
+  .dirty-ui-button:active:not(:disabled) {
+    transform: none;
+    transition: none;
+  }
+}
+
 .dirty-ui-panel {
   background: var(--dirty-ui-surface);
-  border-color: var(--dirty-ui-border-soft);
+  border: 1px solid var(--dirty-ui-border-soft);
   border-radius: var(--dirty-ui-radius);
   box-shadow: var(--dirty-ui-shadow);
 }
@@ -92,6 +474,19 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
+.dirty-ui-icon-button-compact {
+  height: 1.75rem;
+  min-width: 1.75rem;
+}
+
+.dirty-ui-icon-button-danger {
+  color: var(--dirty-ui-danger);
+}
+
+.dirty-ui-icon-button-primary {
+  color: var(--dirty-ui-accent);
+}
+
 .dirty-ui-icon-button:disabled {
   cursor: default;
   opacity: 0.45;
@@ -139,6 +534,10 @@
   z-index: 12000;
 }
 
+body.dirty-ui-modal-open {
+  overflow: hidden;
+}
+
 .dirty-ui-dialog {
   background: var(--dirty-ui-surface-raised);
   border: 1px solid var(--dirty-ui-border);
@@ -171,7 +570,7 @@
 }
 
 .dirty-ui-tone-success {
-  background: #20593b;
+  background: var(--dirty-ui-success-surface);
   border-color: var(--dirty-ui-success);
 }
 
@@ -258,8 +657,6 @@
 
 .dirty-plugins-card-header,
 .dirty-plugins-card-footer,
-.dirty-plugins-setting,
-.dirty-plugins-setting-control,
 .dirty-plugins-plugin-meta {
   align-items: center;
   display: flex;
@@ -282,8 +679,9 @@
 
 .dirty-plugins-setting {
   border-bottom: 1px solid var(--dirty-ui-border-soft);
-  gap: 2rem;
-  justify-content: space-between;
+  align-items: center;
+  column-gap: 2rem;
+  grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
   min-height: 4.5rem;
   padding: 0.9rem 0;
 }
@@ -297,35 +695,41 @@
   padding-bottom: 0;
 }
 
-.dirty-plugins-setting-heading {
-  flex: 1 1 55%;
+.dirty-plugins-setting > label {
+  grid-column: 1;
+  grid-row: 1;
 }
 
-.dirty-plugins-setting-heading label {
-  font-weight: 600;
-  margin: 0;
+.dirty-plugins-setting > .dirty-ui-field-help {
+  grid-column: 1;
+  grid-row: 2;
 }
 
-.dirty-plugins-setting-description {
-  color: var(--dirty-ui-muted);
-  font-size: 0.9rem;
-  margin-top: 0.2rem;
-}
-
-.dirty-plugins-setting-control {
-  flex: 1 1 45%;
-  gap: 0.5rem;
-  justify-content: flex-end;
+.dirty-plugins-setting > input,
+.dirty-plugins-setting > select,
+.dirty-plugins-setting > .dirty-ui-field-control {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
   max-width: 30rem;
+  min-width: 0;
+  width: 100%;
 }
 
-.dirty-plugins-setting-control .form-control {
+.dirty-ui-field-control {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.dirty-ui-field-control .form-control {
   min-width: 0;
 }
 
-.dirty-plugins-setting-control input[type="checkbox"] {
+.dirty-plugins-setting > input[type="checkbox"] {
   height: 1.2rem;
   width: 1.2rem;
+  justify-self: end;
 }
 
 .dirty-plugins-card-footer {
@@ -353,13 +757,18 @@
 
 @media (max-width: 48rem) {
   .dirty-plugins-setting {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.5rem;
   }
 
-  .dirty-plugins-setting-control {
-    justify-content: flex-start;
+  .dirty-plugins-setting > label,
+  .dirty-plugins-setting > .dirty-ui-field-help,
+  .dirty-plugins-setting > input,
+  .dirty-plugins-setting > select,
+  .dirty-plugins-setting > .dirty-ui-field-control {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: stretch;
     max-width: none;
   }
 }

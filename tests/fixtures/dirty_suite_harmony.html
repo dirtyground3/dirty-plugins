@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dirty Plugins shared style fixture</title>
+  <link rel="stylesheet" href="../../plugins/DirtyPlugins/dirtyPlugins.css">
+  <link rel="stylesheet" href="../../plugins/DirtyStats/dirtyStats.css">
+  <link rel="stylesheet" href="../../plugins/DirtyTidy/dirtyTidy.css">
+  <link rel="stylesheet" href="../../plugins/DirtyFileExtractor/extractScenes.css">
+  <link rel="stylesheet" href="../../plugins/DirtyMultiscreen/multiscreen.css">
+  <style>
+    body { margin: 0; background: #1b2228; color: #f1f3f4; font: 16px Arial, sans-serif; }
+    main { max-width: 78rem; margin: auto; padding: 1.5rem; }
+    h1 { margin: 0 0 .5rem; }
+    h2 { font-size: 1.2rem; margin: 0 0 .7rem; }
+    .fixture-intro { color: #c0ccd4; }
+    .fixture-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 1rem; }
+    .fixture-panel { padding: 1rem; min-width: 0; }
+    .fixture-panel label { display: block; font-size: .85rem; margin-bottom: .25rem; }
+    .fixture-panel .form-control { background: #242b31; border: 1px solid #788591; color: inherit; }
+    .fixture-panel .btn { border: 1px solid transparent; cursor: pointer; }
+    .fixture-actions { align-items: flex-end; display: flex; flex-wrap: wrap; gap: .5rem; }
+    .fixture-actions .dirty-ui-field { min-width: 10rem; }
+    .fixture-note { color: var(--dirty-ui-muted); font-size: .8rem; }
+    .fixture-stats { padding: 1rem; }
+    .fixture-stats .dirty-ui-metric { max-width: 12rem; }
+    .fixture-tidy { margin-top: 1rem; }
+    .fixture-ms { background: #000; height: 9rem; margin-top: 1rem; position: relative; }
+    .fixture-ms .ms-native-tile { height: 100%; }
+    .fixture-ms .ms-title { opacity: 1; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Dirty Plugins</h1>
+    <p class="fixture-intro">Synthetic controls and placeholders for comparing the shared style. No library data or media is loaded.</p>
+    <div class="fixture-grid">
+      <section class="fixture-panel dirty-ui-panel" aria-label="Shared actions">
+        <h2>Shared actions</h2>
+        <div class="fixture-actions dirty-ui-control-row">
+          <div class="dirty-ui-field"><label for="fixture-choice">Category</label><select id="fixture-choice" class="form-control dirty-ui-select"><option>Example category</option></select></div>
+          <a class="btn btn-secondary dirty-ui-button dirty-ui-control" href="#settings">Options</a>
+          <button class="btn btn-primary dirty-ui-button dirty-ui-control" type="button">Preview</button>
+          <button class="btn btn-danger dirty-ui-button dirty-ui-control" type="button">Run</button>
+        </div>
+        <p class="fixture-note">Selects and adjacent actions use the same height; link-buttons have no underline.</p>
+      </section>
+      <section class="fixture-panel dirty-stats-page dirty-stats-theme-classic" aria-label="DirtyStats Midnight sample">
+        <h2>DirtyStats · Midnight</h2>
+        <div class="fixture-actions dirty-ui-control-row"><select class="form-control dirty-ui-select"><option>Scene ratings</option></select><button class="btn btn-primary dirty-ui-button dirty-ui-control" type="button">Edit dashboard</button></div>
+        <div class="dirty-ui-panel dirty-ui-metric" style="margin-top: .75rem"><span class="dirty-ui-metric-label">Rated scenes</span><strong class="dirty-ui-metric-value">1,234</strong><span class="dirty-ui-metric-detail">Synthetic metric</span></div>
+      </section>
+      <section class="fixture-panel dirty-stats-page dirty-stats-theme-paper" aria-label="DirtyStats Paper sample">
+        <h2>DirtyStats · Paper</h2>
+        <div class="fixture-actions dirty-ui-control-row"><select class="form-control dirty-ui-select"><option>Scene ratings</option></select><button class="btn btn-primary dirty-ui-button dirty-ui-control" type="button">Edit dashboard</button></div>
+        <p class="fixture-note">Optional themes retain the same geometry and focus behaviour.</p>
+      </section>
+      <section class="fixture-panel dirty-ui-panel fixture-tidy" aria-label="DirtyTidy preview sample">
+        <h2>DirtyTidy · Preview</h2>
+        <div class="dirty-tidy-summary" role="group" aria-label="Synthetic preview filters">
+          <button class="dirty-tidy-summary-item dirty-ui-metric dirty-tidy-summary-active" type="button" aria-pressed="true"><strong class="dirty-ui-metric-value">12</strong><span class="dirty-ui-metric-detail">Ready</span></button>
+          <button class="dirty-tidy-summary-item dirty-ui-metric dirty-tidy-summary-warning" type="button" aria-pressed="false"><strong class="dirty-ui-metric-value">2</strong><span class="dirty-ui-metric-detail">Warnings</span></button>
+        </div>
+        <div class="dirty-ui-table-wrap"><table class="dirty-ui-table dirty-tidy-preview-table"><thead><tr><th>Status</th><th>Current path</th><th>Proposed path</th></tr></thead><tbody><tr><td><span class="dirty-ui-badge dirty-tidy-status">Ready</span></td><td>Path hidden</td><td>Path hidden</td></tr></tbody></table></div>
+      </section>
+      <section class="fixture-panel dirty-ui-panel" aria-label="DirtyFileExtractor folder sample">
+        <h2>DirtyFileExtractor · Folder picker</h2>
+        <div class="dirty-file-extractor-picker-dialog dirty-ui-dialog"><div class="dirty-file-extractor-picker-header"><h3>Choose destination folder</h3><button class="dirty-ui-icon-button" type="button" aria-label="Close">×</button></div><div class="dirty-file-extractor-picker-list"><button class="dirty-file-extractor-folder btn btn-link" type="button">Folder 1</button><button class="dirty-file-extractor-folder btn btn-link" type="button">Folder 2</button></div><div class="dirty-file-extractor-picker-footer"><button class="btn btn-secondary dirty-ui-button" type="button">Cancel</button><button class="btn btn-primary dirty-ui-button" type="button">Use this folder</button></div></div>
+      </section>
+      <section class="fixture-panel dirty-ui-panel" aria-label="DirtyMultiscreen capture sample">
+        <h2>DirtyMultiscreen · Capture cover</h2>
+        <div class="fixture-ms ms-docs-capture"><div class="ms-native-tile"><span class="ms-title">Synthetic title hidden</span></div></div>
+        <p class="fixture-note">The media and title area is opaque in documentation mode.</p>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

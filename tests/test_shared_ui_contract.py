@@ -43,6 +43,25 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("DirtyPlugins.react.StateView", multiscreen_js)
         self.assertIn("var(--dirty-ui-radius-small)", multiscreen_css)
 
+    def test_mixed_toolbars_share_select_and_button_height(self):
+        hub_css = read("plugins/DirtyPlugins/dirtyPlugins.css")
+        hub_js = read("plugins/DirtyPlugins/dirtyPlugins.js")
+        rank_js = read("plugins/DirtyRank/dirtyRank.js")
+        stats_dashboard_js = read("plugins/DirtyStats/dirtyStatsDashboard.js")
+        stats_css = read("plugins/DirtyStats/dirtyStats.css")
+        tidy_js = read("plugins/DirtyTidy/dirtyTidy.js")
+
+        self.assertIn("--dirty-ui-control-height: 2.5rem", hub_css)
+        self.assertIn(".dirty-ui-control-row .dirty-ui-control", hub_css)
+        self.assertIn(".dirty-ui-control-row select.form-control", hub_css)
+        self.assertIn('className: "form-control dirty-ui-select"', hub_js)
+        self.assertIn("dirty-rank-header-controls dirty-ui-control-row", rank_js)
+        self.assertIn("dirty-rank-leaderboards-controls dirty-ui-control-row", rank_js)
+        self.assertIn("dirty-stats-actions dirty-ui-control-row", stats_dashboard_js)
+        self.assertIn("form-control form-control-sm dirty-ui-select", stats_dashboard_js)
+        self.assertIn(".dirty-stats-selector .dropdown-toggle { box-sizing: border-box; height: var(--dirty-ui-control-height)", stats_css)
+        self.assertIn("form-control dirty-ui-select dirty-tidy-automation", tidy_js)
+
     def test_documentation_capture_modes_hide_private_paths_and_media(self):
         hub_js = read("plugins/DirtyPlugins/dirtyPlugins.js")
         hub_css = read("plugins/DirtyPlugins/dirtyPlugins.css")
@@ -220,7 +239,10 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("dirtyNames.forEach(function (name) { merged[name] = snapshot[name]; })", script)
         self.assertIn('"dirtyStats"', backend)
         self.assertIn("visualTheme:", manifest)
-        self.assertIn('visualTheme: "classic"', hub)
+        self.assertIn('var DEFAULT_VISUAL_THEME = "classic"', hub)
+        self.assertIn('visualTheme: DEFAULT_VISUAL_THEME', hub)
+        self.assertIn('hubApi.theme.defaultKey = DEFAULT_VISUAL_THEME', hub)
+        self.assertIn('var DEFAULT_THEME = hub.theme && hub.theme.defaultKey || "classic"', script)
         self.assertIn('{ value: "paper", label: "Paper Picnic" }', hub)
         self.assertIn('visualTheme: { options: ["classic", "candy", "tropical", "arcade", "paper"] }', script)
         for theme in ("candy", "tropical", "arcade", "paper"):

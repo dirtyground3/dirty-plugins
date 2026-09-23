@@ -9,6 +9,61 @@ value coercion, stacked notifications, reusable React settings-card, section,
 toggle, icon, and state components, custom settings-panel registration, and
 the visual tokens used by the Dirty plugins.
 
+## UI contract
+
+DirtyRank established the shared visual reference. Use
+`DirtyPlugins.react.Button`, `Field`, `IconButton`, `SaveStatus`, `Badge`,
+`Metric`, `Pagination`, and `NavAction` for suite-owned controls. Keep content
+and interaction details in the plugin. `Field` associates its label, help, and
+error with one native input, select, or textarea; use a stable `id` and retain
+the user's invalid value until they correct it. `Button` defaults to a
+non-submitting button and offers a compact size, a Bootstrap-compatible tone,
+and disabled/busy state. `NavAction` renders one link with its accessible name.
+
+The shared CSS owns `--dirty-ui-accent`, `--dirty-ui-emphasis`, status colours,
+focus colour, a small spacing scale (`--dirty-ui-space-*`), radii, and the
+`.dirty-ui-control`, `.dirty-ui-field`, `.dirty-ui-page-shell`,
+`.dirty-ui-table`, and `.dirty-ui-pagination` classes. `.dirty-ui-button`
+now owns the rounded shape, regular 2.5rem height, hover movement, and
+teal/graphite/amber tones across suite-owned actions. Compact actions are
+2rem; mixed toolbars use the regular height. `.dirty-ui-pilot` remains a Rank
+theme adapter. Keep domain colours such as Rank medals and Stats chart
+categories separate from save/error status colours. Destructive actions use
+warm amber; error messages retain red. Inherit the Stash font.
+
+Use `.dirty-ui-control-row` for a toolbar that places suite-owned selects or
+text fields beside buttons. Its controls share `--dirty-ui-control-height`
+(2.5rem): selects have compact internal padding and buttons have a larger hit
+area. Keep native Stash controls outside this rule, and use the separate compact
+number-field treatment where a dense numeric editor needs it.
+
+Use `DirtyPlugins.native.loadComponent(name)` for a lazily exposed Stash
+component when the plugin already has a suitable fallback. It shares concurrent
+loads and reports unavailable components; it does not replace native performer
+cards, scene players, or their theme behaviour. Use
+`DirtyPlugins.native.ensureComponents(loadableName, requiredNames)` when one
+Stash module registers several components, as the Stats filters do.
+`DirtyPlugins.ui.trapDialogTab` and `lockBodyScroll` cover keyboard looping and
+stacked scroll locks for suite-owned dialogs. `DirtyPlugins.captureEnabled`
+accepts `docsCapture=1` and Rank's legacy `censorMedia=1`; `captureUrl` carries
+capture mode through suite navigation. Capture pages still need opaque covers
+for media and private paths before a screenshot is saved.
+
+The suite uses PluginApi React, router, Bootstrap styling and Stash components.
+DirtyStats alone bundles ECharts and map data for charts; no chart library is
+loaded by the hub or DirtyRank. New shared code has no build step or additional
+package dependency. The synthetic `tests/fixtures/dirty_rank_harmony.html` and
+`tests/fixtures/dirty_suite_harmony.html` pages compare Rank and suite-wide
+controls without loading private data or media.
+
+`DirtyPlugins.theme.defaultKey` owns the suite's default visual theme. It is
+`classic` (Midnight) for a fresh DirtyStats install; a saved valid theme wins,
+and an unknown value falls back visually without overwriting that saved value.
+`DirtyPlugins.theme.readRole(root, property)` reads effective CSS variables
+without inspecting stylesheet rules, so external Stash theme stylesheets are
+safe to use. Stats charts consume these roles for semantic chrome while their
+categorical palettes remain Stats-specific.
+
 DirtyPlugins also owns `dirty_plugins.sqlite3`, the shared WAL-enabled database
 for high-frequency plugin data that should not trigger Stash entity-update
 hooks. Runtime database and WAL files are excluded from plugin packages and

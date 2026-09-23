@@ -20,6 +20,7 @@
   var FIELD_ACTIONS_CHANGED_EVENT = "dirty-plugins:field-actions-changed";
   var SETTINGS_PANELS_CHANGED_EVENT = "dirty-plugins:settings-panels-changed";
   var UNSAVED_SETTINGS_MESSAGE = "You have unsaved Dirty Plugins settings. Leave without saving them?";
+  var DEFAULT_VISUAL_THEME = "classic";
 
   var MANAGED_PLUGIN_IDS = ["extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"];
   var MANAGED_PLUGIN_ID_SET = new Set(MANAGED_PLUGIN_IDS);
@@ -70,7 +71,7 @@
       pauseWhenHidden: true,
     },
     dirtyStats: {
-      visualTheme: "classic",
+      visualTheme: DEFAULT_VISUAL_THEME,
     },
   };
   var FIELD_OPTIONS = {
@@ -524,6 +525,31 @@
     return toast;
   }
 
+  function trapDialogTab(event, dialog) {
+    if (event.key !== "Tab" || !dialog) return;
+    var items = Array.prototype.slice.call(dialog.querySelectorAll('button, input, select, textarea, a[href], [tabindex="0"]'))
+      .filter(function (item) { return !item.disabled && item.getClientRects().length; });
+    if (!items.length) { event.preventDefault(); dialog.focus(); return; }
+    var first = items[0], last = items[items.length - 1];
+    if (!dialog.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
+    else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+
+  var bodyScrollLocks = 0;
+  function lockBodyScroll() {
+    if (!document.body || !document.body.classList) return function () {};
+    bodyScrollLocks += 1;
+    document.body.classList.add("dirty-ui-modal-open");
+    var released = false;
+    return function () {
+      if (released) return;
+      released = true;
+      bodyScrollLocks = Math.max(0, bodyScrollLocks - 1);
+      if (!bodyScrollLocks) document.body.classList.remove("dirty-ui-modal-open");
+    };
+  }
+
   function Glyph(props) {
     if (FontAwesomeIcon && props.icon) {
       return createElement(FontAwesomeIcon, { icon: props.icon });
@@ -533,6 +559,9 @@
 
   function IconButton(props) {
     var className = "dirty-ui-icon-button" +
+      (props.compact ? " dirty-ui-icon-button-compact" : "") +
+      (props.tone === "danger" ? " dirty-ui-icon-button-danger" : "") +
+      (props.tone === "primary" ? " dirty-ui-icon-button-primary" : "") +
       (props.className ? " " + props.className : "");
     return createElement(
       "button",
@@ -541,7 +570,10 @@
         className: className,
         "aria-label": props.ariaLabel,
         title: props.ariaLabel,
-        disabled: Boolean(props.disabled),
+        disabled: Boolean(props.disabled || props.busy),
+        "aria-busy": props.busy ? "true" : undefined,
+        "aria-pressed": props.pressed == null ? undefined : Boolean(props.pressed),
+        ref: props.buttonRef,
         onClick: props.onClick,
       },
       createElement(Glyph, { icon: props.icon, fallback: props.fallback })
@@ -625,7 +657,7 @@
   function SettingsToggle(props) {
     return createElement(
       "label",
-      { className: "dirty-ui-settings-toggle" },
+      { className: "dirty-ui-settings-toggle" + (props.className ? " " + props.className : "") },
       createElement("input", {
         checked: Boolean(props.checked),
         disabled: Boolean(props.disabled),
@@ -634,6 +666,112 @@
       }),
       createElement("span", null, props.label)
     );
+  }
+
+  function Button(props) {
+    var tone = /^(primary|secondary|danger|light|dark|quiet)$/.test(props.tone || "")
+      ? props.tone : "secondary";
+    return createElement("button", {
+      type: props.type || "button",
+      className: "btn " + (tone === "quiet" ? "dirty-ui-control-quiet" : "btn-" + tone) +
+        " dirty-ui-button dirty-ui-control" +
+        (props.compact ? " dirty-ui-control-compact" : "") +
+        (props.className ? " " + props.className : ""),
+      disabled: Boolean(props.disabled || props.busy),
+      "aria-label": props.ariaLabel,
+      "aria-busy": props.busy ? "true" : undefined,
+      "aria-pressed": props.pressed == null ? undefined : Boolean(props.pressed),
+      ref: props.buttonRef,
+      onClick: props.onClick,
+      title: props.title,
+    }, props.children);
+  }
+
+  function Field(props) {
+    var descriptionId = props.id + "-help";
+    var errorId = props.id + "-error";
+    var control = props.children;
+    if (React.isValidElement(control)) {
+      var existing = control.props["aria-describedby"];
+      var describedBy = [existing, props.help && descriptionId, props.error && errorId]
+        .filter(Boolean).join(" ") || undefined;
+      control = React.cloneElement(control, {
+        id: props.id,
+        "aria-describedby": describedBy,
+        "aria-invalid": props.error ? "true" : control.props["aria-invalid"],
+      });
+    }
+    return createElement("div", {
+      className: "dirty-ui-field" + (props.className ? " " + props.className : ""),
+      id: props.containerId,
+    },
+      createElement("label", { htmlFor: props.id }, props.label),
+      props.action ? createElement("div", { className: "dirty-ui-field-control" }, control, props.action) : control,
+      props.help && createElement("p", { className: "dirty-ui-field-help", id: descriptionId }, props.help),
+      props.error && createElement("p", { className: "dirty-ui-field-error", id: errorId }, props.error)
+    );
+  }
+
+  function SaveStatus(props) {
+    if (!props.message) return null;
+    var state = props.state || "saved";
+    return createElement("span", {
+      className: "dirty-ui-save-status" + (props.className ? " " + props.className : ""),
+      "data-state": state,
+      role: state === "error" ? "alert" : "status",
+      "aria-live": state === "error" ? "assertive" : "polite",
+    }, props.message);
+  }
+
+  function Pagination(props) {
+    if (props.totalPages <= 1) return null;
+    return createElement("nav", {
+      "aria-label": props.ariaLabel || "Pages",
+      className: "dirty-ui-pagination" + (props.className ? " " + props.className : ""),
+    },
+      createElement(Button, {
+        compact: true,
+        disabled: props.page <= 1,
+        onClick: function () { props.onPageChange(props.page - 1); },
+      }, "Previous"),
+      createElement("span", { className: "dirty-ui-pagination-summary" },
+        props.summary || "Page " + props.page + " of " + props.totalPages),
+      createElement(Button, {
+        compact: true,
+        disabled: props.page >= props.totalPages,
+        onClick: function () { props.onPageChange(props.page + 1); },
+      }, "Next")
+    );
+  }
+
+  function Badge(props) {
+    return createElement("span", {
+      className: "dirty-ui-badge" + (props.className ? " " + props.className : ""),
+      title: props.title,
+    }, props.children);
+  }
+
+  function Metric(props) {
+    return createElement("div", {
+      className: "dirty-ui-metric" + (props.className ? " " + props.className : ""),
+    },
+      createElement("span", { className: "dirty-ui-metric-label" }, props.label),
+      createElement("strong", { className: "dirty-ui-metric-value" }, props.value),
+      props.detail && createElement("span", { className: "dirty-ui-metric-detail" }, props.detail)
+    );
+  }
+
+  function NavAction(props) {
+    var LinkComponent = props.as || Link;
+    return createElement(LinkComponent, {
+      to: hubApi.captureUrl ? hubApi.captureUrl(props.to) : props.to,
+      exact: props.exact,
+      title: props.label,
+      "aria-label": props.label,
+      className: "nav-utility dirty-ui-nav-action" +
+        (props.className ? " " + props.className : ""),
+      onClick: props.onClick,
+    }, props.icon);
   }
 
   function loggedGraphql(query, variables, options) {
@@ -668,14 +806,89 @@
     coerceBoolean: coerceBoolean,
     parseMaybeJson: parseMaybeJson,
   };
-  hubApi.ui = { notify: notify };
+  hubApi.ui = { notify: notify, trapDialogTab: trapDialogTab, lockBodyScroll: lockBodyScroll };
+  hubApi.theme = hubApi.theme || {};
+  hubApi.theme.defaultKey = DEFAULT_VISUAL_THEME;
+  hubApi.theme.readRole = function (root, propertyName) {
+    if (!root || !propertyName || typeof window.getComputedStyle !== "function") return "";
+    return window.getComputedStyle(root).getPropertyValue(propertyName).trim();
+  };
   hubApi.react = {
+    Badge: Badge,
+    Button: Button,
+    Field: Field,
     Glyph: Glyph,
     IconButton: IconButton,
+    Metric: Metric,
+    NavAction: NavAction,
+    Pagination: Pagination,
+    SaveStatus: SaveStatus,
     SettingsCard: SettingsCard,
     SettingsSection: SettingsSection,
     SettingsToggle: SettingsToggle,
     StateView: StateView,
+  };
+  var nativeComponentLoads = {};
+  var nativeBundleLoads = {};
+  hubApi.native = {
+    loadComponent: function (name) {
+      if (PluginApi.components && PluginApi.components[name]) {
+        return Promise.resolve(PluginApi.components[name]);
+      }
+      if (!PluginApi.utils || !PluginApi.utils.loadComponents ||
+          !PluginApi.loadableComponents || !PluginApi.loadableComponents[name]) {
+        return Promise.reject(new Error("Stash does not expose " + name + "."));
+      }
+      if (!nativeComponentLoads[name]) {
+        nativeComponentLoads[name] = Promise.resolve().then(function () {
+          return PluginApi.utils.loadComponents([PluginApi.loadableComponents[name]]);
+        }).then(function () {
+          if (!PluginApi.components || !PluginApi.components[name]) {
+            throw new Error("Stash did not register " + name + ".");
+          }
+          return PluginApi.components[name];
+        }).catch(function (error) {
+          delete nativeComponentLoads[name];
+          throw error;
+        });
+      }
+      return nativeComponentLoads[name];
+    },
+    ensureComponents: function (loadableName, requiredNames) {
+      var names = requiredNames || [loadableName];
+      function available() { return names.every(function (name) { return PluginApi.components && PluginApi.components[name]; }); }
+      if (available()) return Promise.resolve(names.map(function (name) { return PluginApi.components[name]; }));
+      if (!PluginApi.utils || !PluginApi.utils.loadComponents || !PluginApi.loadableComponents || !PluginApi.loadableComponents[loadableName]) {
+        return Promise.reject(new Error("Stash does not expose " + loadableName + "."));
+      }
+      if (!nativeBundleLoads[loadableName]) {
+        nativeBundleLoads[loadableName] = Promise.resolve().then(function () {
+          return PluginApi.utils.loadComponents([PluginApi.loadableComponents[loadableName]]);
+        }).catch(function (error) {
+          delete nativeBundleLoads[loadableName];
+          throw error;
+        });
+      }
+      return nativeBundleLoads[loadableName].then(function () {
+        if (!available()) throw new Error("Stash did not register " + names.join(", ") + ".");
+        return names.map(function (name) { return PluginApi.components[name]; });
+      });
+    },
+  };
+  hubApi.captureEnabled = function (search) {
+    try {
+      var query = new URLSearchParams(search || "");
+      return query.get("docsCapture") === "1" || query.get("censorMedia") === "1";
+    } catch (_error) {
+      return false;
+    }
+  };
+  hubApi.captureUrl = function (to, search) {
+    if (typeof to !== "string" || !hubApi.captureEnabled(search == null ? window.location && window.location.search : search)) return to;
+    if (/[?&](docsCapture|censorMedia)=1(?:&|#|$)/.test(to)) return to;
+    if (/[?&]docsCapture=/.test(to)) return to.replace(/([?&]docsCapture=)[^&#]*/, function (_match, prefix) { return prefix + "1"; });
+    var hash = to.indexOf("#"), beforeHash = hash < 0 ? to : to.slice(0, hash), afterHash = hash < 0 ? "" : to.slice(hash);
+    return beforeHash + (beforeHash.indexOf("?") < 0 ? "?" : "&") + "docsCapture=1" + afterHash;
   };
 
   function loadSettingsSnapshot() {
@@ -848,6 +1061,7 @@
     var onChange = props.onChange;
     var actionRevision = props.actionRevision;
     var inputId = "dirty-plugin-" + pluginId + "-" + setting.name;
+    var maskedPath = pluginId === "extractScenes" && setting.name === "destinationFolder" && hubApi.captureEnabled(window.location && window.location.search);
     var options = FIELD_OPTIONS[pluginId] && FIELD_OPTIONS[pluginId][setting.name];
     var limits = FIELD_LIMITS[pluginId] && FIELD_LIMITS[pluginId][setting.name];
     var action = useMemo(function () {
@@ -867,7 +1081,7 @@
         "select",
         {
           id: inputId,
-          className: "form-control",
+          className: "form-control dirty-ui-select",
           value: String(value == null ? "" : value),
           onChange: function (event) { onChange(event.target.value); },
         },
@@ -879,39 +1093,28 @@
       control = createElement("input", {
         id: inputId,
         className: "form-control",
+        disabled: maskedPath,
         type: setting.type === "NUMBER" ? "number" : "text",
         min: limits && limits.min,
         max: limits && limits.max,
         step: limits && limits.step,
-        value: value == null ? "" : value,
+        value: maskedPath ? "Path hidden for documentation" : value == null ? "" : value,
         onChange: function (event) { onChange(event.target.value); },
       });
     }
 
-    return createElement(
-      "div",
-      { className: "dirty-plugins-setting", id: "plugin-" + pluginId + "-" + setting.name },
-      createElement(
-        "div",
-        { className: "dirty-plugins-setting-heading" },
-        createElement("label", { htmlFor: inputId }, setting.display_name || setting.name),
-        setting.description && createElement("div", { className: "dirty-plugins-setting-description" }, setting.description)
-      ),
-      createElement(
-        "div",
-        { className: "dirty-plugins-setting-control" },
-        control,
-        action && createElement(
-          "button",
-          {
-            type: "button",
-            className: "btn btn-secondary dirty-ui-button",
-            onClick: function (event) { action.onClick(event); },
-          },
-          action.label
-        )
-      )
-    );
+    return createElement(Field, {
+      id: inputId,
+      containerId: "plugin-" + pluginId + "-" + setting.name,
+      className: "dirty-plugins-setting",
+      label: setting.display_name || setting.name,
+      help: setting.description,
+      action: action && createElement("button", {
+        type: "button",
+        className: "btn btn-secondary dirty-ui-button",
+        onClick: function (event) { action.onClick(event); },
+      }, action.label),
+    }, control);
   }
 
   function PluginCard(props) {
@@ -1233,11 +1436,7 @@
     return createElement(
       "main",
       {
-        className: "dirty-plugins-page" + (
-          new URLSearchParams(window.location.search).get("docsCapture") === "1"
-            ? " dirty-plugins-docs-capture"
-            : ""
-        ),
+        className: "dirty-plugins-page" + (hubApi.captureEnabled(window.location.search) ? " dirty-plugins-docs-capture" : ""),
       },
       createElement(
         "header",

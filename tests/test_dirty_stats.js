@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const routes = [], patches = [], savedSettings = [];
+const notifications = [];
 const storedSettings = {
   visualTheme: "candy",
   showMapNumbers: true,
@@ -21,6 +22,8 @@ const context = {
     PluginApi: { React: {}, libraries: {}, register: { route: (...args) => routes.push(args) }, patch: { before: (...args) => patches.push(args), instead: (...args) => patches.push(args) } },
     DirtyPlugins: {
       graphql() {},
+      theme: { defaultKey: "classic" },
+      ui: { notify: (...args) => notifications.push(args) },
       getPluginSettings: () => Promise.resolve(storedSettings),
       configurePlugin: (pluginId, settings) => {
         savedSettings.push({ pluginId, settings: JSON.parse(JSON.stringify(settings)) });
@@ -40,7 +43,7 @@ vm.createContext(context);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/vendor/world.js", "utf8"), context);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8"), context);
 const a = context.window.__dirtyStatsPlugin.algorithms;
-assert.equal(a.statsSettings.visualTheme, "arcade", "fresh installs default to Retro Arcade");
+assert.equal(a.statsSettings.visualTheme, "classic", "fresh installs use the hub's Midnight default");
 assert.deepEqual(JSON.parse(JSON.stringify(a.constellationGender("TRANSGENDER_FEMALE"))), {key: "TRANSGENDER_FEMALE", label: "Transgender female", color: "#d9a6e8"});
 assert.equal(a.constellationGender(null).label, "Unknown");
 assert.notEqual(a.constellationGender("NON_BINARY").color, a.constellationGender("MALE").color);
@@ -488,10 +491,16 @@ assert.equal(routes.length, 1);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(a.statsSettings.visualTheme, "candy");
   assert.equal(a.statsTheme().label, "Candy Pop");
-  assert.equal(a.statsTheme("unknown").key, "arcade", "unknown themes fall back to the install default");
+  assert.equal(a.statsTheme("unknown").key, "classic", "unknown themes fall back to the install default");
   assert.equal(a.statsThemeClass(), "dirty-stats-theme-candy");
   assert.equal(a.themePalette().length, 8);
   assert.equal(a.themedChartOption({ color: "#54d5ca", label: { color: "#ddd" } }).color, "#ff79c6");
+  context.document = { querySelector: () => ({}) };
+  context.window.DirtyPlugins.theme.readRole = (_page, property) => property === "--dirty-stats-primary" ? "#123456" : "";
+  assert.equal(a.themeColor("primary"), "#123456", "charts read the effective CSS theme role");
+  assert.equal(a.themedChartOption({ color: "#54d5ca" }).color, "#123456");
+  delete context.document;
+  delete context.window.DirtyPlugins.theme.readRole;
   assert.equal(a.statsSettings.showMapNumbers, true, "stored display settings must load");
   assert.equal(a.statsSettings.sceneRatingRounding, 1);
   assert.equal(a.statsSettings.performerRatingRounding, 0);
@@ -553,9 +562,11 @@ assert.equal(routes.length, 1);
   );
 
   a.setStatsSetting("growthShowForecast", true);
+  assert.equal(context.window.__dirtyStatsPlugin.getSaveStatus().state, "pending");
   await new Promise((resolve) => setTimeout(resolve, 500));
   assert.equal(savedSettings.length, 2);
   assert.equal(savedSettings[1].settings.growthShowForecast, true);
+  assert.equal(context.window.__dirtyStatsPlugin.getSaveStatus().state, "saved");
 
   let conflictCalls = 0;
   context.window.DirtyPlugins.getPluginSettings = () => Promise.resolve(Object.assign({}, storedSettings, { remoteOnly: "preserved" }));
@@ -570,6 +581,22 @@ assert.equal(routes.length, 1);
   assert.equal(conflictCalls, 2, "a revision conflict must refresh and retry once");
   assert.equal(savedSettings[2].settings.growthGrouping, "year", "the local change must win for its dirty key");
   assert.equal(savedSettings[2].settings.remoteOnly, "preserved", "unrelated settings from another tab must survive the merge");
+
+  context.window.DirtyPlugins.configurePlugin = () => Promise.reject(new Error("storage unavailable"));
+  a.setStatsSetting("growthGrouping", "month");
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  assert.equal(context.window.__dirtyStatsPlugin.getSaveStatus().state, "error");
+  assert.equal(notifications.length, 1, "a failed save and retry should notify the user");
+  assert.match(notifications[0][0], /could not be saved/);
+  assert.equal(notifications[0][1].tone, "error");
+
+  context.window.DirtyPlugins.configurePlugin = (pluginId, settings) => {
+    savedSettings.push({ pluginId, settings: JSON.parse(JSON.stringify(settings)) });
+    return Promise.resolve({ settings });
+  };
+  a.setStatsSetting("growthGrouping", "day");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(context.window.__dirtyStatsPlugin.getSaveStatus().state, "saved", "a later valid edit recovers from a failed save");
 
   console.log("DirtyStats country aggregation, growth, filters, persisted display settings and registration passed");
 })().catch((error) => {

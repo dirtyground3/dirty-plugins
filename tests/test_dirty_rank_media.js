@@ -46,6 +46,11 @@ const timers = new Map();
 let nextTimer = 0;
 let response;
 const runtime = {
+  react: {
+    SettingsCard: function SettingsCard() {},
+    SettingsSection: function SettingsSection() {},
+    SettingsToggle: function SettingsToggle() {},
+  },
   getPluginSettings: () => Promise.resolve({}),
   runPluginOperation: () => Promise.resolve({ states: {} }),
   graphql: (query, variables, options) => { calls.push({ query, variables, signal: options && options.signal }); return response(options && options.signal); },
@@ -75,7 +80,7 @@ const context = vm.createContext({
   },
 });
 let source = fs.readFileSync(path.join(__dirname, "../plugins/DirtyRank/dirtyRank.js"), "utf8");
-source = source.replace("algorithms: {", "testing: { PerformerCard, PrecisionBadge, serializedSettings, LeaderboardGalleryCard, LeaderboardPodium, LeaderboardGallery, LeaderboardTable, LeaderboardPagination, DirtyRankLeaderboardsRoute, loadNativePerformerCard, queryPerformers, scenePlaybackUrl, needsNativePreview, NativePreviewPlayer, LoadedNativePreview }, algorithms: {");
+source = source.replace("algorithms: {", "testing: { PerformerCard, PrecisionBadge, serializedSettings, LeaderboardGalleryCard, LeaderboardPodium, LeaderboardGallery, LeaderboardTable, LeaderboardPagination, DirtyRankLeaderboardsRoute, DirtyRankSettings, documentationCapture, loadNativePerformerCard, queryPerformers, scenePlaybackUrl, needsNativePreview, NativePreviewPlayer, LoadedNativePreview }, algorithms: {");
 vm.runInContext(source, context);
 const plugin = context.window.__dirtyRankPlugin;
 const settings = plugin.algorithms.settingsFromConfiguration({});
@@ -149,6 +154,11 @@ function attachPlayer(tree, attributes) {
 }
 
 async function main() {
+  context.window.location.search = "?docsCapture=1";
+  assert(plugin.testing.documentationCapture());
+  context.window.location.search = "?censorMedia=1";
+  assert(plugin.testing.documentationCapture());
+  context.window.location.search = "";
   const playbackUrl = plugin.testing.scenePlaybackUrl;
   const legacyScene = {
     paths: { stream: "/scene/896/stream" },
@@ -403,13 +413,55 @@ async function main() {
   delete api.components.PerformerCard;
   active = { slots: [], effects: [], cursor: 0 };
   assert(byClass(plugin.testing.LeaderboardGalleryCard(standingsProps), "dirty-rank-gallery-image-link"), "older Stash builds keep the fallback card");
+  runtime.native = { loadComponent: () => Promise.reject(new Error("native card unavailable")) };
+  assert.strictEqual(await plugin.testing.loadNativePerformerCard(), null,
+    "an unavailable native card must keep the fallback route usable");
+  delete runtime.native;
   response = () => Promise.resolve({ findPerformers: { performers: [rankedPerformer] } });
   await plugin.testing.queryPerformers(true);
   assert(calls.at(-1).query.includes("favorite rating100 o_counter"));
   await plugin.testing.queryPerformers();
   assert(!calls.at(-1).query.includes("favorite rating100 o_counter"), "battle queries must remain lightweight");
   await verifyLeaderboardDisplays();
+  await verifySettingsFieldValidation();
   console.log("DirtyRank media and leaderboard behavior tests passed");
+}
+
+async function verifySettingsFieldValidation() {
+  const originalGetSettings = runtime.getPluginSettings;
+  runtime.getPluginSettings = () => new Promise(() => {});
+  const state = { slots: [], effects: [], cursor: 0 };
+  const props = { configuration: {}, plugin: {} };
+  function render() {
+    active = state;
+    state.cursor = 0;
+    const tree = plugin.testing.DirtyRankSettings(props);
+    state.effects.splice(0).forEach(effect => effect());
+    return tree;
+  }
+  try {
+    let tree = render();
+    find(tree, node => node.props.id === "dirty-rank-confidence-goal" && node.type === "select")
+      .props.onChange({ target: { value: "top" } });
+    tree = render();
+    const topInput = find(tree, node => node.props.id === "dirty-rank-confidence-top-n" && node.type === "input");
+    topInput.props.onChange({ target: { value: "" } });
+    tree = render();
+    assert.strictEqual(find(tree, node => node.props.id === "dirty-rank-confidence-top-n" && node.type === "input").props.value, "",
+      "clearing top N must leave the invalid draft visible");
+    assert.match(find(tree, node => node.props.id === "dirty-rank-confidence-top-n" && node.props.label).props.error, /whole number/);
+    assert.strictEqual(timers.size, 0, "invalid settings must not schedule an automatic save");
+
+    const weightId = "dirty-rank-category-weight-FEMALE-0";
+    find(tree, node => node.props.id === weightId && node.type === "input")
+      .props.onChange({ target: { value: "" } });
+    tree = render();
+    assert.strictEqual(find(tree, node => node.props.id === weightId && node.type === "input").props.value, "");
+    assert.match(find(tree, node => node.props.id === weightId && node.props.label).props.error, /weight/);
+  } finally {
+    state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+    runtime.getPluginSettings = originalGetSettings;
+  }
 }
 
 async function verifyLeaderboardDisplays() {
@@ -502,7 +554,7 @@ async function verifyLeaderboardDisplays() {
       return tree;
     };
   }
-  const selector = tree => find(tree, node => node.props.id === "dirty-rank-leaderboard-top-count");
+  const selector = tree => find(tree, node => node.type === "select" && node.props.id === "dirty-rank-leaderboard-top-count");
   let render = route();
   render();
   await flush();
@@ -524,12 +576,12 @@ async function verifyLeaderboardDisplays() {
     assert.strictEqual(stored.get(storageKey), String(topCount));
   }
   selector(tree).props.onChange({ target: { value: "5" } });
-  find(tree, node => node.type === "button" && node.children[0] === "Table").props.onClick();
+  find(tree, node => node.props.onClick && node.children[0] === "Table").props.onClick();
   render();
   tree = render();
   assert.strictEqual(find(tree, node => node.type === LeaderboardTable).props.entries[0].rank, 6);
 
-  const searchSelector = tree => find(tree, node => node.props.id === "dirty-rank-leaderboard-search");
+  const searchSelector = tree => find(tree, node => node.type === "input" && node.props.id === "dirty-rank-leaderboard-search");
   render = route();
   render();
   await flush();
@@ -546,7 +598,7 @@ async function verifyLeaderboardDisplays() {
   assert.deepStrictEqual(searchGallery.props.entries.map(entry => entry.rank),
     [4].concat(Array.from({ length: 10 }, (_, i) => 40 + i)));
   assert.strictEqual(searchGallery.props.page, 1);
-  find(tree, node => node.type === "button" && node.children[0] === "Table").props.onClick();
+  find(tree, node => node.props.onClick && node.children[0] === "Table").props.onClick();
   render();
   tree = render();
   const searchTable = find(tree, node => node.type === LeaderboardTable);

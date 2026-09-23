@@ -50,6 +50,10 @@ The source code and build script are maintained in the `infinitescreens` project
 The built UI consumes DirtyPlugins' shared GraphQL client, value helpers, React
 icon/state components, and visual tokens so its controls remain consistent with
 the other plugins in this repository.
+The navigation action is one focusable link, and overlay controls become fully
+visible on keyboard focus. Native ScenePlayer remains the playback component.
+With `?docsCapture=1`, playback frames and titles are covered by an opaque
+documentation placeholder; `?censorMedia=1` is also accepted.
 
 ## License
 

@@ -1,4 +1,5 @@
 (() => {
+  "use strict";
   // Stash can reload plugin assets without reloading the page. Routes and
   // PluginApi patches cannot be unregistered, so re-running this bundle would
   // stack duplicate nav links, patches, and count-query timers. Ignore reloads.
@@ -17,41 +18,15 @@
   } catch (_debugError) {}
   debugLog("multiscreen", "script started", { script: debugScriptSrc });
 
-  // plugins/DirtyMultiscreen/src/reactShim.ts
+  // Keep only the React APIs used by this no-build asset.
   var React = window.PluginApi.React;
-  var Children = React.Children;
-  var Component = React.Component;
   var Fragment = React.Fragment;
-  var Profiler = React.Profiler;
-  var PureComponent = React.PureComponent;
-  var StrictMode = React.StrictMode;
-  var Suspense = React.Suspense;
-  var cloneElement = React.cloneElement;
-  var createContext = React.createContext;
   var createElement = React.createElement;
-  var createFactory = React.createFactory;
-  var createRef = React.createRef;
-  var forwardRef = React.forwardRef;
-  var isValidElement = React.isValidElement;
-  var lazy = React.lazy;
-  var memo = React.memo;
-  var startTransition = React.startTransition;
   var useCallback = React.useCallback;
-  var useContext = React.useContext;
-  var useDebugValue = React.useDebugValue;
-  var useDeferredValue = React.useDeferredValue;
   var useEffect = React.useEffect;
-  var useId = React.useId;
-  var useImperativeHandle = React.useImperativeHandle;
-  var useInsertionEffect = React.useInsertionEffect;
-  var useLayoutEffect = React.useLayoutEffect;
   var useMemo = React.useMemo;
-  var useReducer = React.useReducer;
   var useRef = React.useRef;
   var useState = React.useState;
-  var useSyncExternalStore = React.useSyncExternalStore;
-  var useTransition = React.useTransition;
-  var version = React.version;
 
   // src/shared/multiscreen/playlists.ts
   var shuffleMultiscreenItems = (items) => {
@@ -94,7 +69,6 @@
     return;
   }
   var GQL = PluginApi.GQL;
-  var { Button } = PluginApi.libraries.Bootstrap;
   var { NavLink, useLocation } = PluginApi.libraries.ReactRouterDOM;
   var solidIcons = PluginApi.libraries.FontAwesomeSolid ?? {};
   var PLUGIN_ID = "multiscreen";
@@ -763,9 +737,7 @@
     );
     useEffect(() => {
       let cancelled = false;
-      const loadScenePlayer = PluginApi.loadableComponents?.ScenePlayer;
-      const loadComponents = PluginApi.utils?.loadComponents;
-      if (!PluginApi.components || !loadScenePlayer || !loadComponents || !PluginApi.utils?.StashService?.useFindScene) {
+      if (!DirtyPlugins.native?.loadComponent || !PluginApi.utils?.StashService?.useFindScene) {
         setError(new Error("This Stash version does not expose the native ScenePlayer plugin API."));
         return;
       }
@@ -775,12 +747,8 @@
       }
       setLoading(true);
       setError(null);
-      void loadComponents([loadScenePlayer]).then(() => {
+      void DirtyPlugins.native.loadComponent("ScenePlayer").then((loadedComponent) => {
         if (cancelled) return;
-        const loadedComponent = PluginApi.components?.ScenePlayer;
-        if (!loadedComponent) {
-          throw new Error("Stash loaded the native player module without registering ScenePlayer.");
-        }
         setComponent(() => loadedComponent);
       }).catch((loadError) => {
         if (!cancelled) {
@@ -1236,7 +1204,7 @@
     const oCounterButtonLabel = oCounterStatus === "loading" ? `Increasing O counter for ${visibleSceneCount} visible scene${visibleSceneCount === 1 ? "" : "s"}` : oCounterStatus === "success" ? `Increased O counter for ${visibleSceneCount} visible scene${visibleSceneCount === 1 ? "" : "s"}` : oCounterStatus === "error" ? `Could not increase every visible scene O counter; click to retry` : `Increase O counter for ${visibleSceneCount} visible scene${visibleSceneCount === 1 ? "" : "s"}`;
     const oCounterButtonIcon = oCounterStatus === "success" ? ICONS.success : oCounterStatus === "error" ? ICONS.error : ICONS.oCounter;
     const oCounterButtonFallback = oCounterStatus === "loading" ? "..." : oCounterStatus === "success" ? "ok" : oCounterStatus === "error" ? "!" : "O";
-    const docsCapture = new URLSearchParams(window.location.search).get("docsCapture") === "1";
+    const docsCapture = DirtyPlugins.captureEnabled ? DirtyPlugins.captureEnabled(window.location.search) : new URLSearchParams(window.location.search).get("docsCapture") === "1";
     return /* @__PURE__ */ createElement("div", { className: `ms-route${docsCapture ? " ms-docs-capture" : ""}` }, loading && /* @__PURE__ */ createElement(StateView, { title: `Loading ${itemType}` }), !loading && error && /* @__PURE__ */ createElement(
       StateView,
       {
@@ -1332,14 +1300,14 @@
     const handleClick = useCallback(() => {
       storeLaunchContext(launchContext);
     }, [launchContext]);
-    return /* @__PURE__ */ createElement(NavLink, { className: "nav-utility ms-nav-link", exact: true, to: ROUTE_PATH, onClick: handleClick }, /* @__PURE__ */ createElement(Button, { className: "minimal d-flex align-items-center h-100 ms-nav-button", title: buttonTitle }, /* @__PURE__ */ createElement("i", { className: "ms-nav-icon", "aria-hidden": "true" }, /* @__PURE__ */ createElement("i", null), /* @__PURE__ */ createElement("i", null), /* @__PURE__ */ createElement("i", null), /* @__PURE__ */ createElement("i", null)), launchContext && /* @__PURE__ */ createElement(
+    return /* @__PURE__ */ createElement(DirtyPlugins.react.NavAction, { as: NavLink, className: "ms-nav-link ms-nav-button", exact: true, to: ROUTE_PATH, onClick: handleClick, label: buttonTitle, icon: /* @__PURE__ */ createElement(Fragment, null, /* @__PURE__ */ createElement("i", { className: "ms-nav-icon", "aria-hidden": "true" }, /* @__PURE__ */ createElement("i", null), /* @__PURE__ */ createElement("i", null), /* @__PURE__ */ createElement("i", null), /* @__PURE__ */ createElement("i", null)), launchContext && /* @__PURE__ */ createElement(
       "i",
       {
         className: `ms-nav-count${countLoading ? " ms-loading" : ""}`,
         "aria-label": countLoading ? `Counting ${countNoun}` : `${formattedSceneCount ?? 0} ${countNoun}`
       },
       countLoading ? "\u2026" : formattedSceneCount ?? "?"
-    )));
+    )) });
   };
   PluginApi.register.route(ROUTE_PATH, MultiscreenRoute);
   PluginApi.patch.before("SceneMarkerList", function(props) {

@@ -6,7 +6,7 @@ const context = {
   console,
   window: {
     PluginApi: { React: { createElement: (type, props, ...children) => ({ type, props: props || {}, children }), Fragment: "fragment" }, libraries: { ReactRouterDOM: { Link: "Link" } } },
-    DirtyPlugins: { react: {} },
+    DirtyPlugins: { react: {}, captureUrl: path => path },
     __dirtyStatsPlugin: { route: "/plugins/dirty-stats", algorithms: {} }
   }
 };

@@ -34,7 +34,9 @@
   border-radius: var(--dirty-ui-radius-small);
   color: var(--dirty-ui-text);
   background: rgba(0, 0, 0, 0.62);
-  font: 500 0.78rem/1.2 system-ui, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.2;
   text-decoration: none;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -72,7 +74,8 @@
   opacity: 0.45;
 }
 
-.ms-floating .ms-button:hover {
+.ms-floating .ms-button:hover,
+.ms-floating .ms-button:focus-visible {
   opacity: 1;
 }
 
@@ -95,8 +98,8 @@
   min-width: 1.35rem;
   padding: 0.08rem 0.34rem;
   border-radius: 999px;
-  color: #fff;
-  background: var(--dirty-ui-border);
+  color: var(--dirty-ui-on-accent);
+  background: var(--dirty-ui-emphasis);
   font-size: 0.68rem;
   font-style: normal;
   font-variant-numeric: tabular-nums;
@@ -148,8 +151,27 @@
   opacity: 1;
 }
 
-/* Documentation captures preserve the real grid while obscuring video frames. */
-.ms-docs-capture .ms-native-tile .VideoPlayer {
-  filter: blur(42px) saturate(0.45) brightness(0.72);
-  transform: scale(1.08);
+/* Documentation captures preserve the layout and fully cover native frames. */
+.ms-docs-capture .ms-native-tile .VideoPlayer,
+.ms-docs-capture .ms-native-tile video,
+.ms-docs-capture .ms-native-tile img,
+.ms-docs-capture .ms-native-tile canvas {
+  visibility: hidden !important;
+}
+
+.ms-docs-capture .ms-title {
+  visibility: hidden !important;
+}
+
+.ms-docs-capture .ms-native-tile::after {
+  align-items: center;
+  background: var(--dirty-ui-surface-raised);
+  color: var(--dirty-ui-muted);
+  content: "Media hidden for documentation";
+  display: flex;
+  font-size: .8rem;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+  z-index: 2;
 }

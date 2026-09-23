@@ -37,7 +37,10 @@
   var SettingsCard = DirtyPlugins.react && DirtyPlugins.react.SettingsCard;
   var Section = DirtyPlugins.react && DirtyPlugins.react.SettingsSection;
   var Toggle = DirtyPlugins.react && DirtyPlugins.react.SettingsToggle;
-  if (!SettingsCard || !Section || !Toggle) return;
+  var Field = DirtyPlugins.react && DirtyPlugins.react.Field;
+  var Pagination = DirtyPlugins.react && DirtyPlugins.react.Pagination;
+  var IconButton = DirtyPlugins.react && DirtyPlugins.react.IconButton;
+  if (!SettingsCard || !Section || !Toggle || !Field || !Pagination || !IconButton) return;
   var PLUGIN_ID = "dirtyTidy";
   var PREVIEW_PAGE_SIZE = 50;
   var DEFAULT_SETTINGS = {
@@ -326,14 +329,14 @@
         var active = props.value === value[2];
         return h("button", {
           "aria-pressed": active,
-          className: "dirty-tidy-summary-item dirty-tidy-summary-" + value[2] + (active ? " dirty-tidy-summary-active" : ""),
+          className: "dirty-tidy-summary-item dirty-ui-metric dirty-tidy-summary-" + value[2] + (active ? " dirty-tidy-summary-active" : ""),
           disabled: props.disabled,
           key: value[0],
           onClick: function () { props.onChange(value[2]); },
           type: "button",
         },
-          h("strong", null, String(value[1])),
-          h("span", null, value[0])
+          h("strong", { className: "dirty-ui-metric-value" }, String(value[1])),
+          h("span", { className: "dirty-ui-metric-detail" }, value[0])
         );
       })
     );
@@ -343,6 +346,9 @@
     var operation = props.operation || {};
     var warnings = operation.warnings || [];
     var blockedScenes = operation.blocked_scenes || [];
+    if (DirtyPlugins.captureEnabled && DirtyPlugins.captureEnabled(window.location && window.location.search)) {
+      return warnings.length || blockedScenes.length ? h("span", null, "Details hidden for documentation") : null;
+    }
     return h(
       "div",
       { className: "dirty-tidy-notes" },
@@ -374,13 +380,14 @@
 
   function PreviewTable(props) {
     var operations = props.operations || [];
+    var docsCapture = DirtyPlugins.captureEnabled && DirtyPlugins.captureEnabled(window.location && window.location.search);
     if (!operations.length) {
       return h("p", { className: "dirty-tidy-empty" }, "No operations match this filter.");
     }
     return h(
       "div",
-      { className: "dirty-tidy-preview-table-wrap" },
-      h("table", { className: "table table-sm dirty-tidy-preview-table" },
+      { className: "dirty-tidy-preview-table-wrap dirty-ui-table-wrap" },
+      h("table", { className: "table table-sm dirty-tidy-preview-table dirty-ui-table" },
         h("thead", null,
           h("tr", null,
             h("th", null, "Status"),
@@ -392,9 +399,9 @@
         h("tbody", null,
           operations.map(function (operation) {
             return h("tr", { key: operation.file_id, className: "dirty-tidy-row-" + operation.status },
-              h("td", null, h("span", { className: "badge dirty-tidy-status" }, operation.status)),
-              h("td", { className: "dirty-tidy-path" }, operation.source_path),
-              h("td", { className: "dirty-tidy-path" }, operation.destination_path),
+              h("td", null, h("span", { className: "badge dirty-ui-badge dirty-tidy-status" }, operation.status)),
+              h("td", { className: "dirty-tidy-path" }, docsCapture ? "Path hidden" : operation.source_path),
+              h("td", { className: "dirty-tidy-path" }, docsCapture ? "Path hidden" : operation.destination_path),
               h("td", null, h(PreviewNotes, { operation: operation }))
             );
           })
@@ -698,9 +705,9 @@
                   type: "text",
                   value: level,
                 }),
-                h("button", { "aria-label": "Move level up", className: "dirty-ui-icon-button", disabled: index === 0, onClick: function () { moveLevel(index, -1); }, type: "button" }, "↑"),
-                h("button", { "aria-label": "Move level down", className: "dirty-ui-icon-button", disabled: index === draft.hierarchyLevels.length - 1, onClick: function () { moveLevel(index, 1); }, type: "button" }, "↓"),
-                h("button", { "aria-label": "Remove level", className: "dirty-ui-icon-button", onClick: function () { removeLevel(index); }, type: "button" }, "×")
+                h(IconButton, { ariaLabel: "Move level up", fallback: "↑", disabled: index === 0, onClick: function () { moveLevel(index, -1); } }),
+                h(IconButton, { ariaLabel: "Move level down", fallback: "↓", disabled: index === draft.hierarchyLevels.length - 1, onClick: function () { moveLevel(index, 1); } }),
+                h(IconButton, { ariaLabel: "Remove level", fallback: "×", tone: "danger", onClick: function () { removeLevel(index); } })
               );
             }),
             h("button", { className: "btn btn-secondary dirty-ui-button", disabled: !draft.moveEnabled, onClick: addLevel, type: "button" }, "+ Add hierarchy level")
@@ -720,12 +727,10 @@
             label: "Only rename files for scenes with a Stash ID",
             onChange: function (value) { changed({ renameRequireStashId: value }); },
           }),
-          h("div", { className: "dirty-tidy-field" },
-            h("label", { htmlFor: "dirty-tidy-rename-pattern" }, "Filename pattern"),
+          h(Field, { id: "dirty-tidy-rename-pattern", label: "Filename pattern", className: "dirty-tidy-field" },
             h("input", {
               className: "form-control",
               disabled: !draft.renameEnabled,
-              id: "dirty-tidy-rename-pattern",
               onChange: function (event) { changed({ renamePattern: event.target.value }); },
               onFocus: function () { setFocusTarget({ kind: "rename" }); },
               type: "text",
@@ -733,12 +738,10 @@
             })
           ),
           h("div", { className: "dirty-tidy-field-row" },
-            h("div", { className: "dirty-tidy-field" },
-              h("label", { htmlFor: "dirty-tidy-max-length" }, "Maximum filename length"),
+            h(Field, { id: "dirty-tidy-max-length", label: "Maximum filename length", className: "dirty-tidy-field" },
               h("input", {
                 className: "form-control",
                 disabled: !draft.renameEnabled,
-                id: "dirty-tidy-max-length",
                 max: 255,
                 min: 16,
                 onChange: function (event) { changed({ maxFilenameLength: Number(event.target.value) }); },
@@ -746,11 +749,9 @@
                 value: draft.maxFilenameLength,
               })
             ),
-            h("div", { className: "dirty-tidy-field" },
-              h("label", { htmlFor: "dirty-tidy-separator" }, "Multi-value separator"),
+            h(Field, { id: "dirty-tidy-separator", label: "Multi-value separator", className: "dirty-tidy-field" },
               h("input", {
                 className: "form-control",
-                id: "dirty-tidy-separator",
                 maxLength: 10,
                 onChange: function (event) { changed({ multiValueSeparator: event.target.value }); },
                 type: "text",
@@ -769,7 +770,7 @@
         },
           h("select", {
             "aria-label": "DirtyTidy automation mode",
-            className: "form-control dirty-tidy-automation",
+            className: "form-control dirty-ui-select dirty-tidy-automation",
             disabled: busy,
             onChange: function (event) { changed({ automationMode: event.target.value }, false); },
             value: draft.automationMode,
@@ -810,11 +811,7 @@
               value: previewFilter,
             }),
             h(PreviewTable, { operations: visibleOperations }),
-            previewPages > 1 && h("div", { className: "dirty-tidy-pagination" },
-              h("button", { className: "btn btn-secondary dirty-ui-button", disabled: previewPage <= 1, onClick: function () { setPreviewPage(previewPage - 1); }, type: "button" }, "Previous"),
-              h("span", null, "Page " + previewPage + " of " + previewPages + " · " + filteredTotal + " matching"),
-              h("button", { className: "btn btn-secondary dirty-ui-button", disabled: previewPage >= previewPages, onClick: function () { setPreviewPage(previewPage + 1); }, type: "button" }, "Next")
-            ),
+            previewPages > 1 && h(Pagination, { className: "dirty-tidy-pagination", ariaLabel: "Preview pages", page: previewPage, totalPages: previewPages, onPageChange: setPreviewPage, summary: "Page " + previewPage + " of " + previewPages + " · " + filteredTotal + " matching" }),
             h("div", { className: "dirty-tidy-confirm" },
               h("button", {
                 className: "btn btn-primary dirty-ui-button",

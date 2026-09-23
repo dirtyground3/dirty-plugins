@@ -69,6 +69,11 @@ DirtyTidy depends on the sibling **DirtyPlugins** settings hub. Install from the
 repository package source, or copy both complete directories into the Stash
 plugins directory and reload plugins.
 
+Its fields, icon actions, preview pagination, metric-style summary filters,
+and status colours use the shared suite style. The preview/confirm/run approval
+sequence is unchanged. With `?docsCapture=1`, preview paths and note details
+appear as placeholders for safe screenshots.
+
 Planned improvements and known bugs are tracked in [TODO.md](TODO.md).
 
 ## License

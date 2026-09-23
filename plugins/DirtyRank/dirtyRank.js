@@ -51,10 +51,37 @@
   var Section = DirtyPlugins.react && DirtyPlugins.react.SettingsSection;
   var Toggle = DirtyPlugins.react && DirtyPlugins.react.SettingsToggle;
   var StateView = DirtyPlugins.react && DirtyPlugins.react.StateView;
+  var SharedButton = DirtyPlugins.react && DirtyPlugins.react.Button;
+  var SharedBadge = DirtyPlugins.react && DirtyPlugins.react.Badge;
+  var SharedField = DirtyPlugins.react && DirtyPlugins.react.Field;
+  var SharedIconButton = DirtyPlugins.react && DirtyPlugins.react.IconButton;
+  var SharedMetric = DirtyPlugins.react && DirtyPlugins.react.Metric;
+  var SharedNavAction = DirtyPlugins.react && DirtyPlugins.react.NavAction;
+  var SharedPagination = DirtyPlugins.react && DirtyPlugins.react.Pagination;
+  var SharedSaveStatus = DirtyPlugins.react && DirtyPlugins.react.SaveStatus;
   var PLUGIN_ID = "dirtyRank";
   var ROUTE_PATH = "/plugins/dirty-rank";
   var GAUNTLET_ROUTE_PATH = "/plugins/dirty-rank/gauntlet/:performerId";
   var LEADERBOARDS_ROUTE_PATH = "/plugins/dirty-rank-leaderboards";
+
+  function documentationCapture() {
+    if (DirtyPlugins.captureEnabled) return DirtyPlugins.captureEnabled(window.location.search);
+    var query = new URLSearchParams(window.location.search);
+    return query.get("docsCapture") === "1" || query.get("censorMedia") === "1";
+  }
+
+  function RankButton(props) {
+    if (SharedButton) return h(SharedButton, props, props.children);
+    return h("button", {
+      className: "btn btn-" + (props.tone || "secondary") +
+        " dirty-ui-button dirty-ui-control" +
+        (props.compact ? " dirty-ui-control-compact" : "") +
+        (props.className ? " " + props.className : ""),
+      disabled: props.disabled,
+      onClick: props.onClick,
+      type: "button",
+    }, props.children);
+  }
   var PERFORMERS_ROUTE_PATH = "/performers";
   var OVERALL_SORT_VALUE = "dirty_rank_overall";
   var OVERALL_SORT_LABEL = "Overall Elo";
@@ -295,7 +322,7 @@
       autoPlayTopScenes: Boolean(settings.autoPlayTopScenes),
       includePerformersWithoutImages: Boolean(settings.includePerformersWithoutImages),
       confidenceGoal: settings.confidenceGoal,
-      confidenceTopN: settings.confidenceTopN,
+      confidenceTopN: Number(settings.confidenceTopN),
       avoidRepeatWindow: settings.avoidRepeatWindow,
       calibrationPercent: settings.calibrationPercent,
       initialRating: settings.initialRating,
@@ -345,6 +372,9 @@
   }
 
   function loadNativePerformerCard() {
+    if (DirtyPlugins.native && DirtyPlugins.native.loadComponent) {
+      return DirtyPlugins.native.loadComponent("PerformerCard").catch(function () { return null; });
+    }
     if (PluginApi.components && PluginApi.components.PerformerCard) return Promise.resolve();
     if (!PluginApi.utils || !PluginApi.utils.loadComponents || !PluginApi.loadableComponents || !PluginApi.loadableComponents.PerformerCard) {
       return Promise.resolve();
@@ -366,6 +396,9 @@
   }
 
   function loadNativePreviewPlayer() {
+    if (DirtyPlugins.native && DirtyPlugins.native.loadComponent) {
+      return DirtyPlugins.native.loadComponent("ScenePlayer").catch(function () { return null; });
+    }
     if (PluginApi.components && PluginApi.components.ScenePlayer) return Promise.resolve();
     if (!PluginApi.utils || !PluginApi.utils.loadComponents || !PluginApi.loadableComponents || !PluginApi.loadableComponents.ScenePlayer) return Promise.resolve();
     return PluginApi.utils.loadComponents([PluginApi.loadableComponents.ScenePlayer]);
@@ -577,6 +610,11 @@
 
   function PrecisionBadge(props) {
     var tier = props.pool.precision || precisionTier(props.pool, props.settings);
+    if (SharedBadge) return h(SharedBadge, {
+      className: "text-uppercase dirty-rank-status-" + tier.id,
+      title: tier.label + " precision · RD " + props.pool.deviation.toFixed(1) +
+        " · " + props.pool.matches.toLocaleString() + (props.pool.matches === 1 ? " battle" : " battles"),
+    }, tier.label);
     return h("span", {
       className: "badge badge-pill text-uppercase dirty-rank-status-" + tier.id,
       title: tier.label + " precision · RD " + props.pool.deviation.toFixed(1) +
@@ -1449,11 +1487,11 @@
           h("span", null, Number(performer.scene_count || 0).toLocaleString() + " scenes")
         ),
         h("div", { className: "dirty-rank-scene-actions" },
-          h("button", {
-            className: "btn btn-sm btn-secondary dirty-ui-button dirty-rank-play-scene",
+          h(RankButton, {
+            compact: true,
+            className: "dirty-rank-play-scene",
             disabled: props.disabled || Number(performer.scene_count || 0) < 1,
             onClick: toggleTopScene,
-            type: "button",
           }, sceneLoading ? "Cancel loading" : scene ? (scene.marker ? "Close marker" : "Close top scene") : "▶ Play top scene")
         ),
         sceneError && h("div", { className: "dirty-rank-scene-error dirty-ui-text-error", role: "alert" }, sceneError),
@@ -1583,6 +1621,12 @@
   }
 
   function LeaderboardStat(props) {
+    if (SharedMetric) return h(SharedMetric, {
+      className: "dirty-rank-stat dirty-ui-feature-card",
+      label: props.label,
+      value: props.value,
+      detail: props.detail,
+    });
     return h("div", { className: "dirty-rank-stat dirty-ui-feature-card" },
       h("span", { className: "dirty-rank-stat-label" }, props.label),
       h("strong", { className: "dirty-rank-stat-value" }, props.value),
@@ -1702,6 +1746,17 @@
 
   function LeaderboardPagination(props) {
     if (props.totalPages <= 1) return null;
+    var summary = "Page " + props.page.toLocaleString() + " of " +
+      props.totalPages.toLocaleString() + " · ranks " +
+      props.firstRank.toLocaleString() + "–" + props.lastRank.toLocaleString();
+    if (SharedPagination) return h(SharedPagination, {
+      ariaLabel: "Leaderboard pages",
+      className: "dirty-rank-pagination",
+      onPageChange: props.onPageChange,
+      page: props.page,
+      summary: summary,
+      totalPages: props.totalPages,
+    });
     return h("nav", { "aria-label": "Leaderboard pages", className: "dirty-rank-pagination d-flex align-items-center justify-content-between" },
       h("button", {
         className: "btn btn-sm btn-secondary",
@@ -1788,8 +1843,8 @@
       }),
       !page.total
         ? h("div", { className: "dirty-rank-empty-standings" }, props.emptyMessage || (ranked.length ? "Every rated performer is featured above." : "No standings yet."))
-        : h("div", { className: "dirty-rank-table-wrap" },
-            h("table", { className: "table table-hover mb-0 dirty-rank-standings-table" },
+        : h("div", { className: "dirty-rank-table-wrap dirty-ui-table-wrap" },
+            h("table", { className: "table table-hover mb-0 dirty-ui-table dirty-rank-standings-table" },
               h("thead", null, h("tr", null,
                 h("th", { scope: "col" }, "Rank"),
                 h("th", { scope: "col" }, "Performer"),
@@ -1982,31 +2037,30 @@
       if (page > totalPages) setPage(totalPages);
     }, [page, totalPages]);
 
-    if (loading) return h("main", { className: "dirty-rank-route" }, h(StateView, { title: "Loading DirtyRank leaderboards…" }));
+    if (loading) return h("main", { className: "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide" }, h(StateView, { title: "Loading DirtyRank leaderboards…" }));
     if (error || !settings || !data) {
-      return h("main", { className: "dirty-rank-route" }, h(StateView, {
+      return h("main", { className: "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide" }, h(StateView, {
         title: "Could not load DirtyRank leaderboards",
         detail: error || "DirtyRank settings are unavailable.",
-        actions: h("button", { className: "btn btn-secondary dirty-ui-button", onClick: load, type: "button" }, "Retry"),
+        actions: h(RankButton, { onClick: load }, "Retry"),
       }));
     }
 
     var stats = data.stats;
     var leaderboardName = selectedCategory ? selectedCategory.name : "Overall";
-    var censorMedia = new URLSearchParams(window.location.search).get("censorMedia") === "1";
-    return h("main", { className: "dirty-rank-route dirty-rank-leaderboards-route" + (censorMedia ? " dirty-rank-censored-media" : "") },
+    var censorMedia = documentationCapture();
+    return h("main", { className: "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide dirty-rank-leaderboards-route" + (censorMedia ? " dirty-rank-censored-media" : "") },
       h("div", { className: "dirty-rank-leaderboards-shell" },
-        h("header", { className: "dirty-rank-leaderboards-header dirty-ui-feature-card" },
+        h("header", { className: "dirty-rank-leaderboards-header dirty-ui-page-header dirty-ui-feature-card" },
           h("div", { className: "dirty-rank-leaderboards-heading" },
             h("h1", { className: "dirty-rank-title" }, "Leaderboards"),
-            h("nav", { className: "dirty-rank-leaderboards-links", "aria-label": "DirtyRank navigation" },
-              h(NavLink, { className: "btn btn-sm btn-secondary", exact: true, to: ROUTE_PATH }, "Battles"),
-              h(NavLink, { className: "btn btn-sm btn-secondary", to: "/plugins/dirty-plugins?plugin=dirtyRank" }, "Options")
+            h("nav", { className: "dirty-rank-leaderboards-links dirty-ui-control-row", "aria-label": "DirtyRank navigation" },
+              h(NavLink, { className: "btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact", exact: true, to: ROUTE_PATH }, "Battles"),
+              h(NavLink, { className: "btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact", to: "/plugins/dirty-plugins?plugin=dirtyRank" }, "Options")
             )
           ),
-          h("div", { className: "dirty-rank-leaderboards-controls" },
-            availableCohorts.length > 1 && h("div", { className: "dirty-rank-control" },
-              h("label", { htmlFor: "dirty-rank-leaderboard-cohort" }, "Performer sex"),
+          h("div", { className: "dirty-rank-leaderboards-controls dirty-ui-control-row" },
+            availableCohorts.length > 1 && h(Field, { className: "dirty-rank-control", id: "dirty-rank-leaderboard-cohort", label: "Performer sex" },
               h("select", {
                 className: "form-control",
                 id: "dirty-rank-leaderboard-cohort",
@@ -2014,8 +2068,7 @@
                 value: cohort,
               }, availableCohorts.map(function (item) { return h("option", { key: item[0], value: item[0] }, item[1]); }))
             ),
-            h("div", { className: "dirty-rank-control" },
-              h("label", { htmlFor: "dirty-rank-leaderboard-category" }, "Leaderboard"),
+            h(Field, { className: "dirty-rank-control", id: "dirty-rank-leaderboard-category", label: "Leaderboard" },
               h("select", {
                 className: "form-control",
                 id: "dirty-rank-leaderboard-category",
@@ -2026,8 +2079,7 @@
                 enabledCategories.map(function (category) { return h("option", { key: category.id, value: category.id }, category.name); })
               )
             ),
-            h("div", { className: "dirty-rank-control" },
-              h("label", { htmlFor: "dirty-rank-leaderboard-top-count" }, "Featured performers"),
+            h(Field, { className: "dirty-rank-control", id: "dirty-rank-leaderboard-top-count", label: "Featured performers" },
               h("select", {
                 className: "form-control",
                 id: "dirty-rank-leaderboard-top-count",
@@ -2046,8 +2098,7 @@
                 return h("option", { key: option.count, value: option.count }, option.name);
               }))
             ),
-            h("div", { className: "dirty-rank-control dirty-rank-leaderboards-search" },
-              h("label", { htmlFor: "dirty-rank-leaderboard-search" }, "Search performers"),
+            h(Field, { className: "dirty-rank-control dirty-rank-leaderboards-search", id: "dirty-rank-leaderboard-search", label: "Search performers" },
               h("input", {
                 autoComplete: "off",
                 className: "form-control",
@@ -2058,20 +2109,20 @@
                 value: search,
               })
             ),
-            h("div", { className: "dirty-rank-control dirty-rank-leaderboards-view" },
+            h("div", { className: "dirty-rank-control dirty-ui-field dirty-rank-leaderboards-view" },
               h("label", null, "View"),
               h("div", { "aria-label": "Leaderboard view", className: "btn-group dirty-rank-view-toggle", role: "group" },
-                h("button", {
-                  "aria-pressed": viewMode === "table",
-                  className: "btn btn-sm " + (viewMode === "table" ? "btn-primary" : "btn-secondary"),
+                h(RankButton, {
+                  compact: true,
+                  pressed: viewMode === "table",
+                  tone: viewMode === "table" ? "primary" : "secondary",
                   onClick: function () { setViewMode("table"); },
-                  type: "button",
                 }, "Table"),
-                h("button", {
-                  "aria-pressed": viewMode === "gallery",
-                  className: "btn btn-sm " + (viewMode === "gallery" ? "btn-primary" : "btn-secondary"),
+                h(RankButton, {
+                  compact: true,
+                  pressed: viewMode === "gallery",
+                  tone: viewMode === "gallery" ? "primary" : "secondary",
                   onClick: function () { setViewMode("gallery"); },
-                  type: "button",
                 }, "Gallery")
               )
             )
@@ -2171,7 +2222,7 @@
     if (gauntletPathActive && !routeTargetId) return null;
     var gauntletTargetId = routeTargetId;
     var gauntletMode = Boolean(gauntletTargetId);
-    var censorMedia = new URLSearchParams(window.location.search).get("censorMedia") === "1";
+    var censorMedia = documentationCapture();
     var settingsState = useState(null);
     var settings = settingsState[0];
     var setSettings = settingsState[1];
@@ -2543,12 +2594,12 @@
       return function () { window.removeEventListener("beforeunload", preventPendingOperationExit); };
     }, [pendingVotes]);
 
-    if (loading) return h("main", { className: "dirty-rank-route" }, h(StateView, { title: gauntletMode ? "Loading Gauntlet…" : "Loading DirtyRank…" }));
+    if (loading) return h("main", { className: "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide" }, h(StateView, { title: gauntletMode ? "Loading Gauntlet…" : "Loading DirtyRank…" }));
     if (error && (!settings || !performers.length)) {
-      return h("main", { className: "dirty-rank-route" }, h(StateView, {
+      return h("main", { className: "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide" }, h(StateView, {
         title: "Could not load DirtyRank",
         detail: error,
-        actions: h("button", { className: "btn btn-secondary dirty-ui-button", onClick: load, type: "button" }, "Retry"),
+        actions: h(RankButton, { onClick: load }, "Retry"),
       }));
     }
     if (!settings || !category) return null;
@@ -2563,18 +2614,18 @@
         message: "DirtyRank is still saving queued votes or undos. Wait for the queue to finish before leaving this page.",
         when: pendingVotes > 0,
       }),
-      h("main", { className: "dirty-rank-route" + (gauntletMode ? " dirty-rank-gauntlet-route" : "") + (censorMedia ? " dirty-rank-censored-media" : "") },
+      h("main", { className: "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide" + (gauntletMode ? " dirty-rank-gauntlet-route" : "") + (censorMedia ? " dirty-rank-censored-media" : "") },
       h("div", { className: "dirty-rank-shell" },
         h("section", { className: "dirty-rank-main dirty-ui-feature-card" },
-          h("header", { className: "dirty-rank-header d-flex align-items-start justify-content-between" },
+          h("header", { className: "dirty-rank-header dirty-ui-page-header" },
             h("div", null,
               h("h1", { className: "dirty-rank-title" }, gauntletMode ? "DirtyRank Gauntlet" : "DirtyRank"),
               h("p", { className: "dirty-rank-subtitle" }, gauntletMode && gauntletTarget
                 ? "Refine " + gauntletTarget.name + "'s " + category.name + " rating against the most informative opponents."
                 : category.description || "Choose the performer you prefer in this category.")
             ),
-            h("div", { className: "dirty-rank-header-controls d-flex flex-wrap align-items-end justify-content-end" },
-              !gauntletMode && availableCohorts.length > 1 && h("div", { className: "dirty-rank-control" },
+            h("div", { className: "dirty-rank-header-controls dirty-ui-control-row d-flex flex-wrap align-items-end justify-content-end" },
+              !gauntletMode && availableCohorts.length > 1 && h("div", { className: "dirty-rank-control dirty-ui-field" },
                 h("label", { htmlFor: "dirty-rank-battle-cohort" }, "Performer sex"),
                 h("select", {
                   className: "form-control",
@@ -2597,7 +2648,7 @@
                   return h("option", { key: item[0], value: item[0] }, item[1]);
                 }))
               ),
-              h("div", { className: "dirty-rank-control" },
+              h("div", { className: "dirty-rank-control dirty-ui-field" },
                 h("label", { htmlFor: "dirty-rank-category" }, "Category"),
                 h("select", {
                   className: "form-control",
@@ -2619,11 +2670,11 @@
                 }))
               ),
               gauntletMode && gauntletTarget && h(NavLink, {
-                className: "btn btn-sm btn-secondary dirty-rank-options-link",
+                className: "btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact dirty-rank-options-link",
                 to: "/performers/" + gauntletTarget.id,
               }, "Back to performer"),
-              h(NavLink, { className: "btn btn-sm btn-secondary dirty-rank-options-link", to: LEADERBOARDS_ROUTE_PATH }, "Leaderboards"),
-              h(NavLink, { className: "btn btn-sm btn-secondary dirty-rank-options-link", to: "/plugins/dirty-plugins?plugin=dirtyRank" }, "Options")
+              h(NavLink, { className: "btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact dirty-rank-options-link", to: LEADERBOARDS_ROUTE_PATH }, "Leaderboards"),
+              h(NavLink, { className: "btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact dirty-rank-options-link", to: "/plugins/dirty-plugins?plugin=dirtyRank" }, "Options")
             )
           ),
           h("div", { className: "dirty-rank-statusbar d-flex flex-wrap align-items-center justify-content-between" },
@@ -2673,9 +2724,9 @@
               })
             ),
             h("div", { className: "dirty-rank-actions d-flex flex-wrap align-items-center justify-content-center" },
-              h("button", { className: "btn btn-secondary dirty-ui-button", disabled: busy, onClick: function () { submit("draw"); }, type: "button" }, "Tie"),
-              h("button", { className: "btn btn-secondary dirty-ui-button", disabled: busy, onClick: skip, type: "button" }, "Skip"),
-              h("button", { className: "btn btn-secondary dirty-ui-button", disabled: busy || !undoHistory.length, onClick: undo, type: "button" }, "Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")),
+              h(RankButton, { disabled: busy, onClick: function () { submit("draw"); } }, "Tie"),
+              h(RankButton, { disabled: busy, onClick: skip }, "Skip"),
+              h(RankButton, { disabled: busy || !undoHistory.length, onClick: undo }, "Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")),
               h("div", { className: "dirty-rank-hint" }, "← choose left · → choose right · ↑ tie · ↓ undo · S skip")
             )
           )
@@ -2686,10 +2737,12 @@
   }
 
   function Field(props) {
-    return h("div", { className: "dirty-rank-field" },
+    if (SharedField) return h(SharedField, props, props.children);
+    return h("div", { className: "dirty-rank-field" + (props.className ? " " + props.className : "") },
       h("label", { htmlFor: props.id }, props.label),
       props.children,
-      props.help && h("p", { className: "dirty-rank-field-help" }, props.help)
+      props.help && h("p", { className: "dirty-rank-field-help" }, props.help),
+      props.error && h("p", { className: "dirty-ui-text-error", role: "alert" }, props.error)
     );
   }
 
@@ -2746,6 +2799,8 @@
     }, [props.onDirtyChange]);
     useEffect(function () {
       if (!dirty) return undefined;
+      var revision = saveRevisionRef.current + 1;
+      saveRevisionRef.current = revision;
       var validationError = validateSettings(draft);
       if (validationError) {
         setBusy(false);
@@ -2755,8 +2810,6 @@
       }
 
       var settingsToSave = draft;
-      var revision = saveRevisionRef.current + 1;
-      saveRevisionRef.current = revision;
       setError("");
       setStatus("Waiting to save automatically…");
       window.clearTimeout(autoSaveTimerRef.current);
@@ -2859,6 +2912,11 @@
 
     function validateSettings(settings) {
       if (!settings.enabledCohorts.length) return "Enable at least one performer sex.";
+      if (settings.confidenceGoal === "top" &&
+          (!String(settings.confidenceTopN).trim() || !Number.isInteger(Number(settings.confidenceTopN)) ||
+            Number(settings.confidenceTopN) < 1 || Number(settings.confidenceTopN) > 1000)) {
+        return "Top performers to stabilize must be between 1 and 1000.";
+      }
       for (var cohortIndex = 0; cohortIndex < COHORTS.length; cohortIndex += 1) {
         var cohort = COHORTS[cohortIndex][0];
         var names = new Set();
@@ -2870,7 +2928,11 @@
           var name = String(cohortCategories[index].name || "").trim();
           if (!name) return "Every category needs a name.";
           if (names.has(name.toLowerCase())) return "Category names must be unique within each performer cohort.";
-          if (!(Number(cohortCategories[index].weight) > 0)) return "Every category needs a weight greater than zero.";
+          if (!String(cohortCategories[index].weight).trim() ||
+              !Number.isFinite(Number(cohortCategories[index].weight)) ||
+              Number(cohortCategories[index].weight) < 0.01 || Number(cohortCategories[index].weight) > 1000) {
+            return "Every category needs a weight between 0.01 and 1000.";
+          }
           names.add(name.toLowerCase());
         }
       }
@@ -2926,12 +2988,33 @@
 
     var editingCategories = categoriesFor(draft, editingCohort);
 
+    function categoryNameError(category, index) {
+      var name = String(category.name || "").trim().toLowerCase();
+      if (!name) return "Enter a category name.";
+      if (editingCategories.some(function (other, otherIndex) {
+        return otherIndex !== index && String(other.name || "").trim().toLowerCase() === name;
+      })) return "Use a unique name for this performer sex.";
+      return "";
+    }
+
+    var visibleStatus = documentationCapture()
+      ? error ? "Operation failed; details hidden in documentation mode."
+        : status.indexOf("Backup created:") === 0 ? "Backup created; path hidden in documentation mode." : status
+      : error || status;
+
     return h(SettingsCard, {
-      className: "dirty-rank-settings-card",
+      className: "dirty-rank-settings-card dirty-ui-pilot",
       bodyClassName: "dirty-rank-settings-body",
       plugin: props.plugin,
       footer: h("div", { className: "card-footer dirty-plugins-card-footer dirty-rank-settings-actions" },
-        h("span", { className: "dirty-rank-settings-status", role: "status" }, error || status)
+        SharedSaveStatus ? h(SharedSaveStatus, {
+          className: "dirty-rank-settings-status",
+          message: visibleStatus || (dirty ? "Waiting to save automatically…" : ""),
+          state: error ? "error" : busy ? "saving" : dirty ? "pending" : "saved",
+        }) : h("span", {
+          className: "dirty-rank-settings-status" + (error ? " dirty-ui-text-error" : ""),
+          role: error ? "alert" : "status",
+        }, visibleStatus)
       ),
     },
       h(Section, {
@@ -3005,13 +3088,19 @@
               h("option", { value: "all" }, "Every performer rating")
             )
           ),
-          draft.confidenceGoal === "top" && h(Field, { id: "dirty-rank-confidence-top-n", label: "Top performers to stabilize" },
+          draft.confidenceGoal === "top" && h(Field, {
+            id: "dirty-rank-confidence-top-n",
+            label: "Top performers to stabilize",
+            error: !String(draft.confidenceTopN).trim() || !Number.isInteger(Number(draft.confidenceTopN)) ||
+              Number(draft.confidenceTopN) < 1 || Number(draft.confidenceTopN) > 1000
+              ? "Enter a whole number from 1 to 1000." : "",
+          },
             h("input", {
               className: "form-control",
               id: "dirty-rank-confidence-top-n",
               max: 1000,
               min: 1,
-              onChange: function (event) { changed({ confidenceTopN: Number(event.target.value) }); },
+              onChange: function (event) { changed({ confidenceTopN: event.target.value }); },
               step: 1,
               type: "number",
               value: draft.confidenceTopN,
@@ -3041,17 +3130,22 @@
               h("div", { className: "dirty-rank-category-toolbar d-flex flex-wrap align-items-center justify-content-between" },
                 h("span", { className: "dirty-rank-category-sex" }, cohortLabel(editingCohort)),
                 h("div", { className: "dirty-rank-data-tools d-flex flex-wrap align-items-center" },
-                  h("button", { "aria-label": "Move category up", className: "dirty-ui-icon-button", disabled: index === 0, onClick: function () { moveCategory(index, -1); }, type: "button" }, "↑"),
-                  h("button", { "aria-label": "Move category down", className: "dirty-ui-icon-button", disabled: index === editingCategories.length - 1, onClick: function () { moveCategory(index, 1); }, type: "button" }, "↓"),
-                  h("button", { "aria-label": "Remove category", className: "dirty-ui-icon-button", disabled: editingCategories.length <= 1, onClick: function () { removeCategory(index); }, type: "button" }, "×")
+                  SharedIconButton ? h(SharedIconButton, { ariaLabel: "Move category up", disabled: index === 0, fallback: "↑", onClick: function () { moveCategory(index, -1); } }) : h("button", { "aria-label": "Move category up", className: "dirty-ui-icon-button", disabled: index === 0, onClick: function () { moveCategory(index, -1); }, type: "button" }, "↑"),
+                  SharedIconButton ? h(SharedIconButton, { ariaLabel: "Move category down", disabled: index === editingCategories.length - 1, fallback: "↓", onClick: function () { moveCategory(index, 1); } }) : h("button", { "aria-label": "Move category down", className: "dirty-ui-icon-button", disabled: index === editingCategories.length - 1, onClick: function () { moveCategory(index, 1); }, type: "button" }, "↓"),
+                  SharedIconButton ? h(SharedIconButton, { ariaLabel: "Remove category", disabled: editingCategories.length <= 1, fallback: "×", onClick: function () { removeCategory(index); } }) : h("button", { "aria-label": "Remove category", className: "dirty-ui-icon-button", disabled: editingCategories.length <= 1, onClick: function () { removeCategory(index); }, type: "button" }, "×")
                 )
               ),
               h("div", { className: "dirty-rank-category-basics" },
-                h(Field, { id: "dirty-rank-category-name-" + editingCohort + "-" + index, label: "Name" },
+                h(Field, { id: "dirty-rank-category-name-" + editingCohort + "-" + index, label: "Name", error: categoryNameError(category, index) },
                   h("input", { className: "form-control", id: "dirty-rank-category-name-" + editingCohort + "-" + index, maxLength: 80, onChange: function (event) { updateCategory(index, { name: event.target.value }); }, type: "text", value: category.name })
                 ),
-                h(Field, { id: "dirty-rank-category-weight-" + editingCohort + "-" + index, label: "Overall weight" },
-                  h("input", { className: "form-control", id: "dirty-rank-category-weight-" + editingCohort + "-" + index, min: 0.01, max: 1000, step: 0.1, onChange: function (event) { updateCategory(index, { weight: Number(event.target.value) }); }, type: "number", value: category.weight })
+                h(Field, {
+                  id: "dirty-rank-category-weight-" + editingCohort + "-" + index,
+                  label: "Overall weight",
+                  error: String(category.weight).trim() && Number(category.weight) >= 0.01 && Number(category.weight) <= 1000
+                    ? "" : "Enter a weight between 0.01 and 1000.",
+                },
+                  h("input", { className: "form-control", id: "dirty-rank-category-weight-" + editingCohort + "-" + index, min: 0.01, max: 1000, step: 0.1, onChange: function (event) { updateCategory(index, { weight: event.target.value }); }, type: "number", value: category.weight })
                 )
               ),
               h(Field, { id: "dirty-rank-category-description-" + editingCohort + "-" + index, label: "Description" },
@@ -3060,7 +3154,7 @@
               h(Toggle, { checked: category.enabled, label: "Enable this category", onChange: function (value) { updateCategory(index, { enabled: value }); } })
             );
           }),
-          h("button", { className: "btn btn-secondary dirty-ui-button", onClick: addCategory, type: "button" }, "+ Add category")
+          h(RankButton, { onClick: addCategory }, "+ Add category")
         )
       ),
       h(Section, {
@@ -3068,9 +3162,9 @@
         description: "Export all DirtyRank ratings or reset the first enabled category for the selected default performer sex.",
       },
         h("div", { className: "dirty-rank-data-tools d-flex flex-wrap align-items-center" },
-          h("button", { className: "btn btn-secondary dirty-ui-button", disabled: busy, onClick: exportRatings, type: "button" }, "Export ratings"),
-          h("button", { className: "btn btn-secondary dirty-ui-button", disabled: busy, onClick: backupSharedDatabase, type: "button" }, "Backup Dirty Plugins database"),
-          h("button", { className: "btn btn-danger dirty-ui-button", disabled: busy || dirty, onClick: resetCurrentPool, type: "button" }, "Reset current pool")
+          h(RankButton, { disabled: busy, onClick: exportRatings }, "Export ratings"),
+          h(RankButton, { disabled: busy, onClick: backupSharedDatabase }, "Backup Dirty Plugins database"),
+          h(RankButton, { disabled: busy || dirty, onClick: resetCurrentPool, tone: "danger" }, "Reset current pool")
         )
       ),
       h("details", { className: "dirty-rank-advanced" },
@@ -3113,6 +3207,14 @@
   }
 
   function DirtyRankBattleNavLink() {
+    if (SharedNavAction) return h(SharedNavAction, {
+      as: NavLink,
+      className: "dirty-rank-nav-link dirty-rank-nav-button",
+      exact: true,
+      icon: RankNavGlyph("battle"),
+      label: "DirtyRank performer battles",
+      to: ROUTE_PATH,
+    });
     return h(NavLink, { className: "nav-utility dirty-rank-nav-link", exact: true, to: ROUTE_PATH },
       h("button", { className: "minimal d-flex align-items-center h-100 dirty-rank-nav-button", title: "DirtyRank performer battles", type: "button" },
         h("i", { "aria-hidden": "true", className: "dirty-rank-nav-icon" }, "⚔")
@@ -3130,7 +3232,31 @@
     );
   }
 
+  function RankNavGlyph(kind) {
+    return h("i", { "aria-hidden": "true", className: "dirty-rank-nav-icon" },
+      h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.8" },
+        kind === "battle"
+          ? h(Fragment, null,
+              h("path", { d: "M4 3l13 13M20 3L7 16M13 13l5 5M11 13l-5 5" }),
+              h("path", { d: "M17 17l3 3M7 17l-3 3" })
+            )
+          : h(Fragment, null,
+              h("path", { d: "M7 3h10v6c0 3-2 5-5 5s-5-2-5-5V3zM7 5H4v2c0 2 1 3 4 4M17 5h3v2c0 2-1 3-4 4" }),
+              h("path", { d: "M12 14v5M8 21h8M10 19h4" })
+            )
+      )
+    );
+  }
+
   function DirtyRankLeaderboardsNavLink() {
+    if (SharedNavAction) return h(SharedNavAction, {
+      as: NavLink,
+      className: "dirty-rank-nav-link dirty-rank-leaderboards-nav-link dirty-rank-nav-button",
+      exact: true,
+      icon: RankNavGlyph("leaderboard"),
+      label: "DirtyRank leaderboards",
+      to: LEADERBOARDS_ROUTE_PATH,
+    });
     return h(NavLink, { className: "nav-utility dirty-rank-nav-link dirty-rank-leaderboards-nav-link", exact: true, to: LEADERBOARDS_ROUTE_PATH },
       h("button", { className: "minimal d-flex align-items-center h-100 dirty-rank-nav-button", title: "DirtyRank leaderboards", type: "button" },
         h("i", { "aria-hidden": "true", className: "dirty-rank-nav-icon" }, "🏆")

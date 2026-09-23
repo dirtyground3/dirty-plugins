@@ -78,6 +78,11 @@
   text-decoration: none;
 }
 
+.dirty-file-extractor-folder:focus-visible {
+  outline: 2px solid var(--dirty-ui-focus);
+  outline-offset: -2px;
+}
+
 .dirty-file-extractor-picker-empty,
 .dirty-file-extractor-picker-status {
   color: var(--dirty-ui-muted);

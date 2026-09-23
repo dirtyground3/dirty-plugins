@@ -90,6 +90,9 @@ The UI integration is plain browser JavaScript attached directly to
 `document.body`. It uses DirtyPlugins for GraphQL, database-backed settings, notifications,
 and shared visuals while intentionally avoiding Stash's experimental React
 `PluginApi` for its own controls.
+The folder picker uses the shared button style, keeps keyboard focus inside
+until closed, restores focus to its opener, and locks background scrolling.
+With `?docsCapture=1`, folder and path labels use synthetic placeholders.
 
 ## License
 

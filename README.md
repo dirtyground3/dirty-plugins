@@ -12,11 +12,17 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | Explores origins, growth, ages, ratings, studios, birthdays and cast connections with native filters and PNG export. | 0.3.0 |
-| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 0.4.0 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 0.4.0 |
-| [DirtyRank](plugins/DirtyRank/) | Ranks performers through category-based comparisons using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet battles, and leaderboards. | 0.7.0 |
-| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 0.3.0 |
+| [DirtyStats](plugins/DirtyStats/) | Explores origins, growth, ages, ratings, studios, birthdays and cast connections with native filters and PNG export. | 0.6.15 |
+| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 0.4.3 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 0.4.4 |
+| [DirtyRank](plugins/DirtyRank/) | Ranks performers through category-based comparisons using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet battles, and leaderboards. | 0.7.15 |
+| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 0.3.8 |
+
+The plugins share rounded controls, aligned selects and actions, visible focus
+and save feedback, and graphite/teal/amber default styling. Optional DirtyStats
+themes keep their own colours while using the same control geometry. Native
+Stash cards, filters, and playback controls keep the host theme. Synthetic
+review pages are in [`tests/fixtures/`](tests/fixtures/).
 
 ## Features
 
@@ -294,12 +300,15 @@ Run the test suite from the repository root:
 ```powershell
 python -B -m unittest discover -s tests -v
 node --check plugins/DirtyRank/dirtyRank.js
+node --check plugins/DirtyPlugins/dirtyPlugins.js
+node tests/test_dirty_ui_pilot.js
 node tests/test_dirty_rank_algorithms.js
 node tests/test_dirty_rank_media.js
 node tests/test_dirty_rank_registration.js
 node tests/test_dirty_tidy_automation.js
 node tests/test_dirty_tidy_settings.js
 node tests/test_dirty_stats.js
+node tests/test_dirty_stats_dashboard.js
 node tests/test_dirty_multiscreen.js
 ```
 

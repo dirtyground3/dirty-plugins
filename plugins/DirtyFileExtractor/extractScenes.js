@@ -275,13 +275,16 @@
   }
 
   function setPickerStatus(picker, message, isError) {
-    picker.status.textContent = message || "";
+    picker.status.textContent = isError && hubApi.captureEnabled && hubApi.captureEnabled(window.location.search)
+      ? "Folder unavailable during documentation capture."
+      : message || "";
     picker.status.classList.toggle("dirty-ui-text-error", Boolean(isError));
   }
 
   function renderDirectory(picker, directory) {
+    var docsCapture = hubApi.captureEnabled && hubApi.captureEnabled(window.location.search);
     picker.currentPath = directory.path;
-    picker.pathInput.value = directory.path;
+    picker.pathInput.value = docsCapture ? "Path hidden for documentation" : directory.path;
     picker.upButton.disabled = !directory.parent;
     picker.useButton.disabled = false;
     picker.list.textContent = "";
@@ -296,12 +299,12 @@
       picker.list.appendChild(empty);
     }
 
-    directories.forEach(function (path) {
+    directories.forEach(function (path, index) {
       var button = document.createElement("button");
       button.type = "button";
       button.className = "dirty-file-extractor-folder btn btn-link";
-      button.title = path;
-      button.textContent = pickerPathLabel(path);
+      button.title = docsCapture ? "Open subfolder" : path;
+      button.textContent = docsCapture ? "Folder " + (index + 1) : pickerPathLabel(path);
       button.addEventListener("click", function () {
         loadDirectory(picker, path, false);
       });
@@ -341,14 +344,20 @@
   function closeFolderPicker() {
     state.pickerRequest += 1;
     document.removeEventListener("keydown", onPickerKeydown);
-    if (state.picker && state.picker.backdrop.parentNode) {
-      state.picker.backdrop.parentNode.removeChild(state.picker.backdrop);
+    var picker = state.picker;
+    if (picker && picker.backdrop.parentNode) {
+      picker.backdrop.parentNode.removeChild(picker.backdrop);
     }
     state.picker = null;
+    if (picker && picker.unlockScroll) picker.unlockScroll();
+    if (picker && picker.returnFocus && picker.returnFocus.isConnected && typeof picker.returnFocus.focus === "function") picker.returnFocus.focus();
   }
 
   function onPickerKeydown(event) {
-    if (event.key === "Escape") closeFolderPicker();
+    var picker = state.picker;
+    if (!picker) return;
+    if (event.key === "Escape") { event.preventDefault(); closeFolderPicker(); return; }
+    hubApi.ui.trapDialogTab(event, picker.dialog);
   }
 
   function saveDestinationFolder(picker) {
@@ -386,6 +395,7 @@
     dialog.setAttribute("role", "dialog");
     dialog.setAttribute("aria-modal", "true");
     dialog.setAttribute("aria-labelledby", "dirty-file-extractor-picker-title");
+    dialog.tabIndex = -1;
     backdrop.appendChild(dialog);
 
     var header = document.createElement("div");
@@ -419,11 +429,13 @@
     pathInput.type = "text";
     pathInput.className = "form-control";
     pathInput.setAttribute("aria-label", "Folder path");
+    if (hubApi.captureEnabled && hubApi.captureEnabled(window.location.search)) pathInput.disabled = true;
     pathBar.appendChild(pathInput);
 
     var goButton = document.createElement("button");
     goButton.type = "button";
     goButton.className = "btn btn-secondary dirty-ui-button";
+    if (pathInput.disabled) goButton.disabled = true;
     goButton.textContent = "Go";
     pathBar.appendChild(goButton);
 
@@ -455,6 +467,8 @@
 
     var picker = {
       backdrop: backdrop,
+      dialog: dialog,
+      closeButton: closeButton,
       currentPath: null,
       list: list,
       parentPath: null,
@@ -488,11 +502,15 @@
 
   function openFolderPicker(event) {
     event.preventDefault();
+    var opener = event.currentTarget || document.activeElement;
     closeFolderPicker();
     var picker = createFolderPicker();
+    picker.returnFocus = opener;
     state.picker = picker;
     document.body.appendChild(picker.backdrop);
+    picker.unlockScroll = hubApi.ui.lockBodyScroll();
     document.addEventListener("keydown", onPickerKeydown);
+    picker.closeButton.focus();
 
     getSettings()
       .then(function (settings) {

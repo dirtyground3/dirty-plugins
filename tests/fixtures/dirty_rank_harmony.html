@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DirtyRank harmony fixture</title>
+  <link rel="stylesheet" href="../../plugins/DirtyPlugins/dirtyPlugins.css">
+  <link rel="stylesheet" href="../../plugins/DirtyRank/dirtyRank.css">
+  <style>
+    body { background: #1b2228; color: #f1f3f4; font: 16px Arial, sans-serif; margin: 0; }
+    .fixture-row { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+    .fixture-input { background: #242b31; border: 1px solid #69747d; border-radius: 0.25rem; color: inherit; padding: 0.4rem; }
+    .fixture-native { background: linear-gradient(135deg, #3d4651, #566674); min-height: 8rem; padding: 1rem; }
+    .fixture-caption { margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <main class="dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide">
+    <header class="dirty-ui-page-header dirty-ui-feature-card dirty-rank-header">
+      <div><h1 class="dirty-rank-title">DirtyRank</h1><p class="dirty-rank-subtitle">Synthetic style and layout fixture</p></div>
+      <nav aria-label="Rank pages" class="fixture-row"><a class="dirty-ui-nav-action" href="#battle">Battles</a><a class="dirty-ui-nav-action" href="#leaderboard">Leaderboards</a></nav>
+    </header>
+    <section class="dirty-ui-control-row" style="margin-top: 1rem" aria-label="Toolbar alignment example">
+      <div class="dirty-rank-control dirty-ui-field"><label for="fixture-category">Category</label><select class="form-control fixture-input" id="fixture-category"><option>Example category</option></select></div>
+      <a class="btn btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact" href="#leaderboard">Leaderboards</a>
+      <a class="btn btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact" href="#options">Options</a>
+    </section>
+    <section class="dirty-ui-feature-card" style="padding: 1rem; margin-top: 1rem">
+      <h2>Controls</h2>
+      <div class="fixture-row"><button class="btn btn-primary dirty-ui-button dirty-ui-control" type="button">Primary action</button><button class="btn btn-secondary dirty-ui-button dirty-ui-control" type="button">Secondary</button><button class="btn btn-danger dirty-ui-button dirty-ui-control dirty-ui-control-compact" type="button">Danger</button></div>
+      <div class="fixture-row" style="margin-top: 1rem"><div class="dirty-ui-field"><label for="test-weight">Overall weight</label><input class="form-control fixture-input" id="test-weight" type="number" aria-invalid="true" aria-describedby="test-weight-error" value=""><p class="dirty-ui-field-error" id="test-weight-error">Enter a weight between 0.01 and 1000.</p></div><span class="dirty-ui-save-status" data-state="error" role="alert">Could not save settings.</span></div>
+    </section>
+    <section class="dirty-rank-stats" style="margin-top: 1rem">
+      <div class="dirty-ui-feature-card dirty-ui-metric dirty-rank-stat"><span class="dirty-ui-metric-label">Rated performers</span><strong class="dirty-ui-metric-value">1,234</strong><span class="dirty-ui-metric-detail">Example metric</span></div>
+      <div class="dirty-ui-feature-card dirty-ui-metric dirty-rank-stat"><span class="dirty-ui-metric-label">Battles</span><strong class="dirty-ui-metric-value">5,678</strong><span class="dirty-ui-metric-detail">Example metric</span></div>
+    </section>
+    <div class="dirty-ui-table-wrap dirty-rank-table-wrap" style="margin-top: 1rem"><table class="dirty-ui-table dirty-rank-standings-table"><thead><tr><th>Rank</th><th>Performer</th><th>Rating</th></tr></thead><tbody><tr><td>1</td><td>Example A</td><td>1,703</td></tr><tr><td>2</td><td>Example B</td><td>1,681</td></tr></tbody></table></div>
+    <nav class="dirty-ui-pagination dirty-rank-pagination" aria-label="Leaderboard pages"><button class="btn btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact" type="button">Previous</button><span class="dirty-ui-pagination-summary">Page 1 of 3</span><button class="btn btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact" type="button">Next</button></nav>
+    <p class="fixture-caption">Capture-mode cover (synthetic native card):</p>
+    <div class="dirty-rank-censored-media"><div class="dirty-rank-native-card"><div class="performer-card fixture-native">Synthetic card content</div></div></div>
+  </main>
+</body>
+</html>

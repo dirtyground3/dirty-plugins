@@ -9,6 +9,9 @@ volatility instead of relying on a capped integer score.
 - Standings gallery and podium use Stash's native performer cards, so installed
   themes and performer-card customizations apply automatically. DirtyRank scores
   and ranks appear separately below the cards; the cards keep their Stash ratings.
+- Battle, leaderboard, and settings controls use the shared DirtyPlugins style
+  primitives. Native performer cards and the native scene player keep their Stash
+  styling and behaviour as themes change.
 - Battles and Gauntlet also use native cards. Click the photo to vote; native
   card buttons and profile links keep their normal actions. Scene players remain
   separate below the cards. Hiding performer images also hides the native card.
@@ -115,6 +118,11 @@ volatility instead of relying on a capped integer score.
   category/cohort reset tool in settings Options.
 
 ## Screenshots
+
+For safe documentation views, append `?docsCapture=1` to either DirtyRank page.
+The older `?censorMedia=1` URL remains supported. Capture mode hides media,
+including media inside native Stash cards and players; inspect any image before
+adding it to repository documentation.
 
 ### Performer battles
 

@@ -53,11 +53,6 @@
   margin-top: 0.85rem;
 }
 
-.dirty-tidy-field label {
-  font-weight: 600;
-  margin: 0;
-}
-
 .dirty-tidy-field-row {
   display: flex;
   gap: 1rem;
@@ -112,7 +107,7 @@
 .dirty-tidy-summary-item {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--dirty-ui-border-soft);
-  border-radius: var(--dirty-ui-radius-small);
+  border-radius: var(--dirty-ui-radius-large);
   color: var(--dirty-ui-text);
   cursor: pointer;
   display: grid;
@@ -132,11 +127,11 @@
 }
 
 .dirty-tidy-summary-blocked {
-  border-color: rgba(255, 123, 123, 0.5);
+  border-color: var(--dirty-ui-danger);
 }
 
 .dirty-tidy-summary-warning {
-  border-color: rgba(255, 193, 7, 0.55);
+  border-color: var(--dirty-ui-warning);
 }
 
 .dirty-tidy-summary-item:hover,
@@ -186,16 +181,16 @@
 }
 
 .dirty-tidy-row-blocked .dirty-tidy-status {
-  background: #682b2b;
+  background: var(--dirty-ui-error-surface);
 }
 
 .dirty-tidy-row-ready .dirty-tidy-status {
-  background: #20593b;
+  background: var(--dirty-ui-success-surface);
 }
 
 .dirty-tidy-row-warning .dirty-tidy-status {
-  background: #7a5a00;
-  color: #fff3cd;
+  background: var(--dirty-ui-warning-surface);
+  color: var(--dirty-ui-on-warning);
 }
 
 .dirty-tidy-notes > div + div {
