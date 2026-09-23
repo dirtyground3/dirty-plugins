@@ -12,7 +12,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | Explores origins, growth, ages, ratings, studios, birthdays and cast connections with native filters and PNG export. | 0.6.15 |
+| [DirtyStats](plugins/DirtyStats/) | Explores origins, growth, ages, ratings, studios, birthdays and cast connections with native filters and PNG export. | 0.6.16 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 0.4.3 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 0.4.4 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers through category-based comparisons using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet battles, and leaderboards. | 0.7.16 |

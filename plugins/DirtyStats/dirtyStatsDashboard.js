@@ -25,6 +25,8 @@
   var COLORS = ["#54d5ca", "#5687a2", "#f3c779", "#bc8542", "#8eb8f5", "#f29aaa", "#d9a6e8", "#aeb8c2"];
   var DASHBOARD_VERSION = 2;
   var MAX_WIDGETS = 24;
+  var MAX_CARD_COUNT = 500;
+  var FREE_COUNT = "freeCount";
   var EMPTY_FILTER = { find: {}, object: {}, count: 0 };
 
   var WIDGETS = {
@@ -34,7 +36,7 @@
     ratings: { label: "Scene ratings", route: core.route + "/ratings", entity: "scenes", group: "scenes", size: "medium", options: { rounding: 0.5 }, choices: { rounding: [0, 0.5, 1] } },
     performerRatings: { label: "Performer ratings", route: core.route + "/performer-ratings", entity: "performers", group: "performers", size: "medium", options: { rounding: 0.5 }, choices: { rounding: [0, 0.5, 1] } },
     performerScatter: { label: "Rating vs scenes", route: core.route + "/performer-scatter", entity: "performers", group: "performers", size: "medium", options: { minRating: 9, maxScenes: 10 }, choices: { minRating: [0, 5, 6, 7, 8, 9], maxScenes: [0, 5, 10, 20, 50, 100] } },
-    performerCards: { label: "Performer cards", route: core.route, entity: "performers", group: "performerCards", size: "large", options: { cardCount: 8 }, choices: { cardCount: [4, 8, 12, 24] } },
+    performerCards: { label: "Performer cards", route: core.route, entity: "performers", group: "performerCards", size: "large", options: { cardCount: 8 }, choices: { cardCount: FREE_COUNT } },
     countRating: { label: "Count vs rating", route: core.route + "/count-rating", entity: "scenes", group: "scenes", size: "medium", options: { metric: "play_count" }, choices: { metric: ["play_count", "o_counter"] } },
     repeatOffenders: { label: "Repeat-offender curve", route: core.route + "/repeat-offenders", entity: "scenes", group: "scenes", size: "medium", options: {}, choices: {} },
     qualityEfficiency: { label: "Quality efficiency", route: core.route + "/quality-efficiency", entity: "scenes", group: "scenes", size: "medium", options: {}, choices: {} },
@@ -65,7 +67,15 @@
     var source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     var result = clone(definition.options);
     Object.keys(definition.choices).forEach(function (name) {
-      var parsed = allowed(definition.choices[name], source[name]);
+      var choice = definition.choices[name];
+      var parsed;
+      if (choice === FREE_COUNT) {
+        var raw = source[name];
+        var count = raw == null ? NaN : typeof raw === "number" ? raw : Number(String(raw).trim());
+        parsed = Number.isInteger(count) && count >= 1 && count <= MAX_CARD_COUNT ? count : undefined;
+      } else {
+        parsed = allowed(choice, source[name]);
+      }
       if (parsed !== undefined) result[name] = parsed;
     });
     return result;
@@ -418,6 +428,25 @@
         props.values.map(function (value) { return h("option", { key: String(value), value: value }, props.labels && props.labels[value] != null ? props.labels[value] : String(value)); })));
   }
 
+  function NumberControl(props) {
+    var id = React.useRef(null);
+    if (!id.current) id.current = "dirty-stats-dashboard-control-" + (++controlId);
+    var textState = React.useState(String(props.value)), text = textState[0], setText = textState[1];
+    var invalidState = React.useState(false), invalid = invalidState[0], setInvalid = invalidState[1];
+    React.useEffect(function () { setText(String(props.value)); setInvalid(false); }, [props.value]);
+    function validCount(raw) {
+      var count = Number(raw);
+      return raw !== "" && Number.isInteger(count) && count >= props.min && count <= props.max;
+    }
+    function change(raw) {
+      setText(raw);
+      if (validCount(raw)) { setInvalid(false); props.onChange(Number(raw)); }
+      else setInvalid(true);
+    }
+    return h(Field, { id: id.current, label: props.label, error: invalid ? props.invalidLabel : null, className: "dirty-stats-dashboard-field" + (props.className ? " " + props.className : "") },
+      h("input", { type: "number", className: "form-control form-control-sm", id: id.current, min: props.min, max: props.max, step: 1, inputMode: "numeric", value: text, onChange: function (event) { change(event.target.value); }, onBlur: function () { setText(String(props.value)); setInvalid(false); } }));
+  }
+
   function CheckControl(props) {
     return h(Toggle, { className: "dirty-stats-dashboard-check", checked: props.value, label: props.label, onChange: props.onChange });
   }
@@ -435,7 +464,7 @@
     if (widget.statistic === "performerScatter") return h(React.Fragment, null,
       h(SelectControl, { label: "Minimum rating", value: options.minRating, values: WIDGETS.performerScatter.choices.minRating, labels: { 0: "Any" }, onChange: function (value) { set("minRating", Number(value)); } }),
       h(SelectControl, { label: "Maximum scenes", value: options.maxScenes, values: WIDGETS.performerScatter.choices.maxScenes, labels: { 0: "Any" }, onChange: function (value) { set("maxScenes", Number(value)); } }));
-    if (widget.statistic === "performerCards") return h(SelectControl, { label: "Cards to display", value: options.cardCount, values: WIDGETS.performerCards.choices.cardCount, onChange: function (value) { set("cardCount", Number(value)); } });
+    if (widget.statistic === "performerCards") return h(NumberControl, { label: "Cards to display", value: options.cardCount, min: 1, max: MAX_CARD_COUNT, invalidLabel: "Enter a whole number from 1 to " + MAX_CARD_COUNT + ".", onChange: function (value) { set("cardCount", value); } });
     if (widget.statistic === "countRating") return h(SelectControl, { label: "Count", value: options.metric, values: WIDGETS.countRating.choices.metric, labels: { play_count: "View count", o_counter: "O count" }, onChange: function (value) { set("metric", value); } });
     if (widget.statistic === "studios") return h(SelectControl, { label: "Minimum scenes", value: options.minScenes, values: WIDGETS.studios.choices.minScenes, onChange: function (value) { set("minScenes", Number(value)); } });
     if (widget.statistic === "tags") return h(React.Fragment, null,
@@ -678,5 +707,5 @@
         h("div", { className: "dirty-stats-dashboard-grid" + (editing ? " is-editing" : "") + (draggingId ? " is-reordering" : "") }, widgets.map(function (widget, index) { return h(DashboardWidget, { key: widget.id, widget: widget, index: index, editing: editing, dragging: draggingId === widget.id, resources: resources, onDragStart: function (event) { startDrag(index, event); }, onDragKeyDown: function (event) { moveWithKeyboard(index, event); }, onRemove: function () { remove(index); }, onTitle: function (title) { replace(index, { title: title }); }, onSize: function (size) { replace(index, { size: size }); }, onFilter: function () { beginFilterEdit(index); }, onOptions: function (options) { replace(index, { options: normalizeOptions(WIDGETS[widget.statistic], options) }); } }); })));
   }
 
-  window.__dirtyStatsDashboard = { Component: DashboardPage, Widget: DashboardWidget, algorithms: { normalizeWidgets: normalizeWidgets, normalizeOptions: normalizeOptions, normalizeFilter: normalizeFilter, widgetTitle: widgetTitle, widgetHeightUnits: widgetHeightUnits, requiredGroups: requiredGroups, requiredResources: requiredResources, resourceKey: resourceKey, fetchPages: fetchPages, reorderWidgets: reorderWidgets, nextWidgetId: nextWidgetId }, registry: WIDGETS, defaults: DEFAULT_WIDGETS, maxWidgets: MAX_WIDGETS };
+  window.__dirtyStatsDashboard = { Component: DashboardPage, Widget: DashboardWidget, widgetOptions: WidgetOptions, algorithms: { normalizeWidgets: normalizeWidgets, normalizeOptions: normalizeOptions, normalizeFilter: normalizeFilter, widgetTitle: widgetTitle, widgetHeightUnits: widgetHeightUnits, requiredGroups: requiredGroups, requiredResources: requiredResources, resourceKey: resourceKey, fetchPages: fetchPages, reorderWidgets: reorderWidgets, nextWidgetId: nextWidgetId }, registry: WIDGETS, defaults: DEFAULT_WIDGETS, maxWidgets: MAX_WIDGETS };
 })();

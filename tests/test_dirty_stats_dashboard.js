@@ -56,7 +56,11 @@ assert.equal(helpers.widgetHeightUnits({ statistic: "ratings", size: "medium", o
 assert.equal(helpers.widgetHeightUnits({ statistic: "birthdays", size: "medium", options: {} }), 2, "medium calendars use two height steps");
 assert.equal(helpers.widgetHeightUnits({ statistic: "ratings", size: "large", options: {} }), 2, "large charts use two height steps");
 assert.equal(helpers.widgetHeightUnits({ statistic: "performerCards", size: "large", options: { cardCount: 24 } }), 3, "large card collections use three height steps");
-assert.equal(helpers.normalizeOptions(dashboard.registry.performerCards, { cardCount: 100 }).cardCount, 8, "invalid card limits use the default");
+assert.equal(helpers.normalizeOptions(dashboard.registry.performerCards, { cardCount: 100 }).cardCount, 100, "any whole card count persists");
+assert.equal(helpers.normalizeOptions(dashboard.registry.performerCards, { cardCount: "17" }).cardCount, 17, "string card counts coerce to numbers");
+assert.equal(helpers.normalizeOptions(dashboard.registry.performerCards, { cardCount: 0 }).cardCount, 8, "non-positive card counts use the default");
+assert.equal(helpers.normalizeOptions(dashboard.registry.performerCards, { cardCount: 8.5 }).cardCount, 8, "fractional card counts use the default");
+assert.equal(helpers.normalizeOptions(dashboard.registry.performerCards, { cardCount: 1000 }).cardCount, 8, "counts beyond the maximum use the default");
 assert.equal(helpers.nextWidgetId("ratings", [{id: "dashboard-ratings"}, {id: "dashboard-ratings-2"}]), "dashboard-ratings-3");
 
 assert.deepEqual(plain(helpers.normalizeWidgets([], false)), [], "an intentionally empty dashboard must remain empty");
@@ -107,6 +111,8 @@ assert.equal(editNodes.filter((node) => node.type === "button").length, 3, "the 
 assert.ok(!editNodes.some((node) => node.type === "Link" || node.type === "input" && node.props.type === "radio"), "edit mode hides the full view link and size radios");
 assert.ok(viewNodes.some((node) => node.type === "Link"), "the full view link returns outside edit mode");
 assert.ok(!viewNodes.some((node) => node.type === "input" && node.props.className === "dirty-stats-dashboard-title-input"), "the title is plain text outside edit mode");
+const cardOptions = nodes(dashboard.widgetOptions({ widget: normalized[5], onChange() {} }));
+assert.ok(cardOptions.some((node) => node.type.name === "NumberControl" && node.props.label === "Cards to display"), "performer cards expose a free numeric count instead of a fixed list");
 
 const ordered = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }];
 assert.deepEqual(plain(helpers.reorderWidgets(ordered, 0, 2)).map((widget) => widget.id), ["b", "c", "a", "d"]);
