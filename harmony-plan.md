@@ -114,6 +114,12 @@ which also preserves intentional white data outlines in light themes. The
 chart adapter still handles reduced motion and export backgrounds; its focused
 test covers those paths. The Tag DNA treemap rendered in running Stash after
 0.6.23 was installed. Interactive chart state still needs live review.
+DirtyTidy's live documentation preview completed without writing files. Its
+summary filters remained usable, and the first page hid every current and
+proposed path plus sensitive notes. No confirm/run action was invoked.
+DirtyMultiscreen's four live player panes displayed opaque documentation
+covers over the native players, including while the players were loading.
+Neither capture was saved to the repository.
 
 ## Delivery approach
 
