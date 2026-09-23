@@ -1,19 +1,24 @@
 # DirtyStats
 
-Explore Stash statistics from the **pie chart icon** in the utility navigation.
+Explore Stash statistics from the **Prairie Grid icon** (red, blue, and yellow
+tiles) in the utility navigation.
 The icon opens a customizable **Dashboard** at
 `/plugins/dirty-stats/dashboard`. Choose **Edit dashboard** to change its
 theme, add or remove any available statistic,
-reorder widgets by dragging their edit-mode handle or using the arrow controls,
+reorder widgets by dragging their edit-mode handle or using arrow keys on it,
+edit each widget's title in its header, change its size with a dropdown,
 edit statistic-specific options, choose the same native scene
 or performer filters available in the full view, and select a **Small**,
 **Medium**, or **Large** presentation. The responsive twelve-column layout
 collapses to wider cards on tablets and one column on phones. Dashboard layout
 and widget options save automatically through the shared DirtyPlugins settings
 store and are restored on the next visit.
+Leave a widget's title blank to use its default name. In edit mode, the header
+shows the reorder handle and a compact remove button; the full-view link appears
+only outside edit mode.
 
-DirtyStats can wear five visual themes. **Midnight** preserves the original
-look, while **Candy Pop**, **Tropical Punch**, **Retro Arcade**, and the light
+DirtyStats can wear five visual themes. **Retro Arcade** is the fresh-install
+default. **Midnight**, **Candy Pop**, **Tropical Punch**, and the light
 **Paper Picnic** theme give pages, dashboard cards, controls, calendars, Tag
 DNA, and charts their own colors and character. Choose a theme while editing
 the dashboard or from the **Visual theme** control on the DirtyStats tab in the
@@ -23,6 +28,12 @@ the next time DirtyStats is opened.
 Filter selection opens in a dedicated responsive dialog so native filter
 dropdowns have room to expand. The dialog becomes full-screen on narrow
 displays and can be closed with Escape, its close button, or the backdrop.
+
+The dashboard uses the styled statistic selector as its page heading, with no
+repeated title or subtitle. Widgets occupy fixed height steps so rows align:
+small widgets use one step, medium widgets use one or two according to their
+content, and large widgets use two or three. Longer content scrolls inside its
+widget.
 
 Dashboard widgets summarize the selected filter, or the entire library when no
 filter is active. Small widgets emphasize key
@@ -39,8 +50,14 @@ The dashboard shares compatible performer and scene requests when their filters
 match, so widgets do not independently download the same records; a failure
 remains isolated to the affected data group and filter.
 
+**Performer cards** shows Stash's native cards for any group selected with the
+widget's performer filters. Choose 4, 8, 12, or 24 cards to display. Each copy
+of the widget keeps its own filters and card count, and only the requested cards
+are loaded.
+
 The statistic selector offers **Performer origin**, **Content growth**,
 **Age at scene**, **Scene ratings**, **Performer ratings**,
+**Performer cards**,
 **Rating vs scenes**, **Count vs rating**, **Repeat-offender curve**, **Quality efficiency**, **Studio value map**,
 **Tag DNA**, **Cast constellation**, and **Performer birthdays**.
 Display choices such as map numbers, rating rounding, growth options, and the

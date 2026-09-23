@@ -518,7 +518,8 @@ async function verifyLeaderboardDisplays() {
     assert.strictEqual(selector(tree).props.value, topCount);
     assert.strictEqual(find(tree, node => node.type === LeaderboardPodium).props.topCount, topCount);
     const gallery = find(tree, node => node.type === LeaderboardGallery);
-    assert.strictEqual(gallery.props.topCount, topCount);
+    assert.strictEqual(gallery.props.entries.length, ranked.length - topCount);
+    assert.strictEqual(gallery.props.entries[0].rank, topCount + 1);
     assert.strictEqual(gallery.props.page, 1, "changing the featured count resets pagination");
     assert.strictEqual(stored.get(storageKey), String(topCount));
   }
@@ -526,7 +527,48 @@ async function verifyLeaderboardDisplays() {
   find(tree, node => node.type === "button" && node.children[0] === "Table").props.onClick();
   render();
   tree = render();
-  assert.strictEqual(find(tree, node => node.type === LeaderboardTable).props.topCount, 5);
+  assert.strictEqual(find(tree, node => node.type === LeaderboardTable).props.entries[0].rank, 6);
+
+  const searchSelector = tree => find(tree, node => node.props.id === "dirty-rank-leaderboard-search");
+  render = route();
+  render();
+  await flush();
+  tree = render();
+  assert.strictEqual(searchSelector(tree).props.value, "");
+  assert(find(tree, node => node.type === LeaderboardPodium), "the featured display shows without a query");
+  searchSelector(tree).props.onChange({ target: { value: "PERFORMER 4" } });
+  render();
+  tree = render();
+  assert(!find(tree, node => node.type === LeaderboardPodium), "a search hides the featured display");
+  const searchGallery = find(tree, node => node.type === LeaderboardGallery);
+  assert.deepStrictEqual(searchGallery.props.entries.map(entry => entry.performer.name),
+    ["Performer 4"].concat(Array.from({ length: 10 }, (_, i) => "Performer " + (40 + i))));
+  assert.deepStrictEqual(searchGallery.props.entries.map(entry => entry.rank),
+    [4].concat(Array.from({ length: 10 }, (_, i) => 40 + i)));
+  assert.strictEqual(searchGallery.props.page, 1);
+  find(tree, node => node.type === "button" && node.children[0] === "Table").props.onClick();
+  render();
+  tree = render();
+  const searchTable = find(tree, node => node.type === LeaderboardTable);
+  assert.strictEqual(searchTable.props.entries.length, 11);
+  assert.strictEqual(searchTable.props.entries[0].rank, 4);
+  assert.strictEqual(searchTable.props.summary, "11 matches");
+  assert.strictEqual(searchTable.props.title, "Search results");
+  searchSelector(tree).props.onChange({ target: { value: "zzz" } });
+  render();
+  tree = render();
+  assert(!find(tree, node => node.type === LeaderboardPodium));
+  const noMatchTable = find(tree, node => node.type === LeaderboardTable);
+  assert.strictEqual(noMatchTable.props.entries.length, 0);
+  assert.strictEqual(noMatchTable.props.summary, "0 matches");
+  assert.strictEqual(noMatchTable.props.title, "Search results");
+  assert(/No performers match/.test(noMatchTable.props.emptyMessage));
+  searchSelector(tree).props.onChange({ target: { value: "" } });
+  render();
+  tree = render();
+  assert(find(tree, node => node.type === LeaderboardPodium), "clearing the search restores the featured display");
+  assert.strictEqual(find(tree, node => node.type === LeaderboardTable).props.entries[0].rank, 6,
+    "clearing search restores standings after the five featured performers");
 
   for (const [saved, expected] of [["5", 5], ["6", 3], ["4", 4], ["broken", 3], ["7", 3], ["4.5", 3]]) {
     stored.set(storageKey, saved);

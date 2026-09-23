@@ -40,6 +40,7 @@ vm.createContext(context);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/vendor/world.js", "utf8"), context);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8"), context);
 const a = context.window.__dirtyStatsPlugin.algorithms;
+assert.equal(a.statsSettings.visualTheme, "arcade", "fresh installs default to Retro Arcade");
 assert.deepEqual(JSON.parse(JSON.stringify(a.constellationGender("TRANSGENDER_FEMALE"))), {key: "TRANSGENDER_FEMALE", label: "Transgender female", color: "#d9a6e8"});
 assert.equal(a.constellationGender(null).label, "Unknown");
 assert.notEqual(a.constellationGender("NON_BINARY").color, a.constellationGender("MALE").color);
@@ -226,7 +227,7 @@ assert.equal(tagDna.rows[1].rating, 9);
 assert.equal(a.tagDnaMetricLabel("rating"), "Average rating");
 assert.equal(a.tagDnaMetricLabel("play_count"), "Views per scene");
 assert.equal(a.tagDnaSeriesData(tagDna, "rating", 1, "a").length, 1);
-assert.equal(a.tagDnaSeriesData(tagDna, "rating", 1, "a")[0].itemStyle.borderColor, "#fff");
+assert.equal(a.tagDnaSeriesData(tagDna, "rating", 1, "a")[0].itemStyle.borderColor, a.statsTheme().selection);
 assert.equal(a.tagDnaSeriesData(tagDna, "rating", 0, null).length, 2, "zero removes the tag limit");
 assert.deepEqual(JSON.parse(JSON.stringify(a.tagDnaScenes([
   {id: "s1", tags: [{id: "a"}]}, {id: "s1", tags: [{id: "a"}]}, {id: "s2", tags: [{id: "b"}]}
@@ -487,7 +488,7 @@ assert.equal(routes.length, 1);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(a.statsSettings.visualTheme, "candy");
   assert.equal(a.statsTheme().label, "Candy Pop");
-  assert.equal(a.statsTheme("unknown").key, "classic", "unknown themes fall back to the original look");
+  assert.equal(a.statsTheme("unknown").key, "arcade", "unknown themes fall back to the install default");
   assert.equal(a.statsThemeClass(), "dirty-stats-theme-candy");
   assert.equal(a.themePalette().length, 8);
   assert.equal(a.themedChartOption({ color: "#54d5ca", label: { color: "#ddd" } }).color, "#ff79c6");

@@ -699,6 +699,10 @@
   width: auto;
 }
 
+.dirty-rank-leaderboards-controls > .dirty-rank-leaderboards-search {
+  flex: 1 1 12rem;
+}
+
 .dirty-rank-leaderboards-controls .dirty-rank-view-toggle {
   gap: 0.5rem;
 }

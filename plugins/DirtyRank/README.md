@@ -94,7 +94,9 @@ volatility instead of relying on a capped integer score.
   above the featured cards.
   RD and battle counts appear in the confidence badge tooltip; win/loss records
   are hidden. Smaller screens show the Fingers cards in rank order;
-  the remaining gallery or table starts at the next rank. Full standings,
+  the remaining gallery or table starts at the next rank. Search finds any rated
+  performer by name, including those featured above, and keeps their overall
+  rank in the results. Full standings,
   confidence, rated coverage, stable-rating coverage, completed battles, median
   RD, draw rate, and rating spread are also included.
 - A trophy button opens Leaderboards from Stash's utility navigation. It can be

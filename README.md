@@ -168,7 +168,7 @@ link to the shared Dirty Plugins settings page.
   Battles and Leaderboards.
 - **DirtyTidy:** configure a folder/filename strategy, generate a preview,
   review it, then use **Confirm and save** before running or enabling automation.
-- **DirtyStats:** open the pie chart icon in the utility navigation to explore
+- **DirtyStats:** open the Prairie Grid icon (red, blue, and yellow tiles) in the utility navigation to explore
   performer origins, scene growth, ages, ratings, performer birthdays, or cast
   connections, apply native filters, and export the displayed visualization as PNG.
 

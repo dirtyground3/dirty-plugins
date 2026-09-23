@@ -64,7 +64,7 @@
     tagDnaMaxTags: { options: [0, 25, 50, 100, 200] }
   };
   var statsSettings = {
-    visualTheme: "classic",
+    visualTheme: "arcade",
     showMapNumbers: false,
     sceneRatingRounding: 0.5,
     performerRatingRounding: 0.5,
@@ -126,7 +126,7 @@
   };
 
   function statsTheme(value) {
-    return STATS_THEMES[value || statsSettings.visualTheme] || STATS_THEMES.classic;
+    return STATS_THEMES[value || statsSettings.visualTheme] || STATS_THEMES.arcade;
   }
 
   function themeColor(name) {
@@ -2252,8 +2252,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     if (statistic === "dashboard") {
       var Dashboard = window.__dirtyStatsDashboard && window.__dirtyStatsDashboard.Component;
       return h("main", { ref: page, className: "dirty-stats-page dirty-stats-dashboard-page " + themeClass },
-        h("div", { className: "dirty-stats-toolbar dirty-stats-dashboard-navigation" }, h(StatisticSelector, { value: statistic })),
-        Dashboard ? h(Dashboard) : h("p", { role: "status" }, "Loading dashboard..."));
+        Dashboard ? h(Dashboard, { selector: h(StatisticSelector, { value: statistic }) }) : h("p", { role: "status" }, "Loading dashboard..."));
     }
 return h("main", { ref: page, className: "dirty-stats-page dirty-stats-native-filters " + themeClass },
       ready ? h(FilterStatisticSelector, { page: page, value: statistic }) : null,
@@ -2263,10 +2262,13 @@ return h("main", { ref: page, className: "dirty-stats-page dirty-stats-native-fi
   }
   function NavIcon() {
     return h(api.libraries.ReactRouterDOM.NavLink, { to: dashboardRoute, className: "nav-utility dirty-stats-nav", title: "DirtyStats", "aria-label": "Open DirtyStats dashboard" },
-      h("button", { type: "button", title: "DirtyStats", className: "minimal d-flex align-items-center h-100 btn btn-primary dirty-stats-nav-button" }, h("svg", { viewBox: "0 0 24 24", "aria-hidden": true }, h("path", { d: "M12.149 11.980L15.420 2.743A9.8 9.8 0 0 1 17.699 20.057Z", fill: "#e40606" }),
-        h("path", { d: "M12.013 12.149L17.134 20.505A9.8 9.8 0 0 1 8.421 21.268Z", fill: "#060607" }),
-        h("path", { d: "M11.855 12.039L7.791 20.956A9.8 9.8 0 0 1 3.877 6.348Z", fill: "#060784" }),
-        h("path", { d: "M11.955 11.857L4.285 5.756A9.8 9.8 0 0 1 14.738 2.461Z", fill: "#faf710" }))));
+      h("button", { type: "button", title: "DirtyStats", className: "minimal d-flex align-items-center h-100 btn btn-primary dirty-stats-nav-button" }, h("svg", { viewBox: "0 0 24 24", "aria-hidden": true },
+        h("rect", { x: 2, y: 2, width: 20, height: 20, rx: 0.3, fill: "#f7f0ff" }),
+        h("rect", { x: 3, y: 3, width: 18, height: 18, fill: "#060607" }),
+        h("rect", { x: 3, y: 3, width: 11, height: 10, fill: "#e40606" }),
+        h("rect", { x: 16, y: 3, width: 5, height: 5, fill: "#faf710" }),
+        h("rect", { x: 16, y: 10, width: 5, height: 11, fill: "#060784" }),
+        h("rect", { x: 3, y: 15, width: 5, height: 6, fill: "#faf710" }))));
   }
   api.register.route(route, DirtyStatsRoute);
   api.patch.instead("PerformerList", function () {

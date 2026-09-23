@@ -1,6 +1,6 @@
 name: DirtyRank
 description: Rank performers through category-based head-to-head battles using a high-precision Glicko-2 system.
-version: 0.7.11
+version: 0.7.12
 
 ui:
   requires:

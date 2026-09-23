@@ -1722,19 +1722,46 @@
     );
   }
 
-  function paginatedLeaderboard(ranked, page, pageSize, topCount) {
-    var featuredCount = leaderboardTopCount(topCount);
-    var remaining = ranked.slice(featuredCount);
-    var totalPages = Math.max(1, Math.ceil(remaining.length / pageSize));
+  function leaderboardEntries(ranked) {
+    return ranked.map(function (performer, index) {
+      return { performer: performer, rank: index + 1 };
+    });
+  }
+
+  function leaderboardStandingEntries(props) {
+    if (props.entries) return props.entries;
+    return leaderboardEntries(props.ranked).slice(leaderboardTopCount(props.topCount));
+  }
+
+  function leaderboardSearchEntries(entries, query) {
+    if (!query) return entries;
+    return entries.filter(function (entry) {
+      return String(entry.performer.name || "").toLowerCase().indexOf(query) !== -1;
+    });
+  }
+
+  function leaderboardSearchPanelProps(entries, search) {
+    var term = String(search || "").trim();
+    return {
+      emptyMessage: term ? "No performers match “" + term + "”." : "No performers match.",
+      eyebrow: "Search",
+      summary: entries.length.toLocaleString() + (entries.length === 1 ? " match" : " matches"),
+      title: "Search results",
+    };
+  }
+
+  function paginatedLeaderboard(entries, page, pageSize) {
+    var totalPages = Math.max(1, Math.ceil(entries.length / pageSize));
     var currentPage = Math.max(1, Math.min(totalPages, page));
     var start = (currentPage - 1) * pageSize;
+    var lastIndex = Math.min(start + pageSize, entries.length) - 1;
     return {
       currentPage: currentPage,
-      items: remaining.slice(start, start + pageSize),
-      firstRank: featuredCount + start + 1,
-      lastRank: featuredCount + start + Math.min(pageSize, remaining.length - start),
+      firstRank: entries.length ? entries[start].rank : 0,
+      items: entries.slice(start, start + pageSize),
+      lastRank: entries.length ? entries[lastIndex].rank : 0,
       start: start,
-      total: remaining.length,
+      total: entries.length,
       totalPages: totalPages,
     };
   }
@@ -1743,18 +1770,24 @@
     return h("div", { className: "dirty-rank-panel-heading d-flex align-items-end justify-content-between" },
       h("div", null,
         h("div", { className: "dirty-rank-eyebrow" }, props.eyebrow),
-        h("h2", null, "Remaining standings")
+        h("h2", null, props.title || "Remaining standings")
       ),
-      h("div", { className: "dirty-rank-panel-summary" }, props.total.toLocaleString() + " rated performers")
+      h("div", { className: "dirty-rank-panel-summary" }, props.summary)
     );
   }
 
   function LeaderboardTable(props) {
-    var page = paginatedLeaderboard(props.ranked, props.page, LEADERBOARD_TABLE_PAGE_SIZE, props.topCount);
+    var entries = leaderboardStandingEntries(props);
+    var ranked = props.ranked || entries.map(function (entry) { return entry.performer; });
+    var page = paginatedLeaderboard(entries, props.page, LEADERBOARD_TABLE_PAGE_SIZE);
     return h("section", { className: "dirty-rank-standings-panel dirty-ui-feature-card" },
-      h(LeaderboardPanelHeading, { eyebrow: "Full category results", total: props.ranked.length }),
+      h(LeaderboardPanelHeading, {
+        eyebrow: props.eyebrow || "Full category results",
+        summary: props.summary || ranked.length.toLocaleString() + " rated performers",
+        title: props.title,
+      }),
       !page.total
-        ? h("div", { className: "dirty-rank-empty-standings" }, props.ranked.length ? "Every rated performer is featured above." : "No standings yet.")
+        ? h("div", { className: "dirty-rank-empty-standings" }, props.emptyMessage || (ranked.length ? "Every rated performer is featured above." : "No standings yet."))
         : h("div", { className: "dirty-rank-table-wrap" },
             h("table", { className: "table table-hover mb-0 dirty-rank-standings-table" },
               h("thead", null, h("tr", null,
@@ -1763,8 +1796,9 @@
                 h("th", { scope: "col" }, "Rating"),
                 h("th", { scope: "col" }, "Confidence")
               )),
-              h("tbody", null, page.items.map(function (performer, offset) {
-                var rank = page.firstRank + offset;
+              h("tbody", null, page.items.map(function (entry) {
+                var performer = entry.performer;
+                var rank = entry.rank;
                 var pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
                 return h("tr", { key: performer.id },
                   h("td", { className: "dirty-rank-table-rank" }, "#" + rank),
@@ -1830,19 +1864,25 @@
   }
 
   function LeaderboardGallery(props) {
-    var page = paginatedLeaderboard(props.ranked, props.page, LEADERBOARD_GALLERY_PAGE_SIZE, props.topCount);
+    var entries = leaderboardStandingEntries(props);
+    var ranked = props.ranked || entries.map(function (entry) { return entry.performer; });
+    var page = paginatedLeaderboard(entries, props.page, LEADERBOARD_GALLERY_PAGE_SIZE);
     return h("section", { className: "dirty-rank-standings-panel dirty-ui-feature-card" },
-      h(LeaderboardPanelHeading, { eyebrow: "Portrait standings", total: props.ranked.length }),
+      h(LeaderboardPanelHeading, {
+        eyebrow: props.eyebrow || "Portrait standings",
+        summary: props.summary || ranked.length.toLocaleString() + " rated performers",
+        title: props.title,
+      }),
       !page.total
-        ? h("div", { className: "dirty-rank-empty-standings" }, props.ranked.length ? "Every rated performer is featured above." : "No standings yet.")
+        ? h("div", { className: "dirty-rank-empty-standings" }, props.emptyMessage || (ranked.length ? "Every rated performer is featured above." : "No standings yet."))
         : h(Fragment, null,
-            h("div", { className: "dirty-rank-gallery-grid" }, page.items.map(function (performer, offset) {
+            h("div", { className: "dirty-rank-gallery-grid" }, page.items.map(function (entry) {
               return h(LeaderboardGalleryCard, {
                 cohort: props.cohort,
-                key: performer.id,
+                key: entry.performer.id,
                 leaderboardId: props.leaderboardId,
-                performer: performer,
-                rank: page.firstRank + offset,
+                performer: entry.performer,
+                rank: entry.rank,
                 settings: props.settings,
               });
             })),
@@ -1885,6 +1925,9 @@
     var topCountState = useState(preferredLeaderboardTopCount);
     var topCount = topCountState[0];
     var setTopCount = topCountState[1];
+    var searchState = useState("");
+    var search = searchState[0];
+    var setSearch = searchState[1];
 
     var load = useCallback(function () {
       setLoading(true);
@@ -1924,9 +1967,17 @@
     var data = useMemo(function () {
       return settings ? leaderboardData(performers, leaderboardId, cohort, settings) : null;
     }, [cohort, leaderboardId, performers, settings]);
-    useEffect(function () { setPage(1); }, [cohort, leaderboardId, viewMode]);
+    var query = search.trim().toLowerCase();
+    var allEntries = useMemo(function () {
+      return data ? leaderboardEntries(data.ranked) : [];
+    }, [data]);
+    var standingEntries = useMemo(function () {
+      if (query) return leaderboardSearchEntries(allEntries, query);
+      return allEntries.slice(leaderboardTopCount(topCount));
+    }, [allEntries, query, topCount]);
+    useEffect(function () { setPage(1); }, [cohort, leaderboardId, viewMode, search]);
     var pageSize = viewMode === "gallery" ? LEADERBOARD_GALLERY_PAGE_SIZE : LEADERBOARD_TABLE_PAGE_SIZE;
-    var totalPages = data ? Math.max(1, Math.ceil(Math.max(0, data.ranked.length - topCount) / pageSize)) : 1;
+    var totalPages = Math.max(1, Math.ceil(standingEntries.length / pageSize));
     useEffect(function () {
       if (page > totalPages) setPage(totalPages);
     }, [page, totalPages]);
@@ -1995,6 +2046,18 @@
                 return h("option", { key: option.count, value: option.count }, option.name);
               }))
             ),
+            h("div", { className: "dirty-rank-control dirty-rank-leaderboards-search" },
+              h("label", { htmlFor: "dirty-rank-leaderboard-search" }, "Search performers"),
+              h("input", {
+                autoComplete: "off",
+                className: "form-control",
+                id: "dirty-rank-leaderboard-search",
+                onChange: function (event) { setSearch(event.target.value); },
+                placeholder: "Search performers",
+                type: "search",
+                value: search,
+              })
+            ),
             h("div", { className: "dirty-rank-control dirty-rank-leaderboards-view" },
               h("label", null, "View"),
               h("div", { "aria-label": "Leaderboard view", className: "btn-group dirty-rank-view-toggle", role: "group" },
@@ -2039,10 +2102,26 @@
             ? h(ConfidenceIndicator, { category: selectedCategory, cohort: cohort, performers: performers, settings: settings })
             : h(OverallConfidence, { cohort: cohort, performers: performers, settings: settings })
         ),
-        h(LeaderboardPodium, { cohort: cohort, leaderboardId: leaderboardId, ranked: data.ranked, settings: settings, topCount: topCount }),
+        !query && h(LeaderboardPodium, { cohort: cohort, leaderboardId: leaderboardId, ranked: data.ranked, settings: settings, topCount: topCount }),
         viewMode === "gallery"
-          ? h(LeaderboardGallery, { cohort: cohort, leaderboardId: leaderboardId, onPageChange: setPage, page: page, ranked: data.ranked, settings: settings, topCount: topCount })
-          : h(LeaderboardTable, { cohort: cohort, leaderboardId: leaderboardId, onPageChange: setPage, page: page, ranked: data.ranked, settings: settings, topCount: topCount })
+          ? h(LeaderboardGallery, Object.assign({
+              cohort: cohort,
+              entries: standingEntries,
+              leaderboardId: leaderboardId,
+              onPageChange: setPage,
+              page: page,
+              ranked: data.ranked,
+              settings: settings,
+            }, query ? leaderboardSearchPanelProps(standingEntries, search) : {}))
+          : h(LeaderboardTable, Object.assign({
+              cohort: cohort,
+              entries: standingEntries,
+              leaderboardId: leaderboardId,
+              onPageChange: setPage,
+              page: page,
+              ranked: data.ranked,
+              settings: settings,
+            }, query ? leaderboardSearchPanelProps(standingEntries, search) : {}))
       )
     );
   }

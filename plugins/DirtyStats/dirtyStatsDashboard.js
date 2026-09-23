@@ -31,6 +31,7 @@
     ratings: { label: "Scene ratings", route: core.route + "/ratings", entity: "scenes", group: "scenes", size: "medium", options: { rounding: 0.5 }, choices: { rounding: [0, 0.5, 1] } },
     performerRatings: { label: "Performer ratings", route: core.route + "/performer-ratings", entity: "performers", group: "performers", size: "medium", options: { rounding: 0.5 }, choices: { rounding: [0, 0.5, 1] } },
     performerScatter: { label: "Rating vs scenes", route: core.route + "/performer-scatter", entity: "performers", group: "performers", size: "medium", options: { minRating: 9, maxScenes: 10 }, choices: { minRating: [0, 5, 6, 7, 8, 9], maxScenes: [0, 5, 10, 20, 50, 100] } },
+    performerCards: { label: "Performer cards", route: core.route, entity: "performers", group: "performerCards", size: "large", options: { cardCount: 8 }, choices: { cardCount: [4, 8, 12, 24] } },
     countRating: { label: "Count vs rating", route: core.route + "/count-rating", entity: "scenes", group: "scenes", size: "medium", options: { metric: "play_count" }, choices: { metric: ["play_count", "o_counter"] } },
     repeatOffenders: { label: "Repeat-offender curve", route: core.route + "/repeat-offenders", entity: "scenes", group: "scenes", size: "medium", options: {}, choices: {} },
     qualityEfficiency: { label: "Quality efficiency", route: core.route + "/quality-efficiency", entity: "scenes", group: "scenes", size: "medium", options: {}, choices: {} },
@@ -39,7 +40,7 @@
     constellation: { label: "Cast constellation", route: core.route + "/constellation", entity: "scenes", group: "cast", size: "large", options: { maxPerformers: 100, minShared: 1 }, choices: { maxPerformers: [0, 50, 100, 200, 500, 1000], minShared: [1, 2, 3, 5, 10] } },
     birthdays: { label: "Performer birthdays", route: core.route + "/birthdays", entity: "performers", group: "performers", size: "medium", options: { upcomingCount: 6 }, choices: { upcomingCount: [3, 6, 12] } }
   };
-  var WIDGET_ORDER = ["origin", "growth", "ages", "ratings", "performerRatings", "performerScatter", "countRating", "repeatOffenders", "qualityEfficiency", "studios", "tags", "constellation", "birthdays"];
+  var WIDGET_ORDER = ["origin", "growth", "ages", "ratings", "performerRatings", "performerScatter", "performerCards", "countRating", "repeatOffenders", "qualityEfficiency", "studios", "tags", "constellation", "birthdays"];
   var DEFAULT_WIDGETS = [
     { id: "dashboard-ratings", statistic: "ratings", size: "medium", options: { rounding: 0.5 } },
     { id: "dashboard-performer-ratings", statistic: "performerRatings", size: "medium", options: { rounding: 0.5 } },
@@ -76,6 +77,20 @@
     return { find: find, object: object, count: Math.max(0, Number(source.count) || 0) };
   }
 
+  function normalizeTitle(value) {
+    return typeof value === "string" ? value.trim().slice(0, 100) : "";
+  }
+
+  function widgetTitle(widget) {
+    return normalizeTitle(widget.title) || WIDGETS[widget.statistic].label;
+  }
+
+  function widgetHeightUnits(widget) {
+    if (widget.size === "small") return 1;
+    if (widget.size === "medium") return widget.statistic === "birthdays" || widget.statistic === "performerCards" ? 2 : 1;
+    return widget.statistic === "birthdays" || (widget.statistic === "performerCards" && widget.options.cardCount > 12) ? 3 : 2;
+  }
+
   function normalizeWidgets(value, useDefaults) {
     var source = Array.isArray(value) ? value : (useDefaults === false ? [] : clone(DEFAULT_WIDGETS));
     var result = [], usedIds = new Set();
@@ -89,7 +104,7 @@
         while (usedIds.has(id)) { id = base + "-" + suffix; suffix += 1; }
       }
       usedIds.add(id);
-      result.push({ id: id, statistic: statistic, size: SIZES.indexOf(candidate.size) >= 0 ? candidate.size : WIDGETS[statistic].size, options: normalizeOptions(WIDGETS[statistic], candidate.options), filter: normalizeFilter(candidate.filter) });
+      result.push({ id: id, statistic: statistic, title: normalizeTitle(candidate.title), size: SIZES.indexOf(candidate.size) >= 0 ? candidate.size : WIDGETS[statistic].size, options: normalizeOptions(WIDGETS[statistic], candidate.options), filter: normalizeFilter(candidate.filter) });
     });
     return result;
   }
@@ -106,7 +121,7 @@
   }
 
   function resourceKey(widget) {
-    return WIDGETS[widget.statistic].group + "|" + JSON.stringify(normalizeFilter(widget.filter));
+    return WIDGETS[widget.statistic].group + "|" + JSON.stringify(normalizeFilter(widget.filter)) + (widget.statistic === "performerCards" ? "|" + widget.options.cardCount : "");
   }
 
   function requiredResources(widgets) {
@@ -115,7 +130,7 @@
       var key = resourceKey(widget);
       if (used.has(key)) return;
       used.add(key);
-      resources.push({ key: key, group: WIDGETS[widget.statistic].group, filter: normalizeFilter(widget.filter) });
+      resources.push({ key: key, group: WIDGETS[widget.statistic].group, filter: normalizeFilter(widget.filter), limit: widget.statistic === "performerCards" ? widget.options.cardCount : 0 });
     });
     return resources.sort(function (a, b) { return a.key.localeCompare(b.key); });
   }
@@ -128,10 +143,14 @@
     return reordered;
   }
 
-  async function fetchPages(group, savedFilter, signal) {
+  async function fetchPages(group, savedFilter, signal, limit) {
     var page = 1, total = null, rows = [];
     var query, root, field, variables;
-    if (group === "performers") {
+    if (group === "performerCards") {
+      query = "query DirtyStatsDashboardPerformerCards($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id death_date}}}";
+      root = "findPerformers"; field = "performers";
+      variables = function () { return { filter: Object.assign({ sort: "name", direction: "ASC" }, savedFilter.find, { page: 1, per_page: limit }), performerFilter: savedFilter.object }; };
+    } else if (group === "performers") {
       query = "query DirtyStatsDashboardPerformers($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name country rating100 scene_count birthdate death_date image_path}}}";
       root = "findPerformers"; field = "performers";
       variables = function (number) { return { filter: Object.assign({}, savedFilter.find, { page: number, per_page: 500, sort: "id", direction: "ASC" }), performerFilter: savedFilter.object }; };
@@ -159,7 +178,7 @@
       total = batch.count;
       if (!batch[field].length && rows.length < total) throw new Error("The library changed while the dashboard was loading. Refresh to try again.");
       rows = rows.concat(batch[field]); page += 1;
-    } while (rows.length < total);
+    } while (group !== "performerCards" && rows.length < total);
     return rows;
   }
 
@@ -329,11 +348,50 @@
     return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("birthdays", stats.valid), metric("next 30 days", stats.upcoming), stats.today ? metric("today", stats.today) : null), h("ol", { className: "dirty-stats-dashboard-upcoming" }, upcoming.map(function (entry) { return h("li", { key: entry.id, className: entry.deceased ? "is-deceased" : "" }, h("strong", null, entry.name), h("span", null, algorithms.birthdayDayLabel(entry.month, entry.day) + (entry.daysUntil === 0 ? " · today" : " · " + entry.daysUntil + " day" + (entry.daysUntil === 1 ? "" : "s")) + (entry.deceased ? " · in memoriam" : ""))); })), h("div", { className: "dirty-stats-dashboard-calendars" }, months.map(function (month) { return monthCalendar(stats.entries, year, month); })));
   }
 
+  function PerformerCardWidget(props) {
+    var rows = props.rows, ids = rows.map(function (performer) { return String(performer.id); });
+    var docsCapture = algorithms.docsCaptureEnabled(window.location.search);
+    var readyState = React.useState(Boolean(api.components.PerformerCard)), ready = readyState[0], setReady = readyState[1];
+    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    React.useEffect(function () {
+      if (api.components.PerformerCard) { setReady(true); return; }
+      var active = true;
+      if (!api.utils || !api.utils.loadComponents || !api.loadableComponents.Performers) { setError("Stash's native performer cards are unavailable."); return; }
+      api.utils.loadComponents([api.loadableComponents.Performers]).then(function () {
+        if (active) {
+          if (api.components.PerformerCard) setReady(true);
+          else setError("Stash's native performer cards could not be loaded.");
+        }
+      }).catch(function (loadError) { if (active) setError(loadError.message || String(loadError)); });
+      return function () { active = false; };
+    }, []);
+    var query = api.GQL.useFindPerformersQuery({
+      variables: { performer_ids: ids, filter: { page: 1, per_page: props.widget.options.cardCount }, performer_filter: {} },
+      skip: docsCapture || !ready || !ids.length
+    });
+    if (!ids.length) return h(State, { title: "No performers", detail: "No performers match this widget's filters." });
+    if (docsCapture) return h(State, { title: "Performer cards hidden", detail: "Cards are hidden while capturing documentation." });
+    if (error) return h(State, { title: "Could not load performer cards", detail: error, role: "alert" });
+    if (!ready || query.loading) return h(State, { title: "Loading performer cards…" });
+    if (query.error) return h(State, { title: "Could not load performer cards", detail: query.error.message, role: "alert" });
+    var cards = algorithms.orderedCards(query.data && query.data.findPerformers ? query.data.findPerformers.performers : [], ids);
+    var deceasedIds = new Set(rows.filter(function (performer) { return performer.death_date; }).map(function (performer) { return String(performer.id); }));
+    return h("div", { className: "dirty-stats-dashboard-performer-cards" },
+      h("p", { className: "dirty-stats-dashboard-card-count" }, "Showing " + cards.length + " performer" + (cards.length === 1 ? "" : "s")),
+      h("div", { className: "dirty-stats-dashboard-card-grid" }, cards.map(function (performer) {
+        var deceased = deceasedIds.has(String(performer.id));
+        return h("div", { key: performer.id, className: "dirty-stats-performer-column" + (deceased ? " is-deceased" : "") },
+          deceased ? h("span", { className: "dirty-stats-memorial-label" }, "In memoriam") : null,
+          h(api.components.PerformerCard, { performer: performer }));
+      })));
+  }
+
   function renderWidget(widget, resources) {
     var resource = resources[resourceKey(widget)];
     if (!resource || resource.loading) return h(State, { title: "Loading " + WIDGETS[widget.statistic].label.toLowerCase() + "…" });
     if (resource.error) return h(State, { title: "Could not load this widget", detail: resource.error, role: "alert" });
     var rows = resource.rows || [];
+    if (widget.statistic === "performerCards") return h(PerformerCardWidget, { widget: widget, rows: rows });
     if (widget.statistic === "origin") return originWidget(rows, widget);
     if (widget.statistic === "growth") return growthWidget(rows, resource.capacity, widget);
     if (widget.statistic === "ages") return ageWidget(rows, widget);
@@ -370,6 +428,7 @@
     if (widget.statistic === "performerScatter") return h(React.Fragment, null,
       h(SelectControl, { label: "Minimum rating", value: options.minRating, values: WIDGETS.performerScatter.choices.minRating, labels: { 0: "Any" }, onChange: function (value) { set("minRating", Number(value)); } }),
       h(SelectControl, { label: "Maximum scenes", value: options.maxScenes, values: WIDGETS.performerScatter.choices.maxScenes, labels: { 0: "Any" }, onChange: function (value) { set("maxScenes", Number(value)); } }));
+    if (widget.statistic === "performerCards") return h(SelectControl, { label: "Cards to display", value: options.cardCount, values: WIDGETS.performerCards.choices.cardCount, onChange: function (value) { set("cardCount", Number(value)); } });
     if (widget.statistic === "countRating") return h(SelectControl, { label: "Count", value: options.metric, values: WIDGETS.countRating.choices.metric, labels: { play_count: "View count", o_counter: "O count" }, onChange: function (value) { set("metric", value); } });
     if (widget.statistic === "studios") return h(SelectControl, { label: "Minimum scenes", value: options.minScenes, values: WIDGETS.studios.choices.minScenes, onChange: function (value) { set("minScenes", Number(value)); } });
     if (widget.statistic === "tags") return h(React.Fragment, null,
@@ -454,24 +513,26 @@
 
   function DashboardWidget(props) {
     var widget = props.widget, definition = WIDGETS[widget.statistic];
+    var title = widgetTitle(widget);
     var compact = widget.size !== "large" && !props.editing;
-    return h("article", { className: "dirty-stats-dashboard-widget dirty-stats-dashboard-widget-" + widget.size + (compact ? " is-compact" : "") + (props.dragging ? " is-dragging" : ""), "data-statistic": widget.statistic, "data-widget-index": props.index, "aria-grabbed": props.dragging ? "true" : undefined },
-      h("header", { className: "dirty-stats-dashboard-widget-header" + (compact ? " is-compact" : "") }, h("div", null, h("h2", null, definition.label)),
+    return h("article", { className: "dirty-stats-dashboard-widget dirty-stats-dashboard-widget-" + widget.size + " dirty-stats-dashboard-height-" + widgetHeightUnits(widget) + (compact ? " is-compact" : "") + (props.dragging ? " is-dragging" : ""), "data-statistic": widget.statistic, "data-widget-index": props.index, "aria-grabbed": props.dragging ? "true" : undefined },
+      h("header", { className: "dirty-stats-dashboard-widget-header" + (compact ? " is-compact" : "") },
+        h("div", { className: "dirty-stats-dashboard-widget-title" }, props.editing ?
+          h("input", { type: "text", className: "dirty-stats-dashboard-title-input", value: widget.title || "", placeholder: definition.label, maxLength: 100, "aria-label": definition.label + " widget title", onChange: function (event) { props.onTitle(event.target.value); } }) :
+          h("h2", { title: title }, title)),
         h("div", { className: "dirty-stats-dashboard-widget-actions" },
-          h(Link, { className: "dirty-stats-dashboard-open-link", to: definition.route, title: "Open " + definition.label + " full view", "aria-label": "Open " + definition.label + " full view" }, h("span", { "aria-hidden": true }, "↗")),
+          props.editing || widget.statistic === "performerCards" ? null : h(Link, { className: "dirty-stats-dashboard-open-link", to: definition.route, title: "Open " + definition.label + " full view", "aria-label": "Open " + definition.label + " full view" }, h("span", { "aria-hidden": true }, "↗")),
           props.editing ? h(React.Fragment, null,
-            h("button", { type: "button", className: "btn btn-secondary btn-sm dirty-stats-dashboard-drag-handle", title: "Drag to reorder", "aria-label": "Drag to reorder " + definition.label, onPointerDown: props.onDragStart }, h("span", { "aria-hidden": true }, "⠿")),
-            h("button", { type: "button", className: "btn btn-secondary btn-sm", disabled: props.index === 0, onClick: function () { props.onMove(-1); }, "aria-label": "Move " + definition.label + " earlier" }, "↑"),
-            h("button", { type: "button", className: "btn btn-secondary btn-sm", disabled: props.index === props.count - 1, onClick: function () { props.onMove(1); }, "aria-label": "Move " + definition.label + " later" }, "↓"),
-            h("button", { type: "button", className: "btn btn-danger btn-sm", onClick: props.onRemove }, "Remove")) : null)),
+            h("button", { type: "button", className: "btn btn-secondary btn-sm dirty-stats-dashboard-drag-handle", title: "Drag to reorder; arrow keys also move this widget", "aria-label": "Reorder " + title + "; use arrow keys or drag", onPointerDown: props.onDragStart, onKeyDown: props.onDragKeyDown }, h("span", { "aria-hidden": true }, "⠿")),
+            h("button", { type: "button", className: "btn btn-danger btn-sm dirty-stats-dashboard-remove", title: "Remove widget", "aria-label": "Remove " + title + " widget", onClick: props.onRemove }, h("span", { "aria-hidden": true }, "×"))) : null)),
       props.editing ? h("div", { className: "dirty-stats-dashboard-editor", role: "group", "aria-label": definition.label + " widget settings" },
-        h("fieldset", null, h("legend", null, "Size"), SIZES.map(function (size) { return h("label", { key: size }, h("input", { type: "radio", name: widget.id + "-size", value: size, checked: widget.size === size, onChange: function () { props.onSize(size); } }), SIZE_LABELS[size]); })),
+        h(SelectControl, { label: "Size", value: widget.size, values: SIZES, labels: SIZE_LABELS, onChange: props.onSize }),
         h("div", { className: "dirty-stats-dashboard-filter-setting" }, h("span", null, filterSummary(widget.filter, definition.entity)), h("button", { type: "button", className: "btn btn-secondary btn-sm", onClick: props.onFilter }, "Change filters")),
         h("div", { className: "dirty-stats-dashboard-options" }, h(WidgetOptions, { widget: widget, onChange: props.onOptions }))) : null,
       h("div", { className: "dirty-stats-dashboard-widget-body" }, renderWidget(widget, props.resources)));
   }
 
-  function DashboardPage() {
+  function DashboardPage(props) {
     var widgetsState = React.useState([]), widgets = widgetsState[0], setWidgets = widgetsState[1];
     var readyState = React.useState(false), ready = readyState[0], setReady = readyState[1];
     var editState = React.useState(false), editing = editState[0], setEditing = editState[1];
@@ -506,7 +567,7 @@
       var requested = JSON.parse(resourcesKey);
       requested.forEach(function (request) {
         setResources(function (current) { var next = Object.assign({}, current); next[request.key] = { loading: true, rows: [], error: "", capacity: null }; return next; });
-        fetchPages(request.group, request.filter, controller.signal).then(async function (rows) {
+        fetchPages(request.group, request.filter, controller.signal, request.limit).then(async function (rows) {
           var capacity = null;
           if (request.group === "growth" && !controller.signal.aborted) {
             try {
@@ -524,7 +585,6 @@
     }, [ready, resourcesKey]);
     React.useEffect(function () { return function () { if (dragCleanup.current) dragCleanup.current(false); }; }, []);
     function replace(index, patch) { setWidgets(function (current) { return current.map(function (widget, position) { return position === index ? Object.assign({}, widget, patch) : widget; }); }); }
-    function move(index, delta) { setWidgets(function (current) { return reorderWidgets(current, index, index + delta); }); }
     function startDrag(index, event) {
       if (event.pointerType === "mouse" && event.button !== 0) return;
       if (dragCleanup.current) dragCleanup.current(false);
@@ -532,7 +592,7 @@
       var pointerId = event.pointerId;
       var dragged = widgets[index];
       var draggedId = dragged.id;
-      var label = WIDGETS[dragged.statistic].label;
+      var label = widgetTitle(dragged);
       var lastTarget = index;
       var moved = false;
       function finish(announce) {
@@ -568,9 +628,16 @@
       dragCleanup.current = finish;
     }
     function remove(index) { setWidgets(function (current) { return current.filter(function (_widget, position) { return position !== index; }); }); }
-    function beginAdd(statistic) { var definition = WIDGETS[statistic]; setDraft({ id: nextWidgetId(statistic, widgets), statistic: statistic, size: definition.size, options: clone(definition.options), filter: null }); }
+    function moveWithKeyboard(index, event) {
+      var delta = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+      if (!delta || index + delta < 0 || index + delta >= widgets.length) return;
+      event.preventDefault();
+      setWidgets(function (current) { return reorderWidgets(current, index, index + delta); });
+      setDragAnnouncement(widgetTitle(widgets[index]) + " moved to position " + (index + delta + 1) + ".");
+    }
+    function beginAdd(statistic) { var definition = WIDGETS[statistic]; setDraft({ id: nextWidgetId(statistic, widgets), statistic: statistic, title: "", size: definition.size, options: clone(definition.options), filter: null }); }
     function updateDraft(patch) { setDraft(function (current) { return current ? Object.assign({}, current, patch) : current; }); }
-    function addDraft() { if (!draft || !draft.filter) return; setWidgets(function (current) { return current.concat([Object.assign({}, draft, { filter: normalizeFilter(draft.filter) })]); }); setDraft(null); setAdding(false); }
+    function addDraft() { if (!draft || !draft.filter) return; setWidgets(function (current) { return current.concat([Object.assign({}, draft, { title: normalizeTitle(draft.title), filter: normalizeFilter(draft.filter) })]); }); setDraft(null); setAdding(false); }
     function beginFilterEdit(index) { setAdding(false); setDraft(null); setFilterEdit(index); setPendingFilter(null); }
     function applyFilterEdit() { if (filterEdit == null || !pendingFilter) return; replace(filterEdit, { filter: normalizeFilter(pendingFilter) }); setFilterEdit(null); setPendingFilter(null); }
     function toggleEditing() {
@@ -582,7 +649,7 @@
     var filterWidget = filterEdit == null ? null : widgets[filterEdit];
     if (!ready) return h(State, { title: "Loading dashboard…" });
     return h("section", { className: "dirty-stats-dashboard", "aria-label": "DirtyStats dashboard" },
-      h("div", { className: "dirty-stats-dashboard-heading" }, h("div", null, h("h1", null, "Dashboard"), h("p", null, "A customizable overview of the entire library.")),
+      h("div", { className: "dirty-stats-dashboard-heading" }, props.selector,
         h("div", { className: "dirty-stats-actions" },
           editing ? h(React.Fragment, null,
             h(SelectControl, { className: "dirty-stats-dashboard-theme", label: "Theme", value: algorithms.statsSettings.visualTheme, values: THEME_VALUES, labels: THEME_LABELS, onChange: function (theme) { algorithms.setStatsSetting("visualTheme", theme); } }),
@@ -595,6 +662,7 @@
         h("div", { className: "dirty-stats-dashboard-picker-grid" }, WIDGET_ORDER.map(function (statistic) { return h("button", { key: statistic, type: "button", className: "btn btn-secondary dirty-ui-button", disabled: widgets.length >= MAX_WIDGETS, onClick: function () { beginAdd(statistic); } }, WIDGETS[statistic].label); }))) : null,
       draft ? h(DashboardFilterDialog, { labelId: "dirty-stats-add-widget-dialog", title: "Add " + WIDGETS[draft.statistic].label, onClose: function () { setDraft(null); } },
         h("div", { className: "dirty-stats-dashboard-add-settings" },
+          h("label", { className: "dirty-stats-dashboard-field dirty-stats-dashboard-title-field" }, h("span", null, "Custom title"), h("input", { type: "text", className: "form-control form-control-sm", value: draft.title || "", placeholder: WIDGETS[draft.statistic].label, maxLength: 100, onChange: function (event) { updateDraft({ title: event.target.value }); } })),
           h(SelectControl, { label: "Size", value: draft.size, values: SIZES, labels: SIZE_LABELS, onChange: function (size) { updateDraft({ size: size }); } }),
           h("div", { className: "dirty-stats-dashboard-options" }, h(WidgetOptions, { widget: draft, onChange: function (options) { updateDraft({ options: normalizeOptions(WIDGETS[draft.statistic], options) }); } }))),
         h("div", { className: "dirty-stats-dashboard-filter-heading" }, h("div", null, h("h3", null, "Filters"), h("p", null, "Use the same native filters as the full view. Changes apply to this widget only.")), draft.filter ? h("strong", null, filterSummary(draft.filter, WIDGETS[draft.statistic].entity)) : null),
@@ -609,8 +677,8 @@
           h("button", { type: "button", className: "btn btn-secondary dirty-ui-button", onClick: function () { setFilterEdit(null); setPendingFilter(null); } }, "Cancel"),
           h("button", { type: "button", className: "btn btn-primary dirty-ui-button", disabled: !pendingFilter, onClick: applyFilterEdit }, "Apply filters"))) : null,
       !widgets.length ? h(State, { title: "Your dashboard is empty", detail: editing ? "Choose Add widget to build your library overview." : "Enter edit mode to add your first widget.", actions: editing ? h("button", { type: "button", className: "btn btn-primary dirty-ui-button", onClick: function () { setAdding(true); } }, "Add widget") : h("button", { type: "button", className: "btn btn-primary dirty-ui-button", onClick: toggleEditing }, "Edit dashboard") }) :
-        h("div", { className: "dirty-stats-dashboard-grid" + (draggingId ? " is-reordering" : "") }, widgets.map(function (widget, index) { return h(DashboardWidget, { key: widget.id, widget: widget, index: index, count: widgets.length, editing: editing, dragging: draggingId === widget.id, resources: resources, onDragStart: function (event) { startDrag(index, event); }, onMove: function (delta) { move(index, delta); }, onRemove: function () { remove(index); }, onSize: function (size) { replace(index, { size: size }); }, onFilter: function () { beginFilterEdit(index); }, onOptions: function (options) { replace(index, { options: normalizeOptions(WIDGETS[widget.statistic], options) }); } }); })));
+        h("div", { className: "dirty-stats-dashboard-grid" + (editing ? " is-editing" : "") + (draggingId ? " is-reordering" : "") }, widgets.map(function (widget, index) { return h(DashboardWidget, { key: widget.id, widget: widget, index: index, editing: editing, dragging: draggingId === widget.id, resources: resources, onDragStart: function (event) { startDrag(index, event); }, onDragKeyDown: function (event) { moveWithKeyboard(index, event); }, onRemove: function () { remove(index); }, onTitle: function (title) { replace(index, { title: title }); }, onSize: function (size) { replace(index, { size: size }); }, onFilter: function () { beginFilterEdit(index); }, onOptions: function (options) { replace(index, { options: normalizeOptions(WIDGETS[widget.statistic], options) }); } }); })));
   }
 
-  window.__dirtyStatsDashboard = { Component: DashboardPage, algorithms: { normalizeWidgets: normalizeWidgets, normalizeOptions: normalizeOptions, normalizeFilter: normalizeFilter, requiredGroups: requiredGroups, requiredResources: requiredResources, resourceKey: resourceKey, reorderWidgets: reorderWidgets, nextWidgetId: nextWidgetId }, registry: WIDGETS, defaults: DEFAULT_WIDGETS, maxWidgets: MAX_WIDGETS };
+  window.__dirtyStatsDashboard = { Component: DashboardPage, Widget: DashboardWidget, algorithms: { normalizeWidgets: normalizeWidgets, normalizeOptions: normalizeOptions, normalizeFilter: normalizeFilter, widgetTitle: widgetTitle, widgetHeightUnits: widgetHeightUnits, requiredGroups: requiredGroups, requiredResources: requiredResources, resourceKey: resourceKey, fetchPages: fetchPages, reorderWidgets: reorderWidgets, nextWidgetId: nextWidgetId }, registry: WIDGETS, defaults: DEFAULT_WIDGETS, maxWidgets: MAX_WIDGETS };
 })();
