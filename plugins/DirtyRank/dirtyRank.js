@@ -2098,14 +2098,14 @@
                 return h("option", { key: option.count, value: option.count }, option.name);
               }))
             ),
-            h(Field, { className: "dirty-rank-control dirty-rank-leaderboards-search", id: "dirty-rank-leaderboard-search", label: "Search performers" },
+            h(Field, { className: "dirty-rank-control dirty-rank-leaderboards-search", id: "dirty-rank-leaderboard-search", label: "Filter performers" },
               h("input", {
                 autoComplete: "off",
                 className: "form-control",
                 id: "dirty-rank-leaderboard-search",
                 onChange: function (event) { setSearch(event.target.value); },
-                placeholder: "Search performers",
-                type: "search",
+                placeholder: "Filter performers",
+                type: "text",
                 value: search,
               })
             ),
