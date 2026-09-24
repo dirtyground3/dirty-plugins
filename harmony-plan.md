@@ -24,7 +24,7 @@ The initial pilot was limited to DirtyRank and shared DirtyPlugins primitives. S
 | H14 | No Rank chart consumer. | Stats-local chart adapter and lifecycle work. |
 | H15 | Repaired Rank's dangling CSS selector and consolidated selected Rank rules. | Stats CSS is now readable and scoped overrides are documented; parsed-CSS checks cover Rank and Stats. |
 | H16 | New JS follows the repository's no-build source style. | Multiscreen playlist helpers normalized; duplicate-load and effect cleanup remain covered by tests. |
-| H17 | Rank recognizes both capture URLs and covers native media. | Safe visual review and capture coverage for the other plugins. |
+| H17 | Rank recognizes both capture URLs and covers native media. | Live capture checks now cover Multiscreen, FileExtractor, Tidy, and Stats as well. |
 | H18 | Added pilot component tests, documentation, and Rank/hub version bumps. | Visual fixtures, full cross-plugin contracts, and later release checks. |
 
 ## DirtyStats rollout status
@@ -346,6 +346,8 @@ Keep no-build assets and PluginApi React. No new npm, Python, font, UI, chart, o
 2. Cover FileExtractor's folder picker path/list text, Tidy preview source/destination paths, Stats main native performer/scene cards, and all Rank/Multiscreen media surfaces. Prefer safe placeholders or opaque covers for fixtures and native components with changing internals.
 3. Preserve query-state propagation when navigating between capture views. Cover loading/error/empty states and dynamically inserted images/video frames, not only the first render.
 4. Maintain an explicit safe-fixture/capture checklist. Inspect every image before saving it into the repository; retain no uncensored captures in repository history.
+
+**Live check:** With `docsCapture=1`, Stash rendered four Multiscreen tiles with hidden media and opaque covers; FileExtractor's saved destination, folder path, and folder list displayed only placeholders; DirtyTidy's read-only preview hid both path columns and warning details. Earlier live Rank and Stats capture checks covered the leaderboard cards and dashboard/native filter states. These checks did not save screenshots or run a Tidy operation.
 
 **Done when:** One capture URL produces safe review views across the suite, including overlays and native cards. Private paths and every potentially explicit media region are hidden/obscured in the actual saved artifact. The old Rank capture URL continues to work.
 
