@@ -278,6 +278,8 @@ Keep no-build assets and PluginApi React. No new npm, Python, font, UI, chart, o
 
 **Narrow-width check:** The live Stats constellation view had no page-level horizontal overflow at 360px, 640px, 768px, or 1440px. At 360px, Stash's 42px toolbar cap let the wrapped Date selector overlap the summary. Stats now removes that cap only within its native-filter wrapper; the toolbar expands to 81px, the summary starts below it, and the sort menu opens without clipping. The 200% browser zoom check remains open because the in-app browser ignored zoom shortcuts.
 
+**Rank responsive check:** The running Stash leaderboard, with capture mode covering every native card, had no page-level horizontal overflow at 360px, 640px, 768px, or 1440px. At 360px its controls wrapped without overlap; keyboard Tab reached the Gallery action with a visible outline. The in-app browser still did not apply its zoom shortcuts, so these width checks do not stand in for a true 200% zoom pass.
+
 **Done when:** Every suite-owned action is usable and visibly focused by keyboard; reduced-motion mode removes decorative animation; ordinary page content does not overflow at 360px; tables/media use intentional containment. Contrast results are recorded for supported themes.
 
 ### H12 — Reuse native Stash components through small compatibility helpers [P2]
