@@ -83,6 +83,9 @@ under the suite's markup control. The visually hidden helper also uses one
 `!important` to resist host display styles. Do not move these selectors into
 global hub CSS. FileExtractor's action `[hidden]` rules likewise override
 fixed-position display styling and must remain in its own stylesheet.
+Rank keeps separate native-card and fallback-card selectors: the native card
+retains Stash's layout and theme, while the fallback needs suite-owned card
+layout when Stash's component is unavailable. Capture rules cover both paths.
 
 ## Capture and review
 

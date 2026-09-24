@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -7,6 +8,11 @@ ROOT = Path(__file__).parents[1]
 
 def read(relative_path):
     return (ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def css_rule_bodies(styles, selector):
+    """Find simple rule bodies without depending on declaration whitespace."""
+    return re.findall(r"(?m)^[ \t]*" + re.escape(selector) + r"\s*\{([^{}]*)\}", styles)
 
 
 class SharedUIContractTests(unittest.TestCase):
@@ -59,7 +65,10 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("dirty-rank-leaderboards-controls dirty-ui-control-row", rank_js)
         self.assertIn("dirty-stats-actions dirty-ui-control-row", stats_dashboard_js)
         self.assertIn("form-control form-control-sm dirty-ui-select", stats_dashboard_js)
-        self.assertIn(".dirty-stats-selector .dropdown-toggle { box-sizing: border-box; height: var(--dirty-ui-control-height)", stats_css)
+        dropdown = css_rule_bodies(stats_css, "#root .dirty-stats-page .dirty-stats-selector .dropdown-toggle")
+        self.assertEqual(len(dropdown), 1)
+        self.assertRegex(dropdown[0], r"box-sizing:\s*border-box;")
+        self.assertRegex(dropdown[0], r"height:\s*var\(--dirty-ui-control-height\);")
         self.assertIn("form-control dirty-ui-select dirty-tidy-automation", tidy_js)
 
     def test_documentation_capture_modes_hide_private_paths_and_media(self):
@@ -268,10 +277,10 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("h(StateView,", script)
         # The unused field rule is gone and the duplicate filter rule is merged.
         self.assertNotIn("dirty-stats-field", styles)
-        self.assertIn(
-            ".dirty-stats-filter-statistic { display: flex; gap: .5rem; flex-wrap: wrap; order: -1;",
-            styles,
-        )
+        statistic = css_rule_bodies(styles, ".dirty-stats-filter-statistic")
+        self.assertEqual(len(statistic), 1)
+        for declaration in ("display: flex;", "gap: .5rem;", "flex-wrap: wrap;", "order: -1;"):
+            self.assertIn(declaration, statistic[0])
 
     def test_dirty_stats_dashboard_is_registered_and_persisted(self):
         script = read("plugins/DirtyStats/dirtyStats.js")
@@ -308,7 +317,10 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("sharedReact.Dialog", dashboard)
         self.assertIn("allowNativePopup: true", dashboard)
         self.assertIn(".dirty-stats-dashboard-dialog-backdrop", styles)
-        self.assertIn(".dirty-stats-dashboard-dialog-backdrop { position: fixed; inset: 0; z-index: var(--dirty-ui-layer-integrated-dialog);", styles)
+        backdrops = css_rule_bodies(styles, ".dirty-stats-dashboard-dialog-backdrop")
+        self.assertTrue(any(all(declaration in body for declaration in (
+            "position: fixed;", "inset: 0;", "z-index: var(--dirty-ui-layer-integrated-dialog);"
+        )) for body in backdrops))
         self.assertIn(".dirty-stats-dashboard-filter-dialog .dirty-stats-dashboard-native-filter", styles)
         self.assertNotIn('widget.size === "large" ? "" : "dirty-stats-dashboard-visually-hidden"', dashboard)
         self.assertIn(".dirty-stats-dashboard-widget-header.is-compact h2", styles)

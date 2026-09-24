@@ -22,7 +22,7 @@ The initial pilot was limited to DirtyRank and shared DirtyPlugins primitives. S
 | H12 | Shared native loader deduplicates Rank PerformerCard/ScenePlayer loads; native components remain in use. | Stats/Multiscreen adapters and live native/fallback review. |
 | H13 | Documented existing runtime and Stats-only chart dependency. | Record vendor version/notices in the broader inventory. |
 | H14 | No Rank chart consumer. | Stats-local chart adapter and lifecycle work. |
-| H15 | Repaired Rank's dangling CSS selector and consolidated selected Rank rules. | Browser parsed-CSS review and later Stats/shared cleanup. |
+| H15 | Repaired Rank's dangling CSS selector and consolidated selected Rank rules. | Stats CSS is now readable and scoped overrides are documented; parsed-CSS checks cover Rank and Stats. |
 | H16 | New JS follows the repository's no-build source style. | Other modules and duplicate-load review. |
 | H17 | Rank recognizes both capture URLs and covers native media. | Safe visual review and capture coverage for the other plugins. |
 | H18 | Added pilot component tests, documentation, and Rank/hub version bumps. | Visual fixtures, full cross-plugin contracts, and later release checks. |
@@ -320,6 +320,8 @@ Keep no-build assets and PluginApi React. No new npm, Python, font, UI, chart, o
 3. Move rules into the hub only after their intended consumers are clear. Keep local aliases briefly where that makes migration reviewable.
 4. Audit each Stats specificity override against the actual native theme/filter behaviour. Document retained exceptions; preserve FileExtractor's hidden-state rules.
 5. Check native and fallback states before removing overlapping Rank selectors. Remove superseded rules after the replacement has been verified.
+
+**Cleanup record:** Rank's malformed selector and redundant rules were corrected during the pilot. Stats' authored stylesheet now uses readable blocks and sections; its duplicate filter-toolbar rule was merged, and the Arcade font rule sits with its theme. Hub and the other plugin stylesheets were already block-formatted, so no formatting-only churn was needed there. The remaining Stats `!important` rules are scoped to generated Stash filters and dropdowns, the native memorial card, Paper/Arcade theme buttons, or the visually hidden helper; `plugins/DirtyPlugins/STYLE.md` documents those boundaries. FileExtractor's hidden-state exception remains. The native and fallback Rank selectors remain separate because they style different card implementations. Live Stash parsed the Rank and Stats stylesheets, including Rank's reduced-motion rule; a before/after comparison of representative Stats dashboard computed styles found no change.
 
 **Done when:** Stylesheets parse as intended, reduced-motion rules survive parsing, and no migrated control depends on accidental selector order. Necessary native overrides remain scoped and documented; both native and fallback cards still render correctly.
 
