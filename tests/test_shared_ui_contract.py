@@ -71,6 +71,14 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertRegex(dropdown[0], r"height:\s*var\(--dirty-ui-control-height\);")
         self.assertIn("form-control dirty-ui-select dirty-tidy-automation", tidy_js)
 
+    def test_dirty_stats_native_toolbar_can_wrap_at_narrow_widths(self):
+        styles = read("plugins/DirtyStats/dirtyStats.css")
+        toolbar = css_rule_bodies(styles, "#root .dirty-stats-page.dirty-stats-native-filters .filtered-list-toolbar")
+        self.assertEqual(len(toolbar), 1)
+        for declaration in ("flex-wrap: wrap !important;", "height: auto !important;",
+                            "max-height: none !important;", "overflow: visible !important;"):
+            self.assertIn(declaration, toolbar[0])
+
     def test_documentation_capture_modes_hide_private_paths_and_media(self):
         hub_js = read("plugins/DirtyPlugins/dirtyPlugins.js")
         hub_css = read("plugins/DirtyPlugins/dirtyPlugins.css")

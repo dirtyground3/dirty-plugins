@@ -302,11 +302,14 @@
   outline-offset: 2px;
 }
 
+/* Stash caps its toolbar at 42px; a wrapped mobile row needs its own height. */
 #root .dirty-stats-page.dirty-stats-native-filters .filtered-list-toolbar {
   flex-wrap: wrap !important;
   justify-content: flex-start !important;
   height: auto !important;
+  max-height: none !important;
   width: 100% !important;
+  overflow: visible !important;
   row-gap: .35rem;
 }
 

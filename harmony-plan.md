@@ -276,6 +276,8 @@ Keep no-build assets and PluginApi React. No new npm, Python, font, UI, chart, o
 4. Document shared breakpoints using explicit media-query values; ordinary CSS custom properties cannot directly replace media-query thresholds. Keep content-driven exceptions for dense charts and media layouts.
 5. Review text contrast, 200% zoom, long labels, and narrow widths using real rendered components; increase very small metadata where necessary.
 
+**Narrow-width check:** The live Stats constellation view had no page-level horizontal overflow at 360px, 640px, 768px, or 1440px. At 360px, Stash's 42px toolbar cap let the wrapped Date selector overlap the summary. Stats now removes that cap only within its native-filter wrapper; the toolbar expands to 81px, the summary starts below it, and the sort menu opens without clipping. The 200% browser zoom check remains open because the in-app browser ignored zoom shortcuts.
+
 **Done when:** Every suite-owned action is usable and visibly focused by keyboard; reduced-motion mode removes decorative animation; ordinary page content does not overflow at 360px; tables/media use intentional containment. Contrast results are recorded for supported themes.
 
 ### H12 — Reuse native Stash components through small compatibility helpers [P2]
@@ -308,6 +310,8 @@ Keep no-build assets and PluginApi React. No new npm, Python, font, UI, chart, o
 2. Replace literal-colour substitution with explicit presentation roles for axes, grids, tooltip, legend, selection, and series palettes. Preserve domain-specific colours and chart-specific option construction.
 3. Reuse responsive font/spacing defaults for dashboard and full views, allowing compact variants. Pass reduced-motion preferences into chart options.
 4. Preserve the existing export-background behaviour and verify that theme changes refresh existing charts and exports without losing user selections unnecessarily.
+
+**Live interaction check:** Growth timeline start/end clicks updated its period and matching-scene count. On the dashboard, changing Retro Arcade to Paper Picnic rebuilt all seven chart instances in the new palette without changing widgets or filters; Retro Arcade was restored. The map's country selection, birthday calendar day selection, constellation node selection, and constellation size filter each updated their matching results and cleared correctly. PNG background behavior and growth zoom preservation remain covered by focused tests; a full exported-file visual review remains open.
 
 **Done when:** A chart in compact, full-view, and PNG form follows the same theme; resize/theme changes do not leak observers or chart instances; map selection, data zoom, calendar/constellation interactions, and filters remain correct.
 
