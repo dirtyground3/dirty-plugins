@@ -301,6 +301,7 @@ Run the test suite from the repository root:
 python -B -m unittest discover -s tests -v
 node --check plugins/DirtyRank/dirtyRank.js
 node --check plugins/DirtyPlugins/dirtyPlugins.js
+node --check plugins/DirtyMultiscreen/multiscreen.js
 node tests/test_dirty_ui_pilot.js
 node tests/test_dirty_rank_algorithms.js
 node tests/test_dirty_rank_media.js
@@ -309,6 +310,7 @@ node tests/test_dirty_tidy_automation.js
 node tests/test_dirty_tidy_settings.js
 node tests/test_dirty_stats.js
 node tests/test_dirty_stats_dashboard.js
+node tests/test_dirty_stats_contrast.js
 node tests/test_dirty_multiscreen.js
 ```
 

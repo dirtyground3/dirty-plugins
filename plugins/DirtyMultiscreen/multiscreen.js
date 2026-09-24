@@ -1,9 +1,9 @@
-(() => {
+(function () {
   "use strict";
   // Stash can reload plugin assets without reloading the page. Routes and
   // PluginApi patches cannot be unregistered, so re-running this bundle would
   // stack duplicate nav links, patches, and count-query timers. Ignore reloads.
-  const INSTANCE_KEY = "__dirtyMultiscreenPlugin";
+  var INSTANCE_KEY = "__dirtyMultiscreenPlugin";
   if (window[INSTANCE_KEY] && window.DirtyPlugins && window.DirtyPlugins.debugLog) {
     window.DirtyPlugins.debugLog("multiscreen", "skipped: duplicate load");
   }
@@ -28,37 +28,44 @@
   var useRef = React.useRef;
   var useState = React.useState;
 
-  // src/shared/multiscreen/playlists.ts
-  var shuffleMultiscreenItems = (items) => {
-    const shuffledItems = [...items];
-    for (let i = shuffledItems.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffledItems[i], shuffledItems[j]] = [shuffledItems[j], shuffledItems[i]];
+  // Playlist helpers are authored here; this plugin has no build step.
+  function shuffleMultiscreenItems(items) {
+    var shuffledItems = items.slice();
+    for (var i = shuffledItems.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var item = shuffledItems[i];
+      shuffledItems[i] = shuffledItems[j];
+      shuffledItems[j] = item;
     }
     return shuffledItems;
-  };
-  var splitMultiscreenItemsByIndex = (items, total) => {
-    const groups = Array.from({ length: Math.max(0, total) }, () => []);
-    items.forEach((item, index) => {
-      groups[index % total]?.push(item);
+  }
+  function splitMultiscreenItemsByIndex(items, total) {
+    var groups = Array.from({ length: Math.max(0, total) }, function () {
+      return [];
+    });
+    items.forEach(function (item, index) {
+      var group = groups[index % total];
+      if (group) group.push(item);
     });
     return groups;
-  };
-  var createMultiscreenPlaylists = (items, totalScreens, randomize, splitItems) => {
+  }
+  function createMultiscreenPlaylists(items, totalScreens, randomize, splitItems) {
     if (items.length === 0) {
-      return Array.from({ length: Math.max(0, totalScreens) }, () => []);
+      return Array.from({ length: Math.max(0, totalScreens) }, function () {
+        return [];
+      });
     }
     if (splitItems) {
-      const sourceItems = randomize ? shuffleMultiscreenItems(items) : [...items];
+      var sourceItems = randomize ? shuffleMultiscreenItems(items) : items.slice();
       return splitMultiscreenItemsByIndex(sourceItems, totalScreens);
     }
     return Array.from(
       { length: Math.max(0, totalScreens) },
-      () => randomize ? shuffleMultiscreenItems(items) : [...items]
+      function () { return randomize ? shuffleMultiscreenItems(items) : items.slice(); }
     );
-  };
+  }
 
-  // plugins/DirtyMultiscreen/src/multiscreen.tsx
+  // Stash integrations below own route and patch registration for this asset.
   var PluginApi = window.PluginApi;
   var DirtyPlugins = window.DirtyPlugins;
   if (!PluginApi || !DirtyPlugins) {
@@ -68,7 +75,6 @@
     });
     return;
   }
-  var GQL = PluginApi.GQL;
   var { NavLink, useLocation } = PluginApi.libraries.ReactRouterDOM;
   var solidIcons = PluginApi.libraries.FontAwesomeSolid ?? {};
   var PLUGIN_ID = "multiscreen";

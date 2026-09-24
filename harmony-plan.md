@@ -23,7 +23,7 @@ The initial pilot was limited to DirtyRank and shared DirtyPlugins primitives. S
 | H13 | Documented existing runtime and Stats-only chart dependency. | Record vendor version/notices in the broader inventory. |
 | H14 | No Rank chart consumer. | Stats-local chart adapter and lifecycle work. |
 | H15 | Repaired Rank's dangling CSS selector and consolidated selected Rank rules. | Stats CSS is now readable and scoped overrides are documented; parsed-CSS checks cover Rank and Stats. |
-| H16 | New JS follows the repository's no-build source style. | Other modules and duplicate-load review. |
+| H16 | New JS follows the repository's no-build source style. | Multiscreen playlist helpers normalized; duplicate-load and effect cleanup remain covered by tests. |
 | H17 | Rank recognizes both capture URLs and covers native media. | Safe visual review and capture coverage for the other plugins. |
 | H18 | Added pilot component tests, documentation, and Rank/hub version bumps. | Visual fixtures, full cross-plugin contracts, and later release checks. |
 
@@ -39,7 +39,7 @@ The approved Rank pilot is the visual reference. The hub exports one `classic`/M
 | DirtyFileExtractor | Shared action styling; folder picker now traps/restores focus, locks background scroll, and masks paths in capture mode. | DOM integration and Stash's settings entry point remain local. |
 | DirtyMultiscreen | One shared navigation link, deduplicated native player loading, keyboard-visible overlays, and opaque capture cover. | Edge-to-edge black playback and ScenePlayer remain native/specialized. |
 
-The safe synthetic `tests/fixtures/dirty_suite_harmony.html` fixture covers the shared controls and plugin samples without private media. Automated behaviour and source checks are complete for this batch; live visual checks across Stash themes, 200% zoom, and chart interactions remain in the verification matrix below. Stats stylesheet specificity can be consolidated after those checks.
+The safe synthetic `tests/fixtures/dirty_suite_harmony.html` fixture covers the shared controls and plugin samples without private media. Automated behaviour and source checks are complete for this batch; live visual checks across Stash themes, 200% zoom, and chart interactions remain in the verification matrix below. Stats stylesheet specificity was audited during H15; native overrides remain scoped and documented.
 
 The next H09/H13/H18 pass adds one shared React dialog and DOM dialog manager.
 FileExtractor's folder picker and both Stats filter dialogs now share initial
@@ -334,6 +334,8 @@ Keep no-build assets and PluginApi React. No new npm, Python, font, UI, chart, o
 3. Document lifecycle categories: disposable DOM integrations versus non-unregisterable routes/patches. Preserve each tested duplicate-load strategy and clean up effect-owned listeners/observers.
 4. Keep JavaScript style cleanup separate from behaviour changes. Do not mistake var/function style for complete legacy-browser support or launch a suite-wide transpilation effort.
 
+**Cleanup record:** Multiscreen's playlist helpers now use named functions and local `var` bindings without changing their behavior. Its unused `PluginApi.GQL` alias and stale generated-source labels were removed. The one-time route/patch guard and effect-owned observer/listener cleanup remain separate and are documented in `plugins/DirtyPlugins/STYLE.md`; the duplicate-load and media tests pass. Other modern syntax in the existing no-build asset remains outside this selective cleanup.
+
 **Done when:** Touched code follows one style, syntax checks pass, repeated bundle loads do not add navigation items/observers/timers, and existing media/registration tests still pass.
 
 ### H17 — Documentation capture should be one reliable suite feature [P1]
@@ -356,6 +358,8 @@ Keep no-build assets and PluginApi React. No new npm, Python, font, UI, chart, o
 3. Establish representative screenshots with synthetic or fully obscured content. Compare default/shared theme and supported expressive/light variants; include keyboard focus and reduced-motion checks.
 4. Document the token catalog, component recipes, data-vs-status colour distinction, native integration rules, layer policy, theme migration, and allowed exceptions. Refresh the root README version table and include the Stats dashboard test in suite instructions.
 5. For implementation releases, bump affected plugin manifests and the hub when its public behaviour changes. Verify packaged asset order, test old-consumer compatibility where supported, and document required coordinated updates.
+
+**Documentation check:** The root README version table matches the five listed plugin manifests, and its test instructions include the Stats dashboard, contrast, and Multiscreen syntax checks. The shared UI guide records the token, native-component, dialog, capture, dependency, and lifecycle boundaries. The current CSS and source cleanup does not change public behavior, so no manifest version was bumped for these commits.
 
 **Done when:** Shared API changes have relevant behavioural checks and safe visual evidence; a contributor can choose the correct primitive from the guide; docs match manifests; existing domain tests remain intact.
 

@@ -103,6 +103,13 @@ Check keyboard focus, Escape/Tab in dialogs and nested native popups, reduced
 motion, 360px width, 200% zoom, and the default and optional Stats themes.
 Run the Python contract suite and the affected Node tests. The shared source
 is plain PluginApi React and CSS served directly by Stash, with no build step.
+Keep a plugin's one-time route and PluginApi patch registrations behind its
+`INSTANCE_KEY` guard: Stash cannot unregister those integrations when it
+reloads an asset. Component effects are different; disconnect their observers
+and remove their listeners or timers when the component unmounts. The
+Multiscreen bundle uses this split so a repeated asset load does not stack
+navigation links or patches, while player and visibility effects still clean
+up with their tiles.
 
 ## Dependency inventory
 
