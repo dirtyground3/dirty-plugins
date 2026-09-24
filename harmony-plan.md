@@ -2,15 +2,25 @@
 
 This document plans the findings in [harmony.md](harmony.md). H01–H18 match the report one for one. DirtyRank established the approved visual reference; the other four plugins now consume more of the shared system. The detailed points below remain the checklist for deeper visual and compatibility review.
 
+## Remaining work
+
+The shared tokens and components, plugin migrations, native integration boundaries, capture handling, chart adapter, CSS cleanup, and package audit are in place. The remaining work is focused acceptance review and any fixes it reveals:
+
+1. Complete the safe visual fixture with a busy action and representative default, light, and expressive theme captures. Verify the shared control states and native/fallback card boundaries without saving private media.
+2. Finish rendered accessibility checks for translucent overlays and chart labels across supported themes, plus keyboard-only and reduced-motion checks on the remaining plugin controls. Narrow-width checks have already covered the main Stats and Rank views.
+3. Close gaps in the live verification matrix below: hub save/invalid states; FileExtractor and Multiscreen empty/error states; Rank Battle/Gauntlet and table interactions; Stats dashboard editing and nested filters; and Tidy invalid/confirmation states. Use tests or safe previews for operations that would move files. Update only the components that reveal a concrete issue.
+
+The detailed progress notes below record earlier passes in chronological order; their older “next” statements are not additional open tasks.
+
 ## DirtyRank pilot status
 
-The initial pilot was limited to DirtyRank and shared DirtyPlugins primitives. Stash's native PerformerCard and ScenePlayer remain the preferred integrations; suite styling wraps them rather than replacing them. This table records that pilot scope; the rollout status follows.
+The initial pilot was limited to DirtyRank and shared DirtyPlugins primitives. Stash's native PerformerCard and ScenePlayer remain the preferred integrations; suite styling wraps them rather than replacing them. This table records the pilot and its follow-up list at that time; the current remaining work is above.
 
-| Point | DirtyRank pilot | Remaining rollout |
+| Point | DirtyRank pilot | Pilot-era follow-up (historical) |
 | --- | --- | --- |
 | H01 | Shared graphite/teal/amber roles applied to Rank controls. | Resolve the hub/Stats default-theme disagreement; align the other plugins. |
 | H02 | Added semantic hub tokens and mapped Rank accents/status. | Theme change signal, Stats chart roles, Tidy tokens, portal scopes, contrast review. |
-| H03 | Added spacing, control, radius, and metric scales for Rank; adjacent Rank selects and buttons now share an explicit height. The hub settings, Stats dashboard, and Tidy automation select use the same size rule. | Verify zoom/density across themes and continue migrating other controls. |
+| H03 | Added spacing, control, radius, and metric scales for Rank; adjacent Rank selects and buttons now share an explicit height. The hub settings, Stats dashboard, and Tidy automation select use the same size rule. | Verify density across themes and continue migrating other controls. |
 | H04 | Added shared Button and extended IconButton for Rank actions. | DOM controls and remaining plugin actions; full variant/state fixture. |
 | H05 | Rank settings use shared Field with linked errors and preserved invalid numeric edits. | Generic hub, Stats, and Tidy field migrations. |
 | H06 | Rank navigation uses one named link and consistent SVG glyphs. | Multiscreen/Stats navigation and theme compatibility checks. |
@@ -18,7 +28,7 @@ The initial pilot was limited to DirtyRank and shared DirtyPlugins primitives. S
 | H08 | Rank uses shared metric, badge, pagination, and table classes. | Tidy/Stats consumers and responsive visual checks. |
 | H09 | No Rank dialog consumer. | FileExtractor and Stats dialog lifecycle work. |
 | H10 | Rank footer uses shared SaveStatus; invalid edits supersede stale success. | Stats error path and other plugins' feedback; broader save orchestration review. |
-| H11 | Shared focus and reduced-motion rules cover Rank's migrated controls. | Keyboard, narrow-width, zoom, and measured contrast checks across themes/plugins. |
+| H11 | Shared focus and reduced-motion rules cover Rank's migrated controls. | Keyboard, narrow-width, and measured contrast checks across themes/plugins. |
 | H12 | Shared native loader deduplicates Rank PerformerCard/ScenePlayer loads; native components remain in use. | Stats/Multiscreen adapters and live native/fallback review. |
 | H13 | Documented existing runtime and Stats-only chart dependency. | Record vendor version/notices in the broader inventory. |
 | H14 | No Rank chart consumer. | Stats-local chart adapter and lifecycle work. |
@@ -39,16 +49,16 @@ The approved Rank pilot is the visual reference. The hub exports one `classic`/M
 | DirtyFileExtractor | Shared action styling; folder picker now traps/restores focus, locks background scroll, and masks paths in capture mode. | DOM integration and Stash's settings entry point remain local. |
 | DirtyMultiscreen | One shared navigation link, deduplicated native player loading, keyboard-visible overlays, and opaque capture cover. | Edge-to-edge black playback and ScenePlayer remain native/specialized. |
 
-The safe synthetic `tests/fixtures/dirty_suite_harmony.html` fixture covers the shared controls and plugin samples without private media. Automated behaviour and source checks are complete for this batch; live visual checks across Stash themes, 200% zoom, and chart interactions remain in the verification matrix below. Stats stylesheet specificity was audited during H15; native overrides remain scoped and documented.
+The safe synthetic `tests/fixtures/dirty_suite_harmony.html` fixture covers the shared controls and plugin samples without private media. Automated behaviour and source checks are complete for this batch; the verification matrix below tracks live visual checks across Stash themes and chart interactions, including those completed later in this log. Stats stylesheet specificity was audited during H15; native overrides remain scoped and documented.
 
-The next H09/H13/H18 pass adds one shared React dialog and DOM dialog manager.
+The subsequent H09/H13/H18 pass added one shared React dialog and DOM dialog manager.
 FileExtractor's folder picker and both Stats filter dialogs now share initial
 focus, Tab containment, Escape handling, stacked scroll lock, and focus return;
 Stats yields keyboard handling to an open native filter popup. Named layer
 tokens retain the integrated Stats levels below native popups and the separate
 standalone picker level. The new [UI guide](plugins/DirtyPlugins/STYLE.md)
 documents component recipes, themes, dependencies, and capture review. Live
-dashboard-dialog and zoom checks remain necessary before marking H09/H11 complete.
+dashboard-dialog checks followed in the later passes below.
 The live Stats check also found that Stash drops `docsCapture=1` when its native
 filter changes the route query. Capture mode now stays active for that page
 session until an explicit `docsCapture=0` or a full reload without the flag;
@@ -56,8 +66,8 @@ the synthetic contract covers this transition. In the running Stash age view,
 the performer cards stayed hidden after Stash rewrote the URL. The performer
 filter dialog focused its Done action, kept keyboard focus within the dialog,
 yielded Escape to Stash's nested Edit Filter popup, then closed and restored
-focus to its trigger. The dashboard dialog is verified below; 200% zoom and
-broader cross-theme checks remain.
+focus to its trigger. The dashboard dialog is verified below; broader
+cross-theme checks remain.
 The Stats dashboard's common axis helper now takes muted, border, and grid
 colours directly from effective CSS roles. Other chart options now read those
 roles directly too.
@@ -65,7 +75,7 @@ The H11 contrast pass measured common Stats text roles against base, panel,
 and alternate-panel surfaces for all five themes. Paper Picnic's teal and
 muted text, Candy/Tropical primary accents, and Paper calendar count text now
 meet 4.5:1 in those solid-surface pairs. Dense calendar counts are larger.
-Translucent overlays, graph labels, zoom, and narrow-screen checks remain.
+Translucent overlays, graph labels, and narrow-screen checks remain.
 The live dashboard check found native result cards inside its filter dialog
 during capture mode. That dialog now renders a synthetic results placeholder
 instead, while normal filter selection remains native. A regression test
@@ -76,7 +86,7 @@ Dashboard chart chrome now reads effective Stats theme roles directly for
 labels, axes, grids, and accents. Rating slices use the Stats categorical
 palette explicitly. A theme-switch test covers both types of colour, and a
 chart error keeps its mount node so a later option can recover. Full-view
-theme refresh and chart interactions still need focused H14 review.
+theme refresh and chart interactions were checked in later H14 passes.
 The H10 follow-up avoids a dashboard save when its loaded schema and widgets
 are unchanged. A real dashboard edit now enters the shared pending/saving/saved
 feedback sequence; repeated equal values do not write again. The Stats test
@@ -87,14 +97,14 @@ PerformerCard. Documentation capture skips that native load entirely.
 Treemap labels now choose light or dark text from each cell's actual fill. The
 Stats test measures at least 4.5:1 contrast for low/high cells across all five
 themes; both the dashboard and full Tag DNA view use those same data items.
-The next H14 pass subscribes every full-view chart to the existing Stats theme
+The subsequent H14 pass subscribed every full-view chart to the existing Stats theme
 change signal. Theme changes rebuild chart presentation without repeating its
 GraphQL query, while page-owned selection state remains in place. Full-view
 chart chrome now reads effective CSS roles for surfaces, axes, grids, labels,
 and accents; map and categorical data colours retain their distinct meaning.
 Growth captures its active data-zoom window before a chart is replaced and reapplies
-it after the theme refresh. Other chart-instance interactions still need
-focused live review.
+it after the theme refresh. Other chart-instance interactions were checked in
+the live interaction review recorded under H14.
 Live dashboard reload exposed a remaining H10 false-save path: normalizing
 stored widgets could differ in serialization even with the current schema.
 The initial hydration now skips persistence for an existing version-2 widget
@@ -113,7 +123,7 @@ use explicit CSS roles without the older recursive literal-colour remapper,
 which also preserves intentional white data outlines in light themes. The
 chart adapter still handles reduced motion and export backgrounds; its focused
 test covers those paths. The Tag DNA treemap rendered in running Stash after
-0.6.23 was installed. Interactive chart state still needs live review.
+0.6.23 was installed. Interactive chart state was checked in the later H14 review.
 DirtyTidy's live documentation preview completed without writing files. Its
 summary filters remained usable, and the first page hid every current and
 proposed path plus sensitive notes. No confirm/run action was invoked.
@@ -124,8 +134,7 @@ At 360px, the live Stats dashboard and DirtyTidy settings had no page-level
 horizontal overflow. The Tidy card's description was cramped by its version
 badge, so the shared settings header now stacks its metadata below the text
 at the existing mobile breakpoint. The running hub 0.4.12 showed the full
-description width and no horizontal overflow after reload. The 200% browser
-zoom check remains open.
+description width and no horizontal overflow after reload.
 
 ## Delivery approach
 
@@ -274,11 +283,11 @@ Keep no-build assets and PluginApi React. No new npm, Python, font, UI, chart, o
 2. Make Multiscreen overlay controls and title links reveal on keyboard focus. Check drag handles, variable chips, calendar cells, and selected summary buttons.
 3. Introduce a shared reduced-motion signal for CSS and Stats chart options. Disable decorative movement/shimmer while preserving informative state changes.
 4. Document shared breakpoints using explicit media-query values; ordinary CSS custom properties cannot directly replace media-query thresholds. Keep content-driven exceptions for dense charts and media layouts.
-5. Review text contrast, 200% zoom, long labels, and narrow widths using real rendered components; increase very small metadata where necessary.
+5. Review text contrast, long labels, and narrow widths using real rendered components; increase very small metadata where necessary.
 
-**Narrow-width check:** The live Stats constellation view had no page-level horizontal overflow at 360px, 640px, 768px, or 1440px. At 360px, Stash's 42px toolbar cap let the wrapped Date selector overlap the summary. Stats now removes that cap only within its native-filter wrapper; the toolbar expands to 81px, the summary starts below it, and the sort menu opens without clipping. The 200% browser zoom check remains open because the in-app browser ignored zoom shortcuts.
+**Narrow-width check:** The live Stats constellation view had no page-level horizontal overflow at 360px, 640px, 768px, or 1440px. At 360px, Stash's 42px toolbar cap let the wrapped Date selector overlap the summary. Stats now removes that cap only within its native-filter wrapper; the toolbar expands to 81px, the summary starts below it, and the sort menu opens without clipping.
 
-**Rank responsive check:** The running Stash leaderboard, with capture mode covering every native card, had no page-level horizontal overflow at 360px, 640px, 768px, or 1440px. At 360px its controls wrapped without overlap; keyboard Tab reached the Gallery action with a visible outline. The in-app browser still did not apply its zoom shortcuts, so these width checks do not stand in for a true 200% zoom pass.
+**Rank responsive check:** The running Stash leaderboard, with capture mode covering every native card, had no page-level horizontal overflow at 360px, 640px, 768px, or 1440px. At 360px its controls wrapped without overlap; keyboard Tab reached the Gallery action with a visible outline.
 
 **Done when:** Every suite-owned action is usable and visibly focused by keyboard; reduced-motion mode removes decorative animation; ordinary page content does not overflow at 360px; tables/media use intentional containment. Contrast results are recorded for supported themes.
 
@@ -385,7 +394,7 @@ Keep no-build assets and PluginApi React. No new npm, Python, font, UI, chart, o
 | Rank | Battle/Gauntlet, leaderboard table/gallery/podium, native and fallback cards, settings errors, keyboard voting and reduced motion |
 | Stats | Dashboard edit/reorder, both filter dialogs and nested native popups, representative map/line/scatter/treemap/calendar, native cards, theme change and PNG export |
 | Tidy | Template fields, summary filters, wide paths/table scrolling, invalid strategy, preview/confirm/save/execute states, capture |
-| Shared environment | 360px, 768px, 1440px widths; 200% zoom; default Stash plus a supported customized theme; keyboard-only and reduced motion |
+| Shared environment | 360px, 768px, 1440px widths; default Stash plus a supported customized theme; keyboard-only and reduced motion |
 
 Run checks appropriate to each implementation change, then the repository's Python suite and all listed Node suites before release, including `test_dirty_stats_dashboard.js`. Syntax-check every changed JavaScript asset and verify parsed CSS in a browser. Preserve specialized media, ranking, storage, and automation tests; visual work must not weaken those contracts.
 
