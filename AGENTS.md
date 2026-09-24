@@ -128,6 +128,7 @@ node tests/test_dirty_rank_algorithms.js
 node tests/test_dirty_rank_media.js
 node tests/test_dirty_rank_registration.js
 node tests/test_dirty_ui_pilot.js
+node tests/test_dirty_theme.js
 node tests/test_dirty_tidy_automation.js
 node tests/test_dirty_tidy_settings.js
 node tests/test_dirty_stats.js

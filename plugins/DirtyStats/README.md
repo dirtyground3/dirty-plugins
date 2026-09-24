@@ -3,8 +3,7 @@
 Explore Stash statistics from the **Prairie Grid icon** (red, blue, and yellow
 tiles) in the utility navigation.
 The icon opens a customizable **Dashboard** at
-`/plugins/dirty-stats/dashboard`. Choose **Edit dashboard** to change its
-theme, add or remove any available statistic,
+`/plugins/dirty-stats/dashboard`. Choose **Edit dashboard** to add or remove any available statistic,
 reorder widgets by dragging their edit-mode handle or using arrow keys on it,
 edit each widget's title in its header, change its size with a dropdown,
 edit statistic-specific options, choose the same native scene
@@ -17,14 +16,13 @@ Leave a widget's title blank to use its default name. In edit mode, the header
 shows the reorder handle and a compact remove button; the full-view link appears
 only outside edit mode.
 
-DirtyStats can wear five visual themes. **Midnight** is the fresh-install
-default shared with the DirtyPlugins hub. **Retro Arcade**, **Candy Pop**, **Tropical Punch**, and the light
-**Paper Picnic** theme give pages, dashboard cards, controls, calendars, Tag
-DNA, and charts their own colors and character. Choose a theme while editing
-the dashboard or from the **Visual theme** control on the DirtyStats tab in the
-shared DirtyPlugins settings page; the choice saves automatically and applies
-the next time DirtyStats is opened. Saved choices remain unchanged. An absent or
-unrecognized theme value resolves to Midnight without rewriting the stored value.
+The suite has five visual themes. **Midnight** is the fresh-install default;
+**Retro Arcade**, **Candy Pop**, **Tropical Punch**, and light **Paper Picnic**
+give DirtyStats pages, dashboard cards, controls, calendars, Tag DNA, and charts
+their own colors and character. Select the theme in the **General** tab of
+DirtyPlugins settings. It applies to all Dirty plugins and saves automatically.
+An existing DirtyStats theme choice is used until a suite theme is saved, so
+updating does not reset the current appearance. Unknown values display Midnight.
 
 Filter selection opens in a dedicated responsive dialog so native filter
 dropdowns have room to expand. The dialog becomes full-screen on narrow

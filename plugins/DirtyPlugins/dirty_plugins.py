@@ -10,7 +10,7 @@ from typing import Any
 import dirty_plugins_storage as storage
 
 
-MANAGED_PLUGIN_IDS = {"extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"}
+MANAGED_PLUGIN_IDS = {"dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"}
 
 
 class PluginError(RuntimeError):

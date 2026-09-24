@@ -4,16 +4,16 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const css = fs.readFileSync(path.join(__dirname, "../plugins/DirtyStats/dirtyStats.css"), "utf8");
+const css = fs.readFileSync(path.join(__dirname, "../plugins/DirtyPlugins/dirtyPlugins.css"), "utf8");
 function declarations(selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = css.match(new RegExp(escaped + "\\s*\\{([^}]*)\\}"));
   assert(match, `Missing ${selector} theme block`);
   return match[1];
 }
-const shared = declarations(".dirty-stats-dashboard-dialog-backdrop");
+const shared = declarations(":root");
 function role(block, name, fallback) {
-  const match = block.match(new RegExp("--dirty-stats-" + name + ":\\s*(#[0-9a-fA-F]{6})"));
+  const match = block.match(new RegExp("--dirty-theme-" + name + ":\\s*(#[0-9a-fA-F]{6})"));
   return match ? match[1] : fallback;
 }
 function luminance(hex) {
@@ -26,7 +26,7 @@ function contrast(first, second) {
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
 for (const theme of ["classic", "candy", "tropical", "arcade", "paper"]) {
-  const block = theme === "classic" ? shared : declarations(".dirty-stats-theme-" + theme);
+  const block = theme === "classic" ? shared : declarations(".dirty-ui-theme-" + theme);
   const value = name => role(block, name, role(shared, name));
   const accentText = role(block, "accent-text", value("accent"));
   for (const surface of ["bg", "panel", "panel-alt"]) {

@@ -65,7 +65,7 @@
     tagDnaMaxTags: { options: [0, 25, 50, 100, 200] }
   };
   var statsSettings = {
-    visualTheme: DEFAULT_THEME,
+    visualTheme: hub.theme && hub.theme.currentKey || DEFAULT_THEME,
     showMapNumbers: false,
     sceneRatingRounding: 0.5,
     performerRatingRounding: 0.5,
@@ -187,6 +187,13 @@
     statsSettingsListeners.forEach(function (listener) { listener(); });
   }
 
+  function syncSuiteTheme(key) {
+    var next = hub.theme && hub.theme.normalizeKey ? hub.theme.normalizeKey(key) : key;
+    if (!next || statsSettings.visualTheme === next) return;
+    statsSettings.visualTheme = next;
+    notifyStatsSettings();
+  }
+
   function setStatsSettingsSaveStatus(state, message) {
     statsSettingsSaveStatus = { state: state, message: message };
     statsSaveStatusRevision += 1;
@@ -272,6 +279,9 @@
         }
       });
       if (changed) notifyStatsSettings();
+      if (hub.theme && hub.theme.ready) {
+        return hub.theme.ready.then(function (key) { syncSuiteTheme(key); });
+      }
     }).catch(function (error) {
       console.warn("DirtyStats could not load its display settings", error);
     });
@@ -2336,6 +2346,7 @@ return h("main", { ref: page, className: "dirty-stats-page dirty-stats-native-fi
   if (typeof window.addEventListener === "function") window.addEventListener("dirty-plugins:configuration-changed", function (event) {
     if (event && event.detail && event.detail.pluginId === PLUGIN_ID) loadStatsSettings();
   });
+  if (hub.theme && hub.theme.subscribe) hub.theme.subscribe(syncSuiteTheme);
   var statsSettingsReady = loadStatsSettings();
   window.__dirtyStatsPlugin = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, birthdayInYear: birthdayInYear, daysUntilBirthday: daysUntilBirthday, aggregateBirthdays: aggregateBirthdays, performerImageSource: performerImageSource, birthdayEntriesFor: birthdayEntriesFor, birthdayDefaultSelection: birthdayDefaultSelection, birthdayAgeText: birthdayAgeText, birthdayMonthCounts: birthdayMonthCounts, birthdayDayLabel: birthdayDayLabel, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, growthDataZoomRange: growthDataZoomRange, orderedCards: orderedCards, docsCaptureEnabled: docsCaptureEnabled, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, aggregateScatter: aggregateScatter, scatterSeriesData: scatterSeriesData, nearestScatterOption: nearestScatterOption, scatterGuideForClick: scatterGuideForClick, scatterGuideLines: scatterGuideLines, countRatingLabel: countRatingLabel, countRatingSeriesData: countRatingSeriesData, aggregateCountRating: aggregateCountRating, aggregateRepeatOffenders: aggregateRepeatOffenders, repeatOffenderSeriesData: repeatOffenderSeriesData, repeatOffenderRowAtShare: repeatOffenderRowAtShare, aggregateQualityEfficiency: aggregateQualityEfficiency, qualityEfficiencySeriesData: qualityEfficiencySeriesData, qualityEfficiencySymbolSize: qualityEfficiencySymbolSize, aggregateStudios: aggregateStudios, aggregateTagDna: aggregateTagDna, tagDnaMetricValue: tagDnaMetricValue, tagDnaMetricLabel: tagDnaMetricLabel, tagDnaColor: tagDnaColor, tagDnaSeriesData: tagDnaSeriesData, tagDnaScenes: tagDnaScenes, serializeDashboardFilter: serializeDashboardFilter, statsTheme: statsTheme, themeColor: themeColor, themePalette: themePalette, statsThemeClass: statsThemeClass, initStatsChart: initStatsChart, statsSettings: statsSettings, parseStatsSetting: parseStatsSetting, statsSettingsFromStorage: statsSettingsFromStorage, setStatsSetting: setStatsSetting, loadStatsSettings: loadStatsSettings } };
   window.__dirtyStatsPlugin.dashboardRoute = dashboardRoute;

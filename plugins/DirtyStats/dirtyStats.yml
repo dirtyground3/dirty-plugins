@@ -1,12 +1,6 @@
 name: DirtyStats
 description: Build a customizable statistics dashboard with performer cards and explore origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections.
-version: 0.6.24
-
-settings:
-  visualTheme:
-    displayName: Visual theme
-    description: Choose the personality used by DirtyStats pages, dashboards, and charts.
-    type: STRING
+version: 0.6.25
 
 exec:
   - python

@@ -1,25 +1,25 @@
-/* Theme roles stay local to Stats; shared controls consume the mapped --dirty-ui-* roles. */
+/* Suite palette lives in DirtyPlugins; Stats maps it to chart-specific roles. */
 .dirty-stats-page,
 .dirty-stats-performer-overlay,
 .dirty-stats-dashboard-dialog-backdrop {
-  --dirty-stats-bg: #242b31;
-  --dirty-stats-panel: #2c343b;
-  --dirty-stats-panel-alt: #303941;
-  --dirty-stats-primary: #54d5ca;
-  --dirty-stats-secondary: #5687a2;
-  --dirty-stats-accent: #f3c779;
-  --dirty-stats-highlight: #bc8542;
-  --dirty-stats-text: #eeeeee;
-  --dirty-stats-muted: #bbbbbb;
-  --dirty-stats-grid: #364655;
-  --dirty-stats-border: #788591;
-  --dirty-stats-selection: #ffffff;
-  --dirty-stats-accent-text: var(--dirty-stats-accent);
-  --dirty-stats-soft: rgba(84, 213, 202, .2);
-  --dirty-stats-softer: rgba(84, 213, 202, .08);
-  --dirty-stats-page-background: var(--dirty-stats-bg);
-  --dirty-stats-background-size: auto;
-  --dirty-stats-radius: var(--dirty-ui-radius, .5rem);
+  --dirty-stats-bg: var(--dirty-theme-bg);
+  --dirty-stats-panel: var(--dirty-theme-panel);
+  --dirty-stats-panel-alt: var(--dirty-theme-panel-alt);
+  --dirty-stats-primary: var(--dirty-theme-primary);
+  --dirty-stats-secondary: var(--dirty-theme-secondary);
+  --dirty-stats-accent: var(--dirty-theme-accent);
+  --dirty-stats-highlight: var(--dirty-theme-highlight);
+  --dirty-stats-text: var(--dirty-theme-text);
+  --dirty-stats-muted: var(--dirty-theme-muted);
+  --dirty-stats-grid: var(--dirty-theme-grid);
+  --dirty-stats-border: var(--dirty-theme-border);
+  --dirty-stats-selection: var(--dirty-theme-selection);
+  --dirty-stats-accent-text: var(--dirty-theme-accent-text);
+  --dirty-stats-soft: var(--dirty-theme-soft);
+  --dirty-stats-softer: var(--dirty-theme-softer);
+  --dirty-stats-page-background: var(--dirty-theme-page-background);
+  --dirty-stats-background-size: var(--dirty-theme-background-size);
+  --dirty-stats-radius: var(--dirty-theme-radius);
   --dirty-ui-text: var(--dirty-stats-text);
   --dirty-ui-muted: var(--dirty-stats-muted);
   --dirty-ui-accent: var(--dirty-stats-primary);
@@ -27,83 +27,6 @@
   --dirty-ui-focus: var(--dirty-stats-primary);
   --dirty-ui-border: var(--dirty-stats-border);
   --dirty-ui-surface-raised: var(--dirty-stats-panel-alt);
-}
-
-.dirty-stats-theme-candy {
-  --dirty-stats-bg: #32243d;
-  --dirty-stats-panel: #432c50;
-  --dirty-stats-panel-alt: #51355e;
-  --dirty-stats-primary: #ff82cb;
-  --dirty-stats-secondary: #7ee7e7;
-  --dirty-stats-accent: #ffd166;
-  --dirty-stats-highlight: #b894ff;
-  --dirty-stats-text: #fff5fc;
-  --dirty-stats-muted: #dbc5dd;
-  --dirty-stats-grid: #62456b;
-  --dirty-stats-border: #9f78a7;
-  --dirty-stats-soft: rgba(255, 130, 203, .22);
-  --dirty-stats-softer: rgba(255, 130, 203, .1);
-  --dirty-stats-page-background: radial-gradient(circle at 8% 0%, rgba(255,121,198,.18), transparent 28%), radial-gradient(circle at 95% 12%, rgba(126,231,231,.12), transparent 32%), #32243d;
-  --dirty-stats-radius: 1rem;
-}
-
-.dirty-stats-theme-tropical {
-  --dirty-stats-bg: #173f43;
-  --dirty-stats-panel: #20545a;
-  --dirty-stats-panel-alt: #286269;
-  --dirty-stats-primary: #65e8ca;
-  --dirty-stats-secondary: #49a9d8;
-  --dirty-stats-accent: #ffd166;
-  --dirty-stats-highlight: #ff7f6e;
-  --dirty-stats-text: #fff9e8;
-  --dirty-stats-muted: #c5ddd5;
-  --dirty-stats-grid: #356f71;
-  --dirty-stats-border: #72a59d;
-  --dirty-stats-soft: rgba(101, 232, 202, .22);
-  --dirty-stats-softer: rgba(101, 232, 202, .1);
-  --dirty-stats-page-background: linear-gradient(145deg, rgba(255,127,110,.12), transparent 32%), linear-gradient(25deg, rgba(255,209,102,.08), transparent 45%), #173f43;
-  --dirty-stats-radius: .8rem;
-}
-
-.dirty-stats-theme-arcade {
-  --dirty-stats-bg: #171128;
-  --dirty-stats-panel: #25183c;
-  --dirty-stats-panel-alt: #2d1d49;
-  --dirty-stats-primary: #2de2e6;
-  --dirty-stats-secondary: #8b5cf6;
-  --dirty-stats-accent: #f9f871;
-  --dirty-stats-highlight: #ff3864;
-  --dirty-stats-text: #f7f0ff;
-  --dirty-stats-muted: #b8a9cf;
-  --dirty-stats-grid: #493467;
-  --dirty-stats-border: #78619b;
-  --dirty-stats-soft: rgba(45, 226, 230, .22);
-  --dirty-stats-softer: rgba(45, 226, 230, .09);
-  --dirty-stats-page-background: linear-gradient(rgba(45,226,230,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(45,226,230,.035) 1px, transparent 1px), #171128;
-  --dirty-stats-radius: .2rem;
-  --dirty-stats-background-size: 24px 24px;
-  font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
-}
-
-.dirty-stats-theme-paper {
-  --dirty-stats-bg: #fff4dc;
-  --dirty-stats-panel: #fffaf0;
-  --dirty-stats-panel-alt: #f7e7c1;
-  --dirty-stats-primary: #0b7274;
-  --dirty-stats-secondary: #5c7cba;
-  --dirty-stats-accent: #f2b134;
-  --dirty-stats-highlight: #e76f51;
-  --dirty-stats-accent-text: #8a5700;
-  --dirty-stats-text: #3b3440;
-  --dirty-stats-muted: #706474;
-  --dirty-stats-grid: #e0cfaa;
-  --dirty-stats-border: #b9a986;
-  --dirty-stats-selection: #3b3440;
-  --dirty-stats-soft: rgba(11, 114, 116, .18);
-  --dirty-stats-softer: rgba(11, 114, 116, .08);
-  --dirty-stats-page-background: radial-gradient(circle at 10px 10px, rgba(15,139,141,.045) 1px, transparent 1.5px), #fff4dc;
-  --dirty-stats-radius: .7rem;
-  --dirty-stats-background-size: 20px 20px;
 }
 
 /* Page shell and suite-owned controls. */
@@ -115,6 +38,7 @@
   background: var(--dirty-stats-page-background);
   background-size: var(--dirty-stats-background-size);
   color: var(--dirty-ui-text);
+  font-family: var(--dirty-theme-font);
 }
 
 .dirty-stats-page .dirty-ui-panel {

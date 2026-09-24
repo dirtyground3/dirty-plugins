@@ -4,7 +4,7 @@ This document plans the findings in [harmony.md](harmony.md). H01–H18 match th
 
 ## Remaining work
 
-The shared tokens and components, plugin migrations, native integration boundaries, capture handling, chart adapter, CSS cleanup, and package audit are in place. The remaining work is focused acceptance review and any fixes it reveals:
+The shared tokens and components, plugin migrations, native integration boundaries, capture handling, chart adapter, CSS cleanup, and package audit are in place. The General tab now owns the suite theme and database backup control. An existing DirtyStats theme initializes the suite until a General choice is saved; the live Retro Arcade and Paper Picnic checks covered General, Rank, Stats, Tidy settings, FileExtractor settings and folder picker, and Multiscreen settings and capture playback. The light-theme review corrected shared control contrast. The backup action completed against the installed database. The remaining work is focused acceptance review and any fixes it reveals:
 
 1. Complete the safe visual fixture with a busy action and representative default, light, and expressive theme captures. Verify the shared control states and native/fallback card boundaries without saving private media.
 2. Finish rendered accessibility checks for translucent overlays and chart labels across supported themes, plus keyboard-only and reduced-motion checks on the remaining plugin controls. Narrow-width checks have already covered the main Stats and Rank views.
@@ -39,7 +39,7 @@ The initial pilot was limited to DirtyRank and shared DirtyPlugins primitives. S
 
 ## DirtyStats rollout status
 
-The approved Rank pilot is the visual reference. The hub exports one `classic`/Midnight default; valid saved themes still win and unknown values fall back without rewriting storage. Stats now uses shared control geometry, fields, metrics, pagination, navigation, dialog focus/scroll helpers, native component loading, and visible save feedback. Chart semantic colours read effective CSS values; categorical palettes stay Stats-local. Native filters/cards remain Stash components, and capture mode hides card lists.
+The approved Rank pilot is the visual reference. The hub exports one `classic`/Midnight default and now owns the suite-wide theme choice. A valid legacy Stats theme remains effective until General saves a choice; unknown values fall back without rewriting storage. Stats now uses shared control geometry, fields, metrics, pagination, navigation, dialog focus/scroll helpers, native component loading, and visible save feedback. Chart semantic colours read effective CSS values; categorical palettes stay Stats-local. Native filters/cards remain Stash components, and capture mode hides card lists.
 
 ## Other plugin rollout status
 
@@ -102,8 +102,7 @@ change signal. Theme changes rebuild chart presentation without repeating its
 GraphQL query, while page-owned selection state remains in place. Full-view
 chart chrome now reads effective CSS roles for surfaces, axes, grids, labels,
 and accents; map and categorical data colours retain their distinct meaning.
-Growth captures its active data-zoom window before a chart is replaced and reapplies
-it after the theme refresh. Other chart-instance interactions were checked in
+Other chart-instance interactions were checked in
 the live interaction review recorded under H14.
 Live dashboard reload exposed a remaining H10 false-save path: normalizing
 stored widgets could differ in serialization even with the current schema.
@@ -322,9 +321,9 @@ Keep no-build assets and PluginApi React. No new npm, Python, font, UI, chart, o
 3. Reuse responsive font/spacing defaults for dashboard and full views, allowing compact variants. Pass reduced-motion preferences into chart options.
 4. Preserve the existing export-background behaviour and verify that theme changes refresh existing charts and exports without losing user selections unnecessarily.
 
-**Live interaction check:** Growth timeline start/end clicks updated its period and matching-scene count. On the dashboard, changing Retro Arcade to Paper Picnic rebuilt all seven chart instances in the new palette without changing widgets or filters; Retro Arcade was restored. The map's country selection, birthday calendar day selection, constellation node selection, and constellation size filter each updated their matching results and cleared correctly. Exported growth PNGs in both Retro Arcade and Paper Picnic had full theme backgrounds and readable chart labels. The original theme and constellation limit were restored, and the temporary exports were removed. Growth zoom preservation remains covered by focused tests.
+**Live interaction check:** Growth timeline start/end clicks updated its period and matching-scene count. The theme control then lived on the dashboard; changing Retro Arcade to Paper Picnic rebuilt all seven chart instances in the new palette without changing widgets or filters, and Retro Arcade was restored. The map's country selection, birthday calendar day selection, constellation node selection, and constellation size filter each updated their matching results and cleared correctly. Exported growth PNGs in both Retro Arcade and Paper Picnic had full theme backgrounds and readable chart labels. The original theme and constellation limit were restored, and the temporary exports were removed. The theme control now lives in General.
 
-**Done when:** A chart in compact, full-view, and PNG form follows the same theme; resize/theme changes do not leak observers or chart instances; map selection, data zoom, calendar/constellation interactions, and filters remain correct.
+**Done when:** A chart in compact, full-view, and PNG form follows the same theme; resize/theme changes do not leak observers or chart instances; map selection, calendar/constellation interactions, and filters remain correct.
 
 ### H15 — CSS structure needs cleanup before broad extraction [P1]
 

@@ -29,8 +29,8 @@ focus colour, a small spacing scale (`--dirty-ui-space-*`), radii, and the
 `.dirty-ui-table`, and `.dirty-ui-pagination` classes. `.dirty-ui-button`
 now owns the rounded shape, regular 2.5rem height, hover movement, and
 teal/graphite/amber tones across suite-owned actions. Compact actions are
-2rem; mixed toolbars use the regular height. `.dirty-ui-pilot` remains a Rank
-theme adapter. Keep domain colours such as Rank medals and Stats chart
+2rem; mixed toolbars use the regular height. `.dirty-ui-pilot` styles suite-owned
+pages. Keep domain colours such as Rank medals and Stats chart
 categories separate from save/error status colours. Destructive actions use
 warm amber; error messages retain red. Inherit the Stash font.
 
@@ -61,9 +61,14 @@ package dependency. The synthetic `tests/fixtures/dirty_rank_harmony.html` and
 `tests/fixtures/dirty_suite_harmony.html` pages compare Rank and suite-wide
 controls without loading private data or media.
 
-`DirtyPlugins.theme.defaultKey` owns the suite's default visual theme. It is
-`classic` (Midnight) for a fresh DirtyStats install; a saved valid theme wins,
-and an unknown value falls back visually without overwriting that saved value.
+The **General** tab selects one theme for suite-owned UI across all Dirty
+plugins and provides a **Create backup** action for the shared database. The
+backup is saved beside `dirty_plugins.sqlite3` in the installed DirtyPlugins
+folder. Native Stash cards and players continue to use the host theme.
+`DirtyPlugins.theme.defaultKey` is `classic` (Midnight). An existing DirtyStats
+theme remains effective until a suite theme is saved; unknown values display
+Midnight without rewriting storage. `DirtyPlugins.theme.subscribe` signals
+changes to Stats charts, and `currentKey` exposes the resolved choice.
 `DirtyPlugins.theme.readRole(root, property)` reads effective CSS variables
 without inspecting stylesheet rules, so external Stash theme stylesheets are
 safe to use. Stats charts consume these roles for semantic chrome while their
@@ -79,7 +84,7 @@ DirtyMultiscreen, DirtyTidy, DirtyRank, and DirtyStats. The Stash manifests reta
 definitions so the shared hub can render typed controls, but Stash's plugin
 configuration values are not read or written by Dirty plugins.
 
-Managed plugins currently include DirtyFileExtractor, DirtyMultiscreen,
+Managed settings tabs include General, DirtyFileExtractor, DirtyMultiscreen,
 DirtyTidy, DirtyRank, and DirtyStats. DirtyRank uses a custom hub panel for its categories,
 performer cohort, Glicko-2 parameters, and guarded data tools.
 

@@ -20,8 +20,6 @@
   var Link = api.libraries.ReactRouterDOM.Link;
   var SIZES = ["small", "medium", "large"];
   var SIZE_LABELS = { small: "Small", medium: "Medium", large: "Large" };
-  var THEME_VALUES = ["classic", "candy", "tropical", "arcade", "paper"];
-  var THEME_LABELS = { classic: "Midnight", candy: "Candy Pop", tropical: "Tropical Punch", arcade: "Retro Arcade", paper: "Paper Picnic" };
   var DASHBOARD_VERSION = 2;
   var MAX_WIDGETS = 24;
   var MAX_CARD_COUNT = 500;
@@ -679,9 +677,7 @@
     return h("section", { className: "dirty-stats-dashboard", "aria-label": "DirtyStats dashboard" },
       h("div", { className: "dirty-stats-dashboard-heading" }, props.selector,
         h("div", { className: "dirty-stats-actions dirty-ui-control-row" },
-          editing ? h(React.Fragment, null,
-            h(SelectControl, { className: "dirty-stats-dashboard-theme", label: "Theme", value: algorithms.statsSettings.visualTheme, values: THEME_VALUES, labels: THEME_LABELS, onChange: function (theme) { algorithms.setStatsSetting("visualTheme", theme); } }),
-            h("button", { type: "button", className: "btn btn-secondary dirty-ui-button dirty-ui-control", disabled: !adding && widgets.length >= MAX_WIDGETS, onClick: toggleAdding }, adding ? "Close widget picker" : "Add widget")) : null,
+          editing ? h("button", { type: "button", className: "btn btn-secondary dirty-ui-button dirty-ui-control", disabled: !adding && widgets.length >= MAX_WIDGETS, onClick: toggleAdding }, adding ? "Close widget picker" : "Add widget") : null,
           h("button", { type: "button", className: "btn btn-primary dirty-ui-button dirty-ui-control", onClick: toggleEditing }, editing ? "Done editing" : "Edit dashboard"))),
       h("p", { className: "dirty-stats-dashboard-visually-hidden", role: "status", "aria-live": "polite" }, dragAnnouncement),
       adding ? h("section", { className: "dirty-stats-dashboard-picker dirty-ui-panel", "aria-label": "Add a statistic widget" },

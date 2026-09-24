@@ -1,4 +1,31 @@
 :root {
+  --dirty-theme-bg: #242b31;
+  --dirty-theme-panel: #2c343b;
+  --dirty-theme-panel-alt: #303941;
+  --dirty-theme-primary: #54d5ca;
+  --dirty-theme-primary-strong: #79e5dc;
+  --dirty-theme-secondary: #5687a2;
+  --dirty-theme-accent: #f3c779;
+  --dirty-theme-highlight: #bc8542;
+  --dirty-theme-text: #eeeeee;
+  --dirty-theme-muted: #bbbbbb;
+  --dirty-theme-grid: #364655;
+  --dirty-theme-border: #788591;
+  --dirty-theme-border-soft: rgba(255, 255, 255, 0.1);
+  --dirty-theme-selection: #ffffff;
+  --dirty-theme-accent-text: #f3c779;
+  --dirty-theme-soft: rgba(84, 213, 202, 0.2);
+  --dirty-theme-softer: rgba(84, 213, 202, 0.08);
+  --dirty-theme-surface: rgba(0, 0, 0, 0.16);
+  --dirty-theme-page-background: #242b31;
+  --dirty-theme-feature-background: linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(0, 0, 0, 0.16));
+  --dirty-theme-feature-shadow: var(--dirty-ui-shadow);
+  --dirty-theme-secondary-background: linear-gradient(145deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.04));
+  --dirty-theme-background-size: auto;
+  --dirty-theme-radius: 0.4rem;
+  --dirty-theme-button-radius: 0.75rem;
+  --dirty-theme-font: inherit;
+  --dirty-theme-on-accent: #102025;
   --dirty-ui-backdrop: rgba(0, 0, 0, 0.72);
   --dirty-ui-border: rgba(255, 255, 255, 0.18);
   --dirty-ui-border-soft: rgba(255, 255, 255, 0.1);
@@ -6,8 +33,8 @@
   --dirty-ui-danger-action: #efb950;
   --dirty-ui-danger-action-hover: #ffd271;
   --dirty-ui-on-danger-action: #38250d;
-  --dirty-ui-muted: rgba(255, 255, 255, 0.66);
-  --dirty-ui-radius: 0.4rem;
+  --dirty-ui-muted: var(--dirty-theme-muted);
+  --dirty-ui-radius: var(--dirty-theme-radius);
   --dirty-ui-radius-small: 0.25rem;
   --dirty-ui-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.42);
   --dirty-ui-success: #72d79b;
@@ -15,19 +42,19 @@
   --dirty-ui-error-surface: #682b2b;
   --dirty-ui-warning-surface: #7a5a00;
   --dirty-ui-on-warning: #fff3cd;
-  --dirty-ui-surface: rgba(0, 0, 0, 0.16);
-  --dirty-ui-surface-raised: var(--bs-dark, #242b31);
-  --dirty-ui-text: rgba(255, 255, 255, 0.92);
-  --dirty-ui-accent: #54d5ca;
-  --dirty-ui-accent-strong: #79e5dc;
-  --dirty-ui-emphasis: #f3c779;
-  --dirty-ui-emphasis-strong: #ffd786;
+  --dirty-ui-surface: var(--dirty-theme-surface);
+  --dirty-ui-surface-raised: var(--dirty-theme-panel-alt);
+  --dirty-ui-text: var(--dirty-theme-text);
+  --dirty-ui-accent: var(--dirty-theme-primary);
+  --dirty-ui-accent-strong: var(--dirty-theme-primary-strong);
+  --dirty-ui-emphasis: var(--dirty-theme-accent);
+  --dirty-ui-emphasis-strong: var(--dirty-theme-accent-text);
   --dirty-ui-warning: #ffd86b;
   --dirty-ui-info: #86cfe0;
-  --dirty-ui-focus: #79e5dc;
-  --dirty-ui-on-accent: #102025;
+  --dirty-ui-focus: var(--dirty-theme-primary-strong);
+  --dirty-ui-on-accent: var(--dirty-theme-on-accent);
   --dirty-ui-control-height: 2.5rem;
-  --dirty-ui-radius-large: 0.6rem;
+  --dirty-ui-radius-large: var(--dirty-theme-button-radius);
   --dirty-ui-space-1: 0.25rem;
   --dirty-ui-space-2: 0.5rem;
   --dirty-ui-space-3: 0.75rem;
@@ -41,17 +68,130 @@
   --dirty-ui-layer-toast: 12050;
 }
 
+.dirty-ui-theme-candy {
+  --dirty-theme-bg: #32243d;
+  --dirty-theme-panel: #432c50;
+  --dirty-theme-panel-alt: #51355e;
+  --dirty-theme-primary: #ff82cb;
+  --dirty-theme-primary-strong: #ffafde;
+  --dirty-theme-secondary: #7ee7e7;
+  --dirty-theme-accent: #ffd166;
+  --dirty-theme-highlight: #b894ff;
+  --dirty-theme-text: #fff5fc;
+  --dirty-theme-muted: #dbc5dd;
+  --dirty-theme-grid: #62456b;
+  --dirty-theme-border: #9f78a7;
+  --dirty-theme-border-soft: rgba(255, 245, 252, 0.2);
+  --dirty-theme-soft: rgba(255, 130, 203, 0.22);
+  --dirty-theme-softer: rgba(255, 130, 203, 0.1);
+  --dirty-theme-surface: rgba(255, 130, 203, 0.08);
+  --dirty-theme-page-background: radial-gradient(circle at 8% 0%, rgba(255, 121, 198, 0.18), transparent 28%), radial-gradient(circle at 95% 12%, rgba(126, 231, 231, 0.12), transparent 32%), #32243d;
+  --dirty-theme-feature-background: #432c50;
+  --dirty-theme-secondary-background: #51355e;
+  --dirty-theme-radius: 1rem;
+  --dirty-theme-button-radius: 1rem;
+}
+
+.dirty-ui-theme-tropical {
+  --dirty-theme-bg: #173f43;
+  --dirty-theme-panel: #20545a;
+  --dirty-theme-panel-alt: #286269;
+  --dirty-theme-primary: #65e8ca;
+  --dirty-theme-primary-strong: #9cf4df;
+  --dirty-theme-secondary: #49a9d8;
+  --dirty-theme-accent: #ffd166;
+  --dirty-theme-highlight: #ff7f6e;
+  --dirty-theme-text: #fff9e8;
+  --dirty-theme-muted: #c5ddd5;
+  --dirty-theme-grid: #356f71;
+  --dirty-theme-border: #72a59d;
+  --dirty-theme-border-soft: rgba(255, 249, 232, 0.2);
+  --dirty-theme-soft: rgba(101, 232, 202, 0.22);
+  --dirty-theme-softer: rgba(101, 232, 202, 0.1);
+  --dirty-theme-surface: rgba(101, 232, 202, 0.08);
+  --dirty-theme-page-background: linear-gradient(145deg, rgba(255, 127, 110, 0.12), transparent 32%), linear-gradient(25deg, rgba(255, 209, 102, 0.08), transparent 45%), #173f43;
+  --dirty-theme-feature-background: #20545a;
+  --dirty-theme-secondary-background: #286269;
+  --dirty-theme-radius: 0.8rem;
+  --dirty-theme-button-radius: 0.8rem;
+}
+
+.dirty-ui-theme-arcade {
+  --dirty-theme-bg: #171128;
+  --dirty-theme-panel: #25183c;
+  --dirty-theme-panel-alt: #2d1d49;
+  --dirty-theme-primary: #2de2e6;
+  --dirty-theme-primary-strong: #8bf4f5;
+  --dirty-theme-secondary: #8b5cf6;
+  --dirty-theme-accent: #f9f871;
+  --dirty-theme-highlight: #ff3864;
+  --dirty-theme-text: #f7f0ff;
+  --dirty-theme-muted: #b8a9cf;
+  --dirty-theme-grid: #493467;
+  --dirty-theme-border: #78619b;
+  --dirty-theme-border-soft: rgba(247, 240, 255, 0.2);
+  --dirty-theme-soft: rgba(45, 226, 230, 0.22);
+  --dirty-theme-softer: rgba(45, 226, 230, 0.09);
+  --dirty-theme-surface: rgba(45, 226, 230, 0.07);
+  --dirty-theme-page-background: linear-gradient(rgba(45, 226, 230, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(45, 226, 230, 0.035) 1px, transparent 1px), #171128;
+  --dirty-theme-feature-background: #25183c;
+  --dirty-theme-feature-shadow: 3px 3px 0 var(--dirty-theme-highlight);
+  --dirty-theme-secondary-background: #2d1d49;
+  --dirty-theme-background-size: 24px 24px;
+  --dirty-theme-radius: 0.2rem;
+  --dirty-theme-button-radius: 0.2rem;
+  --dirty-theme-font: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
+}
+
+.dirty-ui-theme-paper {
+  --dirty-theme-bg: #fff4dc;
+  --dirty-theme-panel: #fffaf0;
+  --dirty-theme-panel-alt: #f7e7c1;
+  --dirty-theme-primary: #0b7274;
+  --dirty-theme-primary-strong: #09595b;
+  --dirty-theme-secondary: #5c7cba;
+  --dirty-theme-accent: #f2b134;
+  --dirty-theme-highlight: #e76f51;
+  --dirty-theme-text: #3b3440;
+  --dirty-theme-muted: #706474;
+  --dirty-theme-grid: #e0cfaa;
+  --dirty-theme-border: #b9a986;
+  --dirty-theme-border-soft: rgba(59, 52, 64, 0.2);
+  --dirty-theme-selection: #3b3440;
+  --dirty-theme-accent-text: #8a5700;
+  --dirty-theme-soft: rgba(11, 114, 116, 0.18);
+  --dirty-theme-softer: rgba(11, 114, 116, 0.08);
+  --dirty-theme-surface: rgba(11, 114, 116, 0.06);
+  --dirty-theme-page-background: radial-gradient(circle at 10px 10px, rgba(15, 139, 141, 0.045) 1px, transparent 1.5px), #fff4dc;
+  --dirty-theme-feature-background: #fffaf0;
+  --dirty-theme-secondary-background: #f7e7c1;
+  --dirty-theme-background-size: 20px 20px;
+  --dirty-theme-radius: 0.7rem;
+  --dirty-theme-button-radius: 0.7rem;
+  --dirty-theme-on-accent: #fffaf0;
+}
+
 /* Keep host-theme text and surfaces available to the suite's own controls. */
 .dirty-ui-pilot {
-  --dirty-ui-text: var(--bs-body-color, rgba(255, 255, 255, 0.92));
-  --dirty-ui-muted: var(--bs-secondary-color, rgba(255, 255, 255, 0.66));
-  --dirty-ui-surface-raised: var(--bs-body-bg, #242b31);
-  --dirty-ui-border-soft: var(--bs-border-color, rgba(255, 255, 255, 0.1));
+  --dirty-ui-text: var(--dirty-theme-text);
+  --dirty-ui-muted: var(--dirty-theme-muted);
+  --dirty-ui-surface-raised: var(--dirty-theme-panel-alt);
+  --dirty-ui-border-soft: var(--dirty-theme-border-soft);
+  background: var(--dirty-theme-page-background);
+  background-size: var(--dirty-theme-background-size);
+  color: var(--dirty-ui-text);
+  font-family: var(--dirty-theme-font);
+}
+
+#root .dirty-ui-pilot,
+#root .dirty-stats-page,
+#root .dirty-plugins-page {
+  font-family: var(--dirty-theme-font);
 }
 
 .dirty-ui-button {
   align-items: center;
-  border-radius: 0.75rem;
+  border-radius: var(--dirty-theme-button-radius);
   display: inline-flex;
   gap: 0.4rem;
   justify-content: center;
@@ -114,7 +254,7 @@
 .dirty-ui-select,
 .dirty-ui-field select.form-control,
 .dirty-ui-control-row select.form-control {
-  border-radius: 0.75rem;
+  border-radius: var(--dirty-theme-button-radius);
 }
 
 .dirty-ui-control:focus-visible,
@@ -180,7 +320,7 @@
 }
 
 .dirty-ui-button.btn-secondary {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.04));
+  background: var(--dirty-theme-secondary-background);
   border-color: var(--dirty-ui-border);
   color: var(--dirty-ui-text);
 }
@@ -207,6 +347,50 @@
 
 .dirty-ui-button.btn-danger:active:not(:disabled) {
   box-shadow: none;
+}
+
+/* Stash themes can give Bootstrap controls later, high-specificity rules. Keep
+   suite-owned actions legible, especially on Paper Picnic. */
+#root .dirty-ui-button.btn-primary {
+  background: linear-gradient(135deg, var(--dirty-ui-accent-strong), var(--dirty-ui-accent)) !important;
+  border-color: var(--dirty-ui-accent) !important;
+  color: var(--dirty-ui-on-accent) !important;
+}
+
+#root .dirty-ui-button {
+  border-radius: var(--dirty-theme-button-radius) !important;
+}
+
+#root .dirty-ui-button.btn-secondary {
+  background: var(--dirty-theme-secondary-background) !important;
+  border-color: var(--dirty-theme-border) !important;
+  color: var(--dirty-ui-text) !important;
+}
+
+#root .dirty-ui-button.btn-danger {
+  background: var(--dirty-ui-danger-action) !important;
+  border-color: var(--dirty-ui-danger-action) !important;
+  color: var(--dirty-ui-on-danger-action) !important;
+}
+
+#root .dirty-ui-button.btn-primary:hover:not(:disabled) {
+  background: var(--dirty-ui-accent-strong) !important;
+}
+
+#root .dirty-ui-button.btn-secondary:hover:not(:disabled) {
+  background: var(--dirty-ui-surface-raised) !important;
+  border-color: var(--dirty-ui-accent) !important;
+}
+
+#root .dirty-ui-button.btn-danger:hover:not(:disabled) {
+  background: var(--dirty-ui-danger-action-hover) !important;
+  border-color: var(--dirty-ui-danger-action-hover) !important;
+}
+
+#root .dirty-ui-button.dirty-ui-control-quiet {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--dirty-ui-text) !important;
 }
 
 .dirty-ui-page-shell {
@@ -418,10 +602,33 @@
 }
 
 .dirty-ui-feature-card {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(0, 0, 0, 0.16));
+  background: var(--dirty-theme-feature-background);
   border: 1px solid var(--dirty-ui-border-soft);
   border-radius: calc(var(--dirty-ui-radius) * 1.35);
-  box-shadow: var(--dirty-ui-shadow);
+  box-shadow: var(--dirty-theme-feature-shadow);
+}
+
+#root .dirty-ui-pilot .form-control,
+#root .dirty-plugins-page .form-control {
+  background-color: var(--dirty-theme-panel-alt) !important;
+  border-color: var(--dirty-theme-border) !important;
+  border-radius: var(--dirty-theme-button-radius) !important;
+  color: var(--dirty-theme-text) !important;
+}
+
+#root .dirty-ui-pilot .form-control::placeholder,
+#root .dirty-plugins-page .form-control::placeholder {
+  color: var(--dirty-theme-muted) !important;
+  opacity: 1;
+}
+
+.dirty-ui-theme-paper #root .dirty-ui-pilot select.form-control,
+.dirty-ui-theme-paper #root .dirty-plugins-page select.form-control {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 6 5 5 5-5' fill='none' stroke='%233b3440' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'/%3E%3C/svg%3E") !important;
+  background-position: right 0.65rem center;
+  background-repeat: no-repeat;
+  background-size: 0.7rem;
+  padding-right: 1.7rem;
 }
 
 .dirty-ui-settings-section {
@@ -595,6 +802,11 @@ body.dirty-ui-modal-open {
 }
 
 .dirty-plugins-page {
+  background: var(--dirty-theme-page-background);
+  background-size: var(--dirty-theme-background-size);
+  border-radius: var(--dirty-theme-radius);
+  color: var(--dirty-theme-text);
+  font-family: var(--dirty-theme-font);
   margin: 0 auto;
   max-width: 72rem;
   padding: 2rem 1rem 4rem;
@@ -623,7 +835,30 @@ body.dirty-ui-modal-open {
 }
 
 .dirty-plugins-card {
+  background: var(--dirty-theme-panel);
+  border-color: var(--dirty-theme-border);
+  border-radius: var(--dirty-theme-radius);
+  color: var(--dirty-theme-text);
   margin-bottom: 0;
+}
+
+.dirty-plugins-backup {
+  margin-top: 1rem;
+}
+
+.dirty-plugins-backup h3 {
+  font-size: 1.05rem;
+  margin: 0 0 0.35rem;
+}
+
+.dirty-plugins-backup p {
+  color: var(--dirty-ui-muted);
+  margin: 0 0 0.75rem;
+}
+
+.dirty-plugins-backup .dirty-plugins-backup-result {
+  overflow-wrap: anywhere;
+  margin: 0.75rem 0 0;
 }
 
 .dirty-plugins-tabs {
@@ -654,6 +889,22 @@ body.dirty-ui-modal-open {
   border-color: var(--dirty-ui-border-soft) var(--dirty-ui-border-soft)
     var(--dirty-ui-surface-raised);
   color: var(--dirty-ui-text);
+}
+
+#root .dirty-plugins-tab {
+  color: var(--dirty-ui-muted) !important;
+}
+
+#root .dirty-plugins-tab:hover,
+#root .dirty-plugins-tab:focus-visible {
+  color: var(--dirty-ui-text) !important;
+}
+
+#root .dirty-plugins-tab.active {
+  background: var(--dirty-theme-panel-alt) !important;
+  border-color: var(--dirty-theme-border) !important;
+  border-radius: var(--dirty-theme-button-radius) !important;
+  color: var(--dirty-theme-primary-strong) !important;
 }
 
 .dirty-plugins-tab-panel {

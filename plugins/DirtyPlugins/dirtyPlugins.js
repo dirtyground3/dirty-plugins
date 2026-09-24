@@ -22,11 +22,12 @@
   var UNSAVED_SETTINGS_MESSAGE = "You have unsaved Dirty Plugins settings. Leave without saving them?";
   var DEFAULT_VISUAL_THEME = "classic";
 
-  var MANAGED_PLUGIN_IDS = ["extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"];
+  var MANAGED_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"];
   var MANAGED_PLUGIN_ID_SET = new Set(MANAGED_PLUGIN_IDS);
   var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"];
   var MAIN_PAGE_PLUGIN_ID_SET = new Set(MAIN_PAGE_PLUGIN_IDS);
   var PLUGIN_SETTING_ORDER = {
+    dirtyPlugins: ["visualTheme"],
     extractScenes: [
       "destinationFolder",
       "collisionPolicy",
@@ -46,11 +47,11 @@
       "markerDuration",
       "pauseWhenHidden",
     ],
-    dirtyStats: [
-      "visualTheme",
-    ],
   };
   var PLUGIN_DEFAULTS = {
+    dirtyPlugins: {
+      visualTheme: DEFAULT_VISUAL_THEME,
+    },
     extractScenes: {
       destinationFolder: "",
       collisionPolicy: "rename",
@@ -70,9 +71,6 @@
       markerDuration: 30,
       pauseWhenHidden: true,
     },
-    dirtyStats: {
-      visualTheme: DEFAULT_VISUAL_THEME,
-    },
   };
   var FIELD_OPTIONS = {
     extractScenes: {
@@ -82,7 +80,7 @@
         { value: "overwrite", label: "Overwrite the existing file" },
       ],
     },
-    dirtyStats: {
+    dirtyPlugins: {
       visualTheme: [
         { value: "classic", label: "Midnight (original)" },
         { value: "candy", label: "Candy Pop" },
@@ -474,6 +472,7 @@
     }
     return runSharedOperation(args).then(function (result) {
       rememberPluginRevision(pluginId, result && result.revision);
+      if (pluginId === "dirtyPlugins") applyVisualTheme(input && input.visualTheme);
       return result;
     });
   }
@@ -889,6 +888,50 @@
   hubApi.ui = { notify: notify, trapDialogTab: trapDialogTab, lockBodyScroll: lockBodyScroll, manageDialog: manageDialog };
   hubApi.theme = hubApi.theme || {};
   hubApi.theme.defaultKey = DEFAULT_VISUAL_THEME;
+  var visualThemeKeys = ["classic", "candy", "tropical", "arcade", "paper"];
+  var visualThemeListeners = [];
+  var visualThemeKey = DEFAULT_VISUAL_THEME;
+  function normalizedVisualTheme(value) {
+    return visualThemeKeys.indexOf(value) >= 0 ? value : DEFAULT_VISUAL_THEME;
+  }
+  function applyVisualTheme(value) {
+    var key = normalizedVisualTheme(value);
+    if (document.documentElement && document.documentElement.classList) {
+      visualThemeKeys.forEach(function (candidate) {
+        document.documentElement.classList.remove("dirty-ui-theme-" + candidate);
+      });
+      document.documentElement.classList.add("dirty-ui-theme-" + key);
+    }
+    if (visualThemeKey === key) return key;
+    visualThemeKey = key;
+    hubApi.theme.currentKey = key;
+    visualThemeListeners.slice().forEach(function (listener) { listener(key); });
+    return key;
+  }
+  hubApi.theme.currentKey = visualThemeKey;
+  hubApi.theme.normalizeKey = normalizedVisualTheme;
+  hubApi.theme.subscribe = function (listener) {
+    visualThemeListeners.push(listener);
+    return function () {
+      var index = visualThemeListeners.indexOf(listener);
+      if (index >= 0) visualThemeListeners.splice(index, 1);
+    };
+  };
+  hubApi.theme.load = function () {
+    return Promise.all([getPluginSettings("dirtyPlugins"), getPluginSettings("dirtyStats")]).then(function (settings) {
+      var suite = asObject(settings[0]);
+      var legacy = asObject(settings[1]);
+      return applyVisualTheme(suite.visualTheme || legacy.visualTheme);
+    }).catch(function (error) {
+      console.warn("DirtyPlugins could not load the suite theme", error);
+      return applyVisualTheme(DEFAULT_VISUAL_THEME);
+    });
+  };
+  if (typeof fetch === "function" && document.documentElement) {
+    hubApi.theme.ready = hubApi.theme.load();
+  } else {
+    hubApi.theme.ready = Promise.resolve(visualThemeKey);
+  }
   hubApi.theme.readRole = function (root, propertyName) {
     if (!root || !propertyName || typeof window.getComputedStyle !== "function") return "";
     return window.getComputedStyle(root).getPropertyValue(propertyName).trim();
@@ -993,6 +1036,12 @@
       var data = values[0];
       var settingsPayload = asObject(values[1]);
       var configuration = asObject(settingsPayload.settings);
+      var suiteSettings = asObject(configuration.dirtyPlugins);
+      if (!Object.prototype.hasOwnProperty.call(suiteSettings, "visualTheme")) {
+        configuration.dirtyPlugins = Object.assign({}, suiteSettings, {
+          visualTheme: normalizedVisualTheme(asObject(configuration.dirtyStats).visualTheme),
+        });
+      }
       var revisions = asObject(settingsPayload.pluginRevisions);
       Object.keys(revisions).forEach(function (pluginId) {
         rememberPluginRevision(pluginId, revisions[pluginId]);
@@ -1209,6 +1258,33 @@
     }, control);
   }
 
+  function DatabaseBackupControl() {
+    var busyState = useState(false);
+    var busy = busyState[0];
+    var setBusy = busyState[1];
+    var resultState = useState(null);
+    var result = resultState[0];
+    var setResult = resultState[1];
+    function createBackup() {
+      if (busy) return;
+      setBusy(true);
+      setResult(null);
+      runSharedOperation({ mode: "backupDatabase" }).then(function (response) {
+        setResult({ error: false, message: response && response.path || "Backup created." });
+      }).catch(function (error) {
+        setResult({ error: true, message: error.message || String(error) });
+      }).then(function () { setBusy(false); });
+    }
+    var capture = hubApi.captureEnabled(window.location && window.location.search);
+    return createElement("section", { className: "dirty-plugins-backup dirty-ui-settings-section", "aria-labelledby": "dirty-plugins-backup-title" },
+      createElement("h3", { id: "dirty-plugins-backup-title" }, "Database backup"),
+      createElement("p", null, "Create a copy of the shared Dirty Plugins database in the installed DirtyPlugins folder."),
+      createElement(Button, { busy: busy, disabled: busy, onClick: createBackup }, busy ? "Creating backup…" : "Create backup"),
+      result && createElement("p", { className: result.error ? "dirty-ui-text-error" : "dirty-plugins-backup-result", role: result.error ? "alert" : "status" },
+        result.error ? result.message : "Backup saved: " + (capture ? "Path hidden for documentation" : result.message))
+    );
+  }
+
   function PluginCard(props) {
     var plugin = props.plugin;
     var draft = props.draft || {};
@@ -1245,7 +1321,8 @@
                 onFieldChange(plugin.id, setting.name, value);
               },
             });
-          })
+          }),
+      plugin.id === "dirtyPlugins" && createElement(DatabaseBackupControl)
     );
   }
 
@@ -1589,7 +1666,7 @@
                 tabIndex: selected ? 0 : -1,
                 type: "button",
               },
-              plugin.name
+              plugin.id === "dirtyPlugins" ? "General" : plugin.name
             );
           })
         ),

@@ -18,7 +18,7 @@
     .fixture-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 1rem; }
     .fixture-panel { padding: 1rem; min-width: 0; }
     .fixture-panel label { display: block; font-size: .85rem; margin-bottom: .25rem; }
-    .fixture-panel .form-control { background: #242b31; border: 1px solid #788591; color: inherit; }
+    .fixture-panel .form-control { background: var(--dirty-theme-panel-alt); border: 1px solid var(--dirty-theme-border); color: var(--dirty-theme-text); }
     .fixture-panel .btn { border: 1px solid transparent; cursor: pointer; }
     .fixture-actions { align-items: flex-end; display: flex; flex-wrap: wrap; gap: .5rem; }
     .fixture-actions .dirty-ui-field { min-width: 10rem; }
@@ -58,7 +58,7 @@
         <div class="fixture-actions dirty-ui-control-row"><select class="form-control dirty-ui-select"><option>Scene ratings</option></select><button class="btn btn-primary dirty-ui-button dirty-ui-control" type="button">Edit dashboard</button></div>
         <div class="dirty-ui-panel dirty-ui-metric" style="margin-top: .75rem"><span class="dirty-ui-metric-label">Rated scenes</span><strong class="dirty-ui-metric-value">1,234</strong><span class="dirty-ui-metric-detail">Synthetic metric</span></div>
       </section>
-      <section class="fixture-panel dirty-stats-page dirty-stats-theme-paper" aria-label="DirtyStats Paper sample">
+      <section class="fixture-panel dirty-stats-page dirty-stats-theme-paper dirty-ui-theme-paper" aria-label="DirtyStats Paper sample">
         <h2>DirtyStats · Paper</h2>
         <div class="fixture-actions dirty-ui-control-row"><select class="form-control dirty-ui-select"><option>Scene ratings</option></select><button class="btn btn-primary dirty-ui-button dirty-ui-control" type="button">Edit dashboard</button></div>
         <p class="fixture-note">Optional themes retain the same geometry and focus behaviour.</p>

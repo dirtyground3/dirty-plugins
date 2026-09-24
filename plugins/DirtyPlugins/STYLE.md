@@ -3,7 +3,7 @@
 The default suite style uses graphite surfaces, teal for primary actions and
 selection, and warm amber for destructive actions. The shape is rounded and
 slightly playful; labels, focus, control height, and status meaning remain
-consistent in DirtyStats' optional themes. Inherit Stash's font. Keep Rank
+consistent in all five suite themes. Inherit Stash's font by default. Keep Rank
 medals, rating precision, and Stats data series as domain colours rather than
 reusing save/error colours.
 
@@ -45,9 +45,18 @@ chrome; do not inspect `CSSStyleSheet.cssRules`, which can throw for a Stash
 theme stylesheet from another origin. Stats' category palettes and ECharts
 options stay in Stats. Chart presentation reads CSS roles when options are
 built; literal white and black remain available for data outlines and labels.
-`DirtyPlugins.theme.defaultKey` is `classic` (Midnight);
-a valid saved Stats theme wins, and an unknown value falls back visually
-without rewriting storage.
+The General settings tab stores `visualTheme` for all suite-owned surfaces.
+`DirtyPlugins.theme.defaultKey` is `classic` (Midnight). When no suite theme is
+saved, a valid legacy DirtyStats theme applies to the suite; unknown values
+display Midnight without rewriting storage. `theme.currentKey` and
+`theme.subscribe` let chart adapters react to a change. The selected class sits
+on the document root, including portals; native Stash cards and players keep
+their host theme.
+
+The hub uses a few `#root`-scoped `!important` declarations for suite-owned
+buttons, fields, and settings tabs. They counter later Stash theme rules so
+Paper Picnic remains readable and expressive theme shapes remain consistent;
+they do not target native cards or players.
 
 The authored Stats base, panel, and alternate-panel surfaces keep body, muted,
 primary, and accent-text roles at or above 4.5:1 contrast in all five themes;
@@ -102,7 +111,7 @@ are safe to inspect without Stash data. Check every real screenshot before
 committing it; no uncensored adult media belongs in this repository.
 
 Check keyboard focus, Escape/Tab in dialogs and nested native popups, reduced
-motion, 360px width, 200% zoom, and the default and optional Stats themes.
+motion, 360px width, and all suite themes.
 Run the Python contract suite and the affected Node tests. The shared source
 is plain PluginApi React and CSS served directly by Stash, with no build step.
 Keep a plugin's one-time route and PluginApi patch registrations behind its
