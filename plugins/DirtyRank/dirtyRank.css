@@ -1372,6 +1372,12 @@
   display: block;
   overflow: hidden;
   position: relative;
+  text-decoration: none;
+}
+
+.dirty-rank-gallery-image-link:hover,
+.dirty-rank-gallery-image-link:focus-visible {
+  text-decoration: none;
 }
 
 .dirty-rank-gallery-image {

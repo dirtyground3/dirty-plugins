@@ -5,12 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DirtyRank harmony fixture</title>
   <link rel="stylesheet" href="../../plugins/DirtyPlugins/dirtyPlugins.css">
-  <link rel="stylesheet" href="../../plugins/DirtyRank/dirtyRank.css">
+  <link rel="stylesheet" href="../../plugins/DirtyRank/dirtyRank.css?v=0.7.17">
   <style>
+    *, *::before, *::after { box-sizing: border-box; }
     body { background: #1b2228; color: #f1f3f4; font: 16px Arial, sans-serif; margin: 0; }
+    .d-flex { display: flex; }
+    .align-items-center { align-items: center; }
+    .justify-content-center { justify-content: center; }
     .fixture-row { display: flex; flex-wrap: wrap; gap: 0.75rem; }
     .fixture-input { background: #242b31; border: 1px solid #69747d; border-radius: 0.25rem; color: inherit; padding: 0.4rem; }
     .fixture-native { background: linear-gradient(135deg, #3d4651, #566674); min-height: 8rem; padding: 1rem; }
+    .fixture-card-comparison { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 14rem)); margin-top: 1rem; }
+    .fixture-card-comparison h3 { font-size: 0.9rem; margin: 0 0 0.5rem; }
+    .fixture-card-comparison .fixture-native { min-height: 18rem; }
+    @media (max-width: 32rem) { .fixture-card-comparison { grid-template-columns: minmax(0, 14rem); } }
     .fixture-caption { margin-top: 1rem; }
   </style>
 </head>
@@ -36,6 +44,10 @@
     </section>
     <div class="dirty-ui-table-wrap dirty-rank-table-wrap" style="margin-top: 1rem"><table class="dirty-ui-table dirty-rank-standings-table"><thead><tr><th>Rank</th><th>Performer</th><th>Rating</th></tr></thead><tbody><tr><td>1</td><td>Example A</td><td>1,703</td></tr><tr><td>2</td><td>Example B</td><td>1,681</td></tr></tbody></table></div>
     <nav class="dirty-ui-pagination dirty-rank-pagination" aria-label="Leaderboard pages"><button class="btn btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact" type="button">Previous</button><span class="dirty-ui-pagination-summary">Page 1 of 3</span><button class="btn btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact" type="button">Next</button></nav>
+    <section class="fixture-card-comparison" aria-label="Synthetic leaderboard card states">
+      <div><h3>Native card wrapper</h3><article class="dirty-rank-native-card"><div class="performer-card fixture-native">Synthetic Stash card</div><div class="dirty-rank-gallery-copy"><div class="dirty-rank-gallery-heading"><strong>#6</strong></div><div class="dirty-rank-gallery-rating-row"><strong>1,703</strong></div></div></article></div>
+      <div><h3>Fallback card</h3><article class="dirty-rank-gallery-card"><a class="dirty-rank-gallery-image-link" href="#leaderboard"><span class="dirty-rank-gallery-placeholder d-flex align-items-center justify-content-center">◇</span><span class="dirty-rank-gallery-rank">#6</span></a><div class="dirty-rank-gallery-copy"><div class="dirty-rank-gallery-heading"><a class="dirty-rank-gallery-name" href="#leaderboard">Synthetic performer</a></div><div class="dirty-rank-gallery-rating-row"><strong>1,703</strong></div></div></article></div>
+    </section>
     <p class="fixture-caption">Capture-mode cover (synthetic native card):</p>
     <div class="dirty-rank-censored-media"><div class="dirty-rank-native-card"><div class="performer-card fixture-native">Synthetic card content</div></div></div>
   </main>

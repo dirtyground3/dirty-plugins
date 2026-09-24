@@ -327,6 +327,8 @@ Keep no-build assets and PluginApi React. No new npm, Python, font, UI, chart, o
 
 **Cleanup record:** Rank's malformed selector and redundant rules were corrected during the pilot. Stats' authored stylesheet now uses readable blocks and sections; its duplicate filter-toolbar rule was merged, and the Arcade font rule sits with its theme. Hub and the other plugin stylesheets were already block-formatted, so no formatting-only churn was needed there. The remaining Stats `!important` rules are scoped to generated Stash filters and dropdowns, the native memorial card, Paper/Arcade theme buttons, or the visually hidden helper; `plugins/DirtyPlugins/STYLE.md` documents those boundaries. FileExtractor's hidden-state exception remains. The native and fallback Rank selectors remain separate because they style different card implementations. Live Stash parsed the Rank and Stats stylesheets, including Rank's reduced-motion rule; a before/after comparison of representative Stats dashboard computed styles found no change.
 
+**Card compatibility check:** The safe Rank fixture now shows the native wrapper and fallback gallery card side by side, plus the native capture cover. At desktop and 360px, both card states rendered without page overflow. The fallback's image link inherited an underline without Stash's theme CSS, so Rank now explicitly suppresses it in normal, hover, and keyboard-focus states; the native wrapper remains unstyled for Stash themes. The existing media test confirms that the native component is preferred and the fallback remains available when it is absent.
+
 **Done when:** Stylesheets parse as intended, reduced-motion rules survive parsing, and no migrated control depends on accidental selector order. Necessary native overrides remain scoped and documented; both native and fallback cards still render correctly.
 
 ### H16 — Source conventions should make shared code easy to maintain [P3]
@@ -366,6 +368,8 @@ Keep no-build assets and PluginApi React. No new npm, Python, font, UI, chart, o
 5. For implementation releases, bump affected plugin manifests and the hub when its public behaviour changes. Verify packaged asset order, test old-consumer compatibility where supported, and document required coordinated updates.
 
 **Documentation check:** The root README version table matches the five listed plugin manifests, and its test instructions include the Stats dashboard, contrast, and Multiscreen syntax checks. The shared UI guide records the token, native-component, dialog, capture, dependency, and lifecycle boundaries. The current CSS and source cleanup does not change public behavior, so no manifest version was bumped for these commits.
+
+**Package audit:** A fresh `build_site.sh` run produced all six plugin archives. The generated index checksums matched archive bytes; each listed plugin declared the hub dependency; manifests, licenses, Stats-only ECharts/map assets and notices, and Stats JavaScript load order were present. Runtime SQLite, bytecode, and cache files were absent. The temporary output was removed after inspection. DirtyRank's fallback-link styling is user-visible, so its manifest and the README version table advance to 0.7.17.
 
 **Done when:** Shared API changes have relevant behavioural checks and safe visual evidence; a contributor can choose the correct primitive from the guide; docs match manifests; existing domain tests remain intact.
 
