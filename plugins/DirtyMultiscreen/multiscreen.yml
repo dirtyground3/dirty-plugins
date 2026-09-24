@@ -1,6 +1,6 @@
 name: DirtyMultiscreen
 description: Immersive multiscreen scene playback grid for Stash.
-version: 0.4.4
+version: 0.4.5
 ui:
   requires:
   - dirtyPlugins

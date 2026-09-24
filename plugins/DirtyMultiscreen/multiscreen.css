@@ -151,6 +151,58 @@
   opacity: 1;
 }
 
+.ms-native-tile.ms-error-tile .ms-title {
+  opacity: 1;
+}
+
+.ms-error {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.ms-error-content {
+  max-width: 100%;
+  color: var(--dirty-ui-muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.ms-error-detail {
+  margin-top: 0.4rem;
+  color: var(--dirty-ui-muted);
+  font-size: 0.72rem;
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+
+.ms-error-actions {
+  position: absolute;
+  right: 0.55rem;
+  bottom: 0.55rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.ms-error-actions .ms-button {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.62);
+  opacity: 0.6;
+}
+
+.ms-error-actions .ms-button:hover,
+.ms-error-actions .ms-button:focus-visible {
+  opacity: 1;
+}
+
 /* Documentation captures preserve the layout and fully cover native frames. */
 .ms-docs-capture .ms-native-tile .VideoPlayer,
 .ms-docs-capture .ms-native-tile video,

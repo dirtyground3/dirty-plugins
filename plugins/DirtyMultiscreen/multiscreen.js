@@ -113,7 +113,9 @@
   var ICONS = {
     close: solidIcons.faXmark ?? solidIcons.faTimes,
     error: solidIcons.faTriangleExclamation ?? solidIcons.faExclamationTriangle,
+    next: solidIcons.faForwardStep ?? solidIcons.faStepForward,
     oCounter: solidIcons.faDroplet ?? solidIcons.faTint,
+    previous: solidIcons.faBackwardStep ?? solidIcons.faStepBackward,
     reload: solidIcons.faRotateRight ?? solidIcons.faRedo,
     success: solidIcons.faCheck
   };
@@ -965,7 +967,43 @@
       return /* @__PURE__ */ createElement("div", { className: "ms-error" }, /* @__PURE__ */ createElement("div", { className: "ms-error-content" }, "Loading scene"));
     }
     if (sceneQuery.error || !sceneQuery.data?.findScene) {
-      return /* @__PURE__ */ createElement("div", { className: "ms-error" }, /* @__PURE__ */ createElement("div", { className: "ms-error-content" }, "The native Stash player could not load this scene.", sceneQuery.error?.message && /* @__PURE__ */ createElement("div", { className: "ms-error-detail" }, sceneQuery.error.message)));
+      return /* @__PURE__ */ createElement("div", { className: "ms-native-tile ms-error-tile" }, /* @__PURE__ */ createElement(
+        NavLink,
+        {
+          "aria-label": `Open scene page for ${item.title}`,
+          className: "ms-title ms-error-title",
+          rel: "noopener noreferrer",
+          target: "_blank",
+          title: `Open scene page: ${item.title}`,
+          to: `${SCENES_ROUTE_PATH}/${sceneId}`
+        },
+        item.title
+      ), /* @__PURE__ */ createElement(
+        "div",
+        { className: "ms-error" },
+        /* @__PURE__ */ createElement("div", { className: "ms-error-content" }, "The native Stash player could not load this scene.", sceneQuery.error?.message && /* @__PURE__ */ createElement("div", { className: "ms-error-detail" }, sceneQuery.error.message))
+      ), /* @__PURE__ */ createElement(
+        "div",
+        { className: "ms-error-actions" },
+        /* @__PURE__ */ createElement(
+          PluginIconButton,
+          {
+            ariaLabel: "Previous scene",
+            fallback: "<",
+            icon: ICONS.previous,
+            onClick: previousItem
+          }
+        ),
+        /* @__PURE__ */ createElement(
+          PluginIconButton,
+          {
+            ariaLabel: "Next scene",
+            fallback: ">",
+            icon: ICONS.next,
+            onClick: nextItem
+          }
+        )
+      ));
     }
     return /* @__PURE__ */ createElement(
       LoadedNativePlayer,
