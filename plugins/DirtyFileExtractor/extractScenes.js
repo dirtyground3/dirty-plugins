@@ -7,7 +7,7 @@
   var RELEVANT_MUTATION_SELECTOR =
     "#plugin-extractScenes-destinationFolder";
   var hubApi = window.DirtyPlugins;
-  if (!hubApi || !hubApi.graphql) {
+  if (!hubApi || !hubApi.graphql || !hubApi.react || !hubApi.react.html) {
     if (window.DirtyPlugins && window.DirtyPlugins.debugLog) {
       window.DirtyPlugins.debugLog(PLUGIN_ID, "skipped: required runtime missing");
     }
@@ -75,7 +75,7 @@
 
   var PluginApi = window.PluginApi;
   var React = PluginApi.React;
-  var h = React.createElement;
+  var html = hubApi.react.html;
 
   function publishBusyState() {
     state.actionListeners.slice().forEach(function (listener) { listener(state.busy); });
@@ -150,25 +150,26 @@
     var label = busy ? "Queuing extraction\u2026" : count === 1
       ? "Extract selected " + selection.singular
       : "Extract " + count + " selected " + selection.plural;
-    var action = h("button", {
-      type: "button",
-      className: "bg-secondary text-white dropdown-item dirty-file-extractor-menu-action",
-      disabled: busy,
-      onClick: function () {
-        var root = anchor.current && anchor.current.parentElement;
-        var toggle = root && root.querySelector(
-          '.filtered-list-toolbar.has-selection .list-operations.dropdown button[aria-expanded="true"]'
-        );
-        if (toggle) toggle.click();
-        startCopy(selection);
-      },
-    }, label);
-    return h(React.Fragment, null,
-      h("span", { className: "dirty-file-extractor-action-anchor", ref: anchor }),
-      count && menu && menu.isConnected && PluginApi.ReactDOM && PluginApi.ReactDOM.createPortal
+    function extract() {
+      var root = anchor.current && anchor.current.parentElement;
+      var toggle = root && root.querySelector(
+        '.filtered-list-toolbar.has-selection .list-operations.dropdown button[aria-expanded="true"]'
+      );
+      if (toggle) toggle.click();
+      startCopy(selection);
+    }
+    var action = html`<button
+      type="button"
+      className="bg-secondary text-white dropdown-item dirty-file-extractor-menu-action"
+      disabled=${busy}
+      onClick=${extract}
+    >${label}</button>`;
+    return html`<${React.Fragment}>
+      <span className="dirty-file-extractor-action-anchor" ref=${anchor} />
+      ${count && menu && menu.isConnected && PluginApi.ReactDOM && PluginApi.ReactDOM.createPortal
         ? PluginApi.ReactDOM.createPortal(action, menu)
-        : null
-    );
+        : null}
+    <//>`;
   }
 
   function registerListAction(component, kind) {
@@ -186,7 +187,7 @@
       // Keep the centered toolbar's unselected width when selection changes it.
       // Portal into Stash's selected-items dropdown without adding list height.
       // The list's selection works on performer pages and across pagination.
-      return h(React.Fragment, null, h(ExtractionAction, { selection: selection }), result);
+      return html`<${React.Fragment}><${ExtractionAction} selection=${selection} />${result}<//>`;
     });
   }
 

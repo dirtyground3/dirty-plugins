@@ -16,6 +16,8 @@ let refCalls = 0;
 let hasSelection = false;
 const observers = [];
 const noop = () => {};
+const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
+const element = (type, props, ...children) => ({ type, props: props || {}, children });
 const toggle = { id: "more-menu", getAttribute: () => "true", click: noop };
 const menu = { isConnected: true, getAttribute: () => "more-menu" };
 const toolbar = {
@@ -28,7 +30,7 @@ const listRoot = { clientWidth: 1200, querySelector: selector => selector === ".
 const window = {
   location: { pathname: "/performers/12", search: "" },
   DirtyPlugins: {
-    react: {},
+    react: { html: htm.bind(element) },
     registerFieldAction: noop,
     unregisterFieldAction: noop,
     getPluginSettings: () => Promise.resolve({ destinationFolder: "test-output" }),
@@ -38,7 +40,7 @@ const window = {
   PluginApi: {
     React: {
       Fragment: "fragment",
-      createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+      createElement: element,
       useState: initial => initial === null ? [menu, noop] : [busy, value => { busy = value; }],
       useRef: initial => (++refCalls % 3 === 1 ? { current: { parentElement: listRoot } } : { current: initial }),
       useEffect: effect => { cleanups.push(effect()); },

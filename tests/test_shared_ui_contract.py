@@ -386,6 +386,13 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("return html`", multiscreen)
         self.assertNotIn("createElement", multiscreen)
 
+    def test_dirty_file_extractor_uses_the_shared_template_tag(self):
+        extractor = read("plugins/DirtyFileExtractor/extractScenes.js")
+        self.assertIn("var html = hubApi.react.html", extractor)
+        self.assertIn("return html`", extractor)
+        self.assertNotRegex(extractor, r"\bh\(")
+        self.assertNotIn("React.createElement", extractor)
+
     def test_dirty_stats_dashboard_is_registered_and_persisted(self):
         script = read("plugins/DirtyStats/dirtyStats.js")
         dashboard = read("plugins/DirtyStats/dirtyStatsDashboard.js")
