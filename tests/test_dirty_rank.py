@@ -64,6 +64,39 @@ class Glicko2Tests(unittest.TestCase):
         self.assertLess(loser.rating, 9999)
         self.assertAlmostEqual(winner.rating - 9999, 9999 - loser.rating, places=8)
 
+    def test_presets_refine_balanced_results_with_fewer_physical_battles(self):
+        # The same two equal-strength performers alternate wins. Use actual
+        # updates, including volatility, rather than just the UI's RD estimate.
+        profiles = [
+            {"initialRating": 1500, "initialDeviation": 500,
+             "initialVolatility": 0.09, "deviationFloor": 45,
+             "provisionalDeviation": 110, "evidenceWeight": 1, "tau": 0.75},
+            {"evidenceWeight": 2, "tau": 0.5},
+            {"evidenceWeight": 3, "tau": 0.3},
+        ]
+        counts = []
+        for profile in profiles:
+            settings = dirty_rank.normalize_settings(profile)
+            left = right = dirty_rank.Rating(
+                settings["initialRating"], settings["initialDeviation"],
+                settings["initialVolatility"],
+            )
+            for count in range(1, 101):
+                left, right = dirty_rank.rate_battle(
+                    left, right, float(count % 2), settings,
+                )
+                self.assertEqual(left.matches, count)
+                self.assertEqual(right.matches, count)
+                self.assertEqual(left.wins + left.losses + left.draws, count)
+                self.assertGreater(left.volatility, 0)
+                if max(left.deviation, right.deviation) <= settings["provisionalDeviation"]:
+                    counts.append(count)
+                    break
+            else:
+                self.fail("Balanced battles should reach refinement")
+        self.assertLess(counts[1], counts[0])
+        self.assertLess(counts[2], counts[1])
+
     def test_inactivity_does_not_change_rating_updates(self):
         established = dirty_rank.Rating(
             1000,
@@ -234,6 +267,156 @@ class DirtyRankOperationTests(unittest.TestCase):
         self.assertEqual(connect.call_count, 1)
         self.assertEqual(payload["states"], {})
 
+    def test_existing_category_ids_migrate_with_ratings_history_and_undo(self):
+        database = Path(self.temp_dir.name) / "migrate.sqlite3"
+        repository = dirty_rank.RatingRepository(database)
+        for category_id in ("appearance", "performance", "category-1"):
+            label = "Category 1" if category_id == "category-1" else category_id.title()
+            settings = dirty_rank.normalize_settings({"categories": json.dumps({
+                "FEMALE": [{"name": label}],
+            })})
+            dirty_rank.record_battle(
+                repository,
+                {"leftId": "1", "rightId": "2", "battleId": "battle-" + category_id,
+                 "categoryId": category_id, "cohort": "FEMALE", "outcome": "left"},
+                settings,
+                self.now,
+            )
+        categories = {"FEMALE": [
+            {"id": "appearance", "name": "Breasts"},
+            {"id": "performance", "name": "Face"},
+            {"id": "category-1", "name": "Performance"},
+        ]}
+        dirty_rank.shared_storage.set_plugin_settings(
+            dirty_rank.PLUGIN_ID, {"categories": json.dumps(categories)}, path=database
+        )
+        with mock.patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}):
+            snapshot = dirty_rank.run({"args": {"mode": "getSettings"}})
+            states = dirty_rank.run({"args": {"mode": "loadAll"}})["states"]
+            self.assertEqual(
+                [item["id"] for item in json.loads(snapshot["settings"]["categories"])["FEMALE"]],
+                ["breasts", "face", "performance"],
+            )
+            self.assertEqual(set(states["1"]["pools"]),
+                             {"breasts|FEMALE", "face|FEMALE", "performance|FEMALE"})
+            self.assertEqual(
+                dirty_rank.run({"args": {"mode": "getSettings"}})["revision"],
+                snapshot["revision"],
+            )
+            dirty_rank.run({"args": {"mode": "undo", "leftId": "1", "rightId": "2",
+                                     "battleId": "battle-appearance", "categoryId": "breasts",
+                                     "cohort": "FEMALE"}})
+        with repository.connect() as connection:
+            self.assertIsNone(repository.pool(connection, "1", "breasts", "FEMALE"))
+            self.assertEqual(connection.execute(
+                "SELECT category_id FROM dirty_rank_battles WHERE battle_id='battle-appearance'"
+            ).fetchone()[0], "breasts")
+
+    def test_saving_renamed_label_moves_existing_pool_and_rejects_stale_revision(self):
+        database = Path(self.temp_dir.name) / "rename.sqlite3"
+        repository = dirty_rank.RatingRepository(database)
+        dirty_rank.record_battle(repository, self.battle_args(), self.settings, self.now)
+        categories = {"FEMALE": [{"id": "appearance", "name": "Appearance"}]}
+        dirty_rank.shared_storage.set_plugin_settings(
+            dirty_rank.PLUGIN_ID, {"categories": json.dumps(categories)}, path=database
+        )
+        with mock.patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}):
+            snapshot = dirty_rank.run({"args": {"mode": "getSettings"}})
+            changed = dict(snapshot["settings"])
+            changed["categories"] = json.dumps({"FEMALE": [{"id": "appearance", "name": "Étoile"}]})
+            result = dirty_rank.run({"args": {"mode": "saveSettings", "settings": changed,
+                                              "expectedRevision": snapshot["revision"]}})
+            self.assertEqual(json.loads(result["settings"]["categories"])["FEMALE"][0]["id"], "etoile")
+            with self.assertRaises(dirty_rank.shared_storage.SettingsRevisionConflict):
+                dirty_rank.run({"args": {"mode": "saveSettings", "settings": changed,
+                                          "expectedRevision": snapshot["revision"]}})
+        with repository.connect() as connection:
+            self.assertIsNone(repository.pool(connection, "1", "appearance", "FEMALE"))
+            self.assertIsNotNone(repository.pool(connection, "1", "etoile", "FEMALE"))
+            self.assertEqual(connection.execute(
+                "SELECT category_id FROM dirty_rank_battles WHERE battle_id='battle-1'"
+            ).fetchone()[0], "etoile")
+
+    def test_adding_genders_preserves_existing_pools_and_history(self):
+        database = Path(self.temp_dir.name) / "mixed.sqlite3"
+        repository = dirty_rank.RatingRepository(database)
+        dirty_rank.record_battle(repository, self.battle_args(), self.settings, self.now)
+        male_settings = dirty_rank.normalize_settings({"enabledCohorts": ["FEMALE", "MALE"]})
+        male_battle = dict(self.battle_args("male-existing"), cohort="MALE")
+        dirty_rank.record_battle(repository, male_battle, male_settings, self.now)
+        with repository.connect() as connection:
+            original = repository.state(connection, "1")
+        with mock.patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}):
+            snapshot = dirty_rank.run({"args": {"mode": "getSettings"}})
+            changed = dict(snapshot["settings"])
+            changed["categories"] = json.dumps({"FEMALE": [{"id": "appearance", "name": "Appearance"}]})
+            changed["genderBoxes"] = json.dumps([
+                {"id": "FEMALE", "name": "Mixed", "genders": ["FEMALE", "MALE"]},
+                {"id": "MALE", "name": "Male", "genders": ["MALE"], "enabled": False},
+            ])
+            saved = dirty_rank.run({"args": {"mode": "saveSettings", "settings": changed,
+                                           "expectedRevision": snapshot["revision"]}})
+            self.assertEqual(json.loads(saved["settings"]["genderBoxes"])[0]["genders"], ["FEMALE", "MALE"])
+        with repository.connect() as connection:
+            self.assertEqual(repository.state(connection, "1")["pools"], original["pools"])
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM dirty_rank_battles").fetchone()[0], 2)
+        mixed_settings = dirty_rank.normalize_settings(changed)
+        added_battle = dict(self.battle_args("mixed-new"), rightId="3")
+        mixed = dirty_rank.record_battle(repository, added_battle, mixed_settings, self.now)
+        self.assertEqual(mixed["left"]["pool"]["matches"], 2)
+        self.assertEqual(mixed["right"]["pool"]["matches"], 1)
+        with repository.connect() as connection:
+            self.assertEqual(repository.state(connection, "1")["pools"]["appearance|MALE"], original["pools"]["appearance|MALE"])
+        dirty_rank.undo_battle(repository, dict(added_battle, mode="undo"), mixed_settings)
+        with repository.connect() as connection:
+            self.assertEqual(repository.state(connection, "1")["pools"], original["pools"])
+            self.assertEqual(repository.state(connection, "3")["pools"], {})
+
+    def test_custom_boxes_keep_independent_pools_through_rename_reset_and_undo(self):
+        database = Path(self.temp_dir.name) / "boxes.sqlite3"
+        repository = dirty_rank.RatingRepository(database)
+        raw = {"genderBoxes": json.dumps([
+            {"id": "BOX-1", "name": "Box 1", "genders": ["FEMALE", "NON_BINARY"]},
+            {"id": "BOX-2", "name": "Box 2", "genders": ["MALE"]},
+            {"id": "BOX-3", "name": "Box 3", "genders": ["TRANSGENDER_MALE", "TRANSGENDER_FEMALE"]},
+        ]), "categories": json.dumps({
+            box: [{"id": "appearance", "name": "Appearance"}] for box in ["BOX-1", "BOX-2", "BOX-3"]
+        }), "defaultCohort": "BOX-1"}
+        dirty_rank.shared_storage.set_plugin_settings(dirty_rank.PLUGIN_ID, raw, path=database)
+        settings = dirty_rank.normalize_settings(raw)
+        for box in ["BOX-1", "BOX-2"]:
+            dirty_rank.record_battle(repository, dict(self.battle_args("battle-" + box), cohort=box), settings, self.now)
+        with repository.connect() as connection:
+            before = repository.state(connection, "1")["pools"]
+        self.assertEqual(set(before), {"appearance|BOX-1", "appearance|BOX-2"})
+        with mock.patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}):
+            snapshot = dirty_rank.run({"args": {"mode": "getSettings"}})
+            changed = dict(snapshot["settings"])
+            boxes = json.loads(changed["genderBoxes"])
+            boxes[1]["name"] = "Renamed men"
+            changed["genderBoxes"] = json.dumps(boxes)
+            categories = json.loads(changed["categories"])
+            categories["BOX-2"][0]["name"] = "Power"
+            changed["categories"] = json.dumps(categories)
+            saved = dirty_rank.run({"args": {"mode": "saveSettings", "settings": changed,
+                                           "expectedRevision": snapshot["revision"]}})
+        settings = dirty_rank.normalize_settings(saved["settings"])
+        with repository.connect() as connection:
+            after = repository.state(connection, "1")["pools"]
+        self.assertEqual(after["power|BOX-2"], before["appearance|BOX-2"])
+        self.assertEqual(after["appearance|BOX-1"], before["appearance|BOX-1"])
+        settings["categoriesByCohort"]["BOX-1"][0]["enabled"] = False
+        with self.assertRaisesRegex(dirty_rank.PluginError, "explicit RESET confirmation"):
+            dirty_rank.reset_pool(repository, {"categoryId": "appearance", "cohort": "BOX-1"}, settings, dirty_rank.Reporter())
+        dirty_rank.reset_pool(repository, {"categoryId": "appearance", "cohort": "BOX-1", "confirm": "RESET"}, settings, dirty_rank.Reporter())
+        with repository.connect() as connection:
+            self.assertEqual(set(repository.state(connection, "1")["pools"]), {"power|BOX-2"})
+        dirty_rank.undo_battle(repository, dict(self.battle_args("battle-BOX-2"), categoryId="power", cohort="BOX-2"), settings)
+        with repository.connect() as connection:
+            self.assertEqual(repository.state(connection, "1")["pools"], {})
+        with self.assertRaises(dirty_rank.PluginError):
+            dirty_rank.record_battle(repository, dict(self.battle_args("invalid-box"), cohort="BOX-4"), settings)
+
     def test_battle_for_disabled_cohort_is_rejected(self):
         settings = dirty_rank.normalize_settings(
             {"defaultCohort": "MALE", "enabledCohorts": json.dumps(["MALE"])}
@@ -252,6 +435,44 @@ class DirtyRankOperationTests(unittest.TestCase):
             dirty_rank.record_battle(self.repository, args, self.settings, self.now)
 
 class SettingsTests(unittest.TestCase):
+    def test_overall_scoring_strategies(self):
+        self.assertEqual(dirty_rank.normalize_settings({})["overallScoreStrategy"], "weighted")
+        for strategy in ("weighted", "power"):
+            self.assertEqual(dirty_rank.normalize_settings({"overallScoreStrategy": strategy})["overallScoreStrategy"], strategy)
+        for invalid in ("unknown", "", None, [], {}):
+            self.assertEqual(dirty_rank.normalize_settings({"overallScoreStrategy": invalid})["overallScoreStrategy"], "weighted")
+
+    def test_power_mean_exponent_is_validated(self):
+        self.assertEqual(dirty_rank.normalize_settings({})["overallPower"], 3.0)
+        for raw, expected in ((0, 1.0), (99, 4.0), ("2.5", 2.5), (float("nan"), 3.0), (None, 3.0)):
+            with self.subTest(raw=raw):
+                self.assertEqual(dirty_rank.normalize_settings({"overallPower": raw})["overallPower"], expected)
+
+    def test_gender_boxes_support_multiple_selections_and_legacy_defaults(self):
+        settings = dirty_rank.normalize_settings({"genderBoxes": [
+            {"id": "BOX-1", "name": "Shared", "genders": ["male", "FEMALE", "NON_BINARY", "MALE", "UNKNOWN"]},
+        ], "categories": {"BOX-1": [{"name": "Shared category"}]}})
+        self.assertEqual(settings["genderBoxes"][0]["genders"], ["FEMALE", "MALE", "NON_BINARY"])
+        self.assertEqual(settings["defaultCohort"], "BOX-1")
+        self.assertEqual(settings["categoriesByCohort"]["BOX-1"][0]["id"], "shared-category")
+        legacy = dirty_rank.normalize_settings({"enabledCohorts": ["MALE", "FEMALE"]})
+        self.assertEqual(legacy["enabledCohorts"], ["FEMALE", "MALE"])
+        self.assertEqual(next(box for box in legacy["genderBoxes"] if box["id"] == "MALE")["genders"], ["MALE"])
+
+    def test_label_ids_are_sanitized_and_suffix_collisions(self):
+        settings = dirty_rank.normalize_settings({"categories": json.dumps({
+            "FEMALE": [
+                {"id": "unrelated", "name": "Étoile & Face"},
+                {"name": "Etoile Face"},
+                {"name": "Étoile--Face"},
+                {"name": "Overall"},
+            ]
+        })})
+        self.assertEqual(
+            [category["id"] for category in settings["categoriesByCohort"]["FEMALE"]],
+            ["etoile-face", "etoile-face-1", "etoile-face-2", "overall-1"],
+        )
+
     def test_categories_are_scoped_by_cohort_with_weights(self):
         settings = dirty_rank.normalize_settings(
             {
@@ -270,8 +491,8 @@ class SettingsTests(unittest.TestCase):
 
         female = settings["categoriesByCohort"]["FEMALE"]
         male = settings["categoriesByCohort"]["MALE"]
-        self.assertEqual([item["id"] for item in female], ["my-category", "second-category"])
-        self.assertEqual([item["weight"] for item in female], [2.5, 0.01])
+        self.assertEqual([item["id"] for item in female], ["first", "duplicate", "second-category"])
+        self.assertEqual([item["weight"] for item in female], [2.5, 1.0, 0.01])
         self.assertEqual([(item["id"], item["weight"]) for item in male], [("physique", 3.0)])
 
     def test_defaults_apply_to_every_cohort_without_inactivity_setting(self):
@@ -281,7 +502,10 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings["evidenceWeight"], 2.0)
         self.assertEqual(settings["enabledCohorts"], ["FEMALE"])
         self.assertTrue(settings["showLeaderboardsInMenu"])
+        self.assertTrue(settings["showBattlesInMenu"])
+        self.assertEqual(settings["leaderboardPerformerCount"], 18)
         self.assertFalse(settings["hidePerformerImages"])
+        self.assertFalse(settings["hideBattleStandings"])
         self.assertEqual(settings["confidenceGoal"], "ranking")
         self.assertEqual(settings["confidenceTopN"], 20)
         for cohort in dirty_rank.VALID_COHORTS:
@@ -345,6 +569,30 @@ class SettingsTests(unittest.TestCase):
         settings = dirty_rank.normalize_settings({"showLeaderboardsInMenu": "false"})
 
         self.assertFalse(settings["showLeaderboardsInMenu"])
+
+    def test_battle_standings_visibility_is_preserved(self):
+        for raw, expected in ((True, True), (False, False), ("true", True), ("false", False)):
+            settings = dirty_rank.normalize_settings({"hideBattleStandings": raw})
+            self.assertEqual(settings["hideBattleStandings"], expected)
+
+    def test_header_buttons_are_independent(self):
+        for battles, leaderboards in ((True, False), (False, True), (False, False), (True, True)):
+            settings = dirty_rank.normalize_settings({
+                "showBattlesInMenu": str(battles).lower(),
+                "showLeaderboardsInMenu": str(leaderboards).lower(),
+            })
+            self.assertEqual(settings["showBattlesInMenu"], battles)
+            self.assertEqual(settings["showLeaderboardsInMenu"], leaderboards)
+
+    def test_leaderboard_counts_follow_layout_multiples(self):
+        for top, count, expected in ((3, 18, 18), (4, 18, 20), (5, 18, 20),
+                                     (3, 1, 6), (4, 21, 24), (5, 26, 30),
+                                     (3, 2000, 999), (4, 2000, 1000), (5, 2000, 1000)):
+            settings = dirty_rank.normalize_settings({
+                "leaderboardTopCount": top, "leaderboardPerformerCount": count,
+            })
+            self.assertEqual(settings["leaderboardPerformerCount"], expected)
+            self.assertEqual(settings["leaderboardPerformerCount"] % top, 0)
 
 
 class JavaScriptAlgorithmTests(unittest.TestCase):
@@ -412,9 +660,10 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('to: "/performers/" + performer.id', source)
         self.assertIn('event.stopPropagation()', source)
         self.assertIn('className: "dirty-rank-scene-panel"', source)
-        self.assertIn('key: gauntletMode ? "gauntlet:" + pair[0].id : pairInfo.instanceId + ":left"', source)
-        self.assertIn('key: pairInfo.instanceId + ":right"', source)
+        self.assertIn('key: gauntletMode ? "gauntlet:" + arenaLeft.id : kingsMode ? "kings:"', source)
+        self.assertIn('key: kingsMode ? "kings:"', source)
         self.assertIn("@keyframes dirty-rank-card-change", styles)
+        self.assertIn("@keyframes dirty-rank-firework-burst", styles)
         self.assertIn(".dirty-rank-image-ready .dirty-rank-image", styles)
         self.assertIn("@media (prefers-reduced-motion: reduce)", styles)
 
@@ -427,7 +676,8 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('new window.Image()', source)
         self.assertIn("window.requestIdleCallback(prepareNextPair, { timeout: 300 })", source)
         self.assertIn("function showPreparedOrPickNext", source)
-        self.assertIn("showPreparedOrPickNext();", source)
+        self.assertIn("showPreparedOrPickNext(outcome);", source)
+        self.assertIn('showPreparedOrPickNext("skip");', source)
         self.assertIn("animation: dirty-rank-card-change 250ms", styles)
         self.assertIn("transition: opacity 180ms", styles)
 
@@ -465,23 +715,30 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('LEADERBOARDS_ROUTE_PATH = "/plugins/dirty-rank-leaderboards"', source)
         self.assertIn("DirtyRankLeaderboardsRoute", source)
         self.assertIn('PluginApi.register.route(LEADERBOARDS_ROUTE_PATH', source)
-        self.assertIn('"Overall (weighted)"', source)
+        self.assertIn('"Overall"', source)
         self.assertIn('"Rated coverage"', source)
         self.assertIn('"Median RD"', source)
         self.assertIn('"Draw rate"', source)
         podium = source[source.index("function LeaderboardPodium(props)") : source.index("function LeaderboardTable")]
         self.assertNotIn("dirty-rank-podium-medal", podium)
         self.assertNotIn("dirty-rank-showcase-heading", podium)
-        self.assertIn("h(PrecisionBadge", podium)
+        self.assertNotIn("h(PrecisionBadge", podium)
+        self.assertIn("dirty-rank-leaderboard-rating-row", podium)
+        self.assertIn("leaderboardRatingText(pool, props.settings)", podium)
         self.assertIn("var podiumOrder = [1, 0, 2]", source)
         self.assertIn("dirty-rank-podium-step", source)
-        self.assertIn('useState("gallery")', source)
-        self.assertIn('}, "Table")', source)
-        self.assertIn('}, "Gallery")', source)
+        self.assertIn('PluginApi.register.route(LEADERBOARDS_ROUTE_PATH + "/:statistic?"', source)
+        self.assertIn('function RankStatisticSelector(props)', source)
+        self.assertIn('source.leaderboardView === "table" ? "table" : "gallery"', source)
+        self.assertIn('leaderboardTopCount: leaderboardTopCount(source.leaderboardTopCount)', source)
+        self.assertIn('h("option", { value: "gallery" }, "Gallery")', source)
+        self.assertIn('h("option", { value: "table" }, "Table")', source)
+        self.assertNotIn('LEADERBOARD_TOP_STORAGE_KEY', source)
         self.assertIn("function LeaderboardGallery", source)
         self.assertIn("function LeaderboardPagination", source)
-        self.assertIn("LEADERBOARD_TABLE_PAGE_SIZE = 25", source)
-        self.assertIn("LEADERBOARD_GALLERY_PAGE_SIZE = 15", source)
+        self.assertIn("function leaderboardPageSize", source)
+        self.assertIn("function leaderboardPerformerCount", source)
+        self.assertIn('id: "dirty-rank-leaderboard-performer-count"', source)
         self.assertIn("dirty-rank-gallery-grid", styles)
         self.assertIn("dirty-rank-pagination", styles)
         self.assertIn("function precisionTier", source)
@@ -519,7 +776,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('availableCohorts.length > 1 && h("div"', source)
         self.assertIn('id: "dirty-rank-battle-cohort"', source)
         self.assertIn('id: "dirty-rank-leaderboard-cohort"', source)
-        self.assertIn('title: "Performer sexes"', source)
+        self.assertIn('title: "Gender boxes"', source)
 
     def test_leaderboards_navigation_is_configurable(self):
         source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
@@ -527,16 +784,17 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("showLeaderboardsInMenu", source)
         self.assertIn("DirtyRankLeaderboardsNavLink", source)
         self.assertIn("dirty-rank-leaderboards-nav-link", source)
-        self.assertIn('label: "Show Leaderboards in the navigation menu"', source)
+        self.assertIn('label: "Show Leaderboards in the Stash header"', source)
+        self.assertIn('label: "Show Battles in the Stash header"', source)
 
-    def test_category_editor_only_lists_enabled_cohorts(self):
+    def test_category_editor_can_configure_disabled_boxes(self):
         source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
 
         category_editor = source[source.index('id: "dirty-rank-category-cohort"') :]
-        self.assertIn("draft.enabledCohorts.indexOf(item[0]) !== -1", category_editor)
-        self.assertIn("nextEditingCohort", source)
+        self.assertIn("boxOptions(draft, false)", category_editor)
+        self.assertIn('label: "Categories for gender box"', category_editor)
         self.assertIn(
-            'draft.enabledCohorts.length > 1 && h("div", { className: "dirty-rank-category-cohort" }',
+            'draft.genderBoxes.length > 1 && h("div", { className: "dirty-rank-category-cohort" }',
             source,
         )
 

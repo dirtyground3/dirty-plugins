@@ -3,7 +3,7 @@
 The default suite style uses graphite surfaces, teal for primary actions and
 selection, and warm amber for destructive actions. The shape is rounded and
 slightly playful; labels, focus, control height, and status meaning remain
-consistent in all five suite themes. Inherit Stash's font by default. Keep Rank
+consistent in all seven suite themes. Inherit Stash's font by default. Keep Rank
 medals, rating precision, and Stats data series as domain colours rather than
 reusing save/error colours.
 
@@ -18,12 +18,20 @@ reusing save/error colours.
 | Page state | `StateView`, `SaveStatus`, `ui.notify` | Retry operation and data loading |
 | Data summary | `Metric`, `Badge`, `Pagination`, `.dirty-ui-table` | Page size, columns, and domain meaning |
 | Route action | `NavAction` | Route and icon meaning |
+| Browser page title | `react.usePageTitle(pluginName, viewTitle)` | Plugin name and current view label |
+| Statistic navigation | `StatisticSelector` | Available statistics and their routes |
 | Modal | `react.Dialog` or `ui.manageDialog` for DOM-created content | Dialog body and data operation |
+
+Call `DirtyPlugins.react.usePageTitle("Plugin", "View")` in each route component.
+The hub formats the title as `View - Plugin`, keeps native list loading from
+replacing it, and releases it when the route unmounts. Pass the current view
+label so titles also update when navigating within a plugin. Omit the view
+label for a page titled with just the plugin name.
 
 `Button` defaults to `type="button"`. A normal control is 2.5rem high; a
 compact action is 2rem. Use `.dirty-ui-control-row` for mixed buttons and
 selects. Shared selects have less internal padding than buttons, while their
-outside height matches. Number editors may use the separate compact padding.
+outside height matches. Text and number fields use the same control height.
 Use native Stash buttons inside native Stash components rather than replacing
 their internals.
 
@@ -59,12 +67,28 @@ Paper Picnic remains readable and expressive theme shapes remain consistent;
 they do not target native cards or players.
 
 The authored Stats base, panel, and alternate-panel surfaces keep body, muted,
-primary, and accent-text roles at or above 4.5:1 contrast in all five themes;
+primary, and accent-text roles at or above 4.5:1 contrast in all seven themes;
 `tests/test_dirty_stats_contrast.js` measures those pairs. Paper Picnic uses a
 darker amber only for calendar count text, leaving its decorative amber intact.
 Other chart colours and translucent overlays still need rendered review.
 Tag DNA cells choose light or dark labels from each cell's fill colour; the
 shared Stats contrast test covers the gradient endpoints in every theme.
+
+**De Stijl** (`destijl`) uses the supplied reference palette: coral `#dc5e5f`,
+blue `#5b9acf`, grey `#dcdcdc`, and charcoal `#282828`. Square corners, solid
+offset shadows, dark construction lines, and small asymmetric colour accents define
+the theme. Page headers omit decorative strips to keep their height compact.
+Main statistic/category selectors use solid blue fills, bold uppercase labels,
+a narrow coral edge, and a modest offset shadow. Small text uses darker blue/red ink variants for contrast; coral
+button labels use near-black. Navigation artwork shares the reference palette
+in every theme. Keep those colours in the hub's `--dirty-ui-icon-*` tokens;
+there is no yellow in this palette.
+
+**De Stijl Dark** (`destijl-dark`) shares the same geometry and artwork, with
+charcoal surfaces and grey text. Its lighter blue and coral ink variants keep
+text readable; filled blue controls retain charcoal labels in both variants.
+Keep shared geometry in the combined De Stijl selectors and differences in
+the palette tokens, including the select arrow and solid shadow.
 
 ## Dialogs and native content
 
@@ -73,6 +97,9 @@ labelled-by heading. `ui.manageDialog` applies the same initial focus, Tab
 loop, Escape handling, stacked scroll lock, and focus return to DOM-created
 dialogs such as FileExtractor's folder picker. Both APIs accept
 `allowNativePopup` when Stash filters open a nested modal outside the dialog.
+Use `.dirty-ui-native-filter-overlay` and `.dirty-ui-native-filter-dialog`
+when showing Stash's native filter toolbar in a suite dialog; these keep the
+filter controls while hiding the host's separate results and pagination.
 The integrated Stats dialogs use the `--dirty-ui-layer-integrated-dialog`
 levels (1030/1040) so native popups can rise above them. The standalone picker
 uses `--dirty-ui-layer-standalone-dialog` (12000); toast messages use 12050.

@@ -1164,10 +1164,65 @@
     }
     window.location.assign("/scenes");
   };
+  function VisibleOCounterButton(props) {
+    var statusState = useState("idle");
+    var status = statusState[0];
+    var setStatus = statusState[1];
+    var hiddenState = useState(false);
+    var hidden = hiddenState[0];
+    var setHidden = hiddenState[1];
+    var action = useRef({ busy: false, done: false, pendingIds: null });
+    var mounted = useRef(false);
+    useEffect(function () {
+      mounted.current = true;
+      return function () { mounted.current = false; };
+    }, []);
+    function increment() {
+      if (action.current.busy || action.current.done) return;
+      var ids = action.current.pendingIds || props.sceneIds.filter(function (id, index, all) { return all.indexOf(id) === index; });
+      if (!ids.length) return;
+      action.current.busy = true;
+      setStatus("loading");
+      Promise.all(ids.map(function (id) {
+        return Promise.resolve().then(function () {
+          return graphqlRequest(incrementSceneOQuery, { id: id });
+        }).then(function () { return null; }, function (error) {
+          console.error("Could not increment the O counter for scene " + id + ".", error);
+          return id;
+        });
+      })).then(function (results) {
+        var failedIds = results.filter(function (id) { return id !== null; });
+        action.current.busy = false;
+        action.current.done = failedIds.length === 0;
+        action.current.pendingIds = failedIds;
+        if (!mounted.current) return;
+        setStatus(failedIds.length ? "error" : "success");
+        if (failedIds.length) setHidden(false);
+      });
+    }
+    var dismissing = status === "loading" || status === "success";
+    var count = props.sceneIds.length;
+    var label = status === "error" ? "Could not increase every visible scene O counter; retry failed scenes" : "Increase O counter for " + count + " visible scene" + (count === 1 ? "" : "s");
+    return createElement(Fragment, null,
+      !hidden && (count > 0 || status !== "idle") && createElement("div", {
+        className: "ms-o-counter" + (dismissing ? " ms-o-counter-dismissing" : ""),
+        onAnimationEnd: function (event) {
+          if (event.target === event.currentTarget && dismissing) setHidden(true);
+        }
+      }, createElement(PluginIconButton, {
+        ariaLabel: label,
+        disabled: dismissing,
+        fallback: status === "error" ? "!" : "O",
+        icon: status === "error" ? ICONS.error : ICONS.oCounter,
+        onClick: increment
+      })),
+      createElement("span", { className: "ms-o-counter-status", role: "status", "aria-live": "polite" },
+        status === "loading" ? "Saving O counters." : status === "success" ? "O counters increased." : status === "error" ? "Some O counters could not be saved. Retry the failed scenes." : "")
+    );
+  }
   var MultiscreenRoute = () => {
+    DirtyPlugins.react.usePageTitle("DirtyMultiscreen");
     const [visibleNativeSceneIds, setVisibleNativeSceneIds] = useState([]);
-    const [oCounterStatus, setOCounterStatus] = useState("idle");
-    const oCounterResetTimeout = useRef(null);
     const launchContext = useMemo(() => readLaunchContext(), []);
     const markerMode = isMarkerLaunchContext(launchContext);
     const [settingsQuery, setSettingsQuery] = useState({ loading: true, error: null, data: {} });
@@ -1216,38 +1271,6 @@
     const loading = settingsQuery.loading || activeQuery.loading || nativePlayerQuery.loading;
     const error = settingsQuery.error ?? activeQuery.error ?? nativePlayerQuery.error;
     const itemType = markerMode ? "markers" : "scenes";
-    const visibleSceneCount = visibleNativeSceneIds.length;
-    useEffect(() => () => {
-      if (oCounterResetTimeout.current !== null) {
-        window.clearTimeout(oCounterResetTimeout.current);
-      }
-    }, []);
-    const incrementVisibleOCounters = useCallback(async () => {
-      if (oCounterStatus === "loading" || visibleNativeSceneIds.length === 0) return;
-      if (oCounterResetTimeout.current !== null) {
-        window.clearTimeout(oCounterResetTimeout.current);
-        oCounterResetTimeout.current = null;
-      }
-      const sceneIds = [...visibleNativeSceneIds];
-      setOCounterStatus("loading");
-      const results = await Promise.all(sceneIds.map(async (id) => {
-        try {
-          await graphqlRequest(incrementSceneOQuery, { id });
-          return true;
-        } catch (error2) {
-          console.error(`Could not increment the O counter for scene ${id}.`, error2);
-          return false;
-        }
-      }));
-      setOCounterStatus(results.every(Boolean) ? "success" : "error");
-      oCounterResetTimeout.current = window.setTimeout(() => {
-        setOCounterStatus("idle");
-        oCounterResetTimeout.current = null;
-      }, results.every(Boolean) ? 2e3 : 4e3);
-    }, [oCounterStatus, visibleNativeSceneIds]);
-    const oCounterButtonLabel = oCounterStatus === "loading" ? `Increasing O counter for ${visibleSceneCount} visible scene${visibleSceneCount === 1 ? "" : "s"}` : oCounterStatus === "success" ? `Increased O counter for ${visibleSceneCount} visible scene${visibleSceneCount === 1 ? "" : "s"}` : oCounterStatus === "error" ? `Could not increase every visible scene O counter; click to retry` : `Increase O counter for ${visibleSceneCount} visible scene${visibleSceneCount === 1 ? "" : "s"}`;
-    const oCounterButtonIcon = oCounterStatus === "success" ? ICONS.success : oCounterStatus === "error" ? ICONS.error : ICONS.oCounter;
-    const oCounterButtonFallback = oCounterStatus === "loading" ? "..." : oCounterStatus === "success" ? "ok" : oCounterStatus === "error" ? "!" : "O";
     const docsCapture = DirtyPlugins.captureEnabled ? DirtyPlugins.captureEnabled(window.location.search) : new URLSearchParams(window.location.search).get("docsCapture") === "1";
     return /* @__PURE__ */ createElement("div", { className: `ms-route${docsCapture ? " ms-docs-capture" : ""}` }, loading && /* @__PURE__ */ createElement(StateView, { title: `Loading ${itemType}` }), !loading && error && /* @__PURE__ */ createElement(
       StateView,
@@ -1279,16 +1302,7 @@
         onVisibleSceneIdsChange: setVisibleNativeSceneIds,
         useFindScene: PluginApi.utils.StashService.useFindScene
       }
-    ), /* @__PURE__ */ createElement("div", { className: "ms-floating" }, visibleSceneCount > 0 && /* @__PURE__ */ createElement(
-      PluginIconButton,
-      {
-        ariaLabel: oCounterButtonLabel,
-        disabled: oCounterStatus === "loading",
-        fallback: oCounterButtonFallback,
-        icon: oCounterButtonIcon,
-        onClick: () => void incrementVisibleOCounters()
-      }
-    ), /* @__PURE__ */ createElement(PluginIconButton, { ariaLabel: "Close DirtyMultiscreen", fallback: "x", icon: ICONS.close, onClick: closeRoute })));
+    ), /* @__PURE__ */ createElement("div", { className: "ms-floating" }, createElement(VisibleOCounterButton, { sceneIds: visibleNativeSceneIds }), /* @__PURE__ */ createElement(PluginIconButton, { ariaLabel: "Close DirtyMultiscreen", fallback: "x", icon: ICONS.close, onClick: closeRoute })));
   };
   var ContextualMultiscreenNavLink = () => {
     const location = useLocation();

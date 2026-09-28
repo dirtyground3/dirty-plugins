@@ -395,7 +395,7 @@ def operation_key(operation: dict[str, Any]) -> tuple[str, str, str]:
 
 
 def plan_digest(strategy_digest: str, operations: Iterable[dict[str, Any]]) -> str:
-    """Hash every ready operation so changed plans cannot reuse an approval."""
+    """Identify the exact ready operations in a preview or execution snapshot."""
     ready = sorted(
         operation_key(operation)
         for operation in operations
@@ -991,6 +991,8 @@ def execute_plan(
     reporter: Reporter,
     expected_plan_digest: str = "",
     plan: dict[str, Any] | None = None,
+    *,
+    apply_approved_strategy: bool = False,
 ) -> dict[str, Any]:
     if plan is None:
         roots, scenes = client.library_snapshot()
@@ -1006,7 +1008,16 @@ def execute_plan(
     ready = [operation for operation in plan["operations"] if operation["status"] == "ready"]
     unreviewed = 0
     reviewed_missing = 0
-    if not expected_plan_digest:
+    if apply_approved_strategy:
+        # Automation approves the rules for future libraries, including newly
+        # scanned scenes. It must not be tied to the preview's file list.
+        settings = normalize_settings(raw_settings)
+        if (
+            settings["automationMode"] not in {"scan", "generate"}
+            or settings["approvedStrategyHash"] != plan["strategy_hash"]
+        ):
+            raise PluginError("The current strategy has not been approved for automation.")
+    else:
         # Manual execution only applies the exact operations the user confirmed.
         # A file that was warning/blocked at preview time (or appeared later) must
         # never move unseen.
@@ -1023,8 +1034,9 @@ def execute_plan(
         reviewed_missing = len(reviewed_keys) - len(confirmed)
         ready = confirmed
 
+    approval = "approved strategy" if apply_approved_strategy else "confirmed preview"
     reporter.info(
-        f"DirtyTidy will apply {len(ready)} confirmed operation(s); "
+        f"DirtyTidy will apply {len(ready)} operation(s) from the {approval}; "
         f"{unreviewed} operation(s) are not part of the confirmed preview, "
         f"{plan['summary']['warnings']} warning(s), {plan['summary']['blocked']} blocked, "
         f"and {plan['summary']['unchanged']} unchanged."
@@ -1126,14 +1138,6 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
             message = "DirtyTidy skipped automation because this strategy has not been approved."
             reporter.info(message)
             return {"skipped": True, "reason": message}
-        approved_digest = settings["approvedPlanDigest"]
-        if not approved_digest:
-            message = (
-                "DirtyTidy skipped automation because the approved plan is missing. "
-                "Generate a new preview and approve it again."
-            )
-            reporter.info(message)
-            return {"skipped": True, "reason": message}
         roots, scenes = client.library_snapshot()
         plan = build_plan(roots, scenes, settings)
         if approved_hash != plan["strategy_hash"]:
@@ -1143,18 +1147,12 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
             )
             reporter.info(message)
             return {"skipped": True, "reason": message}
-        if approved_digest != plan["plan_digest"]:
-            message = (
-                "DirtyTidy skipped automation because files changed after the approved "
-                "preview. Generate a new preview and approve it again."
-            )
-            reporter.info(message)
-            return {"skipped": True, "reason": message}
         reporter.info(
             f"DirtyTidy is applying the strategy approved for completed {trigger} jobs."
         )
         return execute_plan(
-            client, settings, approved_hash, reporter, approved_digest, plan
+            client, settings, approved_hash, reporter, plan=plan,
+            apply_approved_strategy=True,
         )
     raise PluginError(f"Unsupported DirtyTidy operation mode: {mode}")
 

@@ -1,0 +1,22 @@
+name: DirtyCompactor
+description: Reclaim space with ordered scene-filter rules, optional output review, and recoverable media replacement.
+version: 0.1.0
+ui:
+  requires:
+    - dirtyPlugins
+  javascript:
+    - dirtyCompactor.js
+  css:
+    - dirtyCompactor.css
+  assets:
+    /previews: runtime/previews
+exec:
+  - python
+  - "{pluginDir}/dirty_compactor.py"
+interface: raw
+errLog: error
+settings:
+  automationPaused:
+    displayName: Pause automatic runs
+    description: Automatic rules run after successful scans observed by an open Stash browser tab.
+    type: BOOLEAN

@@ -904,7 +904,7 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
         self.assertEqual(dirty_tidy.exit_code_for({"skipped": True}), 0)
         self.assertEqual(dirty_tidy.exit_code_for(None), 0)
 
-    def test_automation_rejects_a_plan_that_changed_after_approval(self):
+    def test_execute_rejects_a_stale_explicit_snapshot_digest(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             database = root / "dirty_plugins.sqlite3"
@@ -940,6 +940,130 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
                         dirty_tidy.Reporter(),
                         approved_plan["plan_digest"],
                     )
+
+    def test_automation_applies_approved_rules_to_new_scenes_on_repeated_runs(self):
+        class MovingClient(self.SnapshotClient):
+            def move_file(self, operation):
+                super().move_file(operation)
+                destination = Path(operation["destination_path"])
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                Path(operation["source_path"]).rename(destination)
+                for item in self.scenes:
+                    for file_info in item["files"]:
+                        if file_info["id"] == operation["file_id"]:
+                            file_info["path"] = str(destination)
+                            file_info["basename"] = destination.name
+                return True
+
+        for trigger in ("scan", "generate"):
+            for keep_preview_digest in (True, False):
+                with self.subTest(trigger=trigger, preview_digest=keep_preview_digest), \
+                        tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    approved_file = root / "approved.mp4"
+                    approved_file.write_bytes(b"approved")
+                    settings = {
+                        "moveEnabled": True,
+                        "hierarchyLevels": ["{studio}"],
+                        "renameEnabled": True,
+                        "renamePattern": "{title}",
+                        "automationMode": trigger,
+                    }
+                    approved_scene = scene(approved_file, title="Approved Scene")
+                    approved_plan = dirty_tidy.build_plan([str(root)], [approved_scene], settings)
+                    settings["approvedStrategyHash"] = approved_plan["strategy_hash"]
+                    settings["approvedPlanDigest"] = (
+                        approved_plan["plan_digest"] if keep_preview_digest else ""
+                    )
+                    later_file = root / "later.mp4"
+                    later_file.write_bytes(b"later")
+                    later_scene = self._second_scene(later_file, "Later Scene", "2", "20")
+                    client = MovingClient(root, [approved_scene, later_scene])
+                    payload = {"args": {"mode": "automation", "automationTrigger": trigger}}
+
+                    with mock.patch.object(dirty_tidy, "StashClient", return_value=client), \
+                            mock.patch.object(dirty_tidy.shared_storage, "get_plugin_settings",
+                                              return_value=settings), \
+                            mock.patch.object(dirty_tidy, "load_reviewed_plan",
+                                              side_effect=AssertionError("automation must not freeze the preview")):
+                        result = dirty_tidy.run(payload)
+                        self.assertEqual(result["completed"], 2)
+                        self.assertEqual(result["unreviewed"], 0)
+                        self.assertNotEqual(result["plan_digest"], approved_plan["plan_digest"])
+                        self.assertTrue((root / "Unknown" / "Later Scene.mp4").is_file())
+
+                        # A repeat does no work, then updated metadata and another
+                        # new scene both use the same still-approved strategy.
+                        repeat = dirty_tidy.run(payload)
+                        self.assertEqual(repeat["completed"], 0)
+                        self.assertEqual(repeat["unchanged"], 2)
+                        later_scene["title"] = "Updated Scene"
+                        next_file = root / "next.mp4"
+                        next_file.write_bytes(b"next")
+                        client.scenes.append(self._second_scene(next_file, "Next Scene", "3", "30"))
+                        next_run = dirty_tidy.run(payload)
+                        self.assertEqual(next_run["completed"], 2)
+                        self.assertTrue((root / "Unknown" / "Updated Scene.mp4").is_file())
+                        self.assertTrue((root / "Unknown" / "Next Scene.mp4").is_file())
+
+    def test_automation_skips_unapproved_or_changed_strategy_and_other_triggers(self):
+        original = {
+            "moveEnabled": False, "renameEnabled": True,
+            "renamePattern": "{title}", "automationMode": "scan",
+        }
+        approved_hash = dirty_tidy.strategy_hash(original)
+        cases = (
+            ({"approvedStrategyHash": ""}, "scan"),
+            ({"approvedStrategyHash": approved_hash, "renamePattern": "{title} changed"}, "scan"),
+            ({"approvedStrategyHash": approved_hash, "automationMode": "manual"}, "scan"),
+            ({"approvedStrategyHash": approved_hash}, "generate"),
+        )
+        for changes, trigger in cases:
+            with self.subTest(changes=changes, trigger=trigger):
+                client = self.SnapshotClient(Path("."), [])
+                with mock.patch.object(dirty_tidy, "StashClient", return_value=client), \
+                        mock.patch.object(dirty_tidy.shared_storage, "get_plugin_settings",
+                                          return_value={**original, **changes}):
+                    result = dirty_tidy.run({"args": {"mode": "automation", "automationTrigger": trigger}})
+                self.assertTrue(result["skipped"])
+                self.assertTrue(result["reason"])
+                self.assertEqual(client.moves, [])
+
+    def test_automation_still_skips_collisions_missing_files_and_other_sources(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            root = base / "source"
+            root.mkdir()
+            settings = {
+                "moveEnabled": False, "renameEnabled": True,
+                "renamePattern": "{title}", "automationMode": "scan",
+            }
+            approved_plan = dirty_tidy.build_plan([str(root)], [], settings)
+            settings["approvedStrategyHash"] = approved_plan["strategy_hash"]
+            settings["approvedPlanDigest"] = approved_plan["plan_digest"]
+            scenes = []
+            entries = (
+                (root / "ready.mp4", "Ready Scene", True),
+                (root / "collision.mp4", "Exists", True),
+                (root / "duplicate-one.mp4", "Duplicate", True),
+                (root / "duplicate-two.mp4", "Duplicate", True),
+                (root / "missing.mp4", "Missing", False),
+                (base / "outside.mp4", "Outside", True),
+            )
+            (root / "Exists.mp4").write_bytes(b"existing destination")
+            for index, (source, title, exists) in enumerate(entries, 1):
+                if exists:
+                    source.write_bytes(b"source")
+                scenes.append(self._second_scene(source, title, str(index), str(index * 10)))
+            client = self.SnapshotClient(root, scenes)
+            with mock.patch.object(dirty_tidy, "StashClient", return_value=client), \
+                    mock.patch.object(dirty_tidy.shared_storage, "get_plugin_settings", return_value=settings):
+                result = dirty_tidy.run({"args": {"mode": "automation", "automationTrigger": "scan"}})
+            self.assertEqual(result["completed"], 1)
+            self.assertEqual(result["blocked"], 4)
+            self.assertEqual(result["warnings"], 1)
+            self.assertEqual([item["source_path"] for item in client.moves], [str(root / "ready.mp4")])
+            self.assertEqual((root / "Exists.mp4").read_bytes(), b"existing destination")
 
     def test_reviewed_plan_round_trips_through_shared_storage(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -83,6 +83,37 @@
   cursor: wait;
 }
 
+.ms-o-counter-dismissing {
+  pointer-events: none;
+  animation: ms-o-counter-dismiss 360ms ease-in forwards;
+}
+
+@keyframes ms-o-counter-dismiss {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-0.5rem) scale(0.75); visibility: hidden; }
+}
+
+.ms-o-counter-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ms-o-counter-dismissing {
+    animation-duration: 1ms;
+  }
+
+  @keyframes ms-o-counter-dismiss {
+    from { opacity: 1; }
+    to { opacity: 0; visibility: hidden; }
+  }
+}
+
 .ms-state {
   width: 100vw;
   height: 100vh;
@@ -117,6 +148,9 @@
   grid-template-columns: repeat(2, 0.42rem);
   grid-template-rows: repeat(2, 0.42rem);
   gap: 0.12rem;
+  background: var(--dirty-ui-icon-black);
+  border: 1px solid var(--dirty-ui-icon-white);
+  padding: 0.1rem;
   font-style: normal;
 }
 
@@ -124,9 +158,12 @@
   display: block;
   width: 0.42rem;
   height: 0.42rem;
-  border-radius: 0.08rem;
-  background: currentColor;
+  border-radius: 0;
+  background: var(--dirty-ui-icon-white);
 }
+
+.ms-nav-icon i:first-child { background: var(--dirty-ui-icon-red); }
+.ms-nav-icon i:last-child { background: var(--dirty-ui-icon-blue); }
 
 .ms-native-tile,
 .ms-native-tile .VideoPlayer,

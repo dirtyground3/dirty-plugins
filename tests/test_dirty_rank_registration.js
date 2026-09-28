@@ -14,7 +14,7 @@ let throwOnPatch = true;
 const window = {
   DirtyPlugins: {
     getPluginSettings: function () { return Promise.resolve({}); },
-    graphql: noop,
+    graphql: function () { return Promise.resolve({ findPerformers: { performers: [] } }); },
     runPluginOperation: function () { return Promise.resolve({ version: 2, revision: 0, states: {} }); },
     react: {},
     registerSettingsPanel: noop,

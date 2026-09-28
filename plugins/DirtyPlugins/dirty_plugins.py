@@ -10,7 +10,7 @@ from typing import Any
 import dirty_plugins_storage as storage
 
 
-MANAGED_PLUGIN_IDS = {"dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"}
+MANAGED_PLUGIN_IDS = {"dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor"}
 
 
 class PluginError(RuntimeError):
@@ -53,6 +53,8 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
     mode = str(args.get("mode") or "getAllSettings")
     if mode == "getAllSettings":
         return storage.get_all_plugin_settings()
+    if mode == "isInternalScan":
+        return {"internal": storage.internal_scan_check(args.get("jobId"), args.get("startTime"))}
     if mode == "getSettings":
         plugin_id = str(args.get("pluginId") or "")
         if plugin_id not in MANAGED_PLUGIN_IDS:

@@ -1,0 +1,32 @@
+"use strict";
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const vm = require("node:vm");
+const script = fs.readFileSync("plugins/DirtyCompactor/dirtyCompactor.js", "utf8");
+let registrations = 0;
+const window = { PluginApi: { React: {}, patch: { after() {} } }, DirtyPlugins: {
+  react: { SceneFilterEditor() {} }, registerSettingsPanel() { registrations++; },
+} };
+vm.runInNewContext(script, { window });
+vm.runInNewContext(script, { window });
+assert.equal(registrations, 1, "asset reload must not duplicate registrations");
+const a = window.__dirtyCompactorPlugin.algorithms;
+const rule = a.newRule();
+assert.equal(rule.enabled, false);
+assert.equal(rule.mode, "manual");
+assert.equal(rule.format, "keep");
+assert.equal(a.validation({ rules: [rule] }), "");
+rule.enabled = true;
+assert.match(a.validation({ rules: [rule] }), /filter/);
+rule.condition.all = true;
+assert.equal(a.validation({ rules: [rule] }), "");
+rule.mbps = "bad";
+assert.match(a.validation({ rules: [rule] }), /bitrate/);
+rule.mbps = 4;
+rule.width = "";
+assert.match(a.validation({ rules: [rule] }), /Dimensions/);
+rule.action = "reencode";
+assert.equal(a.validation({ rules: [rule] }), "", "reencode does not use hidden resize dimensions");
+assert.equal(a.filterSummary({ all: true }), "All scenes");
+assert.equal(a.bytes(1024), "1.00 KiB");
+console.log("DirtyCompactor UI algorithms and registration passed");

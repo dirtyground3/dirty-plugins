@@ -15,9 +15,12 @@ store and are restored on the next visit.
 Leave a widget's title blank to use its default name. In edit mode, the header
 shows the reorder handle and a compact remove button; the full-view link appears
 only outside edit mode.
+Widget settings share responsive columns: labeled controls and filters align
+together, with checkboxes on separate aligned rows. Small widgets wrap the
+same layout into fewer columns.
 
-The suite has five visual themes. **Midnight** is the fresh-install default;
-**Retro Arcade**, **Candy Pop**, **Tropical Punch**, and light **Paper Picnic**
+The suite has seven visual themes. **Midnight** is the fresh-install default;
+**Retro Arcade**, **Candy Pop**, **Tropical Punch**, light **Paper Picnic**, **De Stijl**, and **De Stijl Dark**
 give DirtyStats pages, dashboard cards, controls, calendars, Tag DNA, and charts
 their own colors and character. Select the theme in the **General** tab of
 DirtyPlugins settings. It applies to all Dirty plugins and saves automatically.
@@ -27,12 +30,30 @@ updating does not reset the current appearance. Unknown values display Midnight.
 Filter selection opens in a dedicated responsive dialog so native filter
 dropdowns have room to expand. The dialog becomes full-screen on narrow
 displays and can be closed with Escape, its close button, or the backdrop.
+Full-view filters and search save automatically for each statistic and return
+when you revisit or refresh it. Age at scene also remembers its separate
+performer filters. Opening a link with explicit filters uses that selection.
 
 The dashboard uses the styled statistic selector as its page heading, with no
 repeated title or subtitle. Widgets occupy fixed height steps so rows align:
 small widgets use one step, medium widgets use one or two according to their
 content, and large widgets use two or three. Longer content scrolls inside its
 widget.
+
+Charts fill the space remaining inside each widget. Every widget offers a shared
+**Show header** setting at every size. It controls the summary metrics above the
+chart or the performer card count, saves separately per widget, and is enabled
+by default. Widget titles and controls remain available when the summary is
+hidden. **Performer origin** uses a world map at every size; Small shows only
+the map, and Large also offers **Show map numbers**.
+
+**Age at scene** offers separate toggles for **Show performer count**, **Show
+mode age**, **Show median age**, and **Show average age** at every size. Performer
+count and mode are enabled by default; median and average are optional. The
+shared **Show header** switch hides all summary metrics. Age statistics use the
+histogram's counts: each performer counts once per age, regardless of repeated
+scenes at that age. Tied modes use the lowest age; median and average display up
+to one decimal place. Missing age data displays a dash.
 
 Dashboard widgets summarize the selected filter, or the entire library when no
 filter is active. Small widgets emphasize key
@@ -52,7 +73,9 @@ remains isolated to the affected data group and filter.
 **Performer cards** shows Stash's native cards for any group selected with the
 widget's performer filters. Choose 4, 8, 12, or 24 cards to display. Each copy
 of the widget keeps its own filters and card count, and only the requested cards
-are loaded.
+are loaded. Small and Medium use one dashboard height step. Cards stretch to
+fill the available height and width, including the last row; longer collections
+scroll inside the widget.
 
 The statistic selector offers **Performer origin**, **Content growth**,
 **Age at scene**, **Scene ratings**, **Performer ratings**,
@@ -202,10 +225,11 @@ timeline's current zoom window while the selection changes.
 average daily additions over the past 365 days (or the selected period).
 The forecast uses daily data regardless of grouping and assumes constant growth
 of matching content. Other disk usage is excluded; a flat reference period or
-unavailable capacity produces an explanation instead of a projected date.
+unavailable capacity produces no projected date. Hover **Show forecast** for
+the estimate or the reason it is unavailable.
 Hover for dates and sizes; zoom or use the range slider to explore a
 period. **Export PNG** saves the displayed timeline. Missing dates or sizes
-are reported and excluded. Deleted scenes and historical file-size changes
+are excluded. Deleted scenes and historical file-size changes
 cannot be reconstructed from current scene metadata.
 
 The growth plot includes a dashed **Capacity** line: total filesystem capacity
@@ -213,7 +237,7 @@ of volumes containing configured sources enabled for video. Multiple folders
 on one volume count once. This is total capacity, not free space, and includes
 space occupied by other content. Capacity stays independent of scene filters.
 The read-only Python backend uses only the standard library on the Stash host.
-Inaccessible sources are reported; a partial line is labeled **Known capacity**.
+An inaccessible source can leave a partial line labeled **Known capacity**.
 Network shares without a volume identity are counted by resolved share root;
 distinct shares on the same physical drive cannot always be deduplicated.
 **Refresh** checks capacity again. PNG exports include the capacity line.
@@ -222,11 +246,12 @@ vertical scale. It is enabled by default and stays selected when filters change;
 the choice is restored on the next visit. PNG exports follow the checkbox setting.
 
 Stash's native scene cards appear below the growth timeline, with 24 cards per
-page, following the scene filters' sort order and direction. Cards include all
+page, directly after the chart without explanatory paragraphs, following the
+scene filters' sort order and direction. Cards include all
 matching scenes, including those missing dates or sizes excluded from the plot.
 
 Click two dates inside the growth plot to select an inclusive period in either
-order. The plot highlights it and reports the size added during that period;
+order. The plot highlights it and reports the size added alongside its controls;
 scene cards show matching scenes for the selected date basis. In file modification
 mode, a scene appears if at least one valid file falls in the period. **Clear
 period** restores all matching scenes. Changing filters or date basis clears
@@ -249,7 +274,9 @@ filters. **Show all countries** clears the map selection. Changing the native
 performer filters clears the country selection and updates both map and cards.
 
 The Eckert IV equal-area world map counts each performer once by Stash's `country` field, combining
-country codes and recognized country names. Hover for exact counts, drag to pan,
+country codes and recognized country names. Colors use a logarithmic scale to
+keep smaller counts distinguishable when one country dominates; the largest
+count receives the lightest shade. Hover for exact counts, drag to pan,
 scroll to zoom, or enable **Show numbers** inside the map. The map opens with a
 closer view and adapts its height to the available width. Native filters appear
 first, without a separate page heading.
@@ -278,7 +305,7 @@ The repository's package builder discovers `dirtyStats.yml` automatically.
 
 DirtyStats uses the suite's rounded action/select controls, shared field and
 metric components, and visible pending/saving/saved/error feedback for display
-settings. Its five saved visual themes remain available. Charts read their
+settings. Its seven saved visual themes remain available. Charts read their
 semantic colours from the effective page CSS, and reduced-motion mode disables
 chart animation. Native Stash filters and performer/scene cards remain native.
 Both filter dialogs use the shared DirtyPlugins dialog lifecycle; nested Stash

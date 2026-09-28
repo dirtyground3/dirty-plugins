@@ -1,6 +1,6 @@
 name: DirtyRank
 description: Rank performers through category-based head-to-head battles using a high-precision Glicko-2 system.
-version: 0.7.17
+version: 0.7.68
 
 ui:
   requires:
@@ -20,19 +20,47 @@ settings:
   categories:
     type: STRING
     displayName: Rating categories
-    description: Per-performer-sex weighted category definitions managed by the DirtyRank settings panel.
+    description: Weighted category definitions for each gender box, managed by the DirtyRank settings panel.
+  genderBoxes:
+    type: STRING
+    displayName: Gender boxes
+    description: Named groups of performer genders, each with independent categories and ratings. Managed by the DirtyRank settings panel.
   defaultCohort:
     type: STRING
-    displayName: Default performer cohort
-    description: The Stash performer gender used for battles and leaderboards.
+    displayName: Default gender box
+    description: The default gender box used for battles and leaderboards.
   enabledCohorts:
     type: STRING
-    displayName: Enabled performer sexes
-    description: Performer sexes available for DirtyRank battles and leaderboards. Managed by the DirtyRank settings panel.
+    displayName: Enabled gender boxes
+    description: Available gender boxes, managed by the DirtyRank settings panel.
+  showBattlesInMenu:
+    type: BOOLEAN
+    displayName: Show Battles in the Stash header
+    description: Add a Battles button to Stash's utility navigation. Enabled by default.
   showLeaderboardsInMenu:
     type: BOOLEAN
-    displayName: Show Leaderboards in navigation
+    displayName: Show Leaderboards in the Stash header
     description: Add a Leaderboards button to Stash's utility navigation. Enabled by default.
+  leaderboardTopCount:
+    type: NUMBER
+    displayName: Featured leaderboard layout
+    description: Number of performers featured in the Podium, Mount Rushmore, or Fingers layout.
+  leaderboardView:
+    type: STRING
+    displayName: Leaderboard standings view
+    description: Show full leaderboard standings as a Gallery or Table.
+  leaderboardPerformerCount:
+    type: NUMBER
+    displayName: Performers per leaderboard page
+    description: Total performers per page, including the featured top. Must be a multiple of 3 for Podium, 4 for Mount Rushmore, or 5 for Fingers, with at least two rows. Defaults to 18, rounded up for the selected layout.
+  overallScoreStrategy:
+    type: STRING
+    displayName: Overall scoring strategy
+    description: Choose Simple weighted (default) or Power mean. Applies to existing overall scores without changing category ratings or battle history.
+  overallPower:
+    type: NUMBER
+    displayName: Power mean exponent
+    description: Emphasis on stronger category scores. 1 matches Simple weighted; 3 is the default for this strategy. Range 1 to 4, including decimals.
   showRatingsBeforeVote:
     type: BOOLEAN
     displayName: Show ratings before voting
@@ -41,6 +69,10 @@ settings:
     type: BOOLEAN
     displayName: Hide performer images in battles
     description: Remove performer profile images from battle cards. Disabled by default.
+  hideBattleStandings:
+    type: BOOLEAN
+    displayName: Hide standings during battles
+    description: Hide the right-hand standings and expand standard and Gauntlet battles. King of the hill always hides standings. Disabled by default.
   autoPlayTopScenes:
     type: BOOLEAN
     displayName: Automatically play top scenes
@@ -64,7 +96,7 @@ settings:
   calibrationPercent:
     type: NUMBER
     displayName: Calibration match percentage
-    description: Percentage of battles paired across rating tiers. Defaults to 10.
+    description: Percentage of matchmaking searches favouring broader rating gaps. A soft preference within the information-gain optimizer. Defaults to 10.
   initialRating:
     type: NUMBER
     displayName: Initial rating

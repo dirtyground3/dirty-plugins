@@ -51,6 +51,11 @@
   --dirty-ui-emphasis-strong: var(--dirty-theme-accent-text);
   --dirty-ui-warning: #ffd86b;
   --dirty-ui-info: #86cfe0;
+  /* Fixed navigation artwork palette sampled from the De Stijl reference. */
+  --dirty-ui-icon-red: #dc5e5f;
+  --dirty-ui-icon-blue: #5b9acf;
+  --dirty-ui-icon-white: #dcdcdc;
+  --dirty-ui-icon-black: #282828;
   --dirty-ui-focus: var(--dirty-theme-primary-strong);
   --dirty-ui-on-accent: var(--dirty-theme-on-accent);
   --dirty-ui-control-height: 2.5rem;
@@ -169,6 +174,230 @@
   --dirty-theme-radius: 0.7rem;
   --dirty-theme-button-radius: 0.7rem;
   --dirty-theme-on-accent: #fffaf0;
+}
+
+.dirty-ui-theme-destijl {
+  --dirty-theme-bg: #dcdcdc;
+  --dirty-theme-panel: #eeeeee;
+  --dirty-theme-panel-alt: #dcdcdc;
+  /* Darker ink variants keep small text readable on the grey surfaces. */
+  --dirty-theme-primary: #24577f;
+  --dirty-theme-primary-strong: #1b4362;
+  --dirty-theme-secondary: #5b9acf;
+  --dirty-theme-accent: #dc5e5f;
+  --dirty-theme-highlight: #973637;
+  --dirty-theme-text: #282828;
+  --dirty-theme-muted: #515151;
+  --dirty-theme-grid: #b8b8b8;
+  --dirty-theme-border: #282828;
+  --dirty-theme-border-soft: #8a8a8a;
+  --dirty-theme-selection: #282828;
+  --dirty-theme-accent-text: #973637;
+  --dirty-theme-soft: rgba(91, 154, 207, 0.2);
+  --dirty-theme-softer: rgba(91, 154, 207, 0.08);
+  --dirty-theme-surface: #eeeeee;
+  --dirty-theme-page-background: #dcdcdc;
+  --dirty-theme-feature-background: #eeeeee;
+  --dirty-theme-feature-shadow: 4px 4px 0 #282828;
+  --dirty-theme-secondary-background: #dcdcdc;
+  --dirty-theme-radius: 0rem;
+  --dirty-theme-button-radius: 0rem;
+  --dirty-theme-on-accent: #282828;
+  --dirty-theme-block-shadow: #282828;
+  --dirty-theme-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 6 5 5 5-5' fill='none' stroke='%23282828' stroke-width='2'/%3E%3C/svg%3E");
+  --dirty-ui-border: #282828;
+  --dirty-ui-border-soft: #8a8a8a;
+  --dirty-ui-radius-small: 0rem;
+  --dirty-ui-shadow: 4px 4px 0 #282828;
+  --dirty-ui-danger: #973637;
+  --dirty-ui-danger-action: #dc5e5f;
+  --dirty-ui-danger-action-hover: #e67879;
+  --dirty-ui-on-danger-action: #181818;
+  --dirty-ui-success: #24577f;
+  --dirty-ui-success-surface: #24577f;
+  --dirty-ui-warning: #973637;
+  --dirty-ui-info: #24577f;
+}
+
+.dirty-ui-theme-destijl-dark {
+  --dirty-theme-bg: #202020;
+  --dirty-theme-panel: #282828;
+  --dirty-theme-panel-alt: #303030;
+  --dirty-theme-primary: #87b5da;
+  --dirty-theme-primary-strong: #a4c8e4;
+  --dirty-theme-secondary: #5b9acf;
+  --dirty-theme-accent: #dc5e5f;
+  --dirty-theme-highlight: #ee9293;
+  --dirty-theme-text: #dcdcdc;
+  --dirty-theme-muted: #b8b8b8;
+  --dirty-theme-grid: #454545;
+  --dirty-theme-border: #7b7b7b;
+  --dirty-theme-border-soft: #606060;
+  --dirty-theme-selection: #dcdcdc;
+  --dirty-theme-accent-text: #ee9293;
+  --dirty-theme-soft: rgba(91, 154, 207, 0.2);
+  --dirty-theme-softer: rgba(91, 154, 207, 0.08);
+  --dirty-theme-surface: #282828;
+  --dirty-theme-page-background: #202020;
+  --dirty-theme-feature-background: #282828;
+  --dirty-theme-feature-shadow: 4px 4px 0 #101010;
+  --dirty-theme-secondary-background: #303030;
+  --dirty-theme-radius: 0rem;
+  --dirty-theme-button-radius: 0rem;
+  --dirty-theme-on-accent: #282828;
+  --dirty-theme-block-shadow: #101010;
+  --dirty-theme-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 6 5 5 5-5' fill='none' stroke='%23dcdcdc' stroke-width='2'/%3E%3C/svg%3E");
+  --dirty-ui-border: #7b7b7b;
+  --dirty-ui-border-soft: #606060;
+  --dirty-ui-radius-small: 0rem;
+  --dirty-ui-shadow: 4px 4px 0 #101010;
+  --dirty-ui-danger: #ee9293;
+  --dirty-ui-danger-action: #dc5e5f;
+  --dirty-ui-danger-action-hover: #e67879;
+  --dirty-ui-on-danger-action: #181818;
+  --dirty-ui-success: #87b5da;
+  --dirty-ui-success-surface: #24577f;
+  --dirty-ui-warning: #ee9293;
+  --dirty-ui-info: #87b5da;
+}
+
+/* Both De Stijl variants share geometry; their tokens supply the surfaces. */
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) .dirty-plugins-page-header::before,
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) .dirty-ui-page-header::before {
+  content: none;
+  display: none;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-panel,
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-feature-card,
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) .dirty-ui-dialog {
+  background: var(--dirty-theme-panel) !important;
+  border: 2px solid var(--dirty-theme-border) !important;
+  border-radius: 0 !important;
+  box-shadow: var(--dirty-ui-shadow) !important;
+  color: var(--dirty-theme-text);
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-plugins-card-header,
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-plugins-card-footer {
+  background: var(--dirty-theme-panel-alt) !important;
+  border-radius: 0 !important;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-plugins-card-header {
+  border-bottom: 2px solid var(--dirty-theme-border) !important;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-select,
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-pilot select.form-control,
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-plugins-page select.form-control {
+  background-image: var(--dirty-theme-select-arrow) !important;
+  background-position: right 0.65rem center;
+  background-repeat: no-repeat;
+  background-size: 0.7rem;
+  padding-right: 1.7rem;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) .dirty-ui-settings-section {
+  background: var(--dirty-theme-panel);
+  border: 2px solid var(--dirty-theme-border);
+  border-left-width: 0.5rem;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-button {
+  border: 2px solid var(--dirty-theme-border) !important;
+  box-shadow: 3px 3px 0 var(--dirty-theme-block-shadow) !important;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-button.btn-primary,
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-button.btn-primary:hover:not(:disabled) {
+  background: var(--dirty-ui-icon-blue) !important;
+  color: var(--dirty-theme-on-accent) !important;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-button:hover:not(:disabled) {
+  box-shadow: 2px 2px 0 var(--dirty-theme-block-shadow) !important;
+  transform: translate(1px, 1px);
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-button:active:not(:disabled) {
+  box-shadow: none !important;
+  transform: translate(3px, 3px);
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-button.dirty-ui-control-quiet {
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-statistic-selector .dropdown-toggle {
+  background: var(--dirty-ui-icon-blue) !important;
+  color: var(--dirty-theme-on-accent) !important;
+  border: 2px solid var(--dirty-ui-icon-black) !important;
+  border-left: 0.35rem solid var(--dirty-ui-icon-red) !important;
+  box-shadow: 3px 3px 0 var(--dirty-theme-block-shadow) !important;
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  text-shadow: none;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-statistic-selector .dropdown-toggle::after {
+  color: var(--dirty-theme-on-accent);
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-statistic-selector .dropdown-menu {
+  border: 2px solid var(--dirty-theme-border);
+  box-shadow: 3px 3px 0 var(--dirty-theme-block-shadow);
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-statistic-selector .dropdown-item.active {
+  background: var(--dirty-ui-icon-blue) !important;
+  color: var(--dirty-theme-on-accent) !important;
+  font-weight: 700;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-plugins-tabs {
+  border-bottom: 3px solid var(--dirty-theme-border) !important;
+  gap: 0.35rem;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-plugins-tab,
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) .dirty-ui-badge {
+  border-radius: 0;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-plugins-tab.active {
+  background: var(--dirty-ui-icon-blue) !important;
+  border-width: 2px;
+  box-shadow: none !important;
+  color: var(--dirty-theme-on-accent) !important;
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) .dirty-ui-icon-button {
+  background: var(--dirty-theme-panel);
+  border: 2px solid var(--dirty-theme-border);
+  color: var(--dirty-theme-text);
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) .dirty-ui-icon-button:hover:not(:disabled) {
+  background: var(--dirty-theme-panel-alt);
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) .dirty-ui-icon-button-danger,
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) .dirty-plugins-unsaved {
+  color: var(--dirty-ui-danger);
+}
+
+:is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) .dirty-ui-settings-toggle input {
+  accent-color: var(--dirty-theme-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-button:hover:not(:disabled),
+  :is(.dirty-ui-theme-destijl, .dirty-ui-theme-destijl-dark) #root .dirty-ui-button:active:not(:disabled) {
+    transform: none;
+  }
 }
 
 /* Keep host-theme text and surfaces available to the suite's own controls. */
@@ -459,10 +688,10 @@
   min-height: 2.35rem;
 }
 
-.dirty-ui-pilot .dirty-ui-field input[type="number"] {
-  height: 1.9rem;
-  min-height: 1.9rem;
-  padding: 0.1rem 0.25rem;
+.dirty-ui-field input.form-control:not([type="checkbox"]):not([type="radio"]) {
+  box-sizing: border-box;
+  height: var(--dirty-ui-control-height);
+  min-height: var(--dirty-ui-control-height);
 }
 
 .dirty-ui-field-help,
@@ -578,6 +807,54 @@
   background: var(--dirty-ui-surface);
   color: var(--dirty-ui-accent);
   text-decoration: none;
+}
+
+/* The same statistic picker is used by Stats and Rank. */
+#root .dirty-ui-statistic-selector .dropdown-toggle {
+  box-sizing: border-box;
+  height: var(--dirty-ui-control-height);
+  min-height: var(--dirty-ui-control-height);
+  padding: 0.2rem 0.65rem !important;
+  border: 1px solid var(--dirty-ui-accent) !important;
+  border-radius: var(--dirty-ui-radius) !important;
+  background: var(--dirty-ui-surface-raised) !important;
+  color: var(--dirty-ui-text) !important;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  box-shadow: 0 0 0 1px var(--dirty-theme-soft), 0 0.3rem 0.8rem rgba(0, 0, 0, 0.2) !important;
+}
+
+#root .dirty-ui-statistic-selector .dropdown-toggle::after {
+  margin-left: 0.8rem;
+  color: var(--dirty-ui-accent);
+}
+
+#root .dirty-ui-statistic-selector .dropdown-menu {
+  max-height: 65vh;
+  overflow-y: auto;
+  border: 1px solid var(--dirty-ui-accent);
+  border-radius: var(--dirty-ui-radius);
+  background: var(--dirty-theme-panel) !important;
+  box-shadow: var(--dirty-ui-shadow);
+}
+
+#root .dirty-ui-statistic-selector .dropdown-item {
+  background: var(--dirty-theme-panel) !important;
+  color: var(--dirty-ui-text) !important;
+}
+
+#root .dirty-ui-statistic-selector .dropdown-item:hover,
+#root .dirty-ui-statistic-selector .dropdown-item:focus,
+#root .dirty-ui-statistic-selector .dropdown-item.active {
+  background: var(--dirty-theme-soft) !important;
+  color: var(--dirty-ui-accent) !important;
+}
+
+:root.dirty-ui-theme-arcade #root .dirty-ui-statistic-selector .dropdown-toggle {
+  text-transform: uppercase;
+  text-shadow: 2px 2px 0 var(--dirty-theme-highlight);
+  box-shadow: 3px 3px 0 var(--dirty-theme-highlight) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -758,6 +1035,151 @@ body.dirty-ui-modal-open {
   color: inherit;
 }
 
+/* Native Stash filters inside the Rank dialog: keep search and filter controls,
+   but leave sorting, pagination, and media results to the host page. */
+.dirty-ui-native-filter-overlay {
+  align-items: center;
+  background: var(--dirty-ui-backdrop);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1rem;
+  position: fixed;
+  z-index: var(--dirty-ui-layer-integrated-dialog-raised);
+}
+
+.dirty-ui-native-filter-dialog {
+  background: var(--dirty-ui-surface-raised);
+  border: 1px solid var(--dirty-ui-border);
+  border-radius: var(--dirty-ui-radius);
+  box-shadow: var(--dirty-ui-shadow);
+  color: var(--dirty-ui-text);
+  max-height: 90vh;
+  overflow: visible;
+  padding: 1rem;
+  position: relative;
+  width: min(100%, 680px);
+}
+
+#dirty-shared-scene-filter-dialog .sidebar,
+#dirty-shared-scene-filter-dialog .sidebar-toggle-button-container,
+#dirty-shared-scene-filter-dialog .pagination-index-container,
+#dirty-shared-scene-filter-dialog .list-operations,
+#dirty-shared-scene-filter-dialog .sort-by-select,
+#dirty-shared-scene-filter-dialog .page-size-selector,
+#dirty-shared-scene-filter-dialog .stash-view-wrap,
+#dirty-shared-scene-filter-dialog .zoom-slider-container,
+#dirty-shared-scene-filter-dialog .filtered-list-toolbar > .btn-group:not(.sort-by-select):not(:has(.filter-button)),
+#dirty-shared-scene-filter-dialog .scene-card {
+  display: none !important;
+}
+#dirty-shared-scene-filter-dialog .item-list-container,
+#dirty-shared-scene-filter-dialog .sidebar-pane,
+#dirty-shared-scene-filter-dialog .sidebar-pane-content {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-width: 0;
+}
+#dirty-shared-scene-filter-dialog .filtered-list-toolbar {
+  position: static !important;
+  transform: none !important;
+  height: auto !important;
+  max-height: none !important;
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+  gap: .5rem;
+}
+#dirty-shared-scene-filter-dialog .search-term-input {
+  display: flex !important;
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+#dirty-rank-performer-filter-dialog .item-list-container,
+#dirty-rank-performer-filter-dialog .sidebar-pane,
+#dirty-rank-performer-filter-dialog .sidebar-pane-content {
+  width: 100%;
+}
+
+#dirty-rank-performer-filter-dialog .filtered-list-toolbar {
+  align-items: center;
+  flex-wrap: wrap !important;
+  gap: 0.75rem;
+  height: auto !important;
+  justify-content: flex-start !important;
+  max-height: none !important;
+  overflow: visible !important;
+  padding-top: 1.25rem;
+  position: static !important;
+  transform: none !important;
+  width: 100% !important;
+}
+
+#dirty-rank-performer-filter-dialog .filtered-list-toolbar > .search-term-input {
+  display: flex !important;
+  flex: 1 1 18rem;
+  max-width: none !important;
+  min-width: 0;
+}
+
+#dirty-rank-performer-filter-dialog .filtered-list-toolbar > .search-term-input input {
+  height: var(--dirty-ui-control-height);
+  min-height: var(--dirty-ui-control-height);
+}
+
+#dirty-rank-performer-filter-dialog .filtered-list-toolbar > .btn-group {
+  gap: 0.5rem;
+  left: auto !important;
+  position: relative !important;
+  right: auto !important;
+}
+
+#dirty-rank-performer-filter-dialog .saved-filter-dropdown .dropdown-toggle,
+#dirty-rank-performer-filter-dialog .filter-button {
+  align-items: center;
+  background: var(--dirty-ui-surface) !important;
+  border: 1px solid var(--dirty-ui-border) !important;
+  border-radius: var(--dirty-ui-radius) !important;
+  color: var(--dirty-ui-text) !important;
+  flex: 0 0 auto;
+  gap: 0.5rem;
+  height: var(--dirty-ui-control-height) !important;
+  padding: 0.4rem 0.7rem !important;
+  width: auto;
+}
+
+#dirty-rank-performer-filter-dialog .saved-filter-dropdown .dropdown-toggle::after {
+  border: 0 !important;
+  content: "Saved";
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0 !important;
+  vertical-align: baseline;
+}
+
+#dirty-rank-performer-filter-dialog .filter-button::after {
+  content: "Edit filters";
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+#dirty-rank-performer-filter-dialog .saved-filter-dropdown .dropdown-toggle:hover,
+#dirty-rank-performer-filter-dialog .filter-button:hover {
+  border-color: var(--dirty-ui-accent) !important;
+}
+
+#dirty-rank-performer-filter-dialog .sort-by-select,
+#dirty-rank-performer-filter-dialog .page-size-selector,
+#dirty-rank-performer-filter-dialog .stash-view-wrap,
+#dirty-rank-performer-filter-dialog .zoom-slider-container,
+#dirty-rank-performer-filter-dialog .list-operations,
+#dirty-rank-performer-filter-dialog .pagination-index-container,
+#dirty-rank-performer-filter-dialog .pagination-footer-container,
+#dirty-rank-performer-filter-dialog .filtered-list-toolbar > .btn-group:not(.sort-by-select):not(:has(.filter-button)) {
+  display: none !important;
+}
+
 .dirty-ui-toast-container {
   align-items: flex-end;
   bottom: 1rem;
@@ -831,7 +1253,9 @@ body.dirty-ui-modal-open {
   color: #ffc107;
   font-size: 0.85rem;
   font-weight: 600;
+  line-height: 1.3;
   margin-top: 0.45rem;
+  min-height: 1.3em;
 }
 
 .dirty-plugins-card {

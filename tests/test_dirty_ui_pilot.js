@@ -22,7 +22,11 @@ const React = {
 };
 const api = {
   React,
-  libraries: { ReactRouterDOM: { Link: "a" } },
+  libraries: { ReactRouterDOM: { Link: "a" }, Bootstrap: {
+    ButtonGroup: "button-group",
+    Dropdown: Object.assign(function Dropdown() {}, { Toggle: "dropdown-toggle", Menu: "dropdown-menu", Item: "dropdown-item" }),
+    InputGroup: { Prepend: "input-group-prepend" },
+  } },
   patch: { instead: noop },
   register: { route: noop },
   components: {},
@@ -36,7 +40,32 @@ const window = {
 };
 const document = { currentScript: null, addEventListener: noop };
 const source = fs.readFileSync(path.join(__dirname, "../plugins/DirtyPlugins/dirtyPlugins.js"), "utf8");
-vm.runInNewContext(source, { window, document, console: { info: noop, warn: noop, error: noop }, URLSearchParams });
+const consoleMessages = [];
+vm.runInNewContext(source, { window, document, console: {
+  log: (...args) => consoleMessages.push(args),
+  info: (...args) => consoleMessages.push(args),
+  warn: noop, error: noop,
+}, URLSearchParams });
+assert.equal(consoleMessages.length, 0, "routine startup must be silent by default");
+const debugHub = window.DirtyPlugins;
+const retainedLogs = window.__dirtyPluginsDebugLog.length;
+debugHub.debugLog("dirtyRank", "routine battle update");
+assert.equal(consoleMessages.length, 0, "routine activity must not flood the console");
+assert.equal(window.__dirtyPluginsDebugLog.length, retainedLogs + 1, "quiet mode retains diagnostic entries");
+window.localStorage = { getItem: () => "1" };
+assert.equal(debugHub.debugEnabled(), true, "persistent console logging requires explicit opt-in");
+debugHub.debugLog("dirtyRank", "debug update");
+assert.equal(consoleMessages.length, 1);
+window.__dirtyPluginsDebug = false;
+assert.equal(debugHub.debugEnabled(), false, "a page override can silence persistent debug logging");
+window.localStorage = { getItem: () => "0" };
+window.__dirtyPluginsDebug = true;
+assert.equal(debugHub.debugEnabled(), true, "a page override can enable logging for this session");
+delete window.__dirtyPluginsDebug;
+assert.equal(debugHub.debugEnabled(), false);
+window.localStorage = { getItem: () => { throw new Error("storage unavailable"); } };
+assert.equal(debugHub.debugEnabled(), false, "blocked storage must keep default logging quiet");
+delete window.localStorage;
 
 for (const filename of ["../plugins/DirtyPlugins/dirtyPlugins.css", "../plugins/DirtyRank/dirtyRank.css", "../plugins/DirtyStats/dirtyStats.css", "../plugins/DirtyTidy/dirtyTidy.css", "../plugins/DirtyFileExtractor/extractScenes.css", "../plugins/DirtyMultiscreen/multiscreen.css"]) {
   const css = fs.readFileSync(path.join(__dirname, filename), "utf8");
@@ -55,6 +84,78 @@ const hub = window.DirtyPlugins;
 const ui = hub.react;
 assert(hub && ui, "the shared hub should expose the pilot components");
 assert.equal(hub.theme.defaultKey, "classic", "the hub owns the suite's default visual theme");
+
+const titleObservers = [];
+window.MutationObserver = class {
+  constructor(callback) { this.callback = callback; titleObservers.push(this); }
+  observe(target) { assert.equal(target, document.head); this.connected = true; }
+  disconnect() { this.connected = false; }
+};
+document.head = {};
+document.title = "Scenes | Stash";
+let titleCleanup;
+// The hub captures useEffect when it loads, so load a fresh instance with an
+// effect harness to exercise mount, navigation, and unmount behavior.
+const titleWindow = { ...window, __dirtyPluginsSettingsHub: null, DirtyPlugins: {}, PluginApi: {
+  ...api, React: { ...React, useEffect: effect => { titleCleanup = effect(); } }
+} };
+vm.runInNewContext(source, { window: titleWindow, document, console: { info: noop, warn: noop, error: noop }, URLSearchParams });
+const usePageTitle = titleWindow.DirtyPlugins.react.usePageTitle;
+usePageTitle("DirtyStats", "Dashboard");
+assert.equal(document.title, "Dashboard - DirtyStats");
+document.title = "Performers | Stash";
+titleObservers.at(-1).callback();
+assert.equal(document.title, "Dashboard - DirtyStats", "late native list titles must not replace the plugin title");
+titleObservers.at(-1).callback();
+titleCleanup();
+assert.equal(document.title, "Scenes | Stash", "leaving restores the title from before the plugin route mounted");
+assert.equal(titleObservers.at(-1).connected, false, "unmount disconnects title observation");
+usePageTitle("DirtyStats", "Scene ratings");
+assert.equal(document.title, "Scene ratings - DirtyStats", "navigation updates the view title");
+document.title = "Studios | Stash";
+titleCleanup();
+assert.equal(document.title, "Studios | Stash", "cleanup preserves a title already set by the destination route");
+delete titleWindow.MutationObserver;
+usePageTitle("DirtyMultiscreen");
+assert.equal(document.title, "DirtyMultiscreen");
+titleCleanup();
+assert.equal(document.title, "Studios | Stash", "the basic lifecycle works without MutationObserver");
+
+titleWindow.MutationObserver = window.MutationObserver;
+usePageTitle("DirtyRank", "Battles");
+const battleTitleCleanup = titleCleanup;
+usePageTitle("DirtyRank", "King of the Hill");
+const kingTitleCleanup = titleCleanup;
+let currentTitle = document.title;
+let titleWrites = 0;
+Object.defineProperty(document, "title", {
+  configurable: true,
+  get: () => currentTitle,
+  set: value => { currentTitle = value; titleWrites++; },
+});
+// Deliver repeated mutation batches as a browser would after a title write.
+// Competing observers previously wrote two titles forever, starving input.
+for (let batch = 0; batch < 10; batch++) {
+  titleObservers.filter(observer => observer.connected).forEach(observer => observer.callback());
+}
+assert.equal(titleWrites, 0, "overlapping route observers must settle without rewriting one another's titles");
+document.title = "Native scene title";
+titleWrites = 0;
+titleObservers.filter(observer => observer.connected).forEach(observer => observer.callback());
+assert.equal(document.title, "King of the Hill - DirtyRank");
+assert.equal(titleWrites, 1, "only the active owner corrects a native title");
+kingTitleCleanup();
+assert.equal(document.title, "Battles - DirtyRank", "unmounting the active page restores the still-mounted owner");
+battleTitleCleanup();
+assert.equal(document.title, "Studios | Stash");
+usePageTitle("DirtyRank", "Battles");
+const prefixTitleCleanup = titleCleanup;
+usePageTitle("DirtyRank", "Leaderboard");
+const leaderboardTitleCleanup = titleCleanup;
+prefixTitleCleanup();
+assert.equal(document.title, "Leaderboard - DirtyRank", "older route cleanup must not overwrite the new page title");
+leaderboardTitleCleanup();
+assert.equal(document.title, "Studios | Stash", "out-of-order cleanup still restores the original title");
 
 const input = React.createElement("input", { type: "number", "aria-describedby": "existing-help" });
 const field = ui.Field({ id: "rank-weight", label: "Weight", help: "Positive only", error: "Enter a weight", children: input });
@@ -85,6 +186,19 @@ const navigation = ui.NavAction({ to: "/plugins/dirty-rank", label: "Rank battle
 assert.equal(navigation.type, "a");
 assert.equal(navigation.props["aria-label"], "Rank battles");
 assert.equal(navigation.children.length, 1, "navigation should have one interactive element");
+
+let chosenStatistic = null;
+const statisticSelector = ui.StatisticSelector({ id: "stat", value: "overall", options: [
+  { value: "overall", label: "Overall" }, { value: "faces", label: "Faces" },
+], onSelect: value => { chosenStatistic = value; } });
+assert.match(statisticSelector.props.className, /dirty-ui-statistic-selector/);
+assert.equal(statisticSelector.children[0].children[0].props["aria-label"], "Statistic");
+assert.equal(statisticSelector.children[0].children[0].children[0], "Overall");
+assert.equal(statisticSelector.children[1].children[1].props.eventKey, "faces");
+statisticSelector.props.onSelect("overall");
+assert.equal(chosenStatistic, null, "selecting the current statistic does nothing");
+statisticSelector.props.onSelect("faces");
+assert.equal(chosenStatistic, "faces");
 
 let page = 2;
 const pagination = ui.Pagination({ page: 2, totalPages: 3, onPageChange: value => { page = value; } });

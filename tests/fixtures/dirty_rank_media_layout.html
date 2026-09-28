@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DirtyRank media containment regression</title>
+  <link rel="stylesheet" href="../../plugins/DirtyPlugins/dirtyPlugins.css">
+  <link rel="stylesheet" href="../../plugins/DirtyRank/dirtyRank.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { background: #191422; color: #fff; font: 16px system-ui; margin: 0; }
+    main { max-width: 1100px; margin: auto; }
+    .fixture-portrait { background: linear-gradient(135deg, #384950, #624475); height: 12rem; }
+    video { background: #16191e; }
+    .fixture-native-controls { position: absolute; bottom: 0; background: #333; width: 100%; }
+    .video-js { position: relative; }
+    .dirty-rank-scene-caption { display: flex; }
+    #result { padding: 1rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <p id="result" role="status">Checking media boundaries…</p>
+    <section class="dirty-rank-arena">
+      <div class="dirty-rank-card dirty-rank-battle-native">
+        <div class="dirty-rank-image-wrap dirty-rank-scene-playing">
+          <div class="dirty-rank-native-portrait"><div class="fixture-portrait">Synthetic portrait</div></div>
+          <div class="dirty-rank-scene-panel">
+            <video class="dirty-rank-scene-player" width="1920" height="1080" controls></video>
+            <div class="dirty-rank-scene-caption"><span>A very long scene title that must truncate instead of stretching the video outside the performer card</span><span>Rating 100</span></div>
+          </div>
+        </div>
+        <div class="dirty-rank-card-body"><h3 class="dirty-rank-performer-name">Synthetic performer with an unusually long display name</h3></div>
+      </div>
+      <div class="dirty-rank-versus" aria-hidden="true"></div>
+      <div class="dirty-rank-card dirty-rank-battle-native">
+        <div class="dirty-rank-image-wrap dirty-rank-scene-playing">
+          <div class="dirty-rank-native-portrait"><div class="fixture-portrait">Synthetic portrait</div></div>
+          <div class="dirty-rank-scene-panel">
+            <div class="dirty-rank-native-preview dirty-rank-scene-player"><div class="VideoPlayer"><div class="video-wrapper"><div class="video-js"><video width="1920" height="1080" style="width:100%;height:100%"></video><div class="fixture-native-controls">Native player controls</div></div></div></div></div>
+            <div class="dirty-rank-scene-caption"><span>Another long scene title with intrinsic media dimensions larger than its available card width</span><span>Rating 100</span></div>
+          </div>
+        </div>
+        <div class="dirty-rank-card-body"><h3 class="dirty-rank-performer-name">Synthetic native player</h3></div>
+      </div>
+    </section>
+  </main>
+  <script>
+    function checkMediaLayout() {
+      var failures = [];
+      document.querySelectorAll('.dirty-rank-card').forEach(function (card) {
+        var bounds = card.getBoundingClientRect();
+        card.querySelectorAll('.dirty-rank-image-wrap, .dirty-rank-scene-panel, .dirty-rank-scene-player, .dirty-rank-scene-caption, .dirty-rank-card-body, .VideoPlayer, .video-wrapper, .video-js, video').forEach(function (element) {
+          var media = element.getBoundingClientRect();
+          if (media.left < bounds.left - 1 || media.right > bounds.right + 1) failures.push(element.className || element.tagName);
+        });
+      });
+      document.getElementById('result').textContent = failures.length ? 'FAIL: overflowing ' + failures.join(', ') : 'PASS: both player types and long captions stay inside their cards';
+    }
+    window.addEventListener('load', checkMediaLayout);
+    window.addEventListener('resize', checkMediaLayout);
+  </script>
+</body>
+</html>

@@ -63,6 +63,22 @@ vm.runInNewContext(fs.readFileSync("plugins/DirtyPlugins/dirtyPlugins.js", "utf8
   assert.deepEqual(observed, ["paper"]);
   await hub.theme.load();
   assert.equal(hub.theme.currentKey, "paper", "the suite choice wins over legacy Stats storage");
+  await hub.configurePlugin("dirtyPlugins", { visualTheme: "destijl" });
+  assert.equal(hub.theme.currentKey, "destijl");
+  assert(classes.has("dirty-ui-theme-destijl"));
+  assert(!classes.has("dirty-ui-theme-paper"));
+  await hub.theme.load();
+  assert.equal(hub.theme.currentKey, "destijl", "De Stijl survives a settings reload");
+  assert.deepEqual(observed, ["paper", "destijl"]);
+  await hub.configurePlugin("dirtyPlugins", { visualTheme: "destijl-dark" });
+  assert.equal(hub.theme.currentKey, "destijl-dark");
+  assert(classes.has("dirty-ui-theme-destijl-dark"));
+  assert(!classes.has("dirty-ui-theme-destijl"), "the dark variant replaces the light variant");
+  await hub.theme.load();
+  assert.equal(hub.theme.currentKey, "destijl-dark", "the dark variant survives a settings reload");
+  await hub.configurePlugin("dirtyPlugins", { visualTheme: "classic" });
+  assert(!classes.has("dirty-ui-theme-destijl"), "switching away removes all De Stijl overrides");
+  assert(!classes.has("dirty-ui-theme-destijl-dark"));
   unsubscribe();
 
   const backup = await hub.runSharedOperation({ mode: "backupDatabase" });

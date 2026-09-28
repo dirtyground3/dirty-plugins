@@ -13,10 +13,11 @@ a shared SQLite database, and is installed automatically as a dependency.
 | Plugin | What it does | Version |
 | --- | --- | ---: |
 | [DirtyStats](plugins/DirtyStats/) | Explores origins, growth, ages, ratings, studios, birthdays and cast connections with native filters and PNG export. | 0.6.25 |
-| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 0.4.4 |
+| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 0.4.5 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 0.4.5 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers through category-based comparisons using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet battles, and leaderboards. | 0.7.17 |
 | [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 0.3.8 |
+| [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with scene-filter rules for resize, reencode, or deletion, with optional full-output review before replacement. | 0.1.0 |
 
 The plugins share rounded controls, aligned selects and actions, visible focus
 and save feedback, and graphite/teal/amber default styling. Choose one suite
@@ -219,14 +220,14 @@ preview and confirmation.
 ## Debugging plugin activity
 
 All Dirty plugins share a browser-side debug log so you can see exactly what
-each plugin does on ordinary Stash pages. It is written to the browser console
-with a `[DirtyPlugins]` prefix and kept in memory at
+each plugin does on ordinary Stash pages. Console logging is off by default;
+when enabled, messages have a `[DirtyPlugins]` prefix. The log is kept in memory at
 `window.__dirtyPluginsDebugLog`. Each entry names the plugin, the hook
 (`patch.before`, `patch.after`, `patch.instead`, `register.route`, a GraphQL
 request, or a lifecycle event), the current path, and elapsed milliseconds.
 
-Open the browser developer tools (F12) on the Stash tab and filter the console
-for `DirtyPlugins`. To dump the whole collected log, including entries from
+Open the browser developer tools (F12) on the Stash tab. To dump the whole
+collected log, including entries from
 before the console was opened, run:
 
 ```js
@@ -235,7 +236,14 @@ dirtyPluginsDumpDebugLogs()
 
 The same function is available as `DirtyPlugins.dumpDebugLogs()`.
 
-Console output can be silenced without losing the in-memory log:
+Enable console output when troubleshooting:
+
+```js
+window.__dirtyPluginsDebug = true;              // this page only
+localStorage.setItem("dirtyPluginsDebug", "1"); // persists
+```
+
+Filter the console for `DirtyPlugins`. Disable console output again with:
 
 ```js
 window.__dirtyPluginsDebug = false;             // this page only
@@ -304,6 +312,7 @@ node --check plugins/DirtyRank/dirtyRank.js
 node --check plugins/DirtyPlugins/dirtyPlugins.js
 node --check plugins/DirtyMultiscreen/multiscreen.js
 node tests/test_dirty_ui_pilot.js
+node tests/test_dirty_file_extractor_ui.js
 node tests/test_dirty_theme.js
 node tests/test_dirty_rank_algorithms.js
 node tests/test_dirty_rank_media.js

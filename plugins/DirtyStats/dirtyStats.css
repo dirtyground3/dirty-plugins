@@ -47,7 +47,9 @@
   background: var(--dirty-stats-panel);
 }
 
-/* Paper buttons override Bootstrap's contextual button variables inside this theme only. */
+/* Light themes keep native filter fields readable against suite surfaces. */
+#root :is(.dirty-stats-theme-destijl, .dirty-stats-theme-destijl-dark) .form-control,
+#root :is(.dirty-stats-theme-destijl, .dirty-stats-theme-destijl-dark) .btn-secondary,
 #root .dirty-stats-theme-paper .form-control,
 #root .dirty-stats-theme-paper .btn-secondary {
   border-color: var(--dirty-stats-border) !important;
@@ -210,20 +212,6 @@
 .dirty-stats-performer-dialog .sort-by-select,
 .dirty-stats-performer-dialog .filtered-list-toolbar > .btn-group:not(:has(.filter-button)) {
   display: none !important;
-}
-
-#root .dirty-stats-page .dirty-stats-selector .dropdown-toggle {
-  box-sizing: border-box;
-  height: var(--dirty-ui-control-height);
-  min-height: var(--dirty-ui-control-height);
-  padding: .2rem .65rem !important;
-  border-color: var(--dirty-stats-primary) !important;
-  box-shadow: inset 0 0 0 1px var(--dirty-stats-soft) !important;
-}
-
-#root .dirty-stats-page .dirty-stats-selector .dropdown-toggle:focus-visible {
-  outline: 2px solid var(--dirty-stats-primary);
-  outline-offset: 2px;
 }
 
 /* Stash caps its toolbar at 42px; a wrapped mobile row needs its own height. */
@@ -586,54 +574,6 @@
   margin: .5rem 0 1rem;
 }
 
-/* Stash owns the statistic dropdown; these scoped rules bridge its host-theme styles. */
-#root .dirty-stats-dashboard-page .dirty-stats-selector .dropdown-toggle {
-  box-sizing: border-box;
-  height: var(--dirty-ui-control-height);
-  min-height: var(--dirty-ui-control-height);
-  padding: .2rem .65rem !important;
-  border: 1px solid var(--dirty-stats-primary) !important;
-  border-radius: var(--dirty-stats-radius) !important;
-  background: var(--dirty-stats-panel-alt) !important;
-  color: var(--dirty-stats-text) !important;
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: .035em;
-  box-shadow: 0 0 0 1px var(--dirty-stats-soft), 0 .3rem .8rem rgba(0,0,0,.2) !important;
-}
-
-#root .dirty-stats-dashboard-page .dirty-stats-selector .dropdown-toggle::after {
-  margin-left: .8rem;
-  color: var(--dirty-stats-primary);
-}
-
-#root .dirty-stats-dashboard-page .dirty-stats-selector .dropdown-menu {
-  max-height: 65vh;
-  overflow-y: auto;
-  border: 1px solid var(--dirty-stats-primary);
-  border-radius: var(--dirty-stats-radius);
-  background: var(--dirty-stats-panel) !important;
-  box-shadow: var(--dirty-ui-shadow);
-}
-
-#root .dirty-stats-dashboard-page .dirty-stats-selector .dropdown-item {
-  background: var(--dirty-stats-panel) !important;
-  color: var(--dirty-stats-text) !important;
-}
-
-#root .dirty-stats-dashboard-page .dirty-stats-selector .dropdown-item:hover,
-#root .dirty-stats-dashboard-page .dirty-stats-selector .dropdown-item:focus,
-#root .dirty-stats-dashboard-page .dirty-stats-selector .dropdown-item.active {
-  background: var(--dirty-stats-soft) !important;
-  color: var(--dirty-stats-primary) !important;
-}
-
-#root .dirty-stats-theme-arcade.dirty-stats-dashboard-page .dirty-stats-selector .dropdown-toggle {
-  text-transform: uppercase;
-  text-shadow: 2px 2px 0 var(--dirty-stats-highlight);
-  box-shadow: 3px 3px 0 var(--dirty-stats-highlight) !important;
-}
-
 .dirty-stats-dashboard-picker {
   margin-bottom: 1rem;
   padding: 1rem;
@@ -825,6 +765,39 @@
   box-shadow: 0 .35rem .8rem rgba(91, 73, 39, .13);
 }
 
+:is(.dirty-stats-theme-destijl, .dirty-stats-theme-destijl-dark) .dirty-stats-dashboard-widget {
+  border: 3px solid var(--dirty-stats-border);
+  box-shadow: var(--dirty-ui-shadow);
+}
+
+:is(.dirty-stats-theme-destijl, .dirty-stats-theme-destijl-dark) .dirty-stats-dashboard-widget-header {
+  background: var(--dirty-stats-panel-alt);
+  border-bottom: 2px solid var(--dirty-stats-border);
+  border-left: 0.65rem solid var(--dirty-ui-icon-red);
+}
+
+:is(.dirty-stats-theme-destijl, .dirty-stats-theme-destijl-dark) .dirty-stats-dashboard-widget:nth-child(even) .dirty-stats-dashboard-widget-header {
+  border-left-color: var(--dirty-ui-icon-blue);
+}
+
+:is(.dirty-stats-theme-destijl, .dirty-stats-theme-destijl-dark) .dirty-stats-dashboard-widget-title {
+  letter-spacing: 0.02em;
+}
+
+#root :is(.dirty-stats-theme-destijl, .dirty-stats-theme-destijl-dark) .dirty-stats-dashboard-open-link {
+  background: var(--dirty-stats-panel) !important;
+  border: 2px solid var(--dirty-stats-border);
+  color: var(--dirty-stats-text) !important;
+}
+
+#root :is(.dirty-stats-theme-destijl, .dirty-stats-theme-destijl-dark) .dirty-stats-dashboard-open-link:hover,
+#root :is(.dirty-stats-theme-destijl, .dirty-stats-theme-destijl-dark) .dirty-stats-dashboard-open-link:focus-visible {
+  background: var(--dirty-ui-icon-blue) !important;
+  color: var(--dirty-theme-on-accent) !important;
+  outline: 2px solid var(--dirty-stats-primary);
+  outline-offset: 2px;
+}
+
 .dirty-stats-dashboard-widget-small {
   grid-column: span 3;
 }
@@ -962,16 +935,30 @@
 
 .dirty-stats-dashboard-editor {
   display: flex;
-  align-items: flex-end;
-  gap: .65rem .8rem;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: .55rem;
   padding: .65rem .8rem;
   border-bottom: 1px solid var(--dirty-ui-border);
   background: rgba(0, 0, 0, .13);
 }
 
+.dirty-stats-dashboard-fields,
+.dirty-stats-dashboard-toggles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 8rem), 1fr));
+  align-items: end;
+  gap: .55rem .8rem;
+}
+
+.dirty-stats-dashboard-toggles:empty {
+  display: none;
+}
+
 .dirty-stats-dashboard-check {
   display: flex;
+  min-width: 0;
+  min-height: 2rem;
   align-items: center;
   gap: .25rem;
   margin: 0;
@@ -979,33 +966,23 @@
   font-size: .78rem;
 }
 
-.dirty-stats-dashboard-filter-setting {
-  display: flex;
-  align-items: center;
-  gap: .45rem;
-  color: var(--dirty-ui-muted);
+.dirty-stats-dashboard-filter-setting button {
+  width: 100%;
+  padding: .2rem .5rem;
   font-size: .78rem;
-}
-
-.dirty-stats-dashboard-options {
-  display: flex;
-  align-items: flex-end;
-  gap: .6rem;
-  flex: 1 1 200px;
-  flex-wrap: wrap;
 }
 
 .dirty-stats-dashboard-field {
   display: flex;
   flex-direction: column;
   gap: .2rem;
-  min-width: 130px;
+  min-width: 0;
   margin: 0;
   color: var(--dirty-ui-muted);
   font-size: .75rem;
 }
 
-.dirty-stats-dashboard-field select, .dirty-stats-dashboard-field input[type="text"] {
+.dirty-stats-dashboard-field select, .dirty-stats-dashboard-field input {
   width: 100%;
 }
 
@@ -1018,12 +995,15 @@
 }
 
 .dirty-stats-dashboard-no-options {
+  grid-column: 1 / -1;
   color: var(--dirty-ui-muted);
   font-size: .78rem;
 }
 
 .dirty-stats-dashboard-widget-body {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
   min-height: 0;
   overflow: auto;
   padding: .7rem .8rem .8rem;
@@ -1031,6 +1011,7 @@
 
 .dirty-stats-dashboard-metrics {
   display: flex;
+  flex-shrink: 0;
   align-items: stretch;
   gap: .5rem;
   flex-wrap: wrap;
@@ -1061,17 +1042,10 @@
 }
 
 .dirty-stats-dashboard-chart {
+  flex: 1 0 100px;
   width: 100%;
-  height: 145px;
+  min-height: 100px;
   min-width: 0;
-}
-
-.dirty-stats-dashboard-widget-medium .dirty-stats-dashboard-chart {
-  height: 190px;
-}
-
-.dirty-stats-dashboard-widget-large .dirty-stats-dashboard-chart {
-  height: 390px;
 }
 
 .dirty-stats-dashboard-chart-error {
@@ -1079,32 +1053,72 @@
 }
 
 .dirty-stats-dashboard-card-count {
+  flex: 0 0 auto;
   margin: 0 0 .6rem;
   color: var(--dirty-ui-muted);
   font-size: .8rem;
 }
 
+.dirty-stats-dashboard-performer-cards {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-height: 100%;
+}
+
 .dirty-stats-dashboard-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  display: flex;
+  flex: 1 0 auto;
+  flex-wrap: wrap;
+  align-content: stretch;
   gap: .75rem;
 }
 
-.dirty-stats-dashboard-widget-small .dirty-stats-dashboard-card-grid {
-  grid-template-columns: 1fr;
-}
-
-.dirty-stats-dashboard-widget-medium .dirty-stats-dashboard-card-grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
-}
-
 .dirty-stats-dashboard-card-grid .dirty-stats-performer-column {
+  display: flex;
+  flex: 1 1 min(100%, 170px);
+  min-width: 0;
+  min-height: 180px;
+}
+
+.dirty-stats-dashboard-widget-small .dirty-stats-performer-column {
+  flex-basis: 100%;
+}
+
+.dirty-stats-dashboard-widget-medium .dirty-stats-performer-column {
+  flex-basis: min(100%, 130px);
+}
+
+.dirty-stats-dashboard-card-grid .performer-card {
+  flex: 1 1 auto;
   min-width: 0;
   width: 100%;
 }
 
-.dirty-stats-dashboard-card-grid .performer-card {
+.dirty-stats-dashboard-card-grid .performer-card .thumbnail-section {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 96px;
+}
+
+/* Only the portrait link grows. The native country link is also a direct
+   child; stretching both splits the photo area in half. */
+.dirty-stats-dashboard-card-grid .thumbnail-section > a:first-child {
+  position: relative;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dirty-stats-dashboard-card-grid .performer-card-image {
+  position: absolute;
+  inset: 0;
+  display: block;
   width: 100%;
+  height: 100%;
+  min-width: 0;
+  aspect-ratio: auto;
+  object-fit: cover;
 }
 
 .dirty-stats-dashboard-state {

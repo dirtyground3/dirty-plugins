@@ -6,8 +6,10 @@ the originals.
 
 ## Features
 
-- An **Extract selected…** button appears beside the top toolbar when one or
-  more scenes, markers, or images are selected.
+- An **Extract selected…** action row appears below the top toolbar when one or
+  more scenes, markers, or images are selected. It reserves its own space so it
+  cannot cover other buttons, including on narrow screens.
+- Scene selections on performer pages also show the extraction action.
 - Scenes copy every attached media file.
 - Markers extract only their `seconds` to `end_seconds` range from the parent
   scene. Each selected marker produces its own accurately bounded MP4 clip
@@ -18,8 +20,8 @@ the originals.
 - Collision policies: `rename` (safe default), `skip`, and `overwrite`.
 - Optional dry-run mode.
 - Live per-file log messages and byte-level progress in Stash's Tasks view.
-- The UI is isolated from Stash's React tree: it does not patch components,
-  change menus, replace elements, or render React children.
+- Selection actions use the native lists' selection state and the shared button
+  component, preserving Stash's existing controls and selected items across pages.
 - Copy speed defaults to 20 MiB/s to avoid monopolizing the disk used by Stash;
   set **Maximum copy speed** to `0` for unlimited throughput.
 - Uses only the Python standard library and Stash's configured FFmpeg; no
@@ -57,9 +59,9 @@ container filesystem rather than host-only paths.
 
 ## Usage
 
-Open Stash's **Scenes**, **Markers**, or **Images** page and select one or more
+Open Stash's **Scenes**, **Markers**, **Images**, or a performer's **Scenes** tab and select one or more
 items using the normal checkboxes. Choose **Extract selected scene(s)**,
-**Extract selected marker(s)**, or **Extract selected image(s)** beside the top
+**Extract selected marker(s)**, or **Extract selected image(s)** below the top
 toolbar. Stash runs copying as a background job; progress and errors appear
 under **Tasks** and in the Stash log.
 
@@ -84,12 +86,15 @@ Run the local checks from the repository root:
 ```powershell
 python -B -m unittest discover -s tests -v
 node --check plugins/DirtyFileExtractor/extractScenes.js
+node tests/test_dirty_file_extractor_ui.js
 ```
 
-The UI integration is plain browser JavaScript attached directly to
-`document.body`. It uses DirtyPlugins for GraphQL, database-backed settings, notifications,
-and shared visuals while intentionally avoiding Stash's experimental React
-`PluginApi` for its own controls.
+The UI integration adds a React action row to Stash's scene, marker, and image
+lists through `PluginApi.patch.after`. It uses DirtyPlugins for GraphQL,
+database-backed settings, notifications, and shared visuals. Reloading tears
+down the previous instance so older patches pass the native list through.
+The folder picker is attached to `document.body` and registered as a shared
+settings field action.
 The folder picker uses the shared button style, keeps keyboard focus inside
 until closed, restores focus to its opener, and locks background scrolling.
 With `?docsCapture=1`, folder and path labels use synthetic placeholders.

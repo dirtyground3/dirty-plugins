@@ -1,5 +1,11 @@
 # DirtyPlugins
 
+DirtyCompactor uses this hub for its rule settings, native scene-filter editor,
+run journals, and output-review decisions. Compactor-owned refresh scans are
+identified through the shared backend so they do not trigger another Compactor
+or DirtyTidy automatic run. `dirty_plugins_client.py` provides a standard-library
+Stash transport and Windows child-process containment for backend workers.
+
 DirtyPlugins provides the shared runtime and unlisted settings page used by
 plugins in this repository. It is installed automatically as a dependency
 when a Dirty plugin is installed from the package source.
@@ -74,6 +80,14 @@ without inspecting stylesheet rules, so external Stash theme stylesheets are
 safe to use. Stats charts consume these roles for semantic chrome while their
 categorical palettes remain Stats-specific.
 
+Choose **De Stijl** in **General → Suite theme** for a geometric light theme
+with coral and blue blocks, grey surfaces, charcoal dividers, square controls,
+and solid offset shadows. Navigation icons use the same reference palette in
+every theme.
+
+**De Stijl Dark** keeps the same geometry with charcoal surfaces and light
+text. Both variants are available in the shared Suite theme selector.
+
 DirtyPlugins also owns `dirty_plugins.sqlite3`, the shared WAL-enabled database
 for high-frequency plugin data that should not trigger Stash entity-update
 hooks. Runtime database and WAL files are excluded from plugin packages and
@@ -104,6 +118,9 @@ navigation.
 ## Debug logging
 
 The hub installs a shared browser-side debug log used by every Dirty plugin.
+Console logging is off by default. Enable it with
+`window.__dirtyPluginsDebug = true` or
+`localStorage.setItem("dirtyPluginsDebug", "1")` when troubleshooting.
 Console lines are prefixed `[DirtyPlugins]`, and the full log is available at
 `window.__dirtyPluginsDebugLog` and through `dirtyPluginsDumpDebugLogs()` (also
 `DirtyPlugins.dumpDebugLogs()`). It records plugin lifecycle events, route and

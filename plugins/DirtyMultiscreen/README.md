@@ -10,6 +10,7 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - Random starting positions, looping, and start-muted behavior.
 - Marker playback with a configurable fallback duration.
 - Optional pause when the browser tab is hidden.
+- The O-counter button fades away after one click per playback session. Failed saves can be retried without incrementing scenes that already succeeded.
 - Runs inside Stash and uses its existing scene and marker data.
 
 ## Screenshots

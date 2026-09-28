@@ -1,0 +1,24 @@
+.dirty-compactor { color: var(--dirty-ui-text); display: grid; gap: var(--dirty-ui-space-4, 1rem); min-width: 0; }
+.dirty-compactor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: var(--dirty-ui-space-3, .75rem); margin-block: 1rem; }
+.dirty-compactor .dirty-ui-control-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.dirty-compactor details { margin-top: .75rem; }
+.dirty-compactor summary { cursor: pointer; padding-block: .5rem; }
+.dirty-compactor-path { overflow-wrap: anywhere; color: var(--dirty-ui-muted); font-size: .875rem; }
+.dirty-compactor-table { width: 100%; }
+.dirty-compactor-table td, .dirty-compactor-table th { vertical-align: top; padding: .75rem; }
+.dirty-compactor-table td { min-width: 9rem; }
+.dirty-compactor-danger { color: var(--dirty-ui-danger); }
+.dirty-compactor-review { border-color: var(--dirty-ui-accent); }
+.dirty-compactor-review video { display: block; width: 100%; max-height: 65vh; background: var(--dirty-ui-surface-raised); }
+.dirty-compactor-media-placeholder { min-height: 14rem; display: grid; place-items: center; background: var(--dirty-ui-surface-raised); border: 1px solid var(--dirty-ui-border); }
+.dirty-compactor-confirm { width: min(40rem, calc(100vw - 2rem)); max-height: 90vh; overflow: auto; padding: 1.5rem; background: var(--dirty-ui-surface-raised); color: var(--dirty-ui-text); }
+.dirty-compactor-confirm .dirty-ui-control-row { display: flex; flex-wrap: wrap; gap: .5rem; }
+.dirty-compactor-history { list-style: none; padding: 0; }
+.dirty-compactor-history li { padding-block: .5rem; border-bottom: 1px solid var(--dirty-ui-border); }
+@media (max-width: 600px) {
+  .dirty-compactor-table thead { display: none; }
+  .dirty-compactor-table tbody, .dirty-compactor-table tr, .dirty-compactor-table td { display: block; min-width: 0; }
+  .dirty-compactor-table tr { border-bottom: 1px solid var(--dirty-ui-border); padding-block: .5rem; }
+  .dirty-compactor-table td { padding: .35rem; }
+}
+@media (prefers-reduced-motion: reduce) { .dirty-compactor * { scroll-behavior: auto; transition: none; } }

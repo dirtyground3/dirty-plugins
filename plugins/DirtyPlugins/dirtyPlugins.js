@@ -22,9 +22,9 @@
   var UNSAVED_SETTINGS_MESSAGE = "You have unsaved Dirty Plugins settings. Leave without saving them?";
   var DEFAULT_VISUAL_THEME = "classic";
 
-  var MANAGED_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"];
+  var MANAGED_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor"];
   var MANAGED_PLUGIN_ID_SET = new Set(MANAGED_PLUGIN_IDS);
-  var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"];
+  var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor"];
   var MAIN_PAGE_PLUGIN_ID_SET = new Set(MAIN_PAGE_PLUGIN_IDS);
   var PLUGIN_SETTING_ORDER = {
     dirtyPlugins: ["visualTheme"],
@@ -87,6 +87,8 @@
         { value: "tropical", label: "Tropical Punch" },
         { value: "arcade", label: "Retro Arcade" },
         { value: "paper", label: "Paper Picnic" },
+        { value: "destijl", label: "De Stijl" },
+        { value: "destijl-dark", label: "De Stijl Dark" },
       ],
     },
   };
@@ -112,10 +114,10 @@
   // --- Plugin debug logging ------------------------------------------------
   // Every Dirty plugin records its lifecycle and the PluginApi patches it runs
   // on ordinary Stash pages. Entries are kept in window.__dirtyPluginsDebugLog
-  // and mirrored to the browser console as [DirtyPlugins][<scope>] … lines.
+  // and optionally mirrored to the console as [DirtyPlugins][<scope>] … lines.
   // Run dirtyPluginsDumpDebugLogs() in the console to dump the full table.
-  // Silence the console (the in-memory log keeps collecting) with
-  // window.__dirtyPluginsDebug = false or localStorage dirtyPluginsDebug = "0".
+  // Console logging is off by default. Enable it with
+  // window.__dirtyPluginsDebug = true or localStorage dirtyPluginsDebug = "1".
   // Note: Stash's Troubleshooting mode disables all plugin JS, so these logs
   // only appear when plugins are enabled.
   var DEBUG_LOG_KEY = "__dirtyPluginsDebugLog";
@@ -144,10 +146,9 @@
     try {
       if (window.__dirtyPluginsDebug === false) return false;
       if (window.__dirtyPluginsDebug === true) return true;
-      if (window.localStorage &&
-          window.localStorage.getItem("dirtyPluginsDebug") === "0") return false;
+      if (window.localStorage) return window.localStorage.getItem("dirtyPluginsDebug") === "1";
     } catch (_error) {}
-    return true;
+    return false;
   }
 
   function debugLog(scope, message, data) {
@@ -593,6 +594,43 @@
     };
   }
 
+  var pageTitleOwners = [];
+
+  function usePageTitle(pluginName, viewTitle) {
+    useEffect(function () {
+      var previousTitle = document.title;
+      var title = (viewTitle ? viewTitle + " - " : "") + pluginName;
+      var owner = { title: title, previousTitle: previousTitle };
+      pageTitleOwners.push(owner);
+      function updateTitle() {
+        // Overlapping routes must not fight in a MutationObserver microtask
+        // loop. Only the most recently mounted title effect may write.
+        if (pageTitleOwners[pageTitleOwners.length - 1] === owner && document.title !== title) document.title = title;
+      }
+      updateTitle();
+      // Native Stash lists can update their Helmet title after loading. Keep
+      // the plugin page's title until its route unmounts.
+      var observer = null;
+      if (window.MutationObserver && document.head) {
+        observer = new window.MutationObserver(updateTitle);
+        observer.observe(document.head, { childList: true, subtree: true, characterData: true });
+      }
+      return function () {
+        if (observer) observer.disconnect();
+        var index = pageTitleOwners.indexOf(owner);
+        if (index === -1) return;
+        var wasActive = index === pageTitleOwners.length - 1;
+        pageTitleOwners.splice(index, 1);
+        // Preserve the original title when an older route unmounts first.
+        if (pageTitleOwners[index]) pageTitleOwners[index].previousTitle = owner.previousTitle;
+        if (wasActive && document.title === title) {
+          var activeOwner = pageTitleOwners[pageTitleOwners.length - 1];
+          document.title = activeOwner ? activeOwner.title : owner.previousTitle;
+        }
+      };
+    }, [pluginName, viewTitle]);
+  }
+
   function Dialog(props) {
     var dialog = useRef(null);
     useEffect(function () {
@@ -853,6 +891,24 @@
     }, props.icon);
   }
 
+  function StatisticSelector(props) {
+    var bootstrap = PluginApi.libraries.Bootstrap;
+    var Dropdown = bootstrap.Dropdown;
+    var options = props.options || [];
+    var selected = options.find(function (option) { return option.value === props.value; });
+    return createElement(Dropdown, {
+      as: bootstrap.ButtonGroup,
+      className: "sort-by-select dirty-ui-statistic-selector" + (props.className ? " " + props.className : ""),
+      onSelect: function (value) { if (value && value !== props.value && props.onSelect) props.onSelect(value); },
+    },
+      createElement(bootstrap.InputGroup.Prepend, null,
+        createElement(Dropdown.Toggle, { variant: "secondary", id: props.id, "aria-label": props.ariaLabel || "Statistic" }, selected ? selected.label : props.value)),
+      createElement(Dropdown.Menu, { className: "bg-secondary text-white" },
+        options.map(function (option) {
+          return createElement(Dropdown.Item, { key: option.value, className: "bg-secondary text-white", eventKey: option.value, active: props.value === option.value }, option.label);
+        })));
+  }
+
   function loggedGraphql(query, variables, options) {
     var operationName = debugGraphqlOperationName(query);
     var started = debugNow();
@@ -879,6 +935,10 @@
   hubApi.getPluginSettings = getPluginSettings;
   hubApi.configurePlugin = configurePlugin;
   hubApi.runSharedOperation = runSharedOperation;
+  hubApi.isInternalScan = function (jobId, startTime) {
+    return runSharedOperation({ mode: "isInternalScan", jobId: String(jobId), startTime: startTime })
+      .then(function (result) { return Boolean(result.internal); });
+  };
   hubApi.values = {
     asObject: asObject,
     clampInteger: clampInteger,
@@ -888,7 +948,7 @@
   hubApi.ui = { notify: notify, trapDialogTab: trapDialogTab, lockBodyScroll: lockBodyScroll, manageDialog: manageDialog };
   hubApi.theme = hubApi.theme || {};
   hubApi.theme.defaultKey = DEFAULT_VISUAL_THEME;
-  var visualThemeKeys = ["classic", "candy", "tropical", "arcade", "paper"];
+  var visualThemeKeys = ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"];
   var visualThemeListeners = [];
   var visualThemeKey = DEFAULT_VISUAL_THEME;
   function normalizedVisualTheme(value) {
@@ -951,9 +1011,82 @@
     SettingsSection: SettingsSection,
     SettingsToggle: SettingsToggle,
     StateView: StateView,
+    StatisticSelector: StatisticSelector,
+    usePageTitle: usePageTitle,
   };
   var nativeComponentLoads = {};
   var nativeBundleLoads = {};
+  var sceneFilterListeners = {};
+  var activeSharedSceneFilter = null;
+  function serializeSceneFilter(filter) {
+    var find = Object.assign({}, filter.makeFindFilter());
+    delete find.page;
+    delete find.per_page;
+    var query = new URLSearchParams(filter.makeQueryParameters());
+    query.delete("page");
+    query.delete("per_page");
+    return { find: find, scene: JSON.parse(JSON.stringify(filter.makeFilter() || {})), query: query.toString(), all: false };
+  }
+  function SharedSceneFilterCapture(props) {
+    var value = serializeSceneFilter(props.filter);
+    var key = JSON.stringify(value);
+    useEffect(function () {
+      var listener = sceneFilterListeners[props.owner];
+      if (listener) listener(value);
+    }, [props.owner, key]);
+    return null;
+  }
+  function SceneFilterEditor(props) {
+    var readyState = useState(false), ready = readyState[0], setReady = readyState[1];
+    var errorState = useState(""), error = errorState[0], setError = errorState[1];
+    var candidate = useRef(props.value || {});
+    var owner = useRef("filter-" + Math.random().toString(36).slice(2));
+    var closeRef = useRef(null);
+    var callback = useRef(props.onChange);
+    callback.current = props.onChange;
+    useEffect(function () {
+      if (!props.open) return undefined;
+      var active = true;
+      candidate.current = props.value || {};
+      activeSharedSceneFilter = owner.current;
+      sceneFilterListeners[owner.current] = function (value) { candidate.current = value; };
+      hubApi.native.ensureComponents("SceneList", ["FilteredSceneList"]).then(function () {
+        if (active) setReady(true);
+      }).catch(function (failure) { if (active) setError(failure.message); });
+      return function () {
+        active = false; delete sceneFilterListeners[owner.current];
+        if (activeSharedSceneFilter === owner.current) activeSharedSceneFilter = null;
+      };
+    }, [props.open]);
+    return createElement(Dialog, {
+      id: "dirty-shared-scene-filter-dialog", open: props.open, ariaLabel: "Scene filter", initialFocusRef: closeRef,
+      allowNativePopup: true, onClose: props.onClose,
+      className: "dirty-ui-native-filter-dialog dirty-ui-panel",
+      backdropClassName: "dirty-ui-native-filter-overlay",
+    },
+      createElement("h2", null, "Scene filter"),
+      error ? createElement(StateView, { title: "Stash filters unavailable", detail: error })
+        : !ready ? createElement(StateView, { title: "Loading filters…" })
+        : createElement(PluginApi.libraries.ReactRouterDOM.MemoryRouter, {
+          initialEntries: [{ pathname: "/scenes", search: "?" + ((props.value || {}).query || "") }],
+        }, createElement(PluginApi.components.FilteredSceneList, { alterQuery: true, extraCriteria: { dirtySharedFilter: owner.current } })),
+      createElement("div", { className: "dirty-ui-control-row" },
+        createElement(Button, { onClick: props.onClose, buttonRef: closeRef }, "Cancel"),
+        createElement(Button, { tone: "primary", disabled: !ready || Boolean(error), onClick: function () {
+          callback.current(candidate.current); props.onClose();
+        } }, "Use filter")));
+  }
+  hubApi.react.SceneFilterEditor = SceneFilterEditor;
+  hubApi.serializeSceneFilter = serializeSceneFilter;
+  PluginApi.patch.instead("SceneList", function () {
+    var args = Array.prototype.slice.call(arguments), next = args.pop(), props = args[0];
+    var owner = props && props.extraCriteria && props.extraCriteria.dirtySharedFilter;
+    // Stash 0.31's scene list does not forward extraCriteria to SceneList.
+    // The editor is the only native scene list on suite plugin routes.
+    if (!owner && activeSharedSceneFilter && window.location.pathname.indexOf("/plugins/") === 0) owner = activeSharedSceneFilter;
+    if (!owner || !props.filter) return next.apply(null, args);
+    return createElement(SharedSceneFilterCapture, { owner: owner, filter: props.filter });
+  });
   hubApi.native = {
     loadComponent: function (name) {
       if (PluginApi.components && PluginApi.components[name]) {
@@ -1601,6 +1734,8 @@
       return plugin.id === activePluginId;
     });
     var activeSettingsPanel = activePlugin && settingsPanels[activePlugin.id];
+    usePageTitle(activePlugin && activePlugin.id !== "dirtyPlugins"
+      ? activePlugin.name : "Dirty Plugins", "Settings");
 
     return createElement(
       "main",
@@ -1612,10 +1747,10 @@
         { className: "dirty-plugins-page-header" },
         createElement("h1", null, "Dirty Plugins"),
         createElement("p", null, "Settings are shown only for Dirty plugins installed in this Stash instance."),
-        hasUnsavedChanges && createElement(
+        createElement(
           "div",
           { className: "dirty-plugins-unsaved", role: "status" },
-          "Unsaved changes"
+          hasUnsavedChanges ? "Unsaved changes" : ""
         )
       ),
       loading && createElement(StateView, {

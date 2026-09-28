@@ -29,7 +29,7 @@
   var WIDGETS = {
     origin: { label: "Performer origin", route: core.route, entity: "performers", group: "performers", size: "medium", options: { showNumbers: false }, choices: { showNumbers: [false, true] } },
     growth: { label: "Content growth", route: core.route + "/scenes", entity: "scenes", group: "growth", size: "large", options: { dateBasis: "created_at", grouping: "month", showCapacity: true, showForecast: false }, choices: { dateBasis: ["created_at", "mod_time", "scene_date"], grouping: ["day", "month", "year"], showCapacity: [false, true], showForecast: [false, true] } },
-    ages: { label: "Age at scene", route: core.route + "/ages", entity: "scenes", group: "cast", size: "medium", options: {}, choices: {} },
+    ages: { label: "Age at scene", route: core.route + "/ages", entity: "scenes", group: "cast", size: "medium", options: { showPerformerCount: true, showModeAge: true, showMedianAge: false, showAverageAge: false }, choices: { showPerformerCount: [false, true], showModeAge: [false, true], showMedianAge: [false, true], showAverageAge: [false, true] } },
     ratings: { label: "Scene ratings", route: core.route + "/ratings", entity: "scenes", group: "scenes", size: "medium", options: { rounding: 0.5 }, choices: { rounding: [0, 0.5, 1] } },
     performerRatings: { label: "Performer ratings", route: core.route + "/performer-ratings", entity: "performers", group: "performers", size: "medium", options: { rounding: 0.5 }, choices: { rounding: [0, 0.5, 1] } },
     performerScatter: { label: "Rating vs scenes", route: core.route + "/performer-scatter", entity: "performers", group: "performers", size: "medium", options: { minRating: 9, maxScenes: 10 }, choices: { minRating: [0, 5, 6, 7, 8, 9], maxScenes: [0, 5, 10, 20, 50, 100] } },
@@ -42,6 +42,11 @@
     constellation: { label: "Cast constellation", route: core.route + "/constellation", entity: "scenes", group: "cast", size: "large", options: { maxPerformers: 100, minShared: 1 }, choices: { maxPerformers: [0, 50, 100, 200, 500, 1000], minShared: [1, 2, 3, 5, 10] } },
     birthdays: { label: "Performer birthdays", route: core.route + "/birthdays", entity: "performers", group: "performers", size: "medium", options: { upcomingCount: 6 }, choices: { upcomingCount: [3, 6, 12] } }
   };
+  Object.keys(WIDGETS).forEach(function (name) {
+    WIDGETS[name].options.showHeader = true;
+    WIDGETS[name].choices.showHeader = [false, true];
+  });
+
   var WIDGET_ORDER = ["origin", "growth", "ages", "ratings", "performerRatings", "performerScatter", "performerCards", "countRating", "repeatOffenders", "qualityEfficiency", "studios", "tags", "constellation", "birthdays"];
   var DEFAULT_WIDGETS = [
     { id: "dashboard-ratings", statistic: "ratings", size: "medium", options: { rounding: 0.5 } },
@@ -97,7 +102,7 @@
 
   function widgetHeightUnits(widget) {
     if (widget.size === "small") return 1;
-    if (widget.size === "medium") return widget.statistic === "birthdays" || widget.statistic === "performerCards" ? 2 : 1;
+    if (widget.size === "medium") return widget.statistic === "birthdays" ? 2 : 1;
     return widget.statistic === "birthdays" || (widget.statistic === "performerCards" && widget.options.cardCount > 12) ? 3 : 2;
   }
 
@@ -208,11 +213,18 @@
       if (!node.current || !props.option) return;
       if (!charts) { setError("The bundled chart library could not be loaded."); return; }
       var chart, observer;
-      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
+      function resize() {
+        if (chart && !chart.isDisposed()) {
+          chart.resize();
+          if (props.map) chart.setOption({ series: [algorithms.mapLayout(node.current, props.option.visualMap.show)] });
+        }
+      }
       try {
         if (props.map && world) charts.registerMap("dirtyStatsDashboardWorld", world);
         chart = algorithms.initStatsChart(node.current, { renderer: "canvas" });
-        chart.setOption(props.option, true);
+        var option = props.option;
+        if (props.map) option = Object.assign({}, option, { series: [Object.assign({}, option.series[0], algorithms.mapLayout(node.current, option.visualMap.show))] });
+        chart.setOption(option, true);
         if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
         window.addEventListener("resize", resize);
         setError("");
@@ -240,28 +252,29 @@
     return h(sharedReact.Metric, { className: "dirty-stats-dashboard-metric", label: label, value: value, detail: detail });
   }
 
+  function widgetHeader(widget) {
+    if (widget.options.showHeader === false) return null;
+    return h.apply(null, ["div", { className: "dirty-stats-dashboard-metrics" }].concat(Array.prototype.slice.call(arguments, 1)));
+  }
+
   function ratingWidget(items, widget, entity) {
     var stats = algorithms.aggregateRatings(items, widget.options.rounding);
     var rated = stats.rows.filter(function (row) { return row.name !== "Unrated"; }).reduce(function (sum, row) { return sum + row.value; }, 0);
     var data = stats.rows.map(function (row) { return { name: row.name === "Unrated" ? "Unrated" : row.name + "/10", value: row.value }; });
     var option = { backgroundColor: "transparent", color: algorithms.themePalette(), tooltip: { trigger: "item", renderMode: "richText" }, legend: { show: widget.size === "large", type: "scroll", bottom: 0, textStyle: { color: algorithms.themeColor("text") } }, series: [{ type: "pie", radius: widget.size === "small" ? ["58%", "82%"] : ["34%", "70%"], center: ["50%", widget.size === "large" ? "43%" : "50%"], label: { show: widget.size !== "small", color: algorithms.themeColor("text"), formatter: widget.size === "large" ? "{b}: {c}" : "{b}" }, data: data }] };
     return h(React.Fragment, null,
-      h("div", { className: "dirty-stats-dashboard-metrics" }, metric(entity + "s", stats.total), metric("rated", stats.total ? Math.round(rated * 100 / stats.total) + "%" : "0%")),
+      widgetHeader(widget, metric(entity + "s", stats.total), metric("rated", stats.total ? Math.round(rated * 100 / stats.total) + "%" : "0%")),
       stats.total ? h(Chart, { option: option, label: entity + " rating distribution" }) : h(State, { title: "No " + entity + "s", detail: "The library has no data for this statistic." }));
   }
 
   function originWidget(performers, widget) {
     var countries = algorithms.countryIndex(world ? world.features : []);
     var stats = algorithms.aggregate(performers, countries);
-    var top = stats.rows.slice(0, widget.size === "small" ? 5 : 8);
-    var option;
-    if (widget.size === "small" || !world) {
-      option = { backgroundColor: "transparent", grid: { left: 4, right: 8, top: 4, bottom: 4, containLabel: true }, xAxis: { type: "value", show: false }, yAxis: { type: "category", inverse: true, data: top.map(function (row) { return row.name; }), axisLabel: { color: algorithms.themeColor("text"), width: 90, overflow: "truncate" }, axisLine: { show: false }, axisTick: { show: false } }, series: [{ type: "bar", data: top.map(function (row) { return row.value; }), itemStyle: { color: algorithms.themeColor("primary"), borderRadius: [0, 3, 3, 0] }, label: { show: true, position: "right", color: algorithms.themeColor("text") } }] };
-    } else {
-      var counts = new Map(stats.rows.map(function (row) { return [row.name, row.value]; }));
-      option = { backgroundColor: "transparent", tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.name + ": " + (Number(p.value) || 0); } }, visualMap: { show: widget.size === "large", min: 0, max: Math.max(1, top.length ? top[0].value : 0), left: 8, bottom: 6, textStyle: { color: algorithms.themeColor("text") }, inRange: { color: [algorithms.themeColor("grid"), algorithms.themeColor("secondary"), algorithms.themeColor("primary")] } }, series: [{ type: "map", map: "dirtyStatsDashboardWorld", projection: algorithms.eckertIV, roam: widget.size === "large", label: { show: widget.size === "large" && widget.options.showNumbers, color: "#fff", formatter: function (p) { return Number(p.value) > 0 ? String(p.value) : ""; } }, itemStyle: { borderColor: algorithms.themeColor("border"), borderWidth: .5 }, emphasis: { itemStyle: { areaColor: algorithms.themeColor("highlight") } }, data: world.features.map(function (feature) { return { name: feature.properties.name, value: counts.get(feature.properties.name) || 0 }; }) }] };
-    }
-    return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("performers", stats.total), metric("countries", stats.rows.length), metric("top country", top.length ? top[0].name : "—")), h(Chart, { option: option, map: widget.size !== "small", label: "Performer origin distribution" }));
+    if (!world) return h(State, { title: "World map unavailable", detail: "The bundled map data could not be loaded. Reload the Stash page.", role: "alert" });
+    var option = algorithms.originMapOption(stats, world.features, { map: "dirtyStatsDashboardWorld", showLegend: widget.size === "large", showNumbers: widget.size === "large" && widget.options.showNumbers, roam: widget.size === "large" });
+    return h(React.Fragment, null,
+      widget.size !== "small" ? widgetHeader(widget, metric("performers", stats.total), metric("countries", stats.rows.length), metric("top country", stats.rows.length ? stats.rows[0].name : "—")) : null,
+      h(Chart, { option: option, map: true, label: "Performer origin world map. Hover a country for its exact count." }));
   }
 
   function growthWidget(scenes, capacity, widget) {
@@ -270,20 +283,27 @@
     var forecast = algorithms.forecastGrowth(daily, capacity && capacity.total);
     var option = { backgroundColor: "transparent", useUTC: true, grid: { left: 8, right: 14, top: 12, bottom: widget.size === "large" ? 45 : 20, containLabel: widget.size !== "small" }, tooltip: { trigger: "axis", renderMode: "richText" }, xAxis: { type: "time", axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), hideOverlap: true }, axisLine: { lineStyle: { color: algorithms.themeColor("border") } } }, yAxis: { type: "value", min: 0, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: algorithms.formatBytes }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, dataZoom: widget.size === "large" ? [{ type: "inside" }, { type: "slider", bottom: 5, height: 16 }] : [], series: [{ type: "line", step: "end", showSymbol: false, lineStyle: { color: algorithms.themeColor("primary"), width: 2 }, areaStyle: { color: algorithms.themeColor("primary"), opacity: .15 }, data: stats.points, markLine: { silent: true, symbol: "none", data: widget.options.showCapacity && capacity && capacity.total > 0 ? [{ yAxis: capacity.total, label: { color: algorithms.themeColor("text"), formatter: "Capacity " + algorithms.formatBytes(capacity.total) }, lineStyle: { color: algorithms.themeColor("muted"), type: "dashed" } }] : [] } }] };
     if (widget.options.showForecast && forecast.points) option.series.push({ name: "Forecast", type: "line", showSymbol: false, lineStyle: { color: algorithms.themeColor("accent"), type: "dashed", width: 2 }, data: forecast.points });
-    return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("library size", algorithms.formatBytes(stats.bytes)), metric("included scenes", stats.included), widget.size === "large" && widget.options.showForecast && forecast.reachedAt ? metric("capacity estimate", new Date(forecast.reachedAt).toISOString().slice(0, 10)) : stats.excluded ? metric("excluded", stats.excluded) : null), stats.points.length ? h(Chart, { option: option, label: "Cumulative content growth" }) : h(State, { title: "No dated content", detail: "No files have usable dates and sizes." }));
+    return h(React.Fragment, null,
+      widgetHeader(widget, metric("library size", algorithms.formatBytes(stats.bytes)), metric("included scenes", stats.included), widget.size === "large" && widget.options.showForecast && forecast.reachedAt ? metric("capacity estimate", new Date(forecast.reachedAt).toISOString().slice(0, 10)) : stats.excluded ? metric("excluded", stats.excluded) : null),
+      stats.points.length ? h(Chart, { option: option, label: "Cumulative content growth" }) : h(State, { title: "No dated content", detail: "No files have usable dates and sizes." }));
   }
 
   function ageWidget(scenes, widget) {
     var stats = algorithms.aggregateAges(scenes);
-    var common = stats.rows.reduce(function (best, row) { return !best || row.count > best.count ? row : best; }, null);
+    var summary = [];
+    if (widget.options.showPerformerCount) summary.push(metric("performers", stats.performers));
+    if (widget.options.showModeAge) summary.push(metric("mode age", stats.modeAge == null ? "—" : stats.modeAge, stats.modeCount ? stats.modeCount + " performers" : ""));
+    if (widget.options.showMedianAge) summary.push(metric("median age", stats.medianAge == null ? "—" : Number(stats.medianAge.toFixed(1))));
+    if (widget.options.showAverageAge) summary.push(metric("average age", stats.averageAge == null ? "—" : Number(stats.averageAge.toFixed(1))));
+    if (widget.size === "large") summary.push(metric("scenes", stats.scenes));
     var option = { backgroundColor: "transparent", grid: { left: 8, right: 8, top: 8, bottom: widget.size === "large" ? 38 : 18, containLabel: widget.size !== "small" }, tooltip: { trigger: "axis", renderMode: "richText" }, xAxis: { type: "category", name: widget.size === "large" ? "Age" : "", data: stats.rows.map(function (row) { return row.age; }), axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), interval: "auto" }, axisLine: { lineStyle: { color: algorithms.themeColor("border") } } }, yAxis: { type: "value", name: widget.size === "large" ? "Performers" : "", minInterval: 1, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted") }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, dataZoom: widget.size === "large" ? [{ type: "inside" }] : [], series: [{ type: "bar", data: stats.rows.map(function (row) { return row.count; }), itemStyle: { color: algorithms.themeColor("primary") } }] };
-    return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("performers", stats.performers), metric("most common age", common ? common.age : "—", common ? common.count + " performers" : ""), widget.size === "large" ? metric("scenes", stats.scenes) : null), stats.rows.length ? h(Chart, { option: option, label: "Performer ages at scene date" }) : h(State, { title: "No age data", detail: "Scene dates and full performer birthdates are required." }));
+    return h(React.Fragment, null, summary.length ? widgetHeader.apply(null, [widget].concat(summary)) : null, stats.rows.length ? h(Chart, { option: option, label: "Performer ages at scene date" }) : h(State, { title: "No age data", detail: "Scene dates and full performer birthdates are required." }));
   }
 
   function scatterWidget(points, widget, names, highlighted) {
     var chartAxes = axes(widget.size, names[0], names[1]);
     var option = { backgroundColor: "transparent", grid: chartAxes.grid, xAxis: chartAxes.xAxis, yAxis: chartAxes.yAxis, tooltip: { trigger: "item", renderMode: "richText" }, series: [{ type: "scatter", symbolSize: widget.size === "small" ? 5 : 8, progressive: 4000, data: points, itemStyle: { color: algorithms.themeColor("primary"), opacity: .75 } }] };
-    return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("points", points.length), highlighted != null ? metric("highlighted", highlighted) : null), points.length ? h(Chart, { option: option, label: names[0] + " versus " + names[1] }) : h(State, { title: "No rated data", detail: "No matching records contain the required values." }));
+    return h(React.Fragment, null, widgetHeader(widget, metric("points", points.length), highlighted != null ? metric("highlighted", highlighted) : null), points.length ? h(Chart, { option: option, label: names[0] + " versus " + names[1] }) : h(State, { title: "No rated data", detail: "No matching records contain the required values." }));
   }
 
   function performerScatterWidget(performers, widget) {
@@ -304,7 +324,7 @@
     var option = { backgroundColor: "transparent", grid: { left: 8, right: 12, top: 10, bottom: widget.size === "large" ? 42 : 18, containLabel: widget.size !== "small" }, tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { if (!p.data || !p.data.id) return p.seriesName; return p.data.title + "\n" + p.data.views + " views\nTop " + p.value[0].toFixed(1) + "% account for " + p.value[1].toFixed(1) + "% of views"; } }, xAxis: { type: "value", name: widget.size === "large" ? "Scenes ranked by views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: "{value}%" }, axisLine: { lineStyle: { color: algorithms.themeColor("border") } }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, yAxis: { type: "value", name: widget.size === "large" ? "Cumulative views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: "{value}%" }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, series: [{ name: "Cumulative views", type: "line", showSymbol: false, sampling: "lttb", lineStyle: { color: algorithms.themeColor("primary"), width: 3 }, areaStyle: { color: algorithms.themeColor("primary"), opacity: .16 }, data: data, markArea: { silent: true, label: { show: widget.size === "large", color: algorithms.themeColor("text"), formatter: "Top 5%" }, itemStyle: { color: algorithms.themeColor("accent"), opacity: .10 }, data: [[{ xAxis: 0 }, { xAxis: 5 }]] } }, { name: "Equal distribution", type: "line", showSymbol: false, silent: true, lineStyle: { color: algorithms.themeColor("border"), type: "dashed", width: 1 }, data: [[0, 0], [100, 100]] }] };
     var share = Math.round(stats.topShare * 10) / 10;
     return h(React.Fragment, null,
-      h("div", { className: "dirty-stats-dashboard-metrics" }, metric("top 5% view share", stats.totalViews ? share.toFixed(1) + "%" : "—"), metric("recorded views", stats.totalViews), widget.size === "large" ? metric("viewed scenes", stats.viewedScenes + " / " + stats.totalScenes) : null),
+      widgetHeader(widget, metric("top 5% view share", stats.totalViews ? share.toFixed(1) + "%" : "—"), metric("recorded views", stats.totalViews), widget.size === "large" ? metric("viewed scenes", stats.viewedScenes + " / " + stats.totalScenes) : null),
       stats.totalViews ? h(Chart, { option: option, label: "Cumulative share of views by scene rank" }) : h(State, { title: "No recorded views", detail: stats.totalScenes ? "Play some scenes to reveal viewing concentration." : "No scenes match these filters." }));
   }
 
@@ -316,7 +336,7 @@
       tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.data.title + "\nRating " + p.value[1].toFixed(1) + "/10\n" + p.value[0].toFixed(1) + " min/GiB\n" + algorithms.formatBytes(p.data.bytes); } },
       series: [{ name: "Scenes", type: "scatter", progressive: 4000, data: algorithms.qualityEfficiencySeriesData(stats) }] };
     return h(React.Fragment, null,
-      h("div", { className: "dirty-stats-dashboard-metrics" }, metric("comparable scenes", stats.points.length), metric("best efficiency", bestEfficiency ? bestEfficiency.toFixed(1) + " min/GiB" : "—")),
+      widgetHeader(widget, metric("comparable scenes", stats.points.length), metric("best efficiency", bestEfficiency ? bestEfficiency.toFixed(1) + " min/GiB" : "—")),
       stats.points.length ? h(Chart, { option: option, label: "Scene quality versus storage efficiency; bubble area represents file size" }) : h(State, { title: "No comparable scenes", detail: "A rating plus file size and duration are required." }));
   }
 
@@ -327,7 +347,7 @@
     var data = points.map(function (point) { return { name: point.name, bytes: point.bytes, value: [point.scenes, Math.round(point.rating * 10) / 10], symbolSize: 8 + 28 * Math.sqrt(point.bytes / maxBytes) }; });
     var chartAxes = axes(widget.size, "Scenes", "Average rating"); chartAxes.yAxis.max = 10;
     var option = { backgroundColor: "transparent", grid: chartAxes.grid, xAxis: chartAxes.xAxis, yAxis: chartAxes.yAxis, tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.name + "\n" + p.value[0] + " scenes\nRating " + p.value[1] + "/10\n" + algorithms.formatBytes(p.data.bytes); } }, series: [{ type: "scatter", data: data, label: { show: widget.size === "large" && points.length <= 20, formatter: "{b}", color: algorithms.themeColor("text"), position: "right" }, itemStyle: { color: algorithms.themeColor("primary"), opacity: .8 } }] };
-    return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("studios", points.length), metric("scene storage", algorithms.formatBytes(stats.totalBytes))), data.length ? h(Chart, { option: option, label: "Studio scene count versus average rating" }) : h(State, { title: "No rated studios", detail: "No studios meet this widget's minimum scene count." }));
+    return h(React.Fragment, null, widgetHeader(widget, metric("studios", points.length), metric("scene storage", algorithms.formatBytes(stats.totalBytes))), data.length ? h(Chart, { option: option, label: "Studio scene count versus average rating" }) : h(State, { title: "No rated studios", detail: "No studios meet this widget's minimum scene count." }));
   }
 
   function tagDnaWidget(scenes, widget) {
@@ -337,7 +357,7 @@
       var metric = widget.options.metric === "play_count" ? "Views per scene " + p.data.playsPerScene.toFixed(1) : p.data.rating == null ? "No rated scenes" : "Average rating " + p.data.rating.toFixed(1) + "/10";
       return p.name + "\n" + p.value + " scene" + (p.value === 1 ? "" : "s") + "\n" + metric;
     } }, series: [{ type: "treemap", roam: widget.size === "large", nodeClick: false, breadcrumb: { show: false }, top: 2, right: 2, bottom: 2, left: 2, squareRatio: 1.1, label: { show: true, color: "#fff", textBorderColor: "rgba(0,0,0,.5)", textBorderWidth: 2, overflow: "truncate", formatter: widget.size === "small" ? "{b}" : "{b}\n{c}" }, emphasis: { itemStyle: { borderColor: "#fff", borderWidth: 3 } }, data: data }] };
-    return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("tags", stats.tags), metric("tagged scenes", stats.taggedScenes), widget.size === "large" ? metric("untagged", stats.untaggedScenes) : null), data.length ? h(Chart, { option: option, label: "Tag DNA treemap sized by scene count and colored by " + algorithms.tagDnaMetricLabel(widget.options.metric).toLowerCase() }) : h(State, { title: "No tagged scenes", detail: "No matching scenes contain tags." }));
+    return h(React.Fragment, null, widgetHeader(widget, metric("tags", stats.tags), metric("tagged scenes", stats.taggedScenes), widget.size === "large" ? metric("untagged", stats.untaggedScenes) : null), data.length ? h(Chart, { option: option, label: "Tag DNA treemap sized by scene count and colored by " + algorithms.tagDnaMetricLabel(widget.options.metric).toLowerCase() }) : h(State, { title: "No tagged scenes", detail: "No matching scenes contain tags." }));
   }
 
   function constellationWidget(scenes, widget) {
@@ -346,7 +366,7 @@
     var stats = algorithms.aggregateConstellation(scenes, limit, widget.options.minShared);
     var largest = Math.max.apply(null, [1].concat(stats.nodes.map(function (node) { return node.value; })));
     var option = { backgroundColor: "transparent", tooltip: { trigger: "item", renderMode: "richText" }, series: [{ type: "graph", layout: "force", roam: widget.size === "large", draggable: widget.size === "large", data: stats.nodes.map(function (node, index) { return { id: node.id, name: node.name, value: node.value, symbolSize: 7 + 24 * Math.sqrt(node.value / largest), itemStyle: { color: node.genderColor }, label: { show: widget.size === "large" && index < 15, color: algorithms.themeColor("text"), position: "right" } }; }), links: stats.links.map(function (link) { return { source: link.source, target: link.target, value: link.value, lineStyle: { color: algorithms.themeColor("secondary"), opacity: .25, width: 1 + Math.log(link.value) / Math.log(2) } }; }), force: { initLayout: "circular", repulsion: widget.size === "small" ? 70 : 150, edgeLength: widget.size === "small" ? 35 : 70, gravity: .05, layoutAnimation: true }, emphasis: { focus: "adjacency" } }] };
-    return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("performers", stats.totalPerformers), metric("connections", stats.links.length), metric("scenes", stats.totalScenes)), stats.nodes.length ? h(Chart, { option: option, label: "Cast constellation network" }) : h(State, { title: "No cast connections", detail: "No performer connections meet this widget's threshold." }));
+    return h(React.Fragment, null, widgetHeader(widget, metric("performers", stats.totalPerformers), metric("connections", stats.links.length), metric("scenes", stats.totalScenes)), stats.nodes.length ? h(Chart, { option: option, label: "Cast constellation network" }) : h(State, { title: "No cast connections", detail: "No performer connections meet this widget's threshold." }));
   }
 
   var MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -362,9 +382,9 @@
     var stats = algorithms.aggregateBirthdays(performers);
     var upcoming = stats.entries.slice().sort(function (left, right) { return left.daysUntil - right.daysUntil || left.name.localeCompare(right.name); }).slice(0, widget.options.upcomingCount);
     var now = new Date(), year = now.getUTCFullYear();
-    if (widget.size === "small") return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("birthdays", stats.valid), metric("next 30 days", stats.upcoming)), h("ol", { className: "dirty-stats-dashboard-upcoming" }, upcoming.slice(0, 3).map(function (entry) { return h("li", { key: entry.id, className: entry.deceased ? "is-deceased" : "" }, h("strong", null, entry.name), h("span", null, algorithms.birthdayDayLabel(entry.month, entry.day) + (entry.daysUntil === 0 ? " · today" : " · " + entry.daysUntil + " day" + (entry.daysUntil === 1 ? "" : "s")) + (entry.deceased ? " · in memoriam" : ""))); })));
+    if (widget.size === "small") return h(React.Fragment, null, widgetHeader(widget, metric("birthdays", stats.valid), metric("next 30 days", stats.upcoming)), h("ol", { className: "dirty-stats-dashboard-upcoming" }, upcoming.slice(0, 3).map(function (entry) { return h("li", { key: entry.id, className: entry.deceased ? "is-deceased" : "" }, h("strong", null, entry.name), h("span", null, algorithms.birthdayDayLabel(entry.month, entry.day) + (entry.daysUntil === 0 ? " · today" : " · " + entry.daysUntil + " day" + (entry.daysUntil === 1 ? "" : "s")) + (entry.deceased ? " · in memoriam" : ""))); })));
     var months = widget.size === "medium" ? [now.getUTCMonth() + 1] : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-    return h(React.Fragment, null, h("div", { className: "dirty-stats-dashboard-metrics" }, metric("birthdays", stats.valid), metric("next 30 days", stats.upcoming), stats.today ? metric("today", stats.today) : null), h("ol", { className: "dirty-stats-dashboard-upcoming" }, upcoming.map(function (entry) { return h("li", { key: entry.id, className: entry.deceased ? "is-deceased" : "" }, h("strong", null, entry.name), h("span", null, algorithms.birthdayDayLabel(entry.month, entry.day) + (entry.daysUntil === 0 ? " · today" : " · " + entry.daysUntil + " day" + (entry.daysUntil === 1 ? "" : "s")) + (entry.deceased ? " · in memoriam" : ""))); })), h("div", { className: "dirty-stats-dashboard-calendars" }, months.map(function (month) { return monthCalendar(stats.entries, year, month); })));
+    return h(React.Fragment, null, widgetHeader(widget, metric("birthdays", stats.valid), metric("next 30 days", stats.upcoming), stats.today ? metric("today", stats.today) : null), h("ol", { className: "dirty-stats-dashboard-upcoming" }, upcoming.map(function (entry) { return h("li", { key: entry.id, className: entry.deceased ? "is-deceased" : "" }, h("strong", null, entry.name), h("span", null, algorithms.birthdayDayLabel(entry.month, entry.day) + (entry.daysUntil === 0 ? " · today" : " · " + entry.daysUntil + " day" + (entry.daysUntil === 1 ? "" : "s")) + (entry.deceased ? " · in memoriam" : ""))); })), h("div", { className: "dirty-stats-dashboard-calendars" }, months.map(function (month) { return monthCalendar(stats.entries, year, month); })));
   }
 
   function PerformerCardWidget(props) {
@@ -393,7 +413,7 @@
     var cards = algorithms.orderedCards(query.data && query.data.findPerformers ? query.data.findPerformers.performers : [], ids);
     var deceasedIds = new Set(rows.filter(function (performer) { return performer.death_date; }).map(function (performer) { return String(performer.id); }));
     return h("div", { className: "dirty-stats-dashboard-performer-cards" },
-      h("p", { className: "dirty-stats-dashboard-card-count" }, "Showing " + cards.length + " performer" + (cards.length === 1 ? "" : "s")),
+      props.widget.options.showHeader === false ? null : h("p", { className: "dirty-stats-dashboard-card-count" }, "Showing " + cards.length + " performer" + (cards.length === 1 ? "" : "s")),
       h("div", { className: "dirty-stats-dashboard-card-grid" }, cards.map(function (performer) {
         var deceased = deceasedIds.has(String(performer.id));
         return h("div", { key: performer.id, className: "dirty-stats-performer-column" + (deceased ? " is-deceased" : "") },
@@ -454,30 +474,53 @@
     return h(Toggle, { className: "dirty-stats-dashboard-check", checked: props.value, label: props.label, onChange: props.onChange });
   }
 
+  function FilterControl(props) {
+    var id = React.useRef(null);
+    if (!id.current) id.current = "dirty-stats-dashboard-control-" + (++controlId);
+    return h(Field, { id: id.current, label: filterSummary(props.filter, props.entity), className: "dirty-stats-dashboard-field dirty-stats-dashboard-filter-setting" },
+      h("button", { type: "button", className: "btn btn-secondary dirty-ui-button", "aria-label": "Change filters: " + filterSummary(props.filter, props.entity), onClick: props.onChange }, "Change filters"));
+  }
+
   function WidgetOptions(props) {
+    return h(React.Fragment, null,
+      props.kind === "fields" ? null : h(CheckControl, { label: "Show header", value: props.widget.options.showHeader, onChange: function (value) {
+        props.onChange(Object.assign({}, props.widget.options, { showHeader: value }));
+      } }),
+      StatisticWidgetOptions(props));
+  }
+
+  function StatisticWidgetOptions(props) {
     var widget = props.widget, options = widget.options;
     function set(name, value) { var next = Object.assign({}, options); next[name] = value; props.onChange(next); }
-    if (widget.statistic === "origin") return h(CheckControl, { label: "Show map numbers in large view", value: options.showNumbers, onChange: function (value) { set("showNumbers", value); } });
+    function field(component, controlProps) { return props.kind === "toggles" ? null : h(component, controlProps); }
+    function check(controlProps) { return props.kind === "fields" ? null : h(CheckControl, controlProps); }
+    if (widget.statistic === "origin") return h(React.Fragment, null,
+      widget.size === "large" ? check({ label: "Show map numbers", value: options.showNumbers, onChange: function (value) { set("showNumbers", value); } }) : null);
     if (widget.statistic === "growth") return h(React.Fragment, null,
-      h(SelectControl, { label: "Date basis", value: options.dateBasis, values: WIDGETS.growth.choices.dateBasis, labels: { created_at: "Created at", mod_time: "File modified", scene_date: "Scene date" }, onChange: function (value) { set("dateBasis", value); } }),
-      h(SelectControl, { label: "Group by", value: options.grouping, values: WIDGETS.growth.choices.grouping, onChange: function (value) { set("grouping", value); } }),
-      h(CheckControl, { label: "Show capacity", value: options.showCapacity, onChange: function (value) { set("showCapacity", value); } }),
-      h(CheckControl, { label: "Show forecast", value: options.showForecast, onChange: function (value) { set("showForecast", value); } }));
-    if (widget.statistic === "ratings" || widget.statistic === "performerRatings") return h(SelectControl, { label: "Rating rounding", value: options.rounding, values: WIDGETS[widget.statistic].choices.rounding, labels: { 0: "Exact", 0.5: "0.5", 1: "1" }, onChange: function (value) { set("rounding", Number(value)); } });
+      field(SelectControl, { label: "Date basis", value: options.dateBasis, values: WIDGETS.growth.choices.dateBasis, labels: { created_at: "Created at", mod_time: "File modified", scene_date: "Scene date" }, onChange: function (value) { set("dateBasis", value); } }),
+      field(SelectControl, { label: "Group by", value: options.grouping, values: WIDGETS.growth.choices.grouping, onChange: function (value) { set("grouping", value); } }),
+      check({ label: "Show capacity", value: options.showCapacity, onChange: function (value) { set("showCapacity", value); } }),
+      check({ label: "Show forecast", value: options.showForecast, onChange: function (value) { set("showForecast", value); } }));
+    if (widget.statistic === "ages") return h(React.Fragment, null,
+      check({ label: "Show performer count", value: options.showPerformerCount, onChange: function (value) { set("showPerformerCount", value); } }),
+      check({ label: "Show mode age", value: options.showModeAge, onChange: function (value) { set("showModeAge", value); } }),
+      check({ label: "Show median age", value: options.showMedianAge, onChange: function (value) { set("showMedianAge", value); } }),
+      check({ label: "Show average age", value: options.showAverageAge, onChange: function (value) { set("showAverageAge", value); } }));
+    if (widget.statistic === "ratings" || widget.statistic === "performerRatings") return field(SelectControl, { label: "Rating rounding", value: options.rounding, values: WIDGETS[widget.statistic].choices.rounding, labels: { 0: "Exact", 0.5: "0.5", 1: "1" }, onChange: function (value) { set("rounding", Number(value)); } });
     if (widget.statistic === "performerScatter") return h(React.Fragment, null,
-      h(SelectControl, { label: "Minimum rating", value: options.minRating, values: WIDGETS.performerScatter.choices.minRating, labels: { 0: "Any" }, onChange: function (value) { set("minRating", Number(value)); } }),
-      h(SelectControl, { label: "Maximum scenes", value: options.maxScenes, values: WIDGETS.performerScatter.choices.maxScenes, labels: { 0: "Any" }, onChange: function (value) { set("maxScenes", Number(value)); } }));
-    if (widget.statistic === "performerCards") return h(NumberControl, { label: "Cards to display", value: options.cardCount, min: 1, max: MAX_CARD_COUNT, invalidLabel: "Enter a whole number from 1 to " + MAX_CARD_COUNT + ".", onChange: function (value) { set("cardCount", value); } });
-    if (widget.statistic === "countRating") return h(SelectControl, { label: "Count", value: options.metric, values: WIDGETS.countRating.choices.metric, labels: { play_count: "View count", o_counter: "O count" }, onChange: function (value) { set("metric", value); } });
-    if (widget.statistic === "studios") return h(SelectControl, { label: "Minimum scenes", value: options.minScenes, values: WIDGETS.studios.choices.minScenes, onChange: function (value) { set("minScenes", Number(value)); } });
+      field(SelectControl, { label: "Minimum rating", value: options.minRating, values: WIDGETS.performerScatter.choices.minRating, labels: { 0: "Any" }, onChange: function (value) { set("minRating", Number(value)); } }),
+      field(SelectControl, { label: "Maximum scenes", value: options.maxScenes, values: WIDGETS.performerScatter.choices.maxScenes, labels: { 0: "Any" }, onChange: function (value) { set("maxScenes", Number(value)); } }));
+    if (widget.statistic === "performerCards") return field(NumberControl, { label: "Cards to display", value: options.cardCount, min: 1, max: MAX_CARD_COUNT, invalidLabel: "Enter a whole number from 1 to " + MAX_CARD_COUNT + ".", onChange: function (value) { set("cardCount", value); } });
+    if (widget.statistic === "countRating") return field(SelectControl, { label: "Count", value: options.metric, values: WIDGETS.countRating.choices.metric, labels: { play_count: "View count", o_counter: "O count" }, onChange: function (value) { set("metric", value); } });
+    if (widget.statistic === "studios") return field(SelectControl, { label: "Minimum scenes", value: options.minScenes, values: WIDGETS.studios.choices.minScenes, onChange: function (value) { set("minScenes", Number(value)); } });
     if (widget.statistic === "tags") return h(React.Fragment, null,
-      h(SelectControl, { label: "Color by", value: options.metric, values: WIDGETS.tags.choices.metric, labels: { rating: "Average rating", play_count: "Views per scene" }, onChange: function (value) { set("metric", value); } }),
-      h(SelectControl, { label: "Maximum tags", value: options.maxTags, values: WIDGETS.tags.choices.maxTags, labels: { 0: "All" }, onChange: function (value) { set("maxTags", Number(value)); } }));
+      field(SelectControl, { label: "Color by", value: options.metric, values: WIDGETS.tags.choices.metric, labels: { rating: "Average rating", play_count: "Views per scene" }, onChange: function (value) { set("metric", value); } }),
+      field(SelectControl, { label: "Maximum tags", value: options.maxTags, values: WIDGETS.tags.choices.maxTags, labels: { 0: "All" }, onChange: function (value) { set("maxTags", Number(value)); } }));
     if (widget.statistic === "constellation") return h(React.Fragment, null,
-      h(SelectControl, { label: "Maximum performers", value: options.maxPerformers, values: WIDGETS.constellation.choices.maxPerformers, labels: { 0: "All" }, onChange: function (value) { set("maxPerformers", Number(value)); } }),
-      h(SelectControl, { label: "Minimum shared scenes", value: options.minShared, values: WIDGETS.constellation.choices.minShared, onChange: function (value) { set("minShared", Number(value)); } }));
-    if (widget.statistic === "birthdays") return h(SelectControl, { label: "Upcoming performers", value: options.upcomingCount, values: WIDGETS.birthdays.choices.upcomingCount, onChange: function (value) { set("upcomingCount", Number(value)); } });
-    return h("span", { className: "dirty-stats-dashboard-no-options" }, "This statistic has no additional widget options.");
+      field(SelectControl, { label: "Maximum performers", value: options.maxPerformers, values: WIDGETS.constellation.choices.maxPerformers, labels: { 0: "All" }, onChange: function (value) { set("maxPerformers", Number(value)); } }),
+      field(SelectControl, { label: "Minimum shared scenes", value: options.minShared, values: WIDGETS.constellation.choices.minShared, onChange: function (value) { set("minShared", Number(value)); } }));
+    if (widget.statistic === "birthdays") return field(SelectControl, { label: "Upcoming performers", value: options.upcomingCount, values: WIDGETS.birthdays.choices.upcomingCount, onChange: function (value) { set("upcomingCount", Number(value)); } });
+    return props.kind === "toggles" ? null : h("span", { className: "dirty-stats-dashboard-no-options" }, "This statistic has no additional widget options.");
   }
 
   function filterSummary(filter, entity) {
@@ -547,9 +590,11 @@
             h("button", { type: "button", className: "dirty-ui-icon-button dirty-ui-icon-button-compact dirty-stats-dashboard-drag-handle", title: "Drag to reorder; arrow keys also move this widget", "aria-label": "Reorder " + title + "; use arrow keys or drag", onPointerDown: props.onDragStart, onKeyDown: props.onDragKeyDown }, h("span", { "aria-hidden": true }, "⠿")),
             h("button", { type: "button", className: "dirty-ui-icon-button dirty-ui-icon-button-compact dirty-ui-icon-button-danger dirty-stats-dashboard-remove", title: "Remove widget", "aria-label": "Remove " + title + " widget", onClick: props.onRemove }, h("span", { "aria-hidden": true }, "×"))) : null)),
       props.editing ? h("div", { className: "dirty-stats-dashboard-editor", role: "group", "aria-label": definition.label + " widget settings" },
-        h(SelectControl, { label: "Size", value: widget.size, values: SIZES, labels: SIZE_LABELS, onChange: props.onSize }),
-        h("div", { className: "dirty-stats-dashboard-filter-setting" }, h("span", null, filterSummary(widget.filter, definition.entity)), h("button", { type: "button", className: "btn btn-secondary dirty-ui-button dirty-ui-control-compact", onClick: props.onFilter }, "Change filters")),
-        h("div", { className: "dirty-stats-dashboard-options" }, h(WidgetOptions, { widget: widget, onChange: props.onOptions }))) : null,
+        h("div", { className: "dirty-stats-dashboard-fields" },
+          h(SelectControl, { label: "Size", value: widget.size, values: SIZES, labels: SIZE_LABELS, onChange: props.onSize }),
+          h(FilterControl, { filter: widget.filter, entity: definition.entity, onChange: props.onFilter }),
+          h(WidgetOptions, { widget: widget, kind: "fields", onChange: props.onOptions })),
+        h("div", { className: "dirty-stats-dashboard-toggles" }, h(WidgetOptions, { widget: widget, kind: "toggles", onChange: props.onOptions }))) : null,
       h("div", { className: "dirty-stats-dashboard-widget-body" }, renderWidget(widget, props.resources)));
   }
 

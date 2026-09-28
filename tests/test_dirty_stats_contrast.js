@@ -25,7 +25,7 @@ function contrast(first, second) {
   const values = [luminance(first), luminance(second)].sort((left, right) => right - left);
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
-for (const theme of ["classic", "candy", "tropical", "arcade", "paper"]) {
+for (const theme of ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"]) {
   const block = theme === "classic" ? shared : declarations(".dirty-ui-theme-" + theme);
   const value = name => role(block, name, role(shared, name));
   const accentText = role(block, "accent-text", value("accent"));
@@ -35,5 +35,17 @@ for (const theme of ["classic", "candy", "tropical", "arcade", "paper"]) {
       assert(measured >= 4.5, `${theme} ${name} on ${surface} is ${measured.toFixed(2)}:1, below 4.5:1`);
     }
   }
+}
+function property(block, name) {
+  const match = block.match(new RegExp(name + ":\\s*(#[0-9a-fA-F]{6})"));
+  assert(match, "Missing colour token " + name);
+  return match[1];
+}
+for (const theme of ["destijl", "destijl-dark"]) {
+  const block = declarations(".dirty-ui-theme-" + theme);
+  assert(contrast(role(block, "on-accent"), property(shared, "--dirty-ui-icon-blue")) >= 4.5,
+    theme + " primary buttons and selected tabs have readable labels");
+  assert(contrast(property(block, "--dirty-ui-on-danger-action"), property(block, "--dirty-ui-danger-action")) >= 4.5,
+    theme + " destructive buttons have readable labels");
 }
 console.log("DirtyStats theme text contrast checks passed");

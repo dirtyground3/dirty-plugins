@@ -48,6 +48,47 @@ vm.createContext(context);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/vendor/world.js", "utf8"), context);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8"), context);
 const a = context.window.__dirtyStatsPlugin.algorithms;
+const originOption = a.originMapOption({ rows: [{ name: "USA", value: 500 }, { name: "Canada", value: 12 }, { name: "France", value: 2 }] },
+  ["USA", "Canada", "France", "Empty"].map(name => ({ properties: { name } })),
+  { map: "test", showLegend: true, showNumbers: true });
+const originData = originOption.series[0].data;
+assert.equal(originData[0].count, 500, "the map retains exact performer counts");
+assert.equal(originData[0].value, originOption.visualMap.max, "the most populated country uses the lightest endpoint");
+assert.ok(originData[1].value / originOption.visualMap.max > .4, "a dominant country must not flatten smaller counts near zero");
+assert.ok(originData[2].value > originData[3].value, "low counts remain distinct from zero");
+assert.equal(originData[3].value, null, "countries with no performers bypass the color scale");
+assert.equal(originOption.tooltip.formatter({ name: "Canada", data: originData[1] }), "Canada: 12 performers");
+assert.equal(originOption.series[0].label.formatter({ data: originData[0] }), "500");
+assert.equal(originOption.series[0].label.formatter({ data: originData[3] }), "");
+assert.equal(originOption.visualMap.formatter(Math.log(13)), "12", "legend values use exact counts rather than logarithms");
+assert.equal(a.originMapOption({ rows: [] }, [], {}).visualMap.max, Math.log(2), "an empty map has a finite nonzero scale");
+assert.equal(a.mapLayout({ clientWidth: 1000, clientHeight: 250 }, false).layoutSize, 484, "a wide short map fits its height");
+assert.equal(a.mapLayout({ clientWidth: 400, clientHeight: 500 }, false).layoutSize, 392, "a narrow map fits its width");
+assert.ok(a.mapLayout({ clientWidth: 1000, clientHeight: 250 }, false).layoutSize > a.mapLayout({ clientWidth: 1000, clientHeight: 250 }, true).layoutSize, "hiding the legend reclaims its space");
+assert.equal(a.mapLayout({ clientWidth: 2, clientHeight: 2 }, false).layoutSize, 1, "tiny containers cannot produce negative layouts");
+for (const theme of ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"]) {
+  const previousTheme = a.statsSettings.visualTheme;
+  a.statsSettings.visualTheme = theme;
+  const colors = a.originMapOption({ rows: [{ name: "USA", value: 500 }] }, [], {}).visualMap.inRange.color
+    .map(color => color.match(/\d+/g).map(Number));
+  for (let shade = 1; shade < colors.length; shade++) {
+    assert.ok(colors[shade].every((channel, index) => channel > colors[shade - 1][index]), theme + " map shades get progressively lighter");
+  }
+  a.statsSettings.visualTheme = previousTheme;
+}
+// Verify the bundled ECharts renderer, including its special handling of null
+// map values, rather than relying only on the shape of our options.
+const echarts = require("../plugins/DirtyStats/vendor/echarts.min.js");
+echarts.registerMap("origin-test", context.window.__dirtyStatsWorld);
+const renderedMap = echarts.init(null, null, { renderer: "svg", ssr: true, width: 1000, height: 500 });
+const realOriginOption = a.originMapOption({ rows: [{ name: "United States of America", value: 500 }, { name: "Canada", value: 12 }, { name: "France", value: 2 }] }, context.window.__dirtyStatsWorld.features, { map: "origin-test", showNumbers: true });
+renderedMap.setOption(realOriginOption);
+const renderedOriginData = renderedMap.getModel().getSeriesByIndex(0).getData();
+const renderedFill = name => renderedOriginData.getItemVisual(renderedOriginData.indexOfName(name), "style").fill;
+assert.notEqual(renderedFill("United States of America"), renderedFill("Canada"));
+assert.notEqual(renderedFill("Canada"), renderedFill("France"), "smaller country counts render distinct shades");
+assert.ok(renderedMap.renderToSVGString().includes('fill="' + a.themeColor("grid") + '"'), "zero-count countries render with the neutral fill");
+renderedMap.dispose();
 assert.equal(a.statsSettings.visualTheme, "classic", "fresh installs use the hub's Midnight default");
 assert.deepEqual(JSON.parse(JSON.stringify(a.constellationGender("TRANSGENDER_FEMALE"))), {key: "TRANSGENDER_FEMALE", label: "Transgender female", color: "#d9a6e8"});
 assert.equal(a.constellationGender(null).label, "Unknown");
@@ -247,7 +288,7 @@ function treemapContrast(item) {
   return item.label.color === "#fff" ? 1.05 / (luminance + .05) : (luminance + .05) / .05;
 }
 const savedTagTheme = a.statsSettings.visualTheme;
-for (const theme of ["classic", "candy", "tropical", "arcade", "paper"]) {
+for (const theme of ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"]) {
   a.statsSettings.visualTheme = theme;
   const samples = { rows: [{ id: "low", name: "Low", rating: 0, scenes: 1 }, { id: "high", name: "High", rating: 10, scenes: 1 }] };
   for (const item of a.tagDnaSeriesData(samples, "rating", 0, null)) {
@@ -284,6 +325,19 @@ assert.equal(ages.performers, 2);
 assert.equal(ages.scenes, 4);
 assert.equal(ages.missingSceneDates, 1);
 assert.equal(ages.missingBirthdates, 1);
+assert.equal(ages.modeAge, 24);
+assert.equal(ages.modeCount, 2);
+assert.equal(ages.medianAge, 24, "median uses performer counts in each age bucket");
+assert.equal(ages.averageAge, 74 / 3, "average uses the histogram's distinct performer-age pairs");
+const evenAges = a.aggregateAges([{ id: "even", date: "2026-01-01", performers: [{ id: "a", birthdate: "2006-01-01" }, { id: "b", birthdate: "2003-01-01" }] }]);
+assert.equal(evenAges.medianAge, 21.5, "an even distribution averages the two middle ages across empty buckets");
+assert.equal(evenAges.averageAge, 21.5);
+assert.equal(evenAges.modeAge, 20, "tied modes use the lowest age consistently");
+const emptyAges = a.aggregateAges([]);
+assert.equal(emptyAges.modeAge, null);
+assert.equal(emptyAges.modeCount, 0);
+assert.equal(emptyAges.medianAge, null);
+assert.equal(emptyAges.averageAge, null);
 assert.equal(a.aggregateAges([]).rows.length, 0);
 const ageScenes = [
   {date: "2024-06-15", performers: [{id: "a", birthdate: "2000-06-15"}, {id: "a", birthdate: "2000-06-15"}]},
@@ -510,7 +564,169 @@ assert.equal(patches[1][1]({ filter: native }, () => original), original);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8"), context);
 assert.equal(routes.length, 1);
 
+async function testNativeRouteLoading() {
+  const state = [], effects = [], loads = [], routeRegistrations = [], nativePatches = {}, pageTitles = [];
+  let stateIndex = 0, pathname = "/plugins/dirty-stats/dashboard", search = "?docsCapture=1";
+  const savedAgeQuery = 'c=%7B%22type%22%3A%22favorite%22%2C%22value%22%3Atrue%7D&sortby=date&sortdir=asc';
+  const routeSettings = {
+    statisticFilter_ages: savedAgeQuery,
+    statisticFilter_origin: "q=Canada&sortby=name",
+    agePerformerFilter: { find: { q: "Alice", sort: "name" }, object: { favorite: true }, count: 2, query: "q=Alice&sortby=name" }
+  };
+  const react = {
+    createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+    useRef: () => ({ current: null }),
+    useState: initial => {
+      const index = stateIndex++;
+      if (!(index in state)) state[index] = typeof initial === "function" ? initial() : initial;
+      return [state[index], value => { state[index] = value; }];
+    },
+    useEffect: callback => { effects.push(callback); }
+  };
+  const pluginApi = {
+    React: react,
+    components: {},
+    libraries: { ReactRouterDOM: {
+      useLocation: () => ({ pathname, search }),
+      useHistory: () => ({ replace: location => { search = location.search; } }),
+      MemoryRouter: "MemoryRouter"
+    } },
+    register: { route: (path, component) => routeRegistrations.push(component) },
+    patch: { before() {}, instead(name, callback) { nativePatches[name] = callback; } }
+  };
+  const routeContext = {
+    window: {
+      PluginApi: pluginApi,
+      DirtyPlugins: {
+        graphql() {},
+        react: { Dialog: "Dialog", usePageTitle: (pluginName, viewTitle) => pageTitles.push(viewTitle + " - " + pluginName) },
+        getPluginSettings: () => Promise.resolve(routeSettings),
+        configurePlugin: (id, settings) => { Object.assign(routeSettings, settings); return Promise.resolve({ settings }); },
+        native: { ensureComponents: (bundle, names) => new Promise(resolve => {
+          loads.push({ bundle, finish: () => {
+            names.forEach(name => { pluginApi.components[name] = name; });
+            resolve();
+          } });
+        }) }
+      },
+      __dirtyStatsDashboard: { Component: "Dashboard" },
+      location: { pathname: "/plugins/dirty-stats/ages" },
+      dispatchEvent() {}, addEventListener() {}, removeEventListener() {},
+      setTimeout, clearTimeout
+    },
+    console, URLSearchParams, Event
+  };
+  vm.createContext(routeContext);
+  vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8"), routeContext);
+  const render = () => {
+    stateIndex = 0;
+    effects.length = 0;
+    return routeRegistrations[0]();
+  };
+  const commit = () => effects.splice(0).map(effect => effect());
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+
+  render();
+  assert.equal(pageTitles.at(-1), "Dashboard - DirtyStats");
+  const dashboardCleanup = commit();
+  render();
+  pathname = "/plugins/dirty-stats/ages";
+  const transition = render();
+  assert.equal(pageTitles.at(-1), "Age at scene - DirtyStats", "view navigation updates the browser title before loading finishes");
+  assert.equal(transition.children[1], null,
+    "Dashboard readiness must not mount age controls before native performer components load");
+  dashboardCleanup.forEach(cleanup => { if (cleanup) cleanup(); });
+  const ageCleanup = commit();
+  await flush();
+  assert.equal(search, "?" + savedAgeQuery + "&docsCapture=1", "saved filters restore before the native list mounts");
+  assert.equal(loads[0].bundle, "SceneList");
+  loads[0].finish();
+  await flush();
+  assert.equal(loads[1].bundle, "Performers");
+  assert.equal(render().children[1], null, "age controls wait for both native bundles");
+  loads[1].finish();
+  await flush();
+  const loaded = render();
+  assert.equal(loaded.children[1].props.value, "ages");
+  assert.equal(loaded.children[2].type, "FilteredSceneList", "Age at scene renders when all dependencies are ready");
+  const routePlugin = routeContext.window.__dirtyStatsPlugin;
+  const filters = routePlugin.algorithms;
+  effects.at(-1)();
+  assert.equal(routePlugin.getSettingExtra("statisticFilter_ages"), savedAgeQuery);
+  assert.equal(filters.statisticFilterSearch("origin", ""), "?q=Canada&sortby=name", "each statistic restores its own selection");
+  assert.equal(filters.statisticFilterSearch("ages", "?q=explicit"), "?q=explicit", "explicit link filters take priority");
+  assert.equal(filters.statisticFilterSearch("ages", "?p=3"), "?p=3", "explicit native pagination is preserved for shared links");
+  assert.equal(filters.nativeFilterQuery("?" + savedAgeQuery + "&c=nested%2Band%20spaces&p=9&docsCapture=1"),
+    savedAgeQuery + "&c=nested%2Band%20spaces", "saved criteria retain their original encoding without capture or pagination state");
+  const restored = filters.restoredPerformerFilter();
+  assert.equal(restored.makeFindFilter().q, "Alice", "age performer filtering restores before its dialog is opened");
+  assert.equal(restored.makeFilter().favorite, true);
+  assert.equal(restored.count(), 1, "native criterion counts exclude search text");
+  const copiedCriteria = restored.makeFilter();
+  copiedCriteria.favorite = false;
+  assert.equal(restored.makeFilter().favorite, true, "native models cannot mutate persisted criteria");
+  search = "?sortby=date&sortdir=asc";
+  render();
+  effects.at(-1)();
+  assert.equal(routePlugin.getSettingExtra("statisticFilter_ages"), "sortby=date&sortdir=asc", "clearing criteria replaces the saved selection");
+  await new Promise(resolve => setTimeout(resolve, 450));
+  assert.equal(routeSettings.statisticFilter_ages, "sortby=date&sortdir=asc", "filters automatically persist through the shared settings writer");
+  for (const statistic of ["origin", "growth", "ages", "ratings", "performerRatings", "performerScatter", "countRating", "repeatOffenders", "qualityEfficiency", "studios", "tags", "constellation", "birthdays"]) {
+    routePlugin.setSettingExtra("statisticFilter_" + statistic, "q=" + statistic);
+    assert.equal(filters.statisticFilterSearch(statistic, ""), "?q=" + statistic, statistic + " keeps an independent saved selection");
+  }
+  state.length = 0;
+  stateIndex = 0;
+  const selector = loaded.children[1].type(loaded.children[1].props);
+  state.length = 0;
+  state[0] = true;
+  stateIndex = 0;
+  const controls = selector.children[1].type();
+  const dialog = controls.children[1];
+  const router = dialog.children.at(-1);
+  assert.equal(router.type, "MemoryRouter", "performer filters use isolated native URL state");
+  assert.equal(router.props.initialEntries[0].search, "?q=Alice&sortby=name", "reopening the dialog restores its actual native controls");
+  assert.equal(router.children[0].props.alterQuery, true);
+  const captureFilter = {
+    makeFindFilter: () => ({ q: "Alice", sort: "name" }),
+    makeFilter: () => ({ favorite: true }), count: () => 1,
+    makeQueryParameters: () => "q=Alice&sortby=name"
+  };
+  const capture = nativePatches.PerformerList({ filter: captureFilter, extraCriteria: { dirtyStatsAgeFilters: true } }, () => null);
+  search = "q=Alice&sortby=name";
+  effects.length = 0;
+  capture.type({ filter: Object.assign({}, captureFilter, { makeQueryParameters: () => "sortby=name" }) });
+  commit();
+  assert.equal(routePlugin.getSettingExtra("agePerformerFilter").find.q, "Alice", "pre-hydration native defaults cannot erase saved filters");
+  effects.length = 0;
+  capture.type({ filter: captureFilter });
+  commit();
+  assert.equal(routePlugin.getSettingExtra("agePerformerFilter"), routeSettings.agePerformerFilter, "reopening an unchanged selection does not replace its snapshot");
+  search = "q=Rita&sortby=name";
+  effects.length = 0;
+  capture.type({ filter: Object.assign({}, captureFilter, {
+    makeFindFilter: () => ({ q: "Rita", sort: "name" }),
+    makeQueryParameters: () => "q=Rita&sortby=name"
+  }) });
+  commit();
+  await new Promise(resolve => setTimeout(resolve, 450));
+  assert.equal(routeSettings.agePerformerFilter.find.q, "Rita", "performer selection changes save automatically");
+  assert.equal(routeSettings.statisticFilter_origin, "q=origin", "performer dialog changes cannot overwrite full-view filters");
+  search = "sortby=name";
+  effects.length = 0;
+  capture.type({ filter: {
+    makeFindFilter: () => ({ q: "", sort: "name" }), makeFilter: () => ({}), count: () => 0,
+    makeQueryParameters: () => "sortby=name"
+  } });
+  commit();
+  assert.equal(filters.restoredPerformerFilter(), null, "cleared performer criteria restore the full cast");
+  await new Promise(resolve => setTimeout(resolve, 450));
+  assert.equal(routeSettings.agePerformerFilter.count, 0, "clearing the performer selection is persisted too");
+  ageCleanup.forEach(cleanup => { if (cleanup) cleanup(); });
+}
+
 (async function () {
+  await testNativeRouteLoading();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(a.statsSettings.visualTheme, "candy");
   assert.equal(a.statsTheme().label, "Candy Pop");
@@ -552,6 +768,8 @@ assert.equal(routes.length, 1);
   assert.equal(a.parseStatsSetting("tagDnaMaxTags", "200"), 200);
   assert.equal(a.parseStatsSetting("tagDnaMaxTags", "0"), 0, "the unlimited tag option must persist");
   assert.equal(a.parseStatsSetting("visualTheme", "paper"), "paper");
+  assert.equal(a.parseStatsSetting("visualTheme", "destijl"), "destijl");
+  assert.equal(a.parseStatsSetting("visualTheme", "destijl-dark"), "destijl-dark");
   assert.equal(a.parseStatsSetting("visualTheme", "formal"), null);
   assert.equal(a.statsSettings.countRatingMetric, "play_count", "the count metric defaults to the view count");
 

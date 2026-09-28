@@ -100,7 +100,106 @@ const a = plugin.algorithms;
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const inside = (expression) => vm.runInContext(expression, context);
 
+async function testOCounterDismissal() {
+  const componentSource = source.slice(source.indexOf("  function VisibleOCounterButton("), source.indexOf("  var MultiscreenRoute ="));
+  function mount() {
+    const slots = [];
+    const requests = [];
+    const cleanup = [];
+    let cursor = 0;
+    let disposed = false;
+    const sandbox = {
+      console: { error: noop },
+      Fragment: "fragment",
+      PluginIconButton: "button",
+      ICONS: { error: "error", oCounter: "O" },
+      incrementSceneOQuery: "increment",
+      createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+      useState(value) {
+        const index = cursor++;
+        if (!(index in slots)) slots[index] = value;
+        return [slots[index], (next) => {
+          assert.equal(disposed, false, "pending saves must not update an unmounted control");
+          slots[index] = next;
+        }];
+      },
+      useRef(value) {
+        const index = cursor++;
+        if (!(index in slots)) slots[index] = { current: value };
+        return slots[index];
+      },
+      useEffect(effect) {
+        const index = cursor++;
+        if (!(index in slots)) { slots[index] = true; cleanup.push(effect()); }
+      },
+      graphqlRequest(query, variables) {
+        return new Promise((resolve, reject) => requests.push({ id: variables.id, resolve, reject }));
+      },
+    };
+    vm.runInNewContext(componentSource, sandbox);
+    return {
+      requests,
+      render(sceneIds = ["a", "b"]) { cursor = 0; return sandbox.VisibleOCounterButton({ sceneIds }); },
+      unmount() { cleanup.forEach((effect) => effect && effect()); disposed = true; },
+    };
+  }
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  const finishAnimation = (tree) => {
+    const wrapper = tree.children[0];
+    wrapper.props.onAnimationEnd({ target: wrapper, currentTarget: wrapper });
+  };
+  const first = mount();
+  assert.equal(first.render([]).children[0], false, "no counter without visible scenes");
+  const click = first.render(["a", "a", "b"]).children[0].children[0].props.onClick;
+  click();
+  click();
+  await flush();
+  assert.deepEqual(first.requests.map((request) => request.id), ["a", "b"], "rapid clicks and repeated scenes must count only once");
+  let tree = first.render();
+  assert.match(tree.children[0].props.className, /ms-o-counter-dismissing/);
+  assert.equal(tree.children[0].children[0].props.disabled, true);
+  finishAnimation(tree);
+  assert.equal(first.render().children[0], false, "button disappears before a slow save finishes");
+  first.requests.forEach((request) => request.resolve());
+  await flush();
+  tree = first.render(["c"]);
+  assert.equal(tree.children[0], false, "the button stays dismissed when playback advances");
+  assert.equal(tree.children[1].children[0], "O counters increased.");
+  click();
+  await flush();
+  assert.equal(first.requests.length, 2, "a completed action cannot increment again");
+  first.unmount();
+  assert.ok(mount().render().children[0], "a new playback session restores the control");
+
+  const retry = mount();
+  retry.render().children[0].children[0].props.onClick();
+  await flush();
+  finishAnimation(retry.render());
+  retry.requests[0].resolve();
+  retry.requests[1].reject(new Error("offline"));
+  await flush();
+  tree = retry.render(["c"]);
+  assert.ok(tree.children[0], "failed saves restore a usable retry control");
+  assert.equal(tree.children[0].children[0].props.disabled, false);
+  tree.children[0].children[0].props.onClick();
+  await flush();
+  assert.deepEqual(retry.requests.map((request) => request.id), ["a", "b", "b"], "retry only failed original scenes, even after playback advances");
+  retry.requests[2].resolve();
+  await flush();
+  finishAnimation(retry.render());
+  assert.equal(retry.render().children[0], false, "successful retry also dismisses the control");
+  retry.unmount();
+
+  const pending = mount();
+  pending.render().children[0].children[0].props.onClick();
+  await flush();
+  pending.unmount();
+  pending.requests.forEach((request) => request.resolve());
+  await flush();
+}
+
 async function main() {
+  await testOCounterDismissal();
   assert.equal(plugin.route, "/plugins/multiscreen");
   assert.equal(routes.length, 1, "the bundle must register one route");
   assert.equal(patches.length, 7, "the bundle must register seven patches");

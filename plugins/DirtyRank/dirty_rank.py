@@ -8,6 +8,8 @@ import math
 import re
 import sys
 import time
+import unicodedata
+import uuid
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -59,9 +61,16 @@ DEFAULT_SETTINGS = {
     "categoriesByCohort": DEFAULT_CATEGORIES_BY_COHORT,
     "defaultCohort": "FEMALE",
     "enabledCohorts": ["FEMALE"],
+    "showBattlesInMenu": True,
     "showLeaderboardsInMenu": True,
+    "leaderboardTopCount": 3,
+    "leaderboardPerformerCount": 18,
+    "leaderboardView": "gallery",
+    "overallScoreStrategy": "weighted",
+    "overallPower": 3.0,
     "showRatingsBeforeVote": False,
     "hidePerformerImages": False,
+    "hideBattleStandings": False,
     "includePerformersWithoutImages": False,
     "confidenceGoal": "ranking",
     "confidenceTopN": 20,
@@ -166,23 +175,36 @@ def _boolean(value: Any, fallback: bool) -> bool:
 
 
 def _slug(value: Any) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
-    return slug[:64]
+    ascii_name = unicodedata.normalize("NFKD", str(value or "").strip().lower())
+    ascii_name = "".join(character for character in ascii_name if not unicodedata.combining(character))
+    return re.sub(r"[^a-z0-9]+", "-", ascii_name).strip("-")[:64] or "category"
 
 
-def _parse_category_list(value: Any) -> list[dict[str, Any]]:
+def _unique_category_id(name: str, used_ids: set[str]) -> str:
+    base = _slug(name)
+    candidate = base
+    suffix = 1
+    while candidate in used_ids:
+        ending = f"-{suffix}"
+        candidate = base[: 64 - len(ending)].rstrip("-") + ending
+        suffix += 1
+    used_ids.add(candidate)
+    return candidate
+
+
+def _parse_category_list(value: Any, cohort: str = "FEMALE") -> list[dict[str, Any]]:
     if not isinstance(value, list):
         value = copy.deepcopy(DEFAULT_CATEGORY_DEFINITIONS)
 
     categories: list[dict[str, Any]] = []
-    used_ids: set[str] = set()
+    used_ids: set[str] = {"overall"}
     for index, raw in enumerate(value[:24]):
         if not isinstance(raw, dict):
             continue
         name = str(raw.get("name") or "").strip()[:80]
-        category_id = _slug(raw.get("id") or name)
-        if not name or not category_id or category_id in used_ids:
+        if not name:
             continue
+        category_id = _unique_category_id(name, used_ids)
         categories.append(
             {
                 "id": category_id,
@@ -193,13 +215,12 @@ def _parse_category_list(value: Any) -> list[dict[str, Any]]:
                 "order": index,
             }
         )
-        used_ids.add(category_id)
     if not categories:
-        return _parse_category_list(copy.deepcopy(DEFAULT_CATEGORY_DEFINITIONS))
+        return _parse_category_list(copy.deepcopy(DEFAULT_CATEGORY_DEFINITIONS), cohort)
     return categories
 
 
-def _parse_categories_by_cohort(value: Any) -> dict[str, list[dict[str, Any]]]:
+def _parse_categories_by_cohort(value: Any, boxes: list[dict[str, Any]] | None = None) -> dict[str, list[dict[str, Any]]]:
     if isinstance(value, str):
         try:
             value = json.loads(value)
@@ -207,10 +228,47 @@ def _parse_categories_by_cohort(value: Any) -> dict[str, list[dict[str, Any]]]:
             value = None
 
     source = value if isinstance(value, dict) else {}
-    return {
-        cohort: _parse_category_list(source.get(cohort))
+    result = {
+        cohort: _parse_category_list(source.get(cohort), cohort)
         for cohort in VALID_COHORTS
     }
+    for cohort in list(source) + [box["id"] for box in (boxes or [])]:
+        if cohort not in result and _valid_box_id(cohort):
+            result[cohort] = _parse_category_list(source.get(cohort), cohort)
+    return result
+
+
+def _valid_box_id(value: Any) -> bool:
+    return isinstance(value, str) and (value in VALID_COHORTS or re.fullmatch(r"BOX-[A-Z0-9-]{1,60}", value) is not None)
+
+
+def _parse_gender_boxes(value: Any, enabled_cohorts: list[str]) -> list[dict[str, Any]]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            value = None
+    boxes: list[dict[str, Any]] = []
+    used: set[str] = set()
+    for raw in value[:24] if isinstance(value, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        box_id = str(raw.get("id") or "").strip().upper()
+        if not _valid_box_id(box_id) or box_id in used:
+            continue
+        used.add(box_id)
+        boxes.append({
+            "id": box_id,
+            "name": str(raw.get("name") or box_id.replace("_", " ").capitalize()).strip()[:80],
+            "genders": _parse_enabled_cohorts(raw.get("genders"), [box_id] if box_id in VALID_COHORTS else ["FEMALE"]),
+            "enabled": _boolean(raw.get("enabled"), True),
+        })
+    if not boxes:
+        boxes = [{"id": cohort, "name": cohort.replace("_", " ").capitalize().replace("Non binary", "Non-binary"),
+                  "genders": [cohort], "enabled": cohort in enabled_cohorts} for cohort in COHORT_ORDER]
+    if not any(box["enabled"] for box in boxes):
+        boxes[0]["enabled"] = True
+    return boxes
 
 
 def _parse_enabled_cohorts(value: Any, fallback: list[str]) -> list[str]:
@@ -231,29 +289,46 @@ def _parse_enabled_cohorts(value: Any, fallback: list[str]) -> list[str]:
 def normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
     source = raw if isinstance(raw, dict) else {}
     cohort = str(source.get("defaultCohort") or DEFAULT_SETTINGS["defaultCohort"]).upper()
-    if cohort not in VALID_COHORTS:
-        cohort = str(DEFAULT_SETTINGS["defaultCohort"])
-    enabled_cohorts = _parse_enabled_cohorts(source.get("enabledCohorts"), [cohort])
+    boxes = _parse_gender_boxes(source.get("genderBoxes"), _parse_enabled_cohorts(source.get("enabledCohorts"), [cohort]))
+    enabled_cohorts = [box["id"] for box in boxes if box["enabled"]]
     if cohort not in enabled_cohorts:
         cohort = enabled_cohorts[0]
     confidence_goal = str(source.get("confidenceGoal") or "ranking").lower()
     if confidence_goal not in {"all", "ranking", "top"}:
         confidence_goal = "ranking"
+    overall_strategy = source.get("overallScoreStrategy")
+    if overall_strategy not in ("weighted", "power"):
+        overall_strategy = "weighted"
     initial_deviation = _finite_number(
         source.get("initialDeviation"), 350.0, 30.0, 1000.0
     )
     deviation_floor = _finite_number(
         source.get("deviationFloor"), 30.0, 1.0, initial_deviation
     )
+    raw_top_count = _finite_number(source.get("leaderboardTopCount"), 3.0, -1000000.0, 1000000.0)
+    top_count = int(raw_top_count) if raw_top_count in (3, 4, 5) else 3
+    raw_performer_count = source.get("leaderboardPerformerCount")
+    if raw_performer_count is None or not str(raw_performer_count).strip():
+        raw_performer_count = 18
+    performer_count = math.floor(_finite_number(raw_performer_count, 18.0, top_count * 2, 1000.0))
+    performer_count = min(1000 // top_count * top_count, (performer_count + top_count - 1) // top_count * top_count)
     return {
-        "categoriesByCohort": _parse_categories_by_cohort(source.get("categories")),
+        "categoriesByCohort": _parse_categories_by_cohort(source.get("categories"), boxes),
+        "genderBoxes": boxes,
         "defaultCohort": cohort,
         "enabledCohorts": enabled_cohorts,
+        "showBattlesInMenu": _boolean(source.get("showBattlesInMenu"), True),
+        "leaderboardTopCount": top_count,
+        "leaderboardPerformerCount": performer_count,
+        "leaderboardView": "table" if source.get("leaderboardView") == "table" else "gallery",
+        "overallScoreStrategy": overall_strategy,
+        "overallPower": _finite_number(source.get("overallPower"), 3.0, 1.0, 4.0),
         "showLeaderboardsInMenu": _boolean(
             source.get("showLeaderboardsInMenu"), True
         ),
         "showRatingsBeforeVote": _boolean(source.get("showRatingsBeforeVote"), False),
         "hidePerformerImages": _boolean(source.get("hidePerformerImages"), False),
+        "hideBattleStandings": _boolean(source.get("hideBattleStandings"), False),
         "includePerformersWithoutImages": _boolean(
             source.get("includePerformersWithoutImages"), False
         ),
@@ -651,27 +726,169 @@ class RatingRepository:
             return {"version": STATE_VERSION, "revision": revision, "states": states}
 
 
+def _category_settings_with_label_ids(raw_settings: dict[str, Any]) -> tuple[dict[str, Any], dict[str, dict[str, str]]]:
+    """Canonicalize category IDs while retaining each category's previous ID for migration."""
+    result = dict(raw_settings)
+    raw_categories = raw_settings.get("categories")
+    if isinstance(raw_categories, str):
+        try:
+            raw_categories = json.loads(raw_categories)
+        except (TypeError, ValueError):
+            raw_categories = None
+    if not isinstance(raw_categories, dict):
+        return result, {}
+    categories = copy.deepcopy(raw_categories)
+    remaps: dict[str, dict[str, str]] = {}
+    for cohort in categories:
+        if not _valid_box_id(cohort):
+            continue
+        items = categories.get(cohort)
+        if not isinstance(items, list):
+            continue
+        used_ids: set[str] = {"overall"}
+        remaps[cohort] = {}
+        for item in items[:24]:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()[:80]
+            if not name:
+                continue
+            new_id = _unique_category_id(name, used_ids)
+            old_id = str(item.get("id") or "").strip()
+            item["id"] = new_id
+            if old_id and old_id != new_id:
+                if old_id in remaps[cohort]:
+                    raise PluginError(f"Duplicate existing category ID for {cohort}: {old_id}")
+                remaps[cohort][old_id] = new_id
+    result["categories"] = json.dumps(categories, ensure_ascii=False, separators=(",", ":"))
+    return result, remaps
+
+
+def _move_category_rating_ids(connection: Any, remaps: dict[str, dict[str, str]]) -> bool:
+    changed = False
+    for cohort, mapping in remaps.items():
+        if not mapping:
+            continue
+        old_ids = set(mapping)
+        for new_id in mapping.values():
+            if new_id in old_ids:
+                continue
+            for table in ("dirty_rank_pools", "dirty_rank_battles"):
+                if connection.execute(
+                    f"SELECT 1 FROM {table} WHERE cohort=? AND category_id=? LIMIT 1",
+                    (cohort, new_id),
+                ).fetchone():
+                    raise PluginError(
+                        f"Cannot rename a {cohort} category to {new_id}: ratings already use that ID"
+                    )
+        temporary = {old_id: "__dirty_rank_migration_" + uuid.uuid4().hex for old_id in mapping}
+        for old_id, temp_id in temporary.items():
+            for table in ("dirty_rank_pools", "dirty_rank_battles"):
+                connection.execute(
+                    f"UPDATE {table} SET category_id=? WHERE cohort=? AND category_id=?",
+                    (temp_id, cohort, old_id),
+                )
+        for old_id, new_id in mapping.items():
+            for table in ("dirty_rank_pools", "dirty_rank_battles"):
+                connection.execute(
+                    f"UPDATE {table} SET category_id=? WHERE cohort=? AND category_id=?",
+                    (new_id, cohort, temporary[old_id]),
+                )
+        changed = True
+    return changed
+
+
+def _category_ids_differ(current: dict[str, Any], canonical: dict[str, Any]) -> bool:
+    try:
+        return json.loads(current["categories"]) != json.loads(canonical["categories"])
+    except (KeyError, TypeError, ValueError):
+        return current.get("categories") != canonical.get("categories")
+
+
+def _ensure_category_ids(repository: RatingRepository, connection: Any) -> None:
+    current = shared_storage.get_plugin_settings(PLUGIN_ID, connection=connection)
+    if not current or "categories" not in current:
+        return
+    canonical, _ = _category_settings_with_label_ids(current)
+    if not _category_ids_differ(current, canonical):
+        return
+    shared_storage.backup_database(path=repository.path)
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        current = shared_storage.get_plugin_settings(PLUGIN_ID, connection=connection)
+        canonical, remaps = _category_settings_with_label_ids(current)
+        if _category_ids_differ(current, canonical):
+            if _move_category_rating_ids(connection, remaps):
+                repository.increment_revision(connection)
+            shared_storage.set_plugin_settings_on_connection(
+                PLUGIN_ID, canonical, connection,
+                shared_storage.get_plugin_revision(PLUGIN_ID, connection=connection),
+            )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def save_settings(repository: RatingRepository, connection: Any, args: dict[str, Any]) -> dict[str, Any]:
+    values = args.get("settings")
+    if not isinstance(values, dict):
+        raise PluginError("DirtyRank settings must be an object")
+    expected_revision = args.get("expectedRevision")
+    if isinstance(expected_revision, bool) or not isinstance(expected_revision, int):
+        raise PluginError("DirtyRank settings require a revision from the latest read")
+    canonical, remaps = _category_settings_with_label_ids(values)
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        current_revision = shared_storage.get_plugin_revision(PLUGIN_ID, connection=connection)
+        if expected_revision != current_revision:
+            raise shared_storage.SettingsRevisionConflict(PLUGIN_ID, expected_revision, current_revision)
+        current = shared_storage.get_plugin_settings(PLUGIN_ID, connection=connection)
+        current_categories = current.get("categories")
+        if isinstance(current_categories, str):
+            try:
+                current_categories = json.loads(current_categories)
+            except (TypeError, ValueError):
+                current_categories = None
+        if isinstance(current_categories, dict):
+            for cohort, mapping in remaps.items():
+                existing_ids = {str(item.get("id")) for item in current_categories.get(cohort, []) if isinstance(item, dict)}
+                remaps[cohort] = {old: new for old, new in mapping.items() if old in existing_ids}
+        else:
+            remaps = {}
+        if _move_category_rating_ids(connection, remaps):
+            repository.increment_revision(connection)
+        response = shared_storage.set_plugin_settings_on_connection(
+            PLUGIN_ID, canonical, connection, expected_revision
+        )
+        connection.commit()
+        return response
+    except Exception:
+        connection.rollback()
+        raise
+
+
 def _category(
-    settings: dict[str, Any], category_id: str, cohort: str
+    settings: dict[str, Any], category_id: str, cohort: str, *, require_enabled: bool = True
 ) -> dict[str, Any]:
     normalized = _slug(category_id)
     for category in settings["categoriesByCohort"].get(cohort, []):
-        if category["id"] == normalized and category["enabled"]:
+        if category["id"] == normalized and (category["enabled"] or not require_enabled):
             return category
     raise PluginError(
         f"Unknown or disabled DirtyRank category for {cohort}: {category_id}"
     )
 
 
-def _cohort(value: Any) -> str:
+def _cohort(value: Any, settings: dict[str, Any] | None = None) -> str:
     cohort = str(value or "").strip().upper()
-    if cohort not in VALID_COHORTS:
+    if not _valid_box_id(cohort) or (settings is not None and not any(box["id"] == cohort for box in settings["genderBoxes"])):
         raise PluginError(f"Unsupported performer cohort: {value}")
     return cohort
 
 
 def _enabled_cohort(settings: dict[str, Any], value: Any) -> str:
-    cohort = _cohort(value)
+    cohort = _cohort(value, settings)
     if cohort not in settings["enabledCohorts"]:
         raise PluginError(f"DirtyRank battles are disabled for {cohort}")
     return cohort
@@ -768,7 +985,7 @@ def undo_battle(
     left_id = str(args.get("leftId") or "").strip()
     right_id = str(args.get("rightId") or "").strip()
     battle_id = str(args.get("battleId") or "").strip()
-    cohort = _cohort(args.get("cohort"))
+    cohort = _cohort(args.get("cohort"), settings)
     category_id = _category(
         settings, str(args.get("categoryId") or ""), cohort
     )["id"]
@@ -822,9 +1039,9 @@ def reset_pool(
 ) -> dict[str, Any]:
     if str(args.get("confirm") or "") != "RESET":
         raise PluginError("Reset requires explicit RESET confirmation")
-    cohort = _cohort(args.get("cohort"))
+    cohort = _cohort(args.get("cohort"), settings)
     category_id = _category(
-        settings, str(args.get("categoryId") or ""), cohort
+        settings, str(args.get("categoryId") or ""), cohort, require_enabled=False
     )["id"]
     with repository.connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
@@ -887,10 +1104,16 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
     try:
         repository = RatingRepository(connection=connection)
         mode = str(args.get("mode") or "record")
+        _ensure_category_ids(repository, connection)
+        if mode == "getSettings":
+            return {
+                "revision": shared_storage.get_plugin_revision(PLUGIN_ID, connection=connection),
+                "settings": shared_storage.get_plugin_settings(PLUGIN_ID, connection=connection),
+            }
+        if mode == "saveSettings":
+            return save_settings(repository, connection, args)
         if mode == "loadAll":
             return repository.all_states()
-        if mode == "backupSharedDatabase":
-            return {"path": str(shared_storage.backup_database(path=repository.path))}
         settings = normalize_settings(
             shared_storage.get_plugin_settings(PLUGIN_ID, connection=connection)
         )

@@ -1,8 +1,9 @@
 # DirtyTidy
 
 DirtyTidy organizes scene files using metadata-based folder and filename
-templates. Every proposed operation is calculated first and must be confirmed
-from the Dirty Plugins settings page before it can be queued.
+templates. Manual execution applies only operations confirmed in a preview
+from the Dirty Plugins settings page. Automation requires a reviewed preview
+and explicit approval of the folder and filename rules.
 Preview rows can be filtered across the complete plan by Ready, Warning,
 Blocked, or Unchanged status. The complete plan is calculated once; filtering
 and pagination then happen instantly in the browser without recalculating it.
@@ -13,6 +14,8 @@ hooks, so DirtyTidy listens for successfully finished jobs through Stash's
 job-status subscription; the Stash UI must remain open until the selected job
 finishes. Duplicate detection uses each job's ID and start time, so reused
 job IDs after a Stash or PC restart do not suppress new runs.
+Automation recalculates the plan from the current library each time, so new
+scenes and changed metadata use the approved rules without another approval.
 
 ## Screenshot
 
@@ -39,7 +42,9 @@ variables, automation, preview, and confirmation in one reviewable workflow.
 - Execution requires the strategy hash produced by a fresh preview.
 - Changing a folder or filename strategy clears its automation approval.
 - Automated execution rechecks the saved mode and approved strategy hash before
-  moving any file.
+  moving any file. Approval covers the rules, including future scenes, rather
+  than freezing the preview's file list. Each run still skips missing files,
+  blocked destinations, and files outside configured Stash sources.
 
 ## Templates
 

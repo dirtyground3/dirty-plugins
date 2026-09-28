@@ -5,7 +5,7 @@
   var INSTANCE_KEY = "__extractScenesFloatingAction";
   var MUTATION_DEBOUNCE_MS = 150;
   var RELEVANT_MUTATION_SELECTOR =
-    ".filtered-list-toolbar, .item-list-container, .marker-wall";
+    "#plugin-extractScenes-destinationFolder";
   var hubApi = window.DirtyPlugins;
   if (!hubApi || !hubApi.graphql) {
     if (window.DirtyPlugins && window.DirtyPlugins.debugLog) {
@@ -15,7 +15,6 @@
   }
   window.__dirtyCurrentPluginId = PLUGIN_ID;
   var debugLog = hubApi.debugLog || function () {};
-  var debugLogThrottled = hubApi.debugLogThrottled || function () {};
 
   // Stash may reload plugin assets without reloading the page. Tear down an
   // older instance first so observers and event handlers are never duplicated.
@@ -38,15 +37,13 @@
   var state = {
     browseButton: null,
     busy: false,
-    button: null,
-    buttonPositioned: false,
+    actionListeners: [],
     destroyed: false,
     frame: null,
     mutationTimer: null,
     observer: null,
     picker: null,
     pickerRequest: 0,
-    selectionSignature: null,
   };
   var hubFieldAction = {
     label: "Browse\u2026",
@@ -76,138 +73,58 @@
     hubApi.ui.notify(message, isError ? "error" : "success");
   }
 
-  function currentItemKind() {
-    var path = window.location.pathname;
-    if (/^\/scenes\/markers\/?$/.test(path)) return "marker";
-    if (/^\/scenes\/?$/.test(path)) return "scene";
-    if (/^\/images\/?$/.test(path)) return "image";
-    return null;
+  var PluginApi = window.PluginApi;
+  var React = PluginApi.React;
+  var h = React.createElement;
+
+  function publishBusyState() {
+    state.actionListeners.slice().forEach(function (listener) { listener(state.busy); });
   }
 
-  function idFromLinkedItem(checkbox, routeName) {
-    var node = checkbox;
-    var routePattern = new RegExp("/" + routeName + "/([^/?#]+)");
-    while (node && node !== document.body) {
-      if (node !== checkbox && node.matches(
-        ".item-list-container, .marker-wall, main, .sidebar-pane-content"
-      )) break;
-
-      var links = node.querySelectorAll ? node.querySelectorAll("a[href]") : [];
-      for (var index = 0; index < links.length; index += 1) {
-        try {
-          var path = new URL(
-            links[index].getAttribute("href"),
-            window.location.origin
-          ).pathname;
-          var match = path.match(routePattern);
-          if (match) return decodeURIComponent(match[1]);
-        } catch (_error) {
-          // Ignore malformed or non-navigation links and keep looking.
-        }
-      }
-      node = node.parentElement;
-    }
-    return null;
+  function ExtractionAction(props) {
+    var busyState = React.useState(state.busy);
+    var busy = busyState[0];
+    var setBusy = busyState[1];
+    React.useEffect(function () {
+      state.actionListeners.push(setBusy);
+      setBusy(state.busy);
+      return function () {
+        var index = state.actionListeners.indexOf(setBusy);
+        if (index !== -1) state.actionListeners.splice(index, 1);
+      };
+    }, []);
+    if (state.destroyed) return null;
+    var selection = props.selection;
+    var count = selection.ids.length;
+    var label = busy ? "Queuing extraction\u2026" : count === 1
+      ? "Extract selected " + selection.singular
+      : "Extract " + count + " selected " + selection.plural;
+    return h("div", { className: "dirty-file-extractor-selection-actions" },
+      h(hubApi.react.Button, {
+        className: "extract-scenes-action",
+        tone: "primary",
+        busy: busy,
+        onClick: function () { startCopy(selection); },
+      }, label)
+    );
   }
 
-  function markerIdFromSelectionCheckbox(checkbox) {
-    var node = checkbox;
-    var pattern = /\/scene_marker\/([^/?#]+)\//;
-    while (node && node !== document.body) {
-      if (node !== checkbox && node.matches(
-        ".marker-wall, main, .sidebar-pane-content"
-      )) break;
-
-      var media = node.querySelectorAll
-        ? node.querySelectorAll('[src*="/scene_marker/"]')
-        : [];
-      for (var index = 0; index < media.length; index += 1) {
-        var match = String(media[index].getAttribute("src") || "").match(pattern);
-        if (match) return decodeURIComponent(match[1]);
-      }
-      node = node.parentElement;
-    }
-    return null;
-  }
-
-  function idFromSelectionCheckbox(checkbox, kind) {
-    if (kind === "marker") return markerIdFromSelectionCheckbox(checkbox);
-    return idFromLinkedItem(checkbox, kind === "image" ? "images" : "scenes");
-  }
-
-  function selectionSignature(selection) {
-    return (selection.kind || "none") + ":" + selection.ids.join(",");
-  }
-
-  function selectedItems() {
-    var kind = currentItemKind();
-    var ids = [];
-    var seen = Object.create(null);
-    if (!kind) return { kind: null, ids: [], singular: "item", plural: "items" };
-
-    document.querySelectorAll("input[type=checkbox]:checked").forEach(function (checkbox) {
-      var id = idFromSelectionCheckbox(checkbox, kind);
-      if (id && !seen[id]) {
-        seen[id] = true;
-        ids.push(id);
-      }
+  function registerListAction(component, kind) {
+    PluginApi.patch.after(component, function () {
+      var args = Array.prototype.slice.call(arguments);
+      var result = args.pop();
+      var props = args[0];
+      if (state.destroyed || !result || !props || !props.selectedIds || !props.selectedIds.size) return result;
+      var selection = {
+        kind: kind,
+        ids: Array.from(props.selectedIds).map(function (id) { return String(id); }),
+        singular: kind,
+        plural: kind === "image" ? "images" : kind + "s",
+      };
+      // A React-owned action row reserves space below the native toolbar.
+      // The list's selection works on performer pages and across pagination.
+      return h(React.Fragment, null, h(ExtractionAction, { selection: selection }), result);
     });
-    return {
-      kind: kind,
-      ids: ids,
-      singular: kind,
-      plural: kind === "image" ? "images" : kind + "s",
-    };
-  }
-
-  function ensureButton() {
-    if (state.button && state.button.isConnected) return state.button;
-
-    var button = document.createElement("button");
-    button.type = "button";
-    button.className = "extract-scenes-action btn btn-primary dirty-ui-button";
-    button.hidden = true;
-    button.setAttribute("aria-live", "polite");
-    button.addEventListener("click", onActionClick);
-    document.body.appendChild(button);
-    state.button = button;
-    return button;
-  }
-
-  function positionButton(button) {
-    var toolbars = document.querySelectorAll(".filtered-list-toolbar.has-selection");
-    var toolbar = null;
-    for (var index = 0; index < toolbars.length; index += 1) {
-      var candidateRect = toolbars[index].getBoundingClientRect();
-      if (candidateRect.width > 0 && candidateRect.height > 0 &&
-          candidateRect.bottom > 0 && candidateRect.top < window.innerHeight) {
-        toolbar = toolbars[index];
-        break;
-      }
-    }
-    if (!toolbar) return false;
-
-    var toolbarRect = toolbar.getBoundingClientRect();
-    var buttonRect = button.getBoundingClientRect();
-    var gap = 8;
-    var margin = 15;
-    var maxLeft = Math.max(margin, window.innerWidth - buttonRect.width - margin);
-    var left = toolbarRect.right + gap;
-    var top = toolbarRect.top + (toolbarRect.height - buttonRect.height) / 2;
-
-    if (left > maxLeft) {
-      var leftOfToolbar = toolbarRect.left - gap - buttonRect.width;
-      if (leftOfToolbar >= margin) {
-        left = leftOfToolbar;
-      } else {
-        left = Math.min(Math.max(toolbarRect.left, margin), maxLeft);
-        top = toolbarRect.bottom + gap;
-      }
-    }
-
-    button.style.left = Math.round(left) + "px";
-    button.style.top = Math.max(margin, Math.round(top)) + "px";
-    return true;
   }
 
   function ensureBrowseButton() {
@@ -521,50 +438,10 @@
       });
   }
 
-  function renderButton() {
-    if (state.destroyed) return;
-    var button = ensureButton();
-    var selection = selectedItems();
-    debugLogThrottled(PLUGIN_ID, "renderButton", {
-      path: window.location.pathname,
-      kind: selection.kind,
-      selected: selection.ids.length,
-    }, 500);
-    state.selectionSignature = selectionSignature(selection);
-    var count = selection.ids.length;
-
-    if (state.busy) {
-      button.hidden = false;
-      button.disabled = true;
-      if (button.textContent !== "Queuing extraction\u2026") {
-        button.textContent = "Queuing extraction\u2026";
-      }
-      state.buttonPositioned = positionButton(button);
-      button.hidden = !state.buttonPositioned;
-      return;
-    }
-
-    button.disabled = false;
-    var shouldShow = Boolean(selection.kind) && count > 0;
-    button.hidden = !shouldShow;
-    if (!shouldShow) {
-      state.buttonPositioned = false;
-      return;
-    }
-
-    var label = count === 1
-      ? "Extract selected " + selection.singular
-      : "Extract " + count + " selected " + selection.plural;
-    if (button.textContent !== label) button.textContent = label;
-    state.buttonPositioned = positionButton(button);
-    button.hidden = !state.buttonPositioned;
-  }
-
   function scheduleRender() {
     if (state.destroyed || state.frame !== null) return;
     state.frame = window.requestAnimationFrame(function () {
       state.frame = null;
-      renderButton();
       renderBrowseButton();
     });
   }
@@ -578,7 +455,7 @@
     }
 
     state.busy = true;
-    renderButton();
+    publishBusyState();
     getSettings()
       .then(function (settings) {
         if (!String(settings.destinationFolder || "").trim()) {
@@ -601,20 +478,8 @@
       })
       .then(function () {
         state.busy = false;
-        scheduleRender();
+        publishBusyState();
       });
-  }
-
-  function onActionClick(event) {
-    event.preventDefault();
-    startCopy(selectedItems());
-  }
-
-  function onDocumentChange(event) {
-    var target = event.target;
-    if (target instanceof Element && target.matches("input[type=checkbox]")) {
-      scheduleRender();
-    }
   }
 
   function nodeInRelevantArea(node) {
@@ -647,12 +512,6 @@
     state.mutationTimer = window.setTimeout(function () {
       state.mutationTimer = null;
       if (state.destroyed || state.busy) return;
-      // Selection changes arrive through the capture change listener; this
-      // path only has to catch list containers and toolbars mounting or
-      // unmounting around an unchanged selection.
-      var unchanged =
-        selectionSignature(selectedItems()) === state.selectionSignature;
-      if (unchanged && state.buttonPositioned) return;
       scheduleRender();
     }, MUTATION_DEBOUNCE_MS);
   }
@@ -660,7 +519,6 @@
   function destroy() {
     if (state.destroyed) return;
     state.destroyed = true;
-    document.removeEventListener("change", onDocumentChange, true);
     window.removeEventListener("popstate", scheduleRender);
     window.removeEventListener("hashchange", scheduleRender);
     window.removeEventListener("resize", scheduleRender);
@@ -671,10 +529,8 @@
     }
     if (state.observer) state.observer.disconnect();
     if (state.frame !== null) window.cancelAnimationFrame(state.frame);
-    if (state.button) {
-      state.button.removeEventListener("click", onActionClick);
-      if (state.button.parentNode) state.button.parentNode.removeChild(state.button);
-    }
+    publishBusyState();
+    state.actionListeners = [];
     if (state.browseButton) {
       state.browseButton.removeEventListener("click", openFolderPicker);
       if (state.browseButton.parentNode) {
@@ -692,19 +548,20 @@
     closeFolderPicker();
   }
 
-  document.addEventListener("change", onDocumentChange, true);
   window.addEventListener("popstate", scheduleRender);
   window.addEventListener("hashchange", scheduleRender);
   window.addEventListener("resize", scheduleRender);
   window.addEventListener("scroll", scheduleRender, { capture: true, passive: true });
 
-  // The observer only reads Stash's DOM and updates our body-level button. It
-  // never inserts into, replaces, or patches any React-owned element. React
-  // churns thumbnails and cards constantly, so records are filtered down to
-  // list-container and toolbar structure changes, then debounced; selection
-  // changes come through the capture change listener instead.
-  state.observer = new MutationObserver(onDocumentMutations);
-  state.observer.observe(document.body, { childList: true, subtree: true });
+  // Only older hubs need the DOM-observed settings Browse fallback.
+  // Extraction actions use the native lists' React selection props.
+  if (!registerHubFieldAction()) {
+    state.observer = new MutationObserver(onDocumentMutations);
+    state.observer.observe(document.body, { childList: true, subtree: true });
+  }
+  registerListAction("SceneList", "scene");
+  registerListAction("SceneMarkerList", "marker");
+  registerListAction("ImageList", "image");
 
   window[INSTANCE_KEY] = { destroy: destroy };
   registerHubFieldAction();

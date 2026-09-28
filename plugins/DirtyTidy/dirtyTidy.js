@@ -281,7 +281,8 @@
       processingJobs.current[jobKey] = true;
       // A finished REMOVE carries the scan identity itself, avoiding a race
       // between the separate scan-completion and job-removal subscriptions.
-      queueApprovedAutomation(trigger, job.id, jobKey)
+      (DirtyPlugins.isInternalScan ? DirtyPlugins.isInternalScan(job.id, job.startTime) : Promise.resolve(false))
+        .then(function (internal) { return internal ? null : queueApprovedAutomation(trigger, job.id, jobKey); })
         .catch(function (automationError) {
           console.error("DirtyTidy could not queue automation", automationError);
           delete processingJobs.current[jobKey];
@@ -766,7 +767,7 @@
         }, h(VariablePicker, { onInsert: insertVariable })),
         h(Section, {
           title: "Automation",
-          description: "Choose when an approved strategy runs. Stash exposes job completion to UI plugins, so the Stash UI must remain open until that Scan or Generate job finishes.",
+          description: "Automation applies the approved folder and filename rules to the current library, including new scenes and updated metadata. The Stash UI must remain open until the selected Scan or Generate job finishes.",
         },
           h("select", {
             "aria-label": "DirtyTidy automation mode",
@@ -782,8 +783,8 @@
           draft.automationMode !== "manual" && h(
             "p",
             { className: "dirty-tidy-automation-state" },
-            draft.approvedStrategyHash && draft.approvedPlanDigest
-              ? "Automation is approved for the current strategy and plan."
+            draft.approvedStrategyHash
+              ? "Automation is approved for the current strategy, including future scenes."
               : "Automation is inactive. Preview and review the strategy, then use Confirm and save before approving below."
           )
         ),

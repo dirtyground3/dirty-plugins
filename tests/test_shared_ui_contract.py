@@ -18,6 +18,7 @@ def css_rule_bodies(styles, selector):
 class SharedUIContractTests(unittest.TestCase):
     def test_plugins_load_the_shared_hub_first(self):
         for manifest in (
+            "plugins/DirtyCompactor/dirtyCompactor.yml",
             "plugins/DirtyFileExtractor/extractScenes.yml",
             "plugins/DirtyMultiscreen/multiscreen.yml",
             "plugins/DirtyRank/dirtyRank.yml",
@@ -65,10 +66,14 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("dirty-rank-leaderboards-controls dirty-ui-control-row", rank_js)
         self.assertIn("dirty-stats-actions dirty-ui-control-row", stats_dashboard_js)
         self.assertIn("form-control form-control-sm dirty-ui-select", stats_dashboard_js)
-        dropdown = css_rule_bodies(stats_css, "#root .dirty-stats-page .dirty-stats-selector .dropdown-toggle")
+        dropdown = css_rule_bodies(hub_css, "#root .dirty-ui-statistic-selector .dropdown-toggle")
         self.assertEqual(len(dropdown), 1)
         self.assertRegex(dropdown[0], r"box-sizing:\s*border-box;")
         self.assertRegex(dropdown[0], r"height:\s*var\(--dirty-ui-control-height\);")
+        self.assertIn("StatisticSelector: StatisticSelector", hub_js)
+        self.assertIn("hub.react.StatisticSelector", read("plugins/DirtyStats/dirtyStats.js"))
+        self.assertIn("SharedStatisticSelector", rank_js)
+        self.assertNotIn(".dirty-rank-stat-selector .dropdown-toggle", read("plugins/DirtyRank/dirtyRank.css"))
         self.assertIn("form-control dirty-ui-select dirty-tidy-automation", tidy_js)
 
     def test_dirty_stats_native_toolbar_can_wrap_at_narrow_widths(self):
@@ -109,6 +114,7 @@ class SharedUIContractTests(unittest.TestCase):
             self.assertIn(export, hub)
         for component in ("IconButton", "SettingsCard", "SettingsSection", "SettingsToggle", "StateView"):
             self.assertIn(component + ": " + component, hub)
+        self.assertIn("hubApi.react.SceneFilterEditor = SceneFilterEditor", hub)
         # StateView forwards optional ARIA roles so callers keep accessible alerts.
         self.assertIn("role: props.role", hub)
         self.assertIn('"aria-live": props.ariaLive', hub)
@@ -125,6 +131,33 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertNotIn("dirty-tidy-header", tidy_js + tidy_css)
         self.assertNotIn("dirty-tidy-section", tidy_js + tidy_css)
         self.assertNotIn("dirty-tidy-toggle", tidy_js + tidy_css)
+
+    def test_compactor_uses_shared_runtime_and_capture_controls(self):
+        script = read("plugins/DirtyCompactor/dirtyCompactor.js")
+        styles = read("plugins/DirtyCompactor/dirtyCompactor.css")
+        for primitive in ("hub.graphql", "hub.runPluginOperation", "hub.configurePlugin",
+                          "hub.registerSettingsPanel", "ui.SceneFilterEditor", "ui.SettingsCard",
+                          "ui.SettingsSection", "ui.SettingsToggle", "ui.Dialog", "props.onDirtyChange"):
+            self.assertIn(primitive, script)
+        self.assertNotIn("fetch(", script)
+        self.assertIn("hub.captureEnabled", script)
+        self.assertIn("Media hidden for documentation", script)
+        self.assertIn("var(--dirty-ui-", styles)
+
+    def test_plugin_pages_use_the_shared_browser_title_hook(self):
+        hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
+        self.assertIn("usePageTitle: usePageTitle", hub)
+        self.assertIn('? activePlugin.name : "Dirty Plugins", "Settings"', hub)
+        for script in (
+            "plugins/DirtyMultiscreen/multiscreen.js",
+            "plugins/DirtyRank/dirtyRank.js",
+            "plugins/DirtyStats/dirtyStats.js",
+        ):
+            contents = read(script)
+            self.assertIn(".react.usePageTitle(", contents)
+            self.assertNotIn("document.title", contents)
+        stats = read("plugins/DirtyStats/dirtyStats.js")
+        self.assertIn('hub.react.usePageTitle("DirtyStats", STATISTIC_LABELS[statistic])', stats)
 
     def test_hub_owns_shared_setting_order(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
@@ -152,7 +185,7 @@ class SharedUIContractTests(unittest.TestCase):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
 
         self.assertIn(
-            'var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats"]',
+            'var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor"]',
             hub,
         )
         self.assertIn('"data-dirty-plugin-id": props.pluginId', hub)
@@ -267,8 +300,10 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('hubApi.theme.defaultKey = DEFAULT_VISUAL_THEME', hub)
         self.assertIn('var DEFAULT_THEME = hub.theme && hub.theme.defaultKey || "classic"', script)
         self.assertIn('{ value: "paper", label: "Paper Picnic" }', hub)
-        self.assertIn('visualTheme: { options: ["classic", "candy", "tropical", "arcade", "paper"] }', script)
-        for theme in ("candy", "tropical", "arcade", "paper"):
+        self.assertIn('{ value: "destijl", label: "De Stijl" }', hub)
+        self.assertIn('{ value: "destijl-dark", label: "De Stijl Dark" }', hub)
+        self.assertIn('visualTheme: { options: ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"] }', script)
+        for theme in ("candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"):
             self.assertIn(".dirty-stats-theme-" + theme, styles)
             self.assertIn(".dirty-ui-theme-" + theme, hub_styles)
         self.assertIn("initStatsChart", script)
@@ -387,8 +422,10 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertNotIn("inflate_deviation", backend)
         self.assertNotIn("Performer pool", battle_ui)
         self.assertNotIn("Export ratings", battle_ui)
-        self.assertIn('title: "Options"', settings_ui)
-        self.assertIn('"Export ratings"', settings_ui)
+        self.assertNotIn('"Export ratings"', settings_ui)
+        self.assertNotIn('"Reset current pool"', settings_ui)
+        self.assertIn('"Reset ratings"', settings_ui)
+        self.assertIn('resetCategoryPool(editingCohort, category)', settings_ui)
 
     def test_standard_and_dirty_rank_settings_save_automatically(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
@@ -412,7 +449,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("voteQueueRef.current", submit)
         self.assertIn("pendingVotesRef.current += 1", submit)
         self.assertLess(
-            submit.index("showPreparedOrPickNext()"),
+            submit.index("showPreparedOrPickNext(outcome)"),
             submit.index("voteQueueRef.current"),
         )
         self.assertNotIn("setTimeout", submit)
@@ -459,16 +496,17 @@ class SharedUIContractTests(unittest.TestCase):
             playback_url.index("/720p/i"),
         )
 
-    def test_dirty_rank_adds_global_overall_elo_sort_to_performers(self):
+    def test_dirty_rank_adds_global_overall_score_sort_to_performers(self):
         script = read("plugins/DirtyRank/dirtyRank.js")
 
         self.assertIn('OVERALL_SORT_VALUE = "dirty_rank_overall"', script)
-        self.assertIn('OVERALL_SORT_LABEL = "Overall Elo"', script)
+        self.assertIn('OVERALL_SORT_LABEL = "Overall score"', script)
         self.assertIn('PluginApi.patch.before("FilteredPerformerList"', script)
         self.assertIn('PluginApi.patch.after("FilteredPerformerList"', script)
         self.assertIn('PluginApi.patch.instead("PerformerList"', script)
         self.assertIn("function sortPerformersByOverall", script)
-        self.assertIn('var cohort = String(performer.gender || "").toUpperCase()', script)
+        self.assertIn('var cohort = battleCohortFor(settings, performer, "")', script)
+        self.assertIn('boxGenders(settings, cohort).indexOf(String(performer.gender || "").toUpperCase())', script)
         self.assertIn("if (left.rated !== right.rated) return left.rated ? -1 : 1", script)
         self.assertIn("queryFilter.itemsPerPage = -1", script)
         self.assertIn("queryFilter[OVERALL_SORT_ACTIVE] = true", script)
@@ -498,11 +536,15 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("RELEVANT_MUTATION_SELECTOR", script)
         self.assertIn("hasRelevantMutations", script)
         self.assertIn("MUTATION_DEBOUNCE_MS", script)
-        self.assertIn("state.selectionSignature", script)
-        self.assertIn("state.buttonPositioned", script)
+        self.assertIn('if (!registerHubFieldAction()) {', script)
+        self.assertIn('registerListAction("SceneList", "scene")', script)
+        self.assertIn('registerListAction("SceneMarkerList", "marker")', script)
+        self.assertIn('registerListAction("ImageList", "image")', script)
+        self.assertIn("Array.from(props.selectedIds)", script)
+        self.assertNotIn('document.querySelectorAll("input[type=checkbox]:checked")', script)
         self.assertIn("window.clearTimeout(state.mutationTimer)", script)
 
-    def test_dirty_tidy_execution_is_limited_to_the_confirmed_plan(self):
+    def test_dirty_tidy_manual_execution_uses_preview_and_automation_uses_strategy(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
         backend = read("plugins/DirtyTidy/dirty_tidy.py")
 
@@ -511,7 +553,12 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("record_review=True", backend)
         self.assertIn("def save_reviewed_plan", backend)
         self.assertIn("def load_reviewed_plan", backend)
-        self.assertIn('if approved_digest != plan["plan_digest"]', backend)
+        self.assertIn("if apply_approved_strategy:", backend)
+        self.assertIn("apply_approved_strategy=True", backend)
+        self.assertIn('settings["approvedStrategyHash"] != plan["strategy_hash"]', backend)
+        self.assertIn("operation_key(operation) in reviewed_keys", backend)
+        self.assertNotIn('if approved_digest != plan["plan_digest"]', backend)
+        self.assertIn("including future scenes", tidy)
 
     def test_dirty_tidy_supports_approved_scan_and_generate_automation(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
