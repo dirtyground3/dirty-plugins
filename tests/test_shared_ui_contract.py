@@ -91,7 +91,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("--dirty-ui-control-height: 2.5rem", hub_css)
         self.assertIn(".dirty-ui-control-row .dirty-ui-control", hub_css)
         self.assertIn(".dirty-ui-control-row select.form-control", hub_css)
-        self.assertIn('className: "form-control dirty-ui-select"', hub_js)
+        self.assertIn('className="form-control dirty-ui-select"', hub_js)
         self.assertIn("dirty-rank-header-controls dirty-ui-control-row", rank_js)
         self.assertIn("dirty-rank-leaderboards-controls dirty-ui-control-row", rank_js)
         self.assertIn("dirty-stats-actions dirty-ui-control-row", stats_dashboard_js)
@@ -146,8 +146,8 @@ class SharedUIContractTests(unittest.TestCase):
             self.assertIn(component + ": " + component, hub)
         self.assertIn("hubApi.react.SceneFilterEditor = SceneFilterEditor", hub)
         # StateView forwards optional ARIA roles so callers keep accessible alerts.
-        self.assertIn("role: props.role", hub)
-        self.assertIn('"aria-live": props.ariaLive', hub)
+        self.assertIn("role=${props.role}", hub)
+        self.assertIn("aria-live=${props.ariaLive}", hub)
 
     def test_settings_panels_share_the_same_building_blocks(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
@@ -199,10 +199,10 @@ class SharedUIContractTests(unittest.TestCase):
     def test_hub_uses_one_inner_tab_per_installed_plugin(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
 
-        self.assertIn('role: "tablist"', hub)
-        self.assertIn('role: "tab"', hub)
-        self.assertIn('role: "tabpanel"', hub)
-        self.assertIn("activePlugin && createElement", hub)
+        self.assertIn('role="tablist"', hub)
+        self.assertIn('role="tab"', hub)
+        self.assertIn('role="tabpanel"', hub)
+        self.assertIn("activePlugin && html`", hub)
         self.assertIn("settingsRoute(props.pluginId)", hub)
 
     def test_hub_settings_patch_preserves_unmanaged_plugins(self):
@@ -218,7 +218,7 @@ class SharedUIContractTests(unittest.TestCase):
             'var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor"]',
             hub,
         )
-        self.assertIn('"data-dirty-plugin-id": props.pluginId', hub)
+        self.assertIn("data-dirty-plugin-id=${props.pluginId}", hub)
         self.assertIn("orderMainPluginSettingsGroups", hub)
         self.assertIn("document.createComment", hub)
         self.assertIn("MAIN_PAGE_PLUGIN_ID_SET.has(pluginId)", hub)
@@ -231,7 +231,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('window.addEventListener("beforeunload", beforeUnload)', hub)
         self.assertIn('document.addEventListener("click", confirmLinkNavigation, true)', hub)
         self.assertIn("UNSAVED_SETTINGS_MESSAGE", hub)
-        self.assertIn("onDirtyChange: reportCustomDirty", hub)
+        self.assertIn("onDirtyChange=${reportCustomDirty}", hub)
         self.assertIn("savedSettingsState", tidy)
         self.assertIn("props.onDirtyChange(PLUGIN_ID, settingsDirty)", tidy)
         self.assertGreaterEqual(tidy.count("setSavedSettings(draft)"), 1)
@@ -392,6 +392,15 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("return html`", extractor)
         self.assertNotRegex(extractor, r"\bh\(")
         self.assertNotIn("React.createElement", extractor)
+
+    def test_hub_renders_with_its_own_template_tag(self):
+        # read() returns the hub's whole script bundle, scene filter included.
+        hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
+        # htm stays bound to React.createElement; no render code calls it directly.
+        self.assertEqual(hub.count("React.createElement"), 1)
+        self.assertEqual(hub.count("createElement("), hub.count("document.createElement("))
+        self.assertIn("Button: Button, html: html, useEffect", hub)
+        self.assertIn("var html = dependencies.html", hub)
 
     def test_dirty_stats_dashboard_is_registered_and_persisted(self):
         script = read("plugins/DirtyStats/dirtyStats.js")

@@ -4,11 +4,11 @@
   var INSTANCE_KEY = "__dirtyPluginsSceneFilter";
   if (window[INSTANCE_KEY]) return;
 
-  /** @param {{hubApi: *, PluginApi: *, Dialog: Function, StateView: Function, Button: Function, createElement: Function, useEffect: Function, useState: Function, useRef: Function}} dependencies */
+  /** @param {{hubApi: *, PluginApi: *, Dialog: Function, StateView: Function, Button: Function, html: Function, useEffect: Function, useState: Function, useRef: Function}} dependencies */
   function createSceneFilter(dependencies) {
     var hubApi = dependencies.hubApi, PluginApi = dependencies.PluginApi;
     var Dialog = dependencies.Dialog, StateView = dependencies.StateView, Button = dependencies.Button;
-    var createElement = dependencies.createElement, useEffect = dependencies.useEffect;
+    var html = dependencies.html, useEffect = dependencies.useEffect;
     var useState = dependencies.useState, useRef = dependencies.useRef;
 
   var sceneFilterListeners = {};
@@ -53,23 +53,33 @@
         if (activeSharedSceneFilter === owner.current) activeSharedSceneFilter = null;
       };
     }, [props.open]);
-    return createElement(Dialog, {
-      id: "dirty-shared-scene-filter-dialog", open: props.open, ariaLabel: "Scene filter", initialFocusRef: closeRef,
-      allowNativePopup: true, onClose: props.onClose,
-      className: "dirty-ui-native-filter-dialog dirty-ui-panel",
-      backdropClassName: "dirty-ui-native-filter-overlay",
-    },
-      createElement("h2", null, "Scene filter"),
-      error ? createElement(StateView, { title: "Stash filters unavailable", detail: error })
-        : !ready ? createElement(StateView, { title: "Loading filters…" })
-        : createElement(PluginApi.libraries.ReactRouterDOM.MemoryRouter, {
-          initialEntries: [{ pathname: "/scenes", search: "?" + ((props.value || {}).query || "") }],
-        }, createElement(PluginApi.components.FilteredSceneList, { alterQuery: true, extraCriteria: { dirtySharedFilter: owner.current } })),
-      createElement("div", { className: "dirty-ui-control-row" },
-        createElement(Button, { onClick: props.onClose, buttonRef: closeRef }, "Cancel"),
-        createElement(Button, { tone: "primary", disabled: !ready || Boolean(error), onClick: function () {
-          callback.current(candidate.current); props.onClose();
-        } }, "Use filter")));
+    function applyFilter() {
+      callback.current(candidate.current); props.onClose();
+    }
+    var initialEntries = [{ pathname: "/scenes", search: "?" + ((props.value || {}).query || "") }];
+    var body = error ? html`<${StateView} title="Stash filters unavailable" detail=${error} />`
+      : !ready ? html`<${StateView} title="Loading filters…" />`
+      : html`<${PluginApi.libraries.ReactRouterDOM.MemoryRouter} initialEntries=${initialEntries}>
+          <${PluginApi.components.FilteredSceneList} alterQuery=${true} extraCriteria=${{ dirtySharedFilter: owner.current }} />
+        <//>`;
+    return html`
+      <${Dialog}
+        id="dirty-shared-scene-filter-dialog"
+        open=${props.open}
+        ariaLabel="Scene filter"
+        initialFocusRef=${closeRef}
+        allowNativePopup=${true}
+        onClose=${props.onClose}
+        className="dirty-ui-native-filter-dialog dirty-ui-panel"
+        backdropClassName="dirty-ui-native-filter-overlay"
+      >
+        <h2>Scene filter</h2>
+        ${body}
+        <div className="dirty-ui-control-row">
+          <${Button} onClick=${props.onClose} buttonRef=${closeRef}>Cancel<//>
+          <${Button} tone="primary" disabled=${!ready || Boolean(error)} onClick=${applyFilter}>Use filter<//>
+        </div>
+      <//>`;
   }
     return { serialize: serializeSceneFilter, Capture: SharedSceneFilterCapture, Editor: SceneFilterEditor, activeOwner: function () { return activeSharedSceneFilter; } };
   }

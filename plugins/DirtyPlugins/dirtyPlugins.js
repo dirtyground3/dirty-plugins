@@ -608,25 +608,26 @@
         allowNativePopup: props.allowNativePopup,
       });
     }, [props.open]);
-    var content = createElement("div", {
-      className: props.backdropClassName || "dirty-ui-backdrop",
-      style: props.open === false ? { display: "none" } : undefined,
-      onMouseDown: function (event) {
-        if (event.target === event.currentTarget && props.onClose) props.onClose();
-      },
-    },
-      props.backdrop,
-      createElement("section", {
-        ref: dialog,
-        id: props.id,
-        className: props.className || "dirty-ui-dialog",
-        role: "dialog",
-        "aria-modal": true,
-        "aria-label": props.ariaLabel,
-        "aria-labelledby": props.labelledBy,
-        tabIndex: -1,
-      }, props.children)
-    );
+    function closeFromBackdrop(event) {
+      if (event.target === event.currentTarget && props.onClose) props.onClose();
+    }
+    var content = html`<div
+      className=${props.backdropClassName || "dirty-ui-backdrop"}
+      style=${props.open === false ? { display: "none" } : undefined}
+      onMouseDown=${closeFromBackdrop}
+    >
+      ${props.backdrop}
+      <section
+        ref=${dialog}
+        id=${props.id}
+        className=${props.className || "dirty-ui-dialog"}
+        role="dialog"
+        aria-modal=${true}
+        aria-label=${props.ariaLabel}
+        aria-labelledby=${props.labelledBy}
+        tabIndex=${-1}
+      >${props.children}</section>
+    </div>`;
     return PluginApi.ReactDOM && PluginApi.ReactDOM.createPortal
       ? PluginApi.ReactDOM.createPortal(content, document.body)
       : content;
@@ -634,9 +635,9 @@
 
   function Glyph(props) {
     if (FontAwesomeIcon && props.icon) {
-      return createElement(FontAwesomeIcon, { icon: props.icon });
+      return html`<${FontAwesomeIcon} icon=${props.icon} />`;
     }
-    return createElement("span", { "aria-hidden": "true" }, props.fallback);
+    return html`<span aria-hidden="true">${props.fallback}</span>`;
   }
 
   function IconButton(props) {
@@ -645,45 +646,30 @@
       (props.tone === "danger" ? " dirty-ui-icon-button-danger" : "") +
       (props.tone === "primary" ? " dirty-ui-icon-button-primary" : "") +
       (props.className ? " " + props.className : "");
-    return createElement(
-      "button",
-      {
-        type: "button",
-        className: className,
-        "aria-label": props.ariaLabel,
-        title: props.ariaLabel,
-        disabled: Boolean(props.disabled || props.busy),
-        "aria-busy": props.busy ? "true" : undefined,
-        "aria-pressed": props.pressed == null ? undefined : Boolean(props.pressed),
-        ref: props.buttonRef,
-        onClick: props.onClick,
-      },
-      createElement(Glyph, { icon: props.icon, fallback: props.fallback })
-    );
+    return html`<button
+      type="button"
+      className=${className}
+      aria-label=${props.ariaLabel}
+      title=${props.ariaLabel}
+      disabled=${Boolean(props.disabled || props.busy)}
+      aria-busy=${props.busy ? "true" : undefined}
+      aria-pressed=${props.pressed == null ? undefined : Boolean(props.pressed)}
+      ref=${props.buttonRef}
+      onClick=${props.onClick}
+    ><${Glyph} icon=${props.icon} fallback=${props.fallback} /></button>`;
   }
 
   function StateView(props) {
     var className = "dirty-ui-state" +
       (props.className ? " " + props.className : "");
-    return createElement(
-      "div",
-      { className: className, role: props.role, "aria-live": props.ariaLive },
-      createElement(
-        "div",
-        { className: "dirty-ui-state-panel" },
-        createElement("div", { className: "dirty-ui-state-title" }, props.title),
-        props.detail && createElement(
-          "div",
-          { className: "dirty-ui-state-detail" },
-          props.detail
-        ),
-        props.actions && createElement(
-          "div",
-          { className: "dirty-ui-state-actions" },
-          props.actions
-        )
-      )
-    );
+    return html`
+      <div className=${className} role=${props.role} aria-live=${props.ariaLive}>
+        <div className="dirty-ui-state-panel">
+          <div className="dirty-ui-state-title">${props.title}</div>
+          ${props.detail && html`<div className="dirty-ui-state-detail">${props.detail}</div>`}
+          ${props.actions && html`<div className="dirty-ui-state-actions">${props.actions}</div>`}
+        </div>
+      </div>`;
   }
 
   function SettingsCard(props) {
@@ -692,81 +678,67 @@
       (props.className ? " " + props.className : "");
     var bodyClassName = "card-body" +
       (props.bodyClassName ? " " + props.bodyClassName : "");
-    return createElement(
-      "section",
-      { className: className },
-      createElement(
-        "div",
-        { className: "card-header dirty-plugins-card-header" },
-        createElement(
-          "div",
-          null,
-          createElement("h2", null, plugin.name),
-          plugin.description && createElement("p", null, plugin.description)
-        ),
-        createElement(
-          "div",
-          { className: "dirty-plugins-plugin-meta" },
-          plugin.version && createElement("span", null, "v" + plugin.version),
-          plugin.enabled === false && createElement(
-            "span",
-            { className: "badge badge-secondary" },
-            "Disabled"
-          )
-        )
-      ),
-      createElement("div", { className: bodyClassName }, props.children),
-      props.footer
-    );
+    return html`
+      <section className=${className}>
+        <div className="card-header dirty-plugins-card-header">
+          <div>
+            <h2>${plugin.name}</h2>
+            ${plugin.description && html`<p>${plugin.description}</p>`}
+          </div>
+          <div className="dirty-plugins-plugin-meta">
+            ${plugin.version && html`<span>${"v" + plugin.version}</span>`}
+            ${plugin.enabled === false && html`<span className="badge badge-secondary">Disabled</span>`}
+          </div>
+        </div>
+        <div className=${bodyClassName}>${props.children}</div>
+        ${props.footer}
+      </section>`;
   }
 
   function SettingsSection(props) {
     var className = "dirty-ui-settings-section" +
       (props.className ? " " + props.className : "");
-    return createElement(
-      "section",
-      { className: className },
-      createElement(
-        "div",
-        { className: "dirty-ui-settings-section-heading" },
-        createElement("h3", null, props.title),
-        props.description && createElement("p", null, props.description)
-      ),
-      props.children
-    );
+    return html`
+      <section className=${className}>
+        <div className="dirty-ui-settings-section-heading">
+          <h3>${props.title}</h3>
+          ${props.description && html`<p>${props.description}</p>`}
+        </div>
+        ${props.children}
+      </section>`;
   }
 
   function SettingsToggle(props) {
-    return createElement(
-      "label",
-      { className: "dirty-ui-settings-toggle" + (props.className ? " " + props.className : "") },
-      createElement("input", {
-        checked: Boolean(props.checked),
-        disabled: Boolean(props.disabled),
-        onChange: function (event) { props.onChange(event.target.checked); },
-        type: "checkbox",
-      }),
-      createElement("span", null, props.label)
-    );
+    return html`
+      <label className=${"dirty-ui-settings-toggle" + (props.className ? " " + props.className : "")}>
+        <input
+          checked=${Boolean(props.checked)}
+          disabled=${Boolean(props.disabled)}
+          onChange=${function (event) { props.onChange(event.target.checked); }}
+          type="checkbox"
+        />
+        <span>${props.label}</span>
+      </label>`;
   }
 
   function Button(props) {
     var tone = /^(primary|secondary|danger|light|dark|quiet)$/.test(props.tone || "")
       ? props.tone : "secondary";
-    return createElement("button", {
-      type: props.type || "button",
-      className: "btn " + (tone === "quiet" ? "dirty-ui-control-quiet" : "btn-" + tone) +
-        " dirty-ui-button dirty-ui-control" +
-        (props.compact ? " dirty-ui-control-compact" : "") +
-        (props.className ? " " + props.className : ""),
-      disabled: Boolean(props.disabled || props.busy),
-      "aria-label": props.ariaLabel,
-      "aria-busy": props.busy ? "true" : undefined,
-      "aria-pressed": props.pressed == null ? undefined : Boolean(props.pressed),
-      ref: props.buttonRef,
-      onClick: props.onClick,
-      title: props.title,
-    }, props.children);
+    var className = "btn " + (tone === "quiet" ? "dirty-ui-control-quiet" : "btn-" + tone) +
+      " dirty-ui-button dirty-ui-control" +
+      (props.compact ? " dirty-ui-control-compact" : "") +
+      (props.className ? " " + props.className : "");
+    return html`<button
+      type=${props.type || "button"}
+      className=${className}
+      disabled=${Boolean(props.disabled || props.busy)}
+      aria-label=${props.ariaLabel}
+      aria-busy=${props.busy ? "true" : undefined}
+      aria-pressed=${props.pressed == null ? undefined : Boolean(props.pressed)}
+      ref=${props.buttonRef}
+      onClick=${props.onClick}
+      title=${props.title}
+    >${props.children}</button>`;
   }
 
   function Field(props) {
@@ -783,77 +755,75 @@
         "aria-invalid": props.error ? "true" : control.props["aria-invalid"],
       });
     }
-    return createElement("div", {
-      className: "dirty-ui-field" + (props.className ? " " + props.className : ""),
-      id: props.containerId,
-    },
-      createElement("label", { htmlFor: props.id }, props.label),
-      props.action ? createElement("div", { className: "dirty-ui-field-control" }, control, props.action) : control,
-      props.help && createElement("p", { className: "dirty-ui-field-help", id: descriptionId }, props.help),
-      props.error && createElement("p", { className: "dirty-ui-field-error", id: errorId }, props.error)
-    );
+    return html`
+      <div className=${"dirty-ui-field" + (props.className ? " " + props.className : "")} id=${props.containerId}>
+        <label htmlFor=${props.id}>${props.label}</label>
+        ${props.action ? html`<div className="dirty-ui-field-control">${control}${props.action}</div>` : control}
+        ${props.help && html`<p className="dirty-ui-field-help" id=${descriptionId}>${props.help}</p>`}
+        ${props.error && html`<p className="dirty-ui-field-error" id=${errorId}>${props.error}</p>`}
+      </div>`;
   }
 
   function SaveStatus(props) {
     if (!props.message) return null;
     var state = props.state || "saved";
-    return createElement("span", {
-      className: "dirty-ui-save-status" + (props.className ? " " + props.className : ""),
-      "data-state": state,
-      role: state === "error" ? "alert" : "status",
-      "aria-live": state === "error" ? "assertive" : "polite",
-    }, props.message);
+    return html`<span
+      className=${"dirty-ui-save-status" + (props.className ? " " + props.className : "")}
+      data-state=${state}
+      role=${state === "error" ? "alert" : "status"}
+      aria-live=${state === "error" ? "assertive" : "polite"}
+    >${props.message}</span>`;
   }
 
   function Pagination(props) {
     if (props.totalPages <= 1) return null;
-    return createElement("nav", {
-      "aria-label": props.ariaLabel || "Pages",
-      className: "dirty-ui-pagination" + (props.className ? " " + props.className : ""),
-    },
-      createElement(Button, {
-        compact: true,
-        disabled: props.page <= 1,
-        onClick: function () { props.onPageChange(props.page - 1); },
-      }, "Previous"),
-      createElement("span", { className: "dirty-ui-pagination-summary" },
-        props.summary || "Page " + props.page + " of " + props.totalPages),
-      createElement(Button, {
-        compact: true,
-        disabled: props.page >= props.totalPages,
-        onClick: function () { props.onPageChange(props.page + 1); },
-      }, "Next")
-    );
+    return html`
+      <nav
+        aria-label=${props.ariaLabel || "Pages"}
+        className=${"dirty-ui-pagination" + (props.className ? " " + props.className : "")}
+      >
+        <${Button}
+          compact=${true}
+          disabled=${props.page <= 1}
+          onClick=${function () { props.onPageChange(props.page - 1); }}
+        >Previous<//>
+        <span className="dirty-ui-pagination-summary">
+          ${props.summary || "Page " + props.page + " of " + props.totalPages}
+        </span>
+        <${Button}
+          compact=${true}
+          disabled=${props.page >= props.totalPages}
+          onClick=${function () { props.onPageChange(props.page + 1); }}
+        >Next<//>
+      </nav>`;
   }
 
   function Badge(props) {
-    return createElement("span", {
-      className: "dirty-ui-badge" + (props.className ? " " + props.className : ""),
-      title: props.title,
-    }, props.children);
+    return html`<span
+      className=${"dirty-ui-badge" + (props.className ? " " + props.className : "")}
+      title=${props.title}
+    >${props.children}</span>`;
   }
 
   function Metric(props) {
-    return createElement("div", {
-      className: "dirty-ui-metric" + (props.className ? " " + props.className : ""),
-    },
-      createElement("span", { className: "dirty-ui-metric-label" }, props.label),
-      createElement("strong", { className: "dirty-ui-metric-value" }, props.value),
-      props.detail && createElement("span", { className: "dirty-ui-metric-detail" }, props.detail)
-    );
+    return html`
+      <div className=${"dirty-ui-metric" + (props.className ? " " + props.className : "")}>
+        <span className="dirty-ui-metric-label">${props.label}</span>
+        <strong className="dirty-ui-metric-value">${props.value}</strong>
+        ${props.detail && html`<span className="dirty-ui-metric-detail">${props.detail}</span>`}
+      </div>`;
   }
 
   function NavAction(props) {
     var LinkComponent = props.as || Link;
-    return createElement(LinkComponent, {
-      to: hubApi.captureUrl ? hubApi.captureUrl(props.to) : props.to,
-      exact: props.exact,
-      title: props.label,
-      "aria-label": props.label,
-      className: "nav-utility dirty-ui-nav-action" +
-        (props.className ? " " + props.className : ""),
-      onClick: props.onClick,
-    }, props.icon);
+    return html`<${LinkComponent}
+      to=${hubApi.captureUrl ? hubApi.captureUrl(props.to) : props.to}
+      exact=${props.exact}
+      title=${props.label}
+      aria-label=${props.label}
+      className=${"nav-utility dirty-ui-nav-action" + (props.className ? " " + props.className : "")}
+      onClick=${props.onClick}
+    >${props.icon}<//>`;
   }
 
   function StatisticSelector(props) {
@@ -861,17 +831,31 @@
     var Dropdown = bootstrap.Dropdown;
     var options = props.options || [];
     var selected = options.find(function (option) { return option.value === props.value; });
-    return createElement(Dropdown, {
-      as: bootstrap.ButtonGroup,
-      className: "sort-by-select dirty-ui-statistic-selector" + (props.className ? " " + props.className : ""),
-      onSelect: function (value) { if (value && value !== props.value && props.onSelect) props.onSelect(value); },
-    },
-      createElement(bootstrap.InputGroup.Prepend, null,
-        createElement(Dropdown.Toggle, { variant: "secondary", id: props.id, "aria-label": props.ariaLabel || "Statistic" }, selected ? selected.label : props.value)),
-      createElement(Dropdown.Menu, { className: "bg-secondary text-white" },
-        options.map(function (option) {
-          return createElement(Dropdown.Item, { key: option.value, className: "bg-secondary text-white", eventKey: option.value, active: props.value === option.value }, option.label);
-        })));
+    function select(value) {
+      if (value && value !== props.value && props.onSelect) props.onSelect(value);
+    }
+    return html`
+      <${Dropdown}
+        as=${bootstrap.ButtonGroup}
+        className=${"sort-by-select dirty-ui-statistic-selector" + (props.className ? " " + props.className : "")}
+        onSelect=${select}
+      >
+        <${bootstrap.InputGroup.Prepend}>
+          <${Dropdown.Toggle} variant="secondary" id=${props.id} aria-label=${props.ariaLabel || "Statistic"}>
+            ${selected ? selected.label : props.value}
+          <//>
+        <//>
+        <${Dropdown.Menu} className="bg-secondary text-white">
+          ${options.map(function (option) {
+            return html`<${Dropdown.Item}
+              key=${option.value}
+              className="bg-secondary text-white"
+              eventKey=${option.value}
+              active=${props.value === option.value}
+            >${option.label}<//>`;
+          })}
+        <//>
+      <//>`;
   }
 
   function loggedGraphql(query, variables, options) {
@@ -984,7 +968,7 @@
   var nativeBundleLoads = {};
   var filterModule = window.__dirtyPluginsSceneFilter;
   if (!filterModule) return;
-  var filters = filterModule.createSceneFilter({ hubApi: hubApi, PluginApi: PluginApi, Dialog: Dialog, StateView: StateView, Button: Button, createElement: createElement, useEffect: useEffect, useState: useState, useRef: useRef });
+  var filters = filterModule.createSceneFilter({ hubApi: hubApi, PluginApi: PluginApi, Dialog: Dialog, StateView: StateView, Button: Button, html: html, useEffect: useEffect, useState: useState, useRef: useRef });
   var serializeSceneFilter = filters.serialize, SharedSceneFilterCapture = filters.Capture, SceneFilterEditor = filters.Editor;
   hubApi.react.SceneFilterEditor = SceneFilterEditor;
   hubApi.serializeSceneFilter = serializeSceneFilter;
@@ -995,7 +979,7 @@
     // The editor is the only native scene list on suite plugin routes.
     if (!owner && filters.activeOwner() && window.location.pathname.indexOf("/plugins/") === 0) owner = filters.activeOwner();
     if (!owner || !props.filter) return next.apply(null, args);
-    return createElement(SharedSceneFilterCapture, { owner: owner, filter: props.filter });
+    return html`<${SharedSceneFilterCapture} owner=${owner} filter=${props.filter} />`;
   });
   hubApi.native = {
     loadComponent: function (name) {
@@ -1202,15 +1186,11 @@
       var frame = window.requestAnimationFrame(orderMainPluginSettingsGroups);
       return function () { window.cancelAnimationFrame(frame); };
     }, []);
-    return createElement(
-      Link,
-      {
-        className: "btn btn-primary dirty-ui-button dirty-plugins-settings-link",
-        "data-dirty-plugin-id": props.pluginId,
-        to: settingsRoute(props.pluginId),
-      },
-      "Open Dirty Plugins settings"
-    );
+    return html`<${Link}
+      className="btn btn-primary dirty-ui-button dirty-plugins-settings-link"
+      data-dirty-plugin-id=${props.pluginId}
+      to=${settingsRoute(props.pluginId)}
+    >Open Dirty Plugins settings<//>`;
   }
 
   function orderMainPluginSettingsGroups() {
@@ -1254,51 +1234,50 @@
     var control;
 
     if (setting.type === "BOOLEAN") {
-      control = createElement("input", {
-        id: inputId,
-        type: "checkbox",
-        checked: Boolean(value),
-        onChange: function (event) { onChange(event.target.checked); },
-      });
+      control = html`<input
+        id=${inputId}
+        type="checkbox"
+        checked=${Boolean(value)}
+        onChange=${function (event) { onChange(event.target.checked); }}
+      />`;
     } else if (options) {
-      control = createElement(
-        "select",
-        {
-          id: inputId,
-          className: "form-control dirty-ui-select",
-          value: String(value == null ? "" : value),
-          onChange: function (event) { onChange(event.target.value); },
-        },
-        options.map(function (option) {
-          return createElement("option", { key: option.value, value: option.value }, option.label);
-        })
-      );
+      control = html`<select
+        id=${inputId}
+        className="form-control dirty-ui-select"
+        value=${String(value == null ? "" : value)}
+        onChange=${function (event) { onChange(event.target.value); }}
+      >
+        ${options.map(function (option) {
+          return html`<option key=${option.value} value=${option.value}>${option.label}</option>`;
+        })}
+      </select>`;
     } else {
-      control = createElement("input", {
-        id: inputId,
-        className: "form-control",
-        disabled: maskedPath,
-        type: setting.type === "NUMBER" ? "number" : "text",
-        min: limits && limits.min,
-        max: limits && limits.max,
-        step: limits && limits.step,
-        value: maskedPath ? "Path hidden for documentation" : value == null ? "" : value,
-        onChange: function (event) { onChange(event.target.value); },
-      });
+      control = html`<input
+        id=${inputId}
+        className="form-control"
+        disabled=${maskedPath}
+        type=${setting.type === "NUMBER" ? "number" : "text"}
+        min=${limits && limits.min}
+        max=${limits && limits.max}
+        step=${limits && limits.step}
+        value=${maskedPath ? "Path hidden for documentation" : value == null ? "" : value}
+        onChange=${function (event) { onChange(event.target.value); }}
+      />`;
     }
 
-    return createElement(Field, {
-      id: inputId,
-      containerId: "plugin-" + pluginId + "-" + setting.name,
-      className: "dirty-plugins-setting",
-      label: setting.display_name || setting.name,
-      help: setting.description,
-      action: action && createElement("button", {
-        type: "button",
-        className: "btn btn-secondary dirty-ui-button",
-        onClick: function (event) { action.onClick(event); },
-      }, action.label),
-    }, control);
+    var actionButton = action && html`<button
+      type="button"
+      className="btn btn-secondary dirty-ui-button"
+      onClick=${function (event) { action.onClick(event); }}
+    >${action.label}</button>`;
+    return html`<${Field}
+      id=${inputId}
+      containerId=${"plugin-" + pluginId + "-" + setting.name}
+      className="dirty-plugins-setting"
+      label=${setting.display_name || setting.name}
+      help=${setting.description}
+      action=${actionButton}
+    >${control}<//>`;
   }
 
   function DatabaseBackupControl() {
@@ -1319,13 +1298,16 @@
       }).then(function () { setBusy(false); });
     }
     var capture = hubApi.captureEnabled(window.location && window.location.search);
-    return createElement("section", { className: "dirty-plugins-backup dirty-ui-settings-section", "aria-labelledby": "dirty-plugins-backup-title" },
-      createElement("h3", { id: "dirty-plugins-backup-title" }, "Database backup"),
-      createElement("p", null, "Create a copy of the shared Dirty Plugins database in the installed DirtyPlugins folder."),
-      createElement(Button, { busy: busy, disabled: busy, onClick: createBackup }, busy ? "Creating backup…" : "Create backup"),
-      result && createElement("p", { className: result.error ? "dirty-ui-text-error" : "dirty-plugins-backup-result", role: result.error ? "alert" : "status" },
-        result.error ? result.message : "Backup saved: " + (capture ? "Path hidden for documentation" : result.message))
-    );
+    return html`
+      <section className="dirty-plugins-backup dirty-ui-settings-section" aria-labelledby="dirty-plugins-backup-title">
+        <h3 id="dirty-plugins-backup-title">Database backup</h3>
+        <p>Create a copy of the shared Dirty Plugins database in the installed DirtyPlugins folder.</p>
+        <${Button} busy=${busy} disabled=${busy} onClick=${createBackup}>${busy ? "Creating backup…" : "Create backup"}<//>
+        ${result && html`<p
+          className=${result.error ? "dirty-ui-text-error" : "dirty-plugins-backup-result"}
+          role=${result.error ? "alert" : "status"}
+        >${result.error ? result.message : "Backup saved: " + (capture ? "Path hidden for documentation" : result.message)}</p>`}
+      </section>`;
   }
 
   function PluginCard(props) {
@@ -1334,39 +1316,32 @@
     var status = props.status;
     var actionRevision = props.actionRevision;
     var onFieldChange = props.onFieldChange;
-    var footer = (plugin.settings || []).length > 0 && createElement(
-      "div",
-      { className: "card-footer dirty-plugins-card-footer" },
-      createElement(
-        "div",
-        {
-          className: "dirty-plugins-save-status" +
-            (status && status.error ? " dirty-ui-text-error" : ""),
-          role: status ? "status" : undefined,
-        },
-        status && status.message
-      )
-    );
+    var footer = (plugin.settings || []).length > 0 && html`
+      <div className="card-footer dirty-plugins-card-footer">
+        <div
+          className=${"dirty-plugins-save-status" + (status && status.error ? " dirty-ui-text-error" : "")}
+          role=${status ? "status" : undefined}
+        >${status && status.message}</div>
+      </div>`;
 
-    return createElement(
-      SettingsCard,
-      { plugin: plugin, footer: footer },
-      (plugin.settings || []).length === 0
-        ? createElement("p", { className: "dirty-plugins-empty" }, "This plugin has no settings.")
-        : (plugin.settings || []).map(function (setting) {
-            return createElement(SettingInput, {
-              key: setting.name,
-              actionRevision: actionRevision,
-              pluginId: plugin.id,
-              setting: setting,
-              value: draft[setting.name],
-              onChange: function (value) {
-                onFieldChange(plugin.id, setting.name, value);
-              },
-            });
-          }),
-      plugin.id === "dirtyPlugins" && createElement(DatabaseBackupControl)
-    );
+    return html`
+      <${SettingsCard} plugin=${plugin} footer=${footer}>
+        ${(plugin.settings || []).length === 0
+          ? html`<p className="dirty-plugins-empty">This plugin has no settings.</p>`
+          : (plugin.settings || []).map(function (setting) {
+              return html`<${SettingInput}
+                key=${setting.name}
+                actionRevision=${actionRevision}
+                pluginId=${plugin.id}
+                setting=${setting}
+                value=${draft[setting.name]}
+                onChange=${function (value) {
+                  onFieldChange(plugin.id, setting.name, value);
+                }}
+              />`;
+            })}
+        ${plugin.id === "dirtyPlugins" && html`<${DatabaseBackupControl} />`}
+      <//>`;
   }
 
   function DirtyPluginsRoute() {
@@ -1647,99 +1622,67 @@
     usePageTitle(activePlugin && activePlugin.id !== "dirtyPlugins"
       ? activePlugin.name : "Dirty Plugins", "Settings");
 
-    return createElement(
-      "main",
-      {
-        className: "dirty-plugins-page" + (hubApi.captureEnabled(window.location.search) ? " dirty-plugins-docs-capture" : ""),
-      },
-      createElement(
-        "header",
-        { className: "dirty-plugins-page-header" },
-        createElement("h1", null, "Dirty Plugins"),
-        createElement("p", null, "Settings are shown only for Dirty plugins installed in this Stash instance."),
-        createElement(
-          "div",
-          { className: "dirty-plugins-unsaved", role: "status" },
-          hasUnsavedChanges ? "Unsaved changes" : ""
-        )
-      ),
-      loading && createElement(StateView, {
-        className: "dirty-plugins-state",
-        title: "Loading settings…",
-      }),
-      !loading && error && createElement(StateView, {
-        className: "dirty-plugins-state",
-        detail: error,
-        title: "Could not load Dirty Plugins settings",
-        actions: createElement(
-          "button",
-          {
-            type: "button",
-            className: "btn btn-secondary dirty-ui-button",
-            onClick: reload,
-          },
-          "Retry"
-        ),
-      }),
-      !loading && !error && snapshot && snapshot.plugins.length === 0 && createElement(StateView, {
-        className: "dirty-plugins-state",
-        title: "No configurable Dirty plugins are installed.",
-      }),
-      !loading && !error && snapshot && snapshot.plugins.length > 0 && createElement(
-        React.Fragment,
-        null,
-        createElement(
-          "div",
-          {
-            "aria-label": "Dirty plugin settings",
-            className: "nav nav-tabs dirty-plugins-tabs",
-            role: "tablist",
-          },
-          snapshot.plugins.map(function (plugin, pluginIndex) {
-            var selected = plugin.id === activePluginId;
-            return createElement(
-              "button",
-              {
-                "aria-controls": "dirty-plugins-panel-" + plugin.id,
-                "aria-selected": selected,
-                className: "nav-link dirty-plugins-tab" + (selected ? " active" : ""),
-                id: "dirty-plugins-tab-" + plugin.id,
-                key: plugin.id,
-                onClick: function () { selectPlugin(plugin.id); },
-                onKeyDown: function (event) { onTabKeyDown(event, pluginIndex); },
-                role: "tab",
-                tabIndex: selected ? 0 : -1,
-                type: "button",
-              },
-              plugin.id === "dirtyPlugins" ? "General" : plugin.name
-            );
-          })
-        ),
-        activePlugin && createElement(
-          "div",
-          {
-            "aria-labelledby": "dirty-plugins-tab-" + activePlugin.id,
-            className: "dirty-plugins-tab-panel",
-            id: "dirty-plugins-panel-" + activePlugin.id,
-            role: "tabpanel",
-          },
-          activeSettingsPanel
-            ? createElement(activeSettingsPanel, {
-                configuration: asObject(snapshot.configuration[activePlugin.id]),
-                onDirtyChange: reportCustomDirty,
-                onConfigurationChanged: reload,
-                plugin: activePlugin,
-              })
-            : createElement(PluginCard, {
-                actionRevision: actionRevision,
-                draft: drafts[activePlugin.id],
-                plugin: activePlugin,
-                status: statuses[activePlugin.id],
-                onFieldChange: updateField,
-              })
-        )
-      )
-    );
+    var ready = !loading && !error && snapshot;
+    var retryButton = html`<button type="button" className="btn btn-secondary dirty-ui-button" onClick=${reload}>Retry</button>`;
+    return html`
+      <main className=${"dirty-plugins-page" + (hubApi.captureEnabled(window.location.search) ? " dirty-plugins-docs-capture" : "")}>
+        <header className="dirty-plugins-page-header">
+          <h1>Dirty Plugins</h1>
+          <p>Settings are shown only for Dirty plugins installed in this Stash instance.</p>
+          <div className="dirty-plugins-unsaved" role="status">${hasUnsavedChanges ? "Unsaved changes" : ""}</div>
+        </header>
+        ${loading && html`<${StateView} className="dirty-plugins-state" title="Loading settings…" />`}
+        ${!loading && error && html`<${StateView}
+          className="dirty-plugins-state"
+          detail=${error}
+          title="Could not load Dirty Plugins settings"
+          actions=${retryButton}
+        />`}
+        ${ready && snapshot.plugins.length === 0 && html`<${StateView}
+          className="dirty-plugins-state"
+          title="No configurable Dirty plugins are installed."
+        />`}
+        ${ready && snapshot.plugins.length > 0 && html`<${React.Fragment}>
+          <div aria-label="Dirty plugin settings" className="nav nav-tabs dirty-plugins-tabs" role="tablist">
+            ${snapshot.plugins.map(function (plugin, pluginIndex) {
+              var selected = plugin.id === activePluginId;
+              return html`<button
+                aria-controls=${"dirty-plugins-panel-" + plugin.id}
+                aria-selected=${selected}
+                className=${"nav-link dirty-plugins-tab" + (selected ? " active" : "")}
+                id=${"dirty-plugins-tab-" + plugin.id}
+                key=${plugin.id}
+                onClick=${function () { selectPlugin(plugin.id); }}
+                onKeyDown=${function (event) { onTabKeyDown(event, pluginIndex); }}
+                role="tab"
+                tabIndex=${selected ? 0 : -1}
+                type="button"
+              >${plugin.id === "dirtyPlugins" ? "General" : plugin.name}</button>`;
+            })}
+          </div>
+          ${activePlugin && html`<div
+            aria-labelledby=${"dirty-plugins-tab-" + activePlugin.id}
+            className="dirty-plugins-tab-panel"
+            id=${"dirty-plugins-panel-" + activePlugin.id}
+            role="tabpanel"
+          >
+            ${activeSettingsPanel
+              ? html`<${activeSettingsPanel}
+                  configuration=${asObject(snapshot.configuration[activePlugin.id])}
+                  onDirtyChange=${reportCustomDirty}
+                  onConfigurationChanged=${reload}
+                  plugin=${activePlugin}
+                />`
+              : html`<${PluginCard}
+                  actionRevision=${actionRevision}
+                  draft=${drafts[activePlugin.id]}
+                  plugin=${activePlugin}
+                  status=${statuses[activePlugin.id]}
+                  onFieldChange=${updateField}
+                />`}
+          </div>`}
+        <//>`}
+      </main>`;
   }
 
   window.__dirtyCurrentPluginId = "dirtyPlugins";
@@ -1749,7 +1692,7 @@
     var props = args[0];
     var pluginId = props && (props.pluginID || props.pluginId || props.id);
     if (!MAIN_PAGE_PLUGIN_ID_SET.has(pluginId)) return next.apply(null, args);
-    return createElement(SettingsLink, { pluginId: pluginId });
+    return html`<${SettingsLink} pluginId=${pluginId} />`;
   });
   PluginApi.register.route(ROUTE_PATH, DirtyPluginsRoute);
   window[INSTANCE_KEY] = { route: ROUTE_PATH };
