@@ -46,6 +46,20 @@ Balanced rule suits a mixed 720p/4K library. **Custom bitrate** sets a fixed
 Mbps for every file; rules saved before presets existed keep their bitrate.
 The preview table shows the bitrate chosen for each file.
 
+**Same as source (convert only)** keeps each file's video bitrate and only
+changes the codec (and, with **Allow format change**, the container), for
+example to make WMV/VC-1 files playable. These outputs are not required to be
+smaller, and files already in the selected codec are skipped.
+
+### Estimated savings before previewing
+
+As soon as a rule has scenes, its row and editor show a rough estimate such as
+"≈ 24.9 GiB saved of 45.8 GiB (54%)". It uses Stash's total size for the
+filter plus a fixed random sample of up to 200 matching scenes (their size,
+duration, resolution, bitrate, and frame rate), applying the same skip rules as
+the planner with a typical 128 kbps audio track. It treats each rule on its
+own, so earlier rules may claim some scenes. **Preview** gives exact numbers.
+
 Codec (H.264 or H.265), encoder, and container live under **Advanced**.
 **Detect** next to the encoder tests actual availability. Auto GPU tries
 NVIDIA NVENC, Intel QSV, and AMD AMF before CPU. Hardware-specific failures
@@ -59,9 +73,10 @@ and streams. Unrelated destination files are never overwritten.
 ## Manual runs and output review
 
 1. Select **Preview**. Planning runs as a Stash background task.
-2. Review the totals: ready files, estimated savings, and skipped files.
-   **Show files** lists each operation with blocked/unchanged reasons and
-   lets you exclude scenes.
+2. Review the totals: ready files, estimated savings, and skipped files. The
+   reasons for skipped files are listed with counts (for example "12 Already
+   at or below target bitrate"). **Show files** lists each operation and lets
+   you exclude scenes.
 3. Select **Run…** and confirm the operations. Optionally enable
    **Let me check each encoded file before it replaces the original**.
 
@@ -128,8 +143,10 @@ is pending. The plugin never writes Stash's database directly.
 - Shared file associations, hard links, and symbolic links are blocked.
 - MP4/M4V/MOV and Matroska are retained when compatible; other containers need
   Allow format change. Unsupported stream combinations are reported.
-- Outputs must be smaller and pass probing plus a complete decode check.
-- Bitrate is measured from video packets if stream metadata omits it.
+- Outputs must be smaller (except **Same as source** conversions) and pass
+  probing plus a complete decode check.
+- Bitrate is measured from video packets if stream metadata omits it or reports
+  an impossible value, such as the 1 bit/s ffprobe gives many WMV/VC-1 files.
 - Settings saves, installation, and startup do not launch automatic runs.
 
 The panel uses shared DirtyPlugins themes, controls, and navigation protection.

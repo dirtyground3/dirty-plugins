@@ -94,10 +94,31 @@ class CompactorRulesTests(unittest.TestCase):
         self.assertEqual(compactor.target_mbps(dict(preset, quality="small", codec="hevc"), 854, 480), 0.53)
         self.assertGreater(compactor.target_mbps(preset, 1920, 1080, 60), 5)
         self.assertEqual(compactor.target_mbps(rule(), 1920, 1080), .2, "rules without a preset keep their custom Mbps")
+        self.assertEqual(compactor.target_mbps(rule(quality="source"), 1920, 1080, 30, 7_500_000), 7.5)
+        with self.assertRaises(compactor.PluginError):
+            compactor.target_mbps(rule(quality="source"), 1920, 1080, 30, 0)
+        compactor.validate_settings({"rules": [rule(quality="source", mbps="ignored")]})
         with self.assertRaises(compactor.PluginError):
             compactor.validate_settings({"rules": [rule(quality="ultra")]})
         with self.assertRaises(compactor.PluginError):
             compactor.validate_settings({"rules": [rule(quality="custom", mbps="bad")]})
+
+    def test_implausible_stream_bitrates_fall_back_to_packet_measurement(self):
+        self.assertEqual(compactor.plausible_bitrate("1", "12143072"), 0, "WMV/VC-1 reports 1 bit/s")
+        self.assertEqual(compactor.plausible_bitrate("40000000", "12000000"), 0, "above the whole container")
+        self.assertEqual(compactor.plausible_bitrate(None, "12000000"), 0)
+        self.assertEqual(compactor.plausible_bitrate("bad", None), 0)
+        self.assertEqual(compactor.plausible_bitrate("11500000", "12143072"), 11500000)
+        self.assertEqual(compactor.plausible_bitrate("11500000", None), 11500000, "container rate is optional")
+
+    def test_skip_reasons_are_grouped_across_all_operations(self):
+        operations = [{"status": "unchanged", "reason": "Already at or below target bitrate"}] * 3 + [
+            {"status": "blocked", "reason": "Could not probe media: C:/private/path.mp4 invalid"},
+            {"status": "blocked", "reason": "Could not probe media: other output"},
+            {"status": "manual", "reason": "First matching rule is Manual"},
+            {"status": "ready", "reason": None}]
+        self.assertEqual(compactor.skip_reasons(operations), [
+            ["Already at or below target bitrate", 3], ["Could not probe media", 2], ["First matching rule is Manual", 1]])
 
     def test_resize_dimensions_are_integral_and_reencode_ignores_them(self):
         for value in (320.5, "", float("nan"), float("inf")):
@@ -334,6 +355,23 @@ class CompactorPipelineTests(unittest.TestCase):
         media = run["operations"][0]["outputMedia"]
         self.assertEqual((media["width"], media["height"]), (640, 360))
         self.assertLess(media["bitrate"], run["operations"][0]["media"]["bitrate"])
+
+    def test_same_as_source_converts_without_requiring_a_smaller_file(self):
+        # The fixture is a tiny, very high quality H.264 file; an H.265 conversion
+        # at the same bitrate is not guaranteed to be smaller, and that is allowed.
+        self.set_rules([rule(action="reencode", quality="source", codec="hevc")])
+        run = self.start()
+        op = run["operations"][0]
+        self.assertAlmostEqual(op["mbps"] * 1e6, op["media"]["bitrate"], delta=1000)
+        self.assertEqual(run["status"], "awaitingReview")
+        self.assertEqual(op["outputMedia"]["codec"], "hevc")
+        self.assertEqual(self.source.read_bytes(), self.original)
+
+    def test_same_as_source_skips_files_already_in_the_target_codec(self):
+        self.set_rules([rule(action="reencode", quality="source", codec="h264")])
+        preview = self.preview()
+        self.assertEqual(preview["operations"][0]["status"], "unchanged")
+        self.assertEqual(preview["operations"][0]["reason"], "Already uses H.264")
 
     def test_internal_scans_do_not_queue_automatic_work(self):
         from datetime import datetime, timezone

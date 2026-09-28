@@ -19,9 +19,9 @@ a shared SQLite database, and is installed automatically as a dependency.
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 0.7.68 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 0.4.9 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 0.4.6 |
-| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 0.3.10 |
-| [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 0.1.2 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 0.5.1 |
+| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 0.4.0 |
+| [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 0.2.2 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 0.5.3 |
 
 ## Shared look and settings
 
@@ -188,8 +188,10 @@ a control changes.
 
 ![DirtyTidy organization and filename template settings](docs/images/dirty-tidy-settings.png)
 
-Build the hierarchy and filename templates, insert metadata variables, select
-an automation trigger, and preview the complete plan before approving changes.
+Folder and filename rules are compact rows; the open folder row shows its
+levels, each with a **+ Variable** menu. The preview leads with totals, and
+**Run…** opens the confirmation that saves, optionally approves automation,
+and queues the plan.
 
 ### DirtyCompactor
 
@@ -251,8 +253,8 @@ own tab there.
 - **DirtyMultiscreen:** choose the desired pane count and playback defaults.
 - **DirtyFileExtractor:** choose an absolute destination directory on the
   machine or container running Stash.
-- **DirtyTidy:** configure a folder/filename strategy, generate a preview,
-  review it, then use **Confirm and save** before running or enabling automation.
+- **DirtyTidy:** configure the folder and filename rows, select **Preview**,
+  review it, then confirm in **Run…** to save, run, or approve automation.
 - **DirtyCompactor:** add a rule, choose its scenes, action, and quality
   preset, then **Preview** before the first run.
 

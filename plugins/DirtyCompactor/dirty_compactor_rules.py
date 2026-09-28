@@ -12,7 +12,9 @@ ENCODERS = {"h264": {"cpu": "libx264", "nvenc": "h264_nvenc", "qsv": "h264_qsv",
 # (sub-linearly) and frame rate, so one preset suits a mixed library.
 QUALITY_MBPS_1080P = {"h264": {"high": 8, "balanced": 5, "small": 3},
                       "hevc": {"high": 5, "balanced": 3, "small": 1.8}}
-QUALITIES = ("high", "balanced", "small", "custom")
+# "source" keeps each file's video bitrate: a codec/container conversion that
+# is not required to shrink the file.
+QUALITIES = ("high", "balanced", "small", "custom", "source")
 
 
 class PluginError(RuntimeError):
@@ -96,11 +98,15 @@ def dimensions(width, height, rule):
     return max(2, int(width * factor) // 2 * 2), max(2, int(height * factor) // 2 * 2)
 
 
-def target_mbps(rule, width, height, fps=None):
+def target_mbps(rule, width, height, fps=None, source_bitrate=None):
     """Return the video bitrate for one output; rules without a preset use their custom Mbps."""
     quality = rule.get("quality", "custom")
     if quality == "custom":
         return float(rule["mbps"])
+    if quality == "source":
+        if not source_bitrate:
+            raise PluginError("Video bitrate is unknown; cannot keep the source bitrate")
+        return round(source_bitrate / 1e6, 3)
     pixels = max(1, width * height) / (1920 * 1080)
     motion = max(1, min(float(fps or 30), 120) / 30) ** 0.5
     return round(max(0.2, QUALITY_MBPS_1080P[rule["codec"]][quality] * pixels ** 0.75 * motion), 2)

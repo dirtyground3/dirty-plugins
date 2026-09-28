@@ -883,6 +883,8 @@
 
 #root .dirty-ui-action-menu .dropdown-menu {
   min-width: 11rem;
+  max-height: 60vh;
+  overflow-y: auto;
   border: 1px solid var(--dirty-ui-border);
   border-radius: var(--dirty-ui-radius);
   background: var(--dirty-theme-panel) !important;
@@ -906,6 +908,114 @@
 
 #root .dirty-ui-action-menu .dropdown-item.dirty-ui-action-menu-danger:not(.disabled) {
   color: var(--dirty-ui-danger) !important;
+}
+
+#root .dirty-ui-action-menu .dropdown-header {
+  color: var(--dirty-ui-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Plugin page toolbar: title, state, then actions pushed to the right. */
+.dirty-ui-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.dirty-ui-toolbar h3 {
+  margin: 0 0.25rem 0 0;
+  font-size: 1.25rem;
+}
+
+.dirty-ui-toolbar .dirty-ui-settings-toggle {
+  margin: 0;
+}
+
+.dirty-ui-spacer {
+  flex: 1 1 auto;
+}
+
+/* Compact list of expandable rows: switch, one-line summary, overflow menu. */
+.dirty-ui-row-list {
+  border: 1px solid var(--dirty-ui-border);
+  border-radius: var(--dirty-ui-radius);
+  background: var(--dirty-ui-surface-raised);
+}
+
+.dirty-ui-row + .dirty-ui-row {
+  border-top: 1px solid var(--dirty-ui-border);
+}
+
+.dirty-ui-row.is-open {
+  background: var(--dirty-theme-softer, transparent);
+}
+
+.dirty-ui-row-main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.4rem 0.5rem 0.4rem 0.75rem;
+}
+
+.dirty-ui-row-main > .dirty-ui-settings-toggle {
+  flex: none;
+  margin: 0;
+}
+
+.dirty-ui-row-summary {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  padding: 0.35rem 0.25rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dirty-ui-row-summary:focus-visible {
+  outline: 2px solid var(--dirty-ui-focus);
+  outline-offset: 2px;
+}
+
+.dirty-ui-row-title,
+.dirty-ui-row-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dirty-ui-row-title {
+  font-weight: 600;
+}
+
+.dirty-ui-row-detail {
+  color: var(--dirty-ui-muted);
+  font-size: 0.875rem;
+}
+
+.dirty-ui-row.is-off .dirty-ui-row-title {
+  color: var(--dirty-ui-muted);
+}
+
+.dirty-ui-row-editor {
+  padding: 0 1rem 1rem 3.25rem;
+}
+
+@media (max-width: 600px) {
+  .dirty-ui-row-detail {
+    white-space: normal;
+  }
+
+  .dirty-ui-row-editor {
+    padding-left: 1rem;
+  }
 }
 
 :root.dirty-ui-theme-arcade #root .dirty-ui-statistic-selector .dropdown-toggle {

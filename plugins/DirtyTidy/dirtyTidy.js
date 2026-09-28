@@ -34,13 +34,12 @@
   var useMemo = React.useMemo;
   var useRef = React.useRef;
   var useState = React.useState;
-  var SettingsCard = DirtyPlugins.react && DirtyPlugins.react.SettingsCard;
+  var ui = DirtyPlugins.react || {};
   var Section = DirtyPlugins.react && DirtyPlugins.react.SettingsSection;
   var Toggle = DirtyPlugins.react && DirtyPlugins.react.SettingsToggle;
-  var Field = DirtyPlugins.react && DirtyPlugins.react.Field;
-  var Pagination = DirtyPlugins.react && DirtyPlugins.react.Pagination;
-  var IconButton = DirtyPlugins.react && DirtyPlugins.react.IconButton;
-  if (!html || !SettingsCard || !Section || !Toggle || !Field || !Pagination || !IconButton) return;
+  var Field = ui.Field, Pagination = ui.Pagination, Button = ui.Button, ActionMenu = ui.ActionMenu;
+  var Badge = ui.Badge, Dialog = ui.Dialog, SaveStatus = ui.SaveStatus;
+  if (!html || !Section || !Toggle || !Field || !Pagination || !Button || !ActionMenu || !Badge || !Dialog || !SaveStatus) return;
   var PLUGIN_ID = "dirtyTidy";
   var PREVIEW_PAGE_SIZE = 50;
   var settingsModule = window.__dirtyTidySettings;
@@ -180,8 +179,29 @@
   var previewModule = window.__dirtyTidyPreview;
   if (!previewModule) return;
   var previewViews = previewModule.createPreview({ html: html, React: React, DirtyPlugins: DirtyPlugins, variables: VARIABLES });
-  var VariablePicker = previewViews.VariablePicker, Summary = previewViews.Summary;
-  var PreviewNotes = previewViews.PreviewNotes, PreviewTable = previewViews.PreviewTable;
+  var variableMenuItems = previewViews.variableMenuItems, Summary = previewViews.Summary;
+  var PreviewTable = previewViews.PreviewTable;
+  var TRIGGER_LABELS = { scan: "Scan", generate: "Generate" };
+  var AUTOMATION_HELP = "Automation applies the approved folder and filename rules to the current library, including new scenes and updated metadata. The Stash UI must stay open until the Scan or Generate job finishes.";
+
+  function VariableMenu(props) {
+    return html`<${ActionMenu} className="dirty-tidy-variable-menu" label="+ Variable" ariaLabel=${props.ariaLabel} items=${variableMenuItems(props.onInsert)} />`;
+  }
+
+  // One switchable, expandable strategy part (folders or filename).
+  function StrategyRow(props) {
+    return html`
+      <div className=${"dirty-ui-row" + (props.open ? " is-open" : "") + (props.enabled ? "" : " is-off")}>
+        <div className="dirty-ui-row-main">
+          <${Toggle} checked=${props.enabled} label=${html`<span className="sr-only">${props.title}</span>`} onChange=${props.onEnabled} />
+          <button type="button" className="dirty-ui-row-summary" aria-expanded=${props.open} onClick=${props.onToggle}>
+            <span className="dirty-ui-row-title">${props.title}</span>
+            <span className="dirty-ui-row-detail dirty-tidy-template">${props.enabled ? props.detail : "Off"}</span>
+          </button>
+        </div>
+        ${props.open && html`<div className="dirty-ui-row-editor">${props.children}</div>`}
+      </div>`;
+  }
 
   function DirtyTidySettings(props) {
     var draftState = useState(function () {
@@ -194,13 +214,10 @@
     });
     var savedSettings = savedSettingsState[0];
     var setSavedSettings = savedSettingsState[1];
-    var focusState = useState({ kind: "level", index: 0 });
-    var focusTarget = focusState[0];
-    var setFocusTarget = focusState[1];
     var previewState = useState(null);
     var preview = previewState[0];
     var setPreview = previewState[1];
-    var busyState = useState(false);
+    var busyState = useState("");
     var busy = busyState[0];
     var setBusy = busyState[1];
     var statusState = useState("");
@@ -209,15 +226,24 @@
     var errorState = useState("");
     var error = errorState[0];
     var setError = errorState[1];
-    var confirmedState = useState(false);
-    var confirmed = confirmedState[0];
-    var setConfirmed = confirmedState[1];
     var previewFilterState = useState("all");
     var previewFilter = previewFilterState[0];
     var setPreviewFilter = previewFilterState[1];
     var previewPageState = useState(1);
     var previewPage = previewPageState[0];
     var setPreviewPage = previewPageState[1];
+    var openState = useState("");
+    var openRow = openState[0];
+    var setOpenRow = openState[1];
+    var showFilesState = useState(false);
+    var showFiles = showFilesState[0];
+    var setShowFiles = showFilesState[1];
+    var confirmState = useState(false);
+    var confirming = confirmState[0];
+    var setConfirming = confirmState[1];
+    var approveState = useState(true);
+    var approve = approveState[0];
+    var setApprove = approveState[1];
     var settingsDirty = useMemo(function () {
       return JSON.stringify(draft) !== JSON.stringify(savedSettings);
     }, [draft, savedSettings]);
@@ -255,11 +281,11 @@
         }
         return next;
       });
-      setConfirmed(false);
       if (affectsStrategy !== false) {
         setPreview(null);
         setPreviewFilter("all");
         setPreviewPage(1);
+        setShowFiles(false);
       }
       setStatus("");
       setError("");
@@ -279,58 +305,37 @@
       levels[index] = levels[nextIndex];
       levels[nextIndex] = temporary;
       changed({ hierarchyLevels: levels });
-      setFocusTarget({ kind: "level", index: nextIndex });
     }
 
     function removeLevel(index) {
-      var levels = draft.hierarchyLevels.filter(function (_level, levelIndex) {
-        return levelIndex !== index;
-      });
-      changed({ hierarchyLevels: levels });
-      setFocusTarget({ kind: "level", index: Math.max(0, Math.min(index, levels.length - 1)) });
+      changed({ hierarchyLevels: draft.hierarchyLevels.filter(function (_level, levelIndex) { return levelIndex !== index; }) });
     }
 
     function addLevel() {
-      var levels = draft.hierarchyLevels.concat(["{title}"]);
-      changed({ hierarchyLevels: levels });
-      setFocusTarget({ kind: "level", index: levels.length - 1 });
+      changed({ hierarchyLevels: draft.hierarchyLevels.concat(["{title}"]) });
     }
 
-    function insertVariable(token) {
-      if (focusTarget.kind === "rename") {
-        changed({ renamePattern: draft.renamePattern + token });
-        return;
-      }
-      if (!draft.hierarchyLevels.length) {
-        changed({ hierarchyLevels: [token] });
-        setFocusTarget({ kind: "level", index: 0 });
-        return;
-      }
-      var index = Math.max(0, Math.min(focusTarget.index, draft.hierarchyLevels.length - 1));
-      updateLevel(index, draft.hierarchyLevels[index] + token);
+    function failed(failure) {
+      setError(failure.message || String(failure));
+      setStatus("");
     }
 
     function saveStrategy() {
-      setBusy(true);
+      setBusy("save");
       setError("");
-      setStatus("Saving strategy…");
       DirtyPlugins.configurePlugin(PLUGIN_ID, draft)
         .then(function () {
           setSavedSettings(draft);
           setStatus("Strategy saved.");
-          DirtyPlugins.ui.notify("DirtyTidy strategy saved.");
         })
-        .catch(function (saveError) {
-          setError(saveError.message || String(saveError));
-          setStatus("");
-        })
-        .then(function () { setBusy(false); });
+        .catch(failed)
+        .then(function () { setBusy(""); });
     }
 
     function generatePreview() {
-      setBusy(true);
+      setBusy("preview");
       setError("");
-      setStatus("Calculating preview from the current settings…");
+      setStatus("");
       runPreview(draft)
         .then(function (result) {
           setPreview(result);
@@ -340,91 +345,55 @@
           if (result && result.settings) setDraft(settingsFromConfiguration(result.settings));
           setPreviewFilter("all");
           setPreviewPage(1);
-          setConfirmed(false);
-          setStatus(
-            settingsDirty
-              ? "Preview calculated. These settings have not been saved."
-              : "Preview calculated from the saved strategy."
-          );
+          setShowFiles(false);
+          setOpenRow("");
         })
-        .catch(function (previewError) {
-          setError(previewError.message || String(previewError));
-          setStatus("");
-        })
-        .then(function () { setBusy(false); });
+        .catch(failed)
+        .then(function () { setBusy(""); });
     }
 
     function changePreviewFilter(value) {
       setPreviewFilter(value);
       setPreviewPage(1);
+      setShowFiles(true);
     }
 
-    function confirmAndSavePreview() {
+    function openConfirmation() {
+      setApprove(true);
+      setConfirming(true);
+    }
+
+    // The confirmation dialog is the explicit review step: it saves exactly
+    // the previewed strategy, optionally approves it for automation, and then
+    // queues the reviewed plan.
+    function applyPlan(runNow) {
       if (!preview) return;
-      setBusy(true);
-      setError("");
-      setStatus("Saving strategy and confirming preview…");
-      DirtyPlugins.configurePlugin(PLUGIN_ID, draft)
-        .then(function () {
-          setSavedSettings(draft);
-          setConfirmed(true);
-          setStatus("Preview confirmed and strategy saved.");
-          DirtyPlugins.ui.notify("DirtyTidy preview confirmed and strategy saved.");
-        })
-        .catch(function (confirmationError) {
-          setError(confirmationError.message || String(confirmationError));
-          setStatus("");
-        })
-        .then(function () { setBusy(false); });
-    }
-
-    function execute() {
-      if (!preview || !confirmed || settingsDirty) return;
-      setBusy(true);
-      setError("");
-      setStatus("Queueing confirmed operations…");
-      queueExecution(preview.strategy_hash)
-        .then(function (jobId) {
-          setStatus("DirtyTidy queued as Stash job " + jobId + ". Progress is available in Tasks.");
-          setConfirmed(false);
-          DirtyPlugins.ui.notify("DirtyTidy execution queued.");
-        })
-        .catch(function (queueError) {
-          setError(queueError.message || String(queueError));
-          setStatus("");
-        })
-        .then(function () { setBusy(false); });
-    }
-
-    function approveAutomation() {
-      if (!preview || !confirmed || settingsDirty || draft.automationMode === "manual") return;
-      var approvedSettings = Object.assign({}, draft, {
+      var automated = draft.automationMode !== "manual" && approve;
+      var approvedSettings = automated ? Object.assign({}, draft, {
         approvedStrategyHash: preview.strategy_hash,
         approvedPlanDigest: preview.plan_digest || "",
-      });
-      setBusy(true);
+      }) : draft;
+      setBusy("apply");
       setError("");
-      setStatus("Saving automation approval…");
       DirtyPlugins.configurePlugin(PLUGIN_ID, approvedSettings)
         .then(function () {
           setDraft(approvedSettings);
           setSavedSettings(approvedSettings);
-          setConfirmed(false);
-          setStatus(
-            "Approved. DirtyTidy will run after completed " +
-            (approvedSettings.automationMode === "scan" ? "Scan" : "Generate") +
-            " jobs while the Stash UI is open."
-          );
-          DirtyPlugins.ui.notify("DirtyTidy automation enabled.");
+          return runNow ? queueExecution(preview.strategy_hash) : null;
         })
-        .catch(function (approvalError) {
-          setError(approvalError.message || String(approvalError));
-          setStatus("");
+        .then(function (jobId) {
+          setConfirming(false);
+          var automationText = automated ? " Automation is on after every " + TRIGGER_LABELS[draft.automationMode] + "." : "";
+          setStatus(jobId ? "Queued as Stash job " + jobId + "; progress is in Tasks." + automationText : "Strategy saved." + automationText);
+          DirtyPlugins.ui.notify(jobId ? "DirtyTidy execution queued." : "DirtyTidy strategy saved.");
+          if (jobId) setPreview(null);
         })
-        .then(function () { setBusy(false); });
+        .catch(failed)
+        .then(function () { setBusy(""); });
     }
 
-    var previewReady = preview && preview.summary && preview.summary.ready > 0;
+    var summary = (preview && preview.summary) || {};
+    var readyCount = summary.ready || 0;
     var previewOperations = preview && Array.isArray(preview.operations) ? preview.operations : [];
     var filteredOperations = previewFilter === "all"
       ? previewOperations
@@ -440,145 +409,151 @@
       (previewPage - 1) * PREVIEW_PAGE_SIZE,
       previewPage * PREVIEW_PAGE_SIZE
     );
-    var strategyDescription = useMemo(function () {
-      if (!draft.moveEnabled && !draft.renameEnabled) return "Both operations are disabled.";
-      var actions = [];
-      if (draft.moveEnabled) actions.push("move into " + draft.hierarchyLevels.length + " hierarchy level(s)");
-      if (draft.renameEnabled) actions.push("rename using the configured pattern");
-      return "DirtyTidy will " + actions.join(" and ") + ".";
-    }, [draft.moveEnabled, draft.renameEnabled, draft.hierarchyLevels.length]);
+    var trigger = TRIGGER_LABELS[draft.automationMode];
+    var approved = Boolean(draft.approvedStrategyHash);
+    var levelsText = draft.hierarchyLevels.length ? draft.hierarchyLevels.join(" / ") + " /" : "No folder levels";
+    function stashIdNote(required) { return required ? " · only scenes with a Stash ID" : ""; }
 
     return html`
-      <${SettingsCard} bodyClassName="dirty-tidy-body" className="dirty-tidy-card" plugin=${props.plugin}>
-        <${Section}
-          title="Organize folders"
-          description="Every level stays relative to the file's current Stash source. Missing values render as Unknown."
-        >
-          <${Toggle}
-            checked=${draft.moveEnabled}
-            label="Move files into the configured hierarchy"
-            onChange=${function (value) { changed({ moveEnabled: value }); }}
-          />
-          <${Toggle}
-            checked=${draft.moveRequireStashId}
-            label="Only move files for scenes with a Stash ID"
-            onChange=${function (value) { changed({ moveRequireStashId: value }); }}
-          />
-          <div className="dirty-tidy-levels">
-            ${draft.hierarchyLevels.map(function (level, index) {
-              return html`<div className="dirty-tidy-level" key=${index}>
-                <span className="dirty-tidy-level-number">${String(index + 1)}</span>
-                <input
-                  aria-label=${"Hierarchy level " + (index + 1)}
-                  className="form-control"
-                  disabled=${!draft.moveEnabled}
-                  onChange=${function (event) { updateLevel(index, event.target.value); }}
-                  onFocus=${function () { setFocusTarget({ kind: "level", index: index }); }}
-                  type="text"
-                  value=${level}
-                />
-                <${IconButton} ariaLabel="Move level up" fallback="↑" disabled=${index === 0} onClick=${function () { moveLevel(index, -1); }} />
-                <${IconButton} ariaLabel="Move level down" fallback="↓" disabled=${index === draft.hierarchyLevels.length - 1} onClick=${function () { moveLevel(index, 1); }} />
-                <${IconButton} ariaLabel="Remove level" fallback="×" tone="danger" onClick=${function () { removeLevel(index); }} />
-              </div>`;
-            })}
-            <button className="btn btn-secondary dirty-ui-button" disabled=${!draft.moveEnabled} onClick=${addLevel} type="button">+ Add hierarchy level</button>
-          </div>
-        <//>
-        <${Section}
-          title="Rename files"
-          description="Missing variables are skipped. The original extension is preserved, and invalid filename characters are removed before the maximum length is applied."
-        >
-          <${Toggle}
-            checked=${draft.renameEnabled}
-            label="Rename files using a template"
-            onChange=${function (value) { changed({ renameEnabled: value }); }}
-          />
-          <${Toggle}
-            checked=${draft.renameRequireStashId}
-            label="Only rename files for scenes with a Stash ID"
-            onChange=${function (value) { changed({ renameRequireStashId: value }); }}
-          />
-          <${Field} id="dirty-tidy-rename-pattern" label="Filename pattern" className="dirty-tidy-field">
-            <input
-              className="form-control"
-              disabled=${!draft.renameEnabled}
-              onChange=${function (event) { changed({ renamePattern: event.target.value }); }}
-              onFocus=${function () { setFocusTarget({ kind: "rename" }); }}
-              type="text"
-              value=${draft.renamePattern}
-            />
-          <//>
-          <div className="dirty-tidy-field-row">
-            <${Field} id="dirty-tidy-max-length" label="Maximum filename length" className="dirty-tidy-field">
-              <input
-                className="form-control"
-                disabled=${!draft.renameEnabled}
-                max=${255}
-                min=${16}
-                onChange=${function (event) { changed({ maxFilenameLength: Number(event.target.value) }); }}
-                type="number"
-                value=${draft.maxFilenameLength}
-              />
-            <//>
-            <${Field} id="dirty-tidy-separator" label="Multi-value separator" className="dirty-tidy-field">
-              <input
-                className="form-control"
-                maxLength=${10}
-                onChange=${function (event) { changed({ multiValueSeparator: event.target.value }); }}
-                type="text"
-                value=${draft.multiValueSeparator}
-              />
-            <//>
-          </div>
-        <//>
-        <${Section}
-          title="Template variables"
-          description="Focus a hierarchy level or the filename pattern, then choose a variable to insert it."
-        >
-          <${VariablePicker} onInsert=${insertVariable} />
-        <//>
-        <${Section}
-          title="Automation"
-          description="Automation applies the approved folder and filename rules to the current library, including new scenes and updated metadata. The Stash UI must remain open until the selected Scan or Generate job finishes."
-        >
+      <div className="dirty-tidy">
+        <div className="dirty-ui-toolbar">
+          <h3>Strategy</h3>
           <select
             aria-label="DirtyTidy automation mode"
             className="form-control dirty-ui-select dirty-tidy-automation"
-            disabled=${busy}
+            disabled=${Boolean(busy)}
             onChange=${function (event) { changed({ automationMode: event.target.value }, false); }}
+            title=${AUTOMATION_HELP}
             value=${draft.automationMode}
           >
             <option value="manual">Manual only</option>
-            <option value="scan">After Scan completes</option>
-            <option value="generate">After Generate completes</option>
+            <option value="scan">Run after Scan</option>
+            <option value="generate">Run after Generate</option>
           </select>
-          ${draft.automationMode !== "manual" && html`
-            <p className="dirty-tidy-automation-state">
-              ${draft.approvedStrategyHash
-                ? "Automation is approved for the current strategy, including future scenes."
-                : "Automation is inactive. Preview and review the strategy, then use Confirm and save before approving below."}
-            </p>`}
-        <//>
-        <${Section} title="Preview and run" description=${strategyDescription}>
-          <div className="dirty-tidy-actions">
-            <button className="btn btn-secondary dirty-ui-button" disabled=${busy} onClick=${saveStrategy} type="button">${busy ? "Working…" : "Save strategy"}</button>
-            <button className="btn btn-primary dirty-ui-button" disabled=${busy || (!draft.moveEnabled && !draft.renameEnabled)} onClick=${generatePreview} type="button">${busy ? "Working…" : "Preview"}</button>
-          </div>
-          ${error && html`<div className="dirty-tidy-message dirty-ui-text-error" role="alert">${error}</div>`}
-          ${status && html`<div className="dirty-tidy-message" role="status">${status}</div>`}
-          ${preview && html`<${React.Fragment}>
-            ${settingsDirty && html`
-              <div className="dirty-tidy-message" role="status">
-                This preview uses unsaved settings. Use Confirm and save before running or enabling automation.
-              </div>`}
-            <${Summary}
-              disabled=${busy}
-              onChange=${changePreviewFilter}
-              summary=${preview.summary}
-              total=${preview.total}
-              value=${previewFilter}
+          ${trigger && html`<${Badge}
+            className=${approved ? "dirty-tidy-approved" : "dirty-tidy-unapproved"}
+            title=${approved ? "Approved for the current strategy, including future scenes." : "Preview the strategy and approve it when you run it."}
+          >${approved ? "Approved" : "Needs approval"}<//>`}
+          <${SaveStatus} state=${settingsDirty ? "pending" : "saved"} message=${settingsDirty ? "Unsaved changes" : "Saved"} />
+          <span className="dirty-ui-spacer"></span>
+          <${Button} disabled=${Boolean(busy) || !settingsDirty} busy=${busy === "save"} onClick=${saveStrategy}>Save<//>
+          <${Button} tone="primary" busy=${busy === "preview"} disabled=${Boolean(busy) || (!draft.moveEnabled && !draft.renameEnabled)} onClick=${generatePreview}>Preview<//>
+        </div>
+        ${error && html`<div className="dirty-tidy-message dirty-ui-text-error" role="alert">${error}</div>`}
+        ${status && html`<div className="dirty-tidy-message" role="status">${status}</div>`}
+        <div className="dirty-ui-row-list">
+          <${StrategyRow}
+            title="Move into folders"
+            detail=${levelsText + stashIdNote(draft.moveRequireStashId)}
+            enabled=${draft.moveEnabled}
+            onEnabled=${function (value) { changed({ moveEnabled: value }); }}
+            open=${openRow === "move"}
+            onToggle=${function () { setOpenRow(openRow === "move" ? "" : "move"); }}
+          >
+            <div className="dirty-tidy-levels">
+              ${draft.hierarchyLevels.map(function (level, index) {
+                return html`<div className="dirty-tidy-level" key=${index}>
+                  <span className="dirty-tidy-level-number">${String(index + 1)}</span>
+                  <input
+                    aria-label=${"Folder level " + (index + 1)}
+                    className="form-control"
+                    onChange=${function (event) { updateLevel(index, event.target.value); }}
+                    type="text"
+                    value=${level}
+                  />
+                  <${VariableMenu} ariaLabel=${"Insert variable into folder level " + (index + 1)} onInsert=${function (token) { updateLevel(index, level + token); }} />
+                  <${ActionMenu} ariaLabel=${"Actions for folder level " + (index + 1)} items=${[
+                    { label: "Move up", disabled: index === 0, onSelect: function () { moveLevel(index, -1); } },
+                    { label: "Move down", disabled: index === draft.hierarchyLevels.length - 1, onSelect: function () { moveLevel(index, 1); } },
+                    { label: "Remove level", tone: "danger", onSelect: function () { removeLevel(index); } },
+                  ]} />
+                </div>`;
+              })}
+              <div><${Button} compact tone="quiet" onClick=${addLevel}>+ Add folder level<//></div>
+            </div>
+            <p className="dirty-tidy-help">Folders are created inside each file's current library folder. Missing values become “Unknown”.</p>
+            <${Toggle}
+              checked=${draft.moveRequireStashId}
+              label="Only scenes with a Stash ID"
+              onChange=${function (value) { changed({ moveRequireStashId: value }); }}
             />
+          <//>
+          <${StrategyRow}
+            title="Rename files"
+            detail=${(draft.renamePattern || "No pattern") + ".ext" + stashIdNote(draft.renameRequireStashId)}
+            enabled=${draft.renameEnabled}
+            onEnabled=${function (value) { changed({ renameEnabled: value }); }}
+            open=${openRow === "rename"}
+            onToggle=${function () { setOpenRow(openRow === "rename" ? "" : "rename"); }}
+          >
+            <${Field}
+              id="dirty-tidy-rename-pattern"
+              label="Filename pattern"
+              className="dirty-tidy-field"
+              help="The extension is kept. Missing variables are skipped and invalid characters removed."
+              action=${html`<${VariableMenu} ariaLabel="Insert variable into filename pattern" onInsert=${function (token) { changed({ renamePattern: draft.renamePattern + token }); }} />`}
+            >
+              <input
+                className="form-control"
+                onChange=${function (event) { changed({ renamePattern: event.target.value }); }}
+                type="text"
+                value=${draft.renamePattern}
+              />
+            <//>
+            <${Toggle}
+              checked=${draft.renameRequireStashId}
+              label="Only scenes with a Stash ID"
+              onChange=${function (value) { changed({ renameRequireStashId: value }); }}
+            />
+            <details className="dirty-tidy-advanced">
+              <summary>${"Advanced · max " + draft.maxFilenameLength + " characters · separator “" + draft.multiValueSeparator + "”"}</summary>
+              <div className="dirty-tidy-field-row">
+                <${Field} id="dirty-tidy-max-length" label="Maximum filename length" className="dirty-tidy-field">
+                  <input
+                    className="form-control"
+                    max=${255}
+                    min=${16}
+                    onChange=${function (event) { changed({ maxFilenameLength: Number(event.target.value) }); }}
+                    type="number"
+                    value=${draft.maxFilenameLength}
+                  />
+                <//>
+                <${Field} id="dirty-tidy-separator" label="Separator for multiple values" className="dirty-tidy-field" help="Used between performers or tags.">
+                  <input
+                    className="form-control"
+                    maxLength=${10}
+                    onChange=${function (event) { changed({ multiValueSeparator: event.target.value }); }}
+                    type="text"
+                    value=${draft.multiValueSeparator}
+                  />
+                <//>
+              </div>
+            </details>
+          <//>
+        </div>
+        ${preview && html`<${Section}
+          className="dirty-tidy-preview"
+          title="Preview"
+          description=${settingsDirty ? "Uses unsaved changes; they're saved when you run. Nothing has changed yet." : "Nothing has changed yet."}
+        >
+          <${Summary}
+            disabled=${Boolean(busy)}
+            onChange=${changePreviewFilter}
+            summary=${summary}
+            total=${preview.total}
+            value=${previewFilter}
+          />
+          <div className="dirty-ui-control-row dirty-tidy-preview-actions">
+            <${Button} tone="quiet" pressed=${showFiles} onClick=${function () { setShowFiles(!showFiles); }}>${showFiles ? "Hide files" : "Show files"}<//>
+            <span className="dirty-ui-spacer"></span>
+            <${Button} tone="quiet" onClick=${function () { setPreview(null); setShowFiles(false); }}>Discard<//>
+            <${Button}
+              tone="primary"
+              disabled=${Boolean(busy) || (!readyCount && !trigger)}
+              onClick=${openConfirmation}
+            >${readyCount ? "Run " + readyCount + (readyCount === 1 ? " operation…" : " operations…") : trigger ? "Approve automation…" : "Nothing to run"}<//>
+          </div>
+          ${showFiles && html`<${React.Fragment}>
             <${PreviewTable} operations=${visibleOperations} />
             ${previewPages > 1 && html`<${Pagination}
               className="dirty-tidy-pagination"
@@ -588,29 +563,27 @@
               onPageChange=${setPreviewPage}
               summary=${"Page " + previewPage + " of " + previewPages + " · " + filteredTotal + " matching"}
             />`}
-            <div className="dirty-tidy-confirm">
-              <button
-                className="btn btn-primary dirty-ui-button"
-                disabled=${busy || confirmed}
-                onClick=${confirmAndSavePreview}
-                type="button"
-              >Confirm and save</button>
-              <button
-                className="btn btn-danger dirty-ui-button"
-                disabled=${busy || !confirmed || !previewReady || settingsDirty}
-                onClick=${execute}
-                type="button"
-              >${"Run " + ((preview.summary && preview.summary.ready) || 0) + " operation(s)"}</button>
-              ${draft.automationMode !== "manual" && html`<button
-                className="btn btn-primary dirty-ui-button"
-                disabled=${busy || !confirmed || settingsDirty}
-                onClick=${approveAutomation}
-                type="button"
-              >${"Approve and enable after " + (draft.automationMode === "scan" ? "Scan" : "Generate")}</button>`}
-            </div>
           <//>`}
+        <//>`}
+        <${Dialog} open=${confirming && Boolean(preview)} ariaLabel="Confirm DirtyTidy plan" onClose=${function () { setConfirming(false); }} className="dirty-ui-panel dirty-tidy-confirm-dialog">
+          <h2>${readyCount ? "Apply " + readyCount + (readyCount === 1 ? " file operation?" : " file operations?") : "Approve automation?"}</h2>
+          ${readyCount > 0 && html`<p>
+            ${"Move " + (summary.moves || 0) + " · Rename " + (summary.renames || 0)}
+            ${summary.blocked ? html`<span className="dirty-ui-text-error">${" · " + summary.blocked + " blocked files are skipped"}</span>` : ""}
+          </p>`}
+          <p className="dirty-tidy-help">${readyCount ? "The strategy is saved first. Files are moved through Stash; progress appears in Tasks." : "The strategy is saved and applied after every " + trigger + "."}</p>
+          ${trigger && readyCount > 0 && html`<${Toggle}
+            checked=${approve}
+            label=${"Also apply automatically after every " + trigger}
+            onChange=${setApprove}
+          />`}
+          <div className="dirty-ui-control-row">
+            <${Button} onClick=${function () { setConfirming(false); }}>Cancel<//>
+            ${trigger && readyCount > 0 && approve && html`<${Button} disabled=${Boolean(busy)} onClick=${function () { applyPlan(false); }}>Approve without running<//>`}
+            <${Button} tone=${readyCount ? "danger" : "primary"} busy=${busy === "apply"} disabled=${Boolean(busy)} onClick=${function () { applyPlan(readyCount > 0); }}>${readyCount ? "Run now" : "Approve"}<//>
+          </div>
         <//>
-      <//>`;
+      </div>`;
   }
 
   if (PluginApi.patch && PluginApi.patch.after) {

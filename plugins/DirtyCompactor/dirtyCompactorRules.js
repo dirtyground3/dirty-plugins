@@ -7,7 +7,10 @@
   // Keep in sync with QUALITY_MBPS_1080P in dirty_compactor_rules.py: video
   // Mbps for a 1080p, 30 fps output, scaled per file by the backend.
   var QUALITY_MBPS_1080P = { h264: { high: 8, balanced: 5, small: 3 }, hevc: { high: 5, balanced: 3, small: 1.8 } };
-  var QUALITIES = [["high", "High quality"], ["balanced", "Balanced"], ["small", "Smallest files"], ["custom", "Custom bitrate"]];
+  var QUALITIES = [["high", "High quality"], ["balanced", "Balanced"], ["small", "Smallest files"], ["source", "Same as source (convert only)"], ["custom", "Custom bitrate"]];
+  // Typical audio track, used only for the in-editor estimate; the planner
+  // measures the real audio and subtitle streams.
+  var ESTIMATE_AUDIO_MBPS = 0.128;
   var RESOLUTIONS = [["854x480", "480p"], ["1280x720", "720p"], ["1920x1080", "1080p"], ["2560x1440", "1440p"], ["3840x2160", "2160p (4K)"]];
   var ACTIONS = { resize: "Resize", reencode: "Reencode", delete: "Delete" };
   var CODECS = { h264: "H.264", hevc: "H.265" };
@@ -50,16 +53,57 @@
     return "";
   }
 
-  /** Mirrors target_mbps() in dirty_compactor_rules.py. @param {*} rule @param {number} width @param {number} height @returns {number} */
-  function targetMbps(rule, width, height) {
+  /** Mirrors target_mbps() in dirty_compactor_rules.py. @param {*} rule @param {number} width @param {number} height @param {number=} fps @param {number=} sourceBitrate @returns {number} */
+  function targetMbps(rule, width, height, fps, sourceBitrate) {
     if (quality(rule) === "custom") return Number(rule.mbps);
+    if (rule.quality === "source") return Number(sourceBitrate || 0) / 1e6;
     var base = (QUALITY_MBPS_1080P[rule.codec] || QUALITY_MBPS_1080P.h264)[rule.quality];
-    return Math.round(Math.max(0.2, base * Math.pow(Math.max(1, width * height) / (1920 * 1080), 0.75)) * 100) / 100;
+    var motion = Math.sqrt(Math.max(1, Math.min(Number(fps) || 30, 120) / 30));
+    return Math.round(Math.max(0.2, base * Math.pow(Math.max(1, width * height) / (1920 * 1080), 0.75) * motion) * 100) / 100;
+  }
+
+  /** Mirrors dimensions() in dirty_compactor_rules.py. @param {number} width @param {number} height @param {*} rule @returns {number[]} */
+  function outputSize(width, height, rule) {
+    if (rule.action !== "resize") return [width, height];
+    var bw = Number(rule.width), bh = Number(rule.height);
+    if (height > width && bw > bh) { var swap = bw; bw = bh; bh = swap; }
+    var factor = Math.min(1, bw / width, bh / height);
+    if (factor === 1) return [width, height];
+    return [Math.max(2, Math.floor(width * factor / 2) * 2), Math.max(2, Math.floor(height * factor / 2) * 2)];
+  }
+
+  /** Rough bytes one Stash video file would save, following the planner's skip rules. @param {*} rule @param {*} file @returns {number} */
+  function fileSaving(rule, file) {
+    var size = Number(file.size) || 0, duration = Number(file.duration) || 0;
+    if (rule.action === "delete") return size;
+    if (quality(rule) === "source" || !size || !duration || !file.width || !file.height) return 0;
+    var output = outputSize(file.width, file.height, rule);
+    if (rule.action === "resize" && output[0] === file.width && output[1] === file.height) return 0;
+    var mbps = targetMbps(rule, output[0], output[1], file.frame_rate);
+    var video = Number(file.bit_rate) / 1e6 - ESTIMATE_AUDIO_MBPS;
+    if (rule.action === "reencode" && video > 0 && video <= mbps) return 0;
+    return Math.max(0, size - (mbps + ESTIMATE_AUDIO_MBPS) * 1e6 * duration / 8 * 1.02);
+  }
+
+  /**
+   * Scale a sample of matching scenes to the whole filter.
+   * @param {*} rule @param {{count: number, filesize: number, scenes: Array<{files: Array<*>}>}} sample
+   * @returns {{saved: number, total: number, sampled: number, exact: boolean}}
+   */
+  function estimate(rule, sample) {
+    var sampledBytes = 0, savedBytes = 0;
+    sample.scenes.forEach(function (scene) {
+      (scene.files || []).forEach(function (file) { sampledBytes += Number(file.size) || 0; savedBytes += fileSaving(rule, file); });
+    });
+    var exact = rule.action === "delete" || sample.scenes.length >= sample.count;
+    var saved = rule.action === "delete" ? sample.filesize : exact ? savedBytes : sampledBytes ? sample.filesize * savedBytes / sampledBytes : 0;
+    return { saved: saved, total: sample.filesize, sampled: sample.scenes.length, exact: exact };
   }
 
   /** @param {*} rule @returns {string} */
   function qualityHint(rule) {
     if (quality(rule) === "custom") return "Video bitrate for every file. Audio and subtitles are kept as they are.";
+    if (rule.quality === "source") return "Keeps each video's bitrate to change codec or container. Files are not required to get smaller, and videos already in " + CODECS[rule.codec] + " are skipped.";
     var width = rule.action === "resize" ? Number(rule.width) : 1920, height = rule.action === "resize" ? Number(rule.height) : 1080;
     var label = (RESOLUTIONS.find(function (item) { return item[0] === width + "x" + height; }) || [0, width + "×" + height])[1];
     return "About " + targetMbps(rule, width, height) + " Mbps for " + label + " " + CODECS[rule.codec] +
@@ -169,11 +213,11 @@
     var parts = [ACTIONS[rule.action]];
     if (rule.action === "resize") parts.push("max " + ((RESOLUTIONS.find(function (item) { return item[0] === rule.width + "x" + rule.height; }) || [0, rule.width + "×" + rule.height])[1]));
     parts.push(CODECS[rule.codec] || rule.codec);
-    parts.push(quality(rule) === "custom" ? rule.mbps + " Mbps" : (QUALITIES.find(function (item) { return item[0] === rule.quality; }) || [0, rule.quality])[1].toLowerCase());
+    parts.push(quality(rule) === "custom" ? rule.mbps + " Mbps" : rule.quality === "source" ? "same bitrate" : (QUALITIES.find(function (item) { return item[0] === rule.quality; }) || [0, rule.quality])[1].toLowerCase());
     return parts.join(" · ");
   }
 
   window[INSTANCE_KEY] = { copy: copy, bytes: bytes, newRule: newRule, normalize: normalize, validation: validation, filterSummary: filterSummary,
-    actionSummary: actionSummary, targetMbps: targetMbps, qualityHint: qualityHint, quality: quality,
+    actionSummary: actionSummary, targetMbps: targetMbps, outputSize: outputSize, fileSaving: fileSaving, estimate: estimate, qualityHint: qualityHint, quality: quality,
     QUALITIES: QUALITIES, RESOLUTIONS: RESOLUTIONS };
 })();

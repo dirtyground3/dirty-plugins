@@ -4,8 +4,9 @@ DirtyTidy organizes scene files using metadata-based folder and filename
 templates. Manual execution applies only operations confirmed in a preview
 from the Dirty Plugins settings page. Automation requires a reviewed preview
 and explicit approval of the folder and filename rules.
-Preview rows can be filtered across the complete plan by Ready, Warning,
-Blocked, or Unchanged status. The complete plan is calculated once; filtering
+The preview shows totals first; select a total (Ready, Moves, Renames,
+Warnings, Unchanged, Blocked) or **Show files** to list matching rows. Empty
+categories are hidden. The complete plan is calculated once; filtering
 and pagination then happen instantly in the browser without recalculating it.
 
 An approved strategy can run manually, after a completed Scan job, or after a
@@ -21,8 +22,16 @@ scenes and changed metadata use the approved rules without another approval.
 
 ![DirtyTidy organization and filename template settings](../../docs/images/dirty-tidy-settings.png)
 
-The settings page keeps folder hierarchy, filename templates, metadata
-variables, automation, preview, and confirmation in one reviewable workflow.
+**Move into folders** and **Rename files** are one-line rows with an on/off
+switch and a summary of their template; click a row to edit it. Folder levels
+are reordered or removed from each level's ⋮ menu, and **+ Variable** inserts a
+metadata variable from a grouped menu. Filename length and the multi-value
+separator sit under **Advanced**.
+
+The toolbar holds the automation trigger (with an Approved / Needs approval
+badge), **Save**, and **Preview**. After previewing, **Run…** opens a
+confirmation dialog that saves the previewed strategy, can also approve it for
+automation (or approve without running), and queues the plan.
 
 ## Safety model
 
@@ -74,9 +83,9 @@ DirtyTidy depends on the sibling **DirtyPlugins** settings hub. Install from the
 repository package source, or copy both complete directories into the Stash
 plugins directory and reload plugins.
 
-Its fields, icon actions, preview pagination, metric-style summary filters,
-and status colours use the shared suite style. The preview/confirm/run approval
-sequence is unchanged. With `?docsCapture=1`, preview paths and note details
+It uses the shared suite toolbar, row list, overflow menus, fields, dialog,
+pagination, and status colours. Strategy changes are saved explicitly (**Save**
+or the run confirmation) rather than automatically, because they move files. With `?docsCapture=1`, preview paths and note details
 appear as placeholders for safe screenshots.
 
 Planned improvements and known bugs are tracked in [TODO.md](TODO.md).

@@ -19,7 +19,8 @@ const window = {
   },
   DirtyPlugins: {
     registerSettingsPanel: noop,
-    react: { html: htm.bind(element), SettingsCard: noop, SettingsSection: noop, SettingsToggle: noop, Field: noop, Pagination: noop, IconButton: noop },
+    react: { html: htm.bind(element), SettingsSection: noop, SettingsToggle: noop, Field: noop, Pagination: noop,
+      Button: noop, ActionMenu: noop, Badge: noop, Dialog: noop, SaveStatus: noop },
     values: {
       asObject: (value) => (value && typeof value === "object" && !Array.isArray(value) ? value : {}),
     },
@@ -96,12 +97,14 @@ const views = window.__dirtyTidyPreview.createPreview({
   html: window.DirtyPlugins.react.html,
   React: { Fragment: "Fragment" },
   DirtyPlugins: {},
-  variables: [["studio", "Studio name"]],
+  variables: [["studio", "Studio name", "Studio"], ["year", "Year", "Date"], ["parent_studio", "Parent studio", "Studio"]],
 });
-const picker = views.VariablePicker({ onInsert: noop });
-assert.equal(picker.type, "div");
-assert.equal(picker.props["aria-label"], "Template variables");
-assert.equal(text(picker), "{studio}");
+const inserted = [];
+const menu = views.variableMenuItems((token) => inserted.push(token));
+assert.deepEqual(clean(menu.map((item) => item.header || text(item.label))),
+  ["Studio", "Studio name {studio}", "Parent studio {parent_studio}", "Date", "Year {year}"], "variables are grouped in first-seen order");
+menu[2].onSelect();
+assert.deepEqual(inserted, ["{parent_studio}"]);
 const table = views.PreviewTable({ operations: [{
   file_id: 1, status: "blocked", source_path: "/a.mp4", destination_path: "/b.mp4",
   warnings: ["Collision"], blocked_scenes: [{ id: "7", title: "First" }, { id: "8" }],
@@ -116,5 +119,46 @@ const summary = views.Summary({ summary: { ready: 2 }, total: 5, value: "ready",
 const ready = find(summary, (node) => node.props["aria-pressed"] === true);
 assert.equal(ready.props.className.includes("dirty-tidy-summary-active"), true);
 assert.equal(text(ready), "2Ready");
+assert.equal(text(summary), "5All2Ready", "empty preview categories are hidden");
+
+// Render the panel: compact strategy rows, one primary action, and a
+// confirmation dialog that replaces the old inline confirm/run buttons.
+let hookValues = {}, hookIndex = 0, panel;
+// Components read props.children, so this element keeps them in props too.
+const renderElement = (type, props, ...children) => ({ type, props: Object.assign({}, props, { children }), children });
+const renderReact = {
+  Fragment: "Fragment",
+  createElement: renderElement,
+  useState(initial) { const index = hookIndex++; return [Object.hasOwn(hookValues, index) ? hookValues[index] : (typeof initial === "function" ? initial() : initial), noop]; },
+  useMemo: (fn) => fn(),
+  useEffect: noop,
+  useRef: (initial) => ({ current: initial }),
+};
+const components = Object.fromEntries(["SettingsSection", "SettingsToggle", "Field", "Pagination", "Button", "ActionMenu", "Badge", "Dialog", "SaveStatus"]
+  .map((name) => [name, name]));
+const renderWindow = { location: { search: "" }, PluginApi: { React: renderReact },
+  DirtyPlugins: Object.assign({}, window.DirtyPlugins, { react: Object.assign({ html: htm.bind(renderElement) }, components),
+    registerSettingsPanel: (_id, component) => { panel = component; } }) };
+vm.runInNewContext(source, { window: renderWindow, console: { error: noop } });
+const preview = { total: 3, strategy_hash: "b".repeat(64), summary: { ready: 2, moves: 2, renames: 1, blocked: 1 }, operations: [] };
+// Hook order: 0 draft, 1 saved, 2 preview, ..., 8 open row, 10 confirming.
+hookValues = { 0: Object.assign({}, window.__dirtyTidySettings.defaults, { automationMode: "scan" }), 2: preview, 8: "move", 10: true };
+const tree = panel({ configuration: { automationMode: "scan" } });
+const nodes = [];
+(function visit(node) {
+  if (Array.isArray(node)) return node.forEach(visit);
+  if (!node || typeof node !== "object" || !Object.hasOwn(node, "type")) return;
+  if (typeof node.type === "function") { hookIndex = 0; return visit(node.type(node.props)); }
+  nodes.push(node);
+  (node.children || []).forEach(visit);
+})(tree);
+const labels = nodes.filter((node) => node.type === "Button").map((node) => text(node.children));
+assert.deepEqual(clean(labels.filter((label) => /Preview|Run|Save|Approve/.test(label))),
+  ["Save", "Preview", "Run 2 operations…", "Approve without running", "Run now"]);
+assert(nodes.some((node) => node.props["aria-label"] === "Folder level 1"), "open folder row shows its levels");
+assert(nodes.some((node) => node.type === "ActionMenu" && node.props.label === "+ Variable"), "variables insert from a menu");
+assert(!nodes.some((node) => node.props.id === "dirty-tidy-rename-pattern"), "closed rename row stays collapsed");
+assert(nodes.some((node) => node.type === "Dialog" && node.props.open === true), "running asks for confirmation");
+assert(nodes.some((node) => node.type === "Badge" && text(node.children) === "Needs approval"));
 
 console.log("DirtyTidy settings normalization tests passed");

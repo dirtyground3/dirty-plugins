@@ -157,7 +157,9 @@ class SharedUIContractTests(unittest.TestCase):
         tidy_css = read("plugins/DirtyTidy/dirtyTidy.css")
 
         self.assertIn("SettingsCard,", hub)
-        self.assertIn("DirtyPlugins.react.SettingsCard", tidy_js)
+        self.assertIn("dirty-ui-row-list", tidy_js)
+        self.assertIn("dirty-ui-toolbar", tidy_js)
+        self.assertIn("dirty-ui-row-list", read("plugins/DirtyCompactor/dirtyCompactor.js"))
         self.assertIn("DirtyPlugins.react.SettingsSection", tidy_js)
         self.assertIn("DirtyPlugins.react.SettingsToggle", tidy_js)
         self.assertNotIn("dirty-tidy-header", tidy_js + tidy_css)
@@ -518,7 +520,9 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("Waiting to save automatically…", rank)
         self.assertIn("Saving automatically…", rank)
         self.assertNotIn('Save settings")', rank)
-        self.assertIn('>Confirm and save</button>', tidy)
+        # Tidy keeps an explicit save and a confirmation dialog because it moves files.
+        self.assertIn(">Save<//>", tidy)
+        self.assertIn('ariaLabel="Confirm DirtyTidy plan"', tidy)
 
     def test_dirty_rank_advances_before_background_vote_persistence(self):
         script = read("plugins/DirtyRank/dirtyRank.js")
@@ -650,7 +654,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("job && job.startTime", tidy)
         self.assertIn('event.type !== "REMOVE"', tidy)
         self.assertIn('job.status !== "FINISHED"', tidy)
-        self.assertIn("approveAutomation", tidy)
+        self.assertIn("approvedStrategyHash: preview.strategy_hash", tidy)
         self.assertIn('if mode == "automation":', backend)
         self.assertIn('settings["approvedStrategyHash"]', backend)
 
@@ -668,8 +672,8 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("function PreviewNotes", tidy)
         self.assertIn("operation.blocked_scenes", tidy)
         self.assertIn('href=${"/scenes/" + encodeURIComponent(scene.id)}', tidy)
-        self.assertIn('["female_performers", "Female performers"]', tidy)
-        self.assertIn('["male_performers", "Male performers"]', tidy)
+        self.assertIn('["female_performers", "Female performers", "Performers"]', tidy)
+        self.assertIn('["male_performers", "Male performers", "Performers"]', tidy)
 
     def test_dirty_tidy_preview_does_not_save_the_draft(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
@@ -680,8 +684,8 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("runPreview(draft)", preview_function)
         self.assertNotIn("configurePlugin", preview_function)
         self.assertNotIn("setSavedSettings", preview_function)
-        self.assertIn('Working…" : "Preview"', tidy)
-        self.assertIn("!previewReady || settingsDirty", tidy)
+        self.assertIn('busy=${busy === "preview"}', tidy)
+        self.assertIn("disabled=${Boolean(busy) || (!readyCount && !trigger)}", tidy)
 
     def test_dirty_tidy_has_independent_stash_id_safeguards(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
@@ -689,17 +693,19 @@ class SharedUIContractTests(unittest.TestCase):
 
         self.assertIn("moveRequireStashId", tidy)
         self.assertIn("renameRequireStashId", tidy)
-        self.assertIn("Only move files for scenes with a Stash ID", tidy)
-        self.assertIn("Only rename files for scenes with a Stash ID", tidy)
+        self.assertIn("changed({ moveRequireStashId: value })", tidy)
+        self.assertIn("changed({ renameRequireStashId: value })", tidy)
+        self.assertIn("Only scenes with a Stash ID", tidy)
         self.assertIn('stash_ids { stash_id }', backend)
         self.assertIn("def scene_has_stash_id", backend)
 
-    def test_dirty_tidy_confirms_and_saves_with_a_button(self):
+    def test_dirty_tidy_confirms_and_saves_in_a_dialog(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
 
-        self.assertIn("function confirmAndSavePreview", tidy)
-        self.assertIn('>Confirm and save</button>', tidy)
-        self.assertIn("setConfirmed(true)", tidy)
+        self.assertIn("function applyPlan(runNow)", tidy)
+        self.assertIn('ariaLabel="Confirm DirtyTidy plan"', tidy)
+        self.assertIn("DirtyPlugins.configurePlugin(PLUGIN_ID, approvedSettings)", tidy)
+        self.assertIn("return runNow ? queueExecution(preview.strategy_hash) : null;", tidy)
         self.assertIn("DirtyPlugins.configurePlugin(PLUGIN_ID, draft)", tidy)
         self.assertNotIn("I reviewed this preview", tidy)
 
@@ -710,7 +716,7 @@ class SharedUIContractTests(unittest.TestCase):
         )[0]
 
         self.assertIn(
-            'setConfirmed(false);\n      if (affectsStrategy !== false) {\n        setPreview(null)',
+            'if (affectsStrategy !== false) {\n        setPreview(null)',
             changed_function,
         )
         self.assertIn(
@@ -722,14 +728,14 @@ class SharedUIContractTests(unittest.TestCase):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
         backend = read("plugins/DirtyTidy/dirty_tidy_templates.py")
 
-        self.assertIn('["grade", "Grade (A–F)"]', tidy)
+        self.assertIn('["grade", "Grade (A–F)", "Rating"]', tidy)
         self.assertIn('"grade": _grade(rating)', backend)
 
     def test_dirty_tidy_exposes_the_stash_id_variable(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
         backend = read("plugins/DirtyTidy/dirty_tidy_templates.py")
 
-        self.assertIn('["stash_id", "Stash ID"]', tidy)
+        self.assertIn('["stash_id", "Stash ID", "Scene"]', tidy)
         self.assertIn('"stash_id": stash_ids[0] if stash_ids else UNKNOWN_VALUE', backend)
 
 

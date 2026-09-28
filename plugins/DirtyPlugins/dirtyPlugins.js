@@ -859,8 +859,8 @@
   }
 
   // Overflow menu for secondary row actions. Items are {label, onSelect,
-  // disabled, tone} or links {label, href, download}; falsy entries are
-  // skipped so callers can inline guards.
+  // disabled, tone}, links {label, href, download}, or group {header}s;
+  // falsy entries are skipped so callers can inline guards.
   function ActionMenu(props) {
     var bootstrap = PluginApi.libraries.Bootstrap;
     var Dropdown = bootstrap.Dropdown;
@@ -884,6 +884,7 @@
         >${props.label || html`<${Glyph} icon=${solidIcons.faEllipsisV || solidIcons.faEllipsisVertical} fallback="⋮" />`}<//>
         <${Dropdown.Menu} alignRight=${true}>
           ${items.map(function (item, index) {
+            if (item.header) return html`<${Dropdown.Header} key=${"header-" + index}>${item.header}<//>`;
             return html`<${Dropdown.Item}
               key=${item.key || index}
               eventKey=${String(index)}

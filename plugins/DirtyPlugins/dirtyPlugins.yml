@@ -1,6 +1,6 @@
 name: DirtyPlugins
 description: Shared settings page for Dirty plugins.
-version: 0.5.2
+version: 0.5.3
 
 settings:
   visualTheme:

@@ -9,19 +9,19 @@
     var html = dependencies.html, React = dependencies.React;
     var DirtyPlugins = dependencies.DirtyPlugins, VARIABLES = dependencies.variables;
 
-  function VariablePicker(props) {
-    return html`
-      <div className="dirty-tidy-variables" aria-label="Template variables">
-        ${VARIABLES.map(function (variable) {
-          return html`<button
-            className="dirty-tidy-variable"
-            key=${variable[0]}
-            onClick=${function () { props.onInsert("{" + variable[0] + "}"); }}
-            title=${variable[1]}
-            type="button"
-          >${"{" + variable[0] + "}"}</button>`;
-        })}
-      </div>`;
+  /** Menu items that insert a template token, grouped under headers. @param {function(string): void} onInsert @returns {Array<*>} */
+  function variableMenuItems(onInsert) {
+    var groups = [], byGroup = {};
+    VARIABLES.forEach(function (variable) {
+      var group = variable[2] || "Variables";
+      if (!byGroup[group]) { byGroup[group] = []; groups.push(group); }
+      byGroup[group].push(variable);
+    });
+    return groups.reduce(function (items, group) {
+      return items.concat([{ header: group }], byGroup[group].map(function (variable) {
+        return { key: variable[0], label: html`${variable[1]} <span className="dirty-tidy-token">${"{" + variable[0] + "}"}</span>`, onSelect: function () { onInsert("{" + variable[0] + "}"); } };
+      }));
+    }, []);
   }
 
   function Summary(props) {
@@ -35,6 +35,8 @@
       ["Unchanged", summary.unchanged || 0, "unchanged"],
       ["Blocked", summary.blocked || 0, "blocked"],
     ];
+    // Empty categories add noise; "All" and the active filter always stay.
+    values = values.filter(function (value) { return value[2] === "all" || value[1] > 0 || props.value === value[2]; });
     return html`
       <div className="dirty-tidy-summary" role="group" aria-label="Filter preview">
         ${values.map(function (value) {
@@ -112,7 +114,7 @@
       </div>`;
   }
 
-    return { VariablePicker: VariablePicker, Summary: Summary, PreviewNotes: PreviewNotes, PreviewTable: PreviewTable };
+    return { variableMenuItems: variableMenuItems, Summary: Summary, PreviewNotes: PreviewNotes, PreviewTable: PreviewTable };
   }
 
   window[INSTANCE_KEY] = { createPreview: createPreview };

@@ -1,9 +1,10 @@
-.dirty-tidy-card {
-  margin: 0;
+.dirty-tidy {
+  color: var(--dirty-ui-text);
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
 }
 
-.dirty-tidy-actions,
-.dirty-tidy-confirm,
 .dirty-tidy-level,
 .dirty-tidy-pagination,
 .dirty-tidy-summary {
@@ -11,19 +12,29 @@
   display: flex;
 }
 
-.dirty-tidy-body {
-  display: grid;
-  gap: 1.1rem;
+.dirty-tidy-automation {
+  width: auto;
+  max-width: 14rem;
 }
 
-.dirty-tidy-body .dirty-ui-settings-toggle + .dirty-ui-settings-toggle {
-  margin-top: 0.55rem;
+.dirty-tidy-approved {
+  border-color: var(--dirty-ui-success);
+  color: var(--dirty-ui-success);
+}
+
+.dirty-tidy-unapproved {
+  border-color: var(--dirty-ui-warning);
+  color: var(--dirty-ui-warning);
+}
+
+.dirty-tidy-template {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .dirty-tidy-levels {
   display: grid;
-  gap: 0.55rem;
-  margin-top: 0.9rem;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
 }
 
 .dirty-tidy-level {
@@ -43,14 +54,33 @@
 }
 
 .dirty-tidy-level .form-control {
+  flex: 1 1 auto;
   min-width: 0;
+}
+
+/* Stash themes may render menu items as flex rows; keep label and token on one baseline. */
+.dirty-tidy-variable-menu .dropdown-item {
+  align-items: baseline;
+}
+
+.dirty-tidy-token {
+  color: var(--dirty-ui-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  margin-left: 0.4rem;
+}
+
+.dirty-tidy-help {
+  color: var(--dirty-ui-muted);
+  font-size: 0.875rem;
+  margin: 0.6rem 0;
 }
 
 .dirty-tidy-field {
   display: grid;
   flex: 1 1 0;
   gap: 0.3rem;
-  margin-top: 0.85rem;
+  margin: 0.5rem 0 0.75rem;
 }
 
 .dirty-tidy-field-row {
@@ -58,44 +88,47 @@
   gap: 1rem;
 }
 
-.dirty-tidy-variables {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+.dirty-tidy-advanced {
+  margin-top: 0.5rem;
 }
 
-.dirty-tidy-variable {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--dirty-ui-border-soft);
-  border-radius: 999px;
-  color: var(--dirty-ui-text);
-  cursor: pointer;
-  font: 500 0.78rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
-  padding: 0.35rem 0.55rem;
-}
-
-.dirty-tidy-variable:hover,
-.dirty-tidy-variable:focus-visible {
-  background: rgba(255, 255, 255, 0.16);
-  border-color: var(--dirty-ui-border);
-}
-
-.dirty-tidy-automation {
-  max-width: 20rem;
-}
-
-.dirty-tidy-automation-state {
+.dirty-tidy-advanced > summary {
   color: var(--dirty-ui-muted);
-  margin: 0.65rem 0 0;
+  cursor: pointer;
+  padding-block: 0.35rem;
 }
 
-.dirty-tidy-actions {
-  flex-wrap: wrap;
-  gap: 0.55rem;
+.dirty-tidy-advanced[open] > summary {
+  color: var(--dirty-ui-text);
 }
 
 .dirty-tidy-message {
-  margin-top: 0.8rem;
+  margin: 0;
+}
+
+.dirty-tidy-preview-actions {
+  margin-top: 0.75rem;
+}
+
+.dirty-tidy-confirm-dialog {
+  background: var(--dirty-ui-surface-raised);
+  color: var(--dirty-ui-text);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 1.5rem;
+  width: min(36rem, calc(100vw - 2rem));
+}
+
+.dirty-tidy-confirm-dialog h2 {
+  font-size: 1.35rem;
+}
+
+.dirty-tidy-confirm-dialog .dirty-ui-control-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
 }
 
 .dirty-tidy-summary {
@@ -209,15 +242,6 @@
   margin-top: 0.85rem;
 }
 
-.dirty-tidy-confirm {
-  border-top: 1px solid var(--dirty-ui-border-soft);
-  flex-wrap: wrap;
-  gap: 1rem;
-  justify-content: space-between;
-  margin-top: 1rem;
-  padding-top: 1rem;
-}
-
 .dirty-tidy-empty {
   color: var(--dirty-ui-muted);
   margin: 1rem 0 0;
@@ -230,16 +254,10 @@
   }
 
   .dirty-tidy-level {
-    align-items: stretch;
     flex-wrap: wrap;
   }
 
   .dirty-tidy-level .form-control {
     flex: 1 1 calc(100% - 2.5rem);
-  }
-
-  .dirty-tidy-confirm {
-    align-items: stretch;
-    flex-direction: column;
   }
 }

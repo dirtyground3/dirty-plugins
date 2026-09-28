@@ -1,34 +1,25 @@
 .dirty-compactor { color: var(--dirty-ui-text); display: grid; gap: var(--dirty-ui-space-4, 1rem); min-width: 0; }
-.dirty-compactor-spacer { flex: 1 1 auto; }
 .dirty-compactor-muted { color: var(--dirty-ui-muted); font-size: .875rem; }
 .dirty-compactor-warning { color: var(--dirty-ui-warning); }
 .dirty-compactor-danger { color: var(--dirty-ui-danger); }
 .dirty-compactor-label { display: block; font-weight: 600; margin-bottom: .35rem; }
-.dirty-compactor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; }
-.dirty-compactor-toolbar h3 { margin: 0 .25rem 0 0; font-size: 1.25rem; }
-.dirty-compactor-toolbar .dirty-ui-settings-toggle { margin: 0; }
+.dirty-compactor-estimate { margin: 0 0 .75rem; color: var(--dirty-ui-muted); }
+.dirty-compactor-estimate strong { color: var(--dirty-ui-text); font-size: 1.1rem; }
 .dirty-compactor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: var(--dirty-ui-space-3, .75rem); margin-block: .75rem; }
 .dirty-compactor .dirty-ui-control-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .dirty-compactor details > summary { cursor: pointer; padding-block: .35rem; color: var(--dirty-ui-muted); }
 .dirty-compactor details[open] > summary { color: var(--dirty-ui-text); }
 
-.dirty-compactor-rules { border: 1px solid var(--dirty-ui-border); border-radius: var(--dirty-ui-radius); background: var(--dirty-ui-surface-raised); }
-.dirty-compactor-rule + .dirty-compactor-rule { border-top: 1px solid var(--dirty-ui-border); }
-.dirty-compactor-rule-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .5rem .4rem .75rem; min-width: 0; }
-.dirty-compactor-rule-switch { margin: 0; flex: none; }
-.dirty-compactor-rule-summary { flex: 1 1 auto; min-width: 0; display: grid; gap: .1rem; padding: .35rem .25rem; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
-.dirty-compactor-rule-summary:focus-visible { outline: 2px solid var(--dirty-ui-focus); outline-offset: 2px; }
-.dirty-compactor-rule-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dirty-compactor-rule-detail { color: var(--dirty-ui-muted); font-size: .875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dirty-compactor-rule.is-off .dirty-compactor-rule-name { color: var(--dirty-ui-muted); }
-.dirty-compactor-rule.is-open { background: var(--dirty-theme-softer, transparent); }
-.dirty-compactor-rule-editor { padding: 0 1rem 1rem 3.25rem; }
 .dirty-compactor-advanced { margin-top: .5rem; }
 
 .dirty-compactor-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: var(--dirty-ui-space-3, .75rem); margin-block: .75rem; }
 .dirty-compactor-progress { display: flex; align-items: center; gap: .75rem; }
 .dirty-compactor-progress progress { flex: 1 1 auto; height: .5rem; accent-color: var(--dirty-ui-accent); }
 .dirty-compactor-results-actions { margin-block: .5rem; }
+.dirty-compactor-skipped { color: var(--dirty-ui-muted); font-size: .875rem; }
+.dirty-compactor-skipped ul { list-style: none; margin: .25rem 0 0; padding: 0; }
+.dirty-compactor-skipped li { padding-block: .1rem; }
+.dirty-compactor-skipped strong { color: var(--dirty-ui-text); display: inline-block; min-width: 2.5rem; }
 .dirty-compactor-path { overflow-wrap: anywhere; color: var(--dirty-ui-muted); font-size: .875rem; }
 .dirty-compactor-table { width: 100%; }
 .dirty-compactor-table td, .dirty-compactor-table th { vertical-align: top; padding: .6rem .75rem; }
@@ -45,8 +36,6 @@
 .dirty-compactor-history li { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding-block: .25rem; border-bottom: 1px solid var(--dirty-ui-border); }
 
 @media (max-width: 600px) {
-  .dirty-compactor-rule-editor { padding-left: 1rem; }
-  .dirty-compactor-rule-detail { white-space: normal; }
   .dirty-compactor-table thead { display: none; }
   .dirty-compactor-table tbody, .dirty-compactor-table tr, .dirty-compactor-table td { display: block; min-width: 0; }
   .dirty-compactor-table tr { border-bottom: 1px solid var(--dirty-ui-border); padding-block: .5rem; }

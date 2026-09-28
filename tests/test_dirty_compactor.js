@@ -34,6 +34,23 @@ assert.equal(a.targetMbps({ quality: "balanced", codec: "h264" }, 1920, 1080), 5
 assert.equal(a.targetMbps({ quality: "balanced", codec: "hevc" }, 3840, 2160), 8.49);
 assert.equal(a.targetMbps({ quality: "small", codec: "hevc" }, 854, 480), 0.53);
 assert.equal(a.targetMbps({ quality: "custom", mbps: "2.5", codec: "h264" }, 3840, 2160), 2.5);
+assert.equal(a.targetMbps({ quality: "balanced", codec: "h264" }, 1920, 1080, 60), 7.07, "matches the backend's frame-rate factor");
+assert.equal(a.targetMbps({ quality: "source", codec: "hevc" }, 1920, 1080, 30, 7500000), 7.5);
+assert.equal(a.actionSummary({ action: "reencode", codec: "hevc", quality: "source" }), "Reencode · H.265 · same bitrate");
+const rulesApi = window.__dirtyCompactorRules;
+const hd = { size: 100e6, duration: 100, width: 1920, height: 1080, bit_rate: 50e6, frame_rate: 30 };
+const balanced = { action: "reencode", codec: "h264", quality: "balanced" };
+assert.equal(Math.round(rulesApi.fileSaving(balanced, hd)), 34618000, "5 Mbps video + typical audio, with the planner's 2% margin");
+assert.equal(rulesApi.fileSaving(balanced, Object.assign({}, hd, { bit_rate: 4e6 })), 0, "already below target");
+assert.equal(rulesApi.fileSaving({ action: "resize", width: 1920, height: 1080, codec: "h264", quality: "balanced" }, hd), 0, "already within the resolution");
+assert(rulesApi.fileSaving({ action: "resize", width: 1280, height: 720, codec: "h264", quality: "balanced" }, hd) > 34618000);
+assert.equal(rulesApi.fileSaving({ action: "reencode", codec: "hevc", quality: "source" }, hd), 0, "conversions are not counted as savings");
+assert.equal(rulesApi.fileSaving({ action: "delete" }, hd), 100e6);
+assert.equal(JSON.stringify(rulesApi.outputSize(1080, 1920, { action: "resize", width: 1280, height: 720 })), "[720,1280]", "portrait keeps orientation");
+const sampled = rulesApi.estimate(balanced, { count: 10, filesize: 1e9, scenes: [{ files: [hd] }] });
+assert.equal(Math.round(sampled.saved), 346180000, "sample savings scale to the filter's total size");
+assert.equal(sampled.exact, false);
+assert.equal(rulesApi.estimate({ action: "delete" }, { count: 10, filesize: 5e9, scenes: [] }).saved, 5e9, "delete frees the whole filter exactly");
 assert.equal(a.actionSummary({ action: "resize", width: 1280, height: 720, codec: "hevc", quality: "small" }), "Resize · max 720p · H.265 · smallest files");
 assert.equal(a.actionSummary({ action: "reencode", codec: "h264", quality: "custom", mbps: 3 }), "Reencode · H.264 · 3 Mbps");
 rule.width = "";
@@ -102,7 +119,8 @@ const sampleRule = a.newRule();
 sampleRule.condition.all = true;
 const operation = { id: "op-1", sceneId: 1, title: "Scene", source: "source.mp4", destination: "output.mp4",
   rule: sampleRule, status: "ready", savings: 100, dimensions: [1920, 1080] };
-const preview = { id: "preview-1", status: "ready", total: 1, operations: [operation], counts: { ready: 1 },
+const preview = { id: "preview-1", status: "ready", total: 16, operations: [operation], counts: { ready: 1, unchanged: 12, blocked: 3 },
+  skipReasons: [["Already at or below target bitrate", 12], ["Scene has files shared with another scene", 3]],
   readyActions: { resize: 1, reencode: 0, delete: 0 }, page: 1, pages: 1 };
 const run = { id: "run-1", status: "running", total: 1, operations: [operation], page: 1, pages: 1,
   review: { operationId: "op-1", title: "Scene", url: "/preview", originalSize: 200, outputSize: 100,
@@ -133,6 +151,10 @@ const ruleMenu = nodes.find(node => node.type === "ActionMenu" && /^Actions for/
 assert.equal(JSON.stringify(ruleMenu.props.items.map(item => item.label)), JSON.stringify(["Close editor", "Move up", "Move down", "Duplicate", "Delete rule"]));
 assert(nodes.some(node => node.type === "Metric" && node.props.label === "Estimated savings"), "preview leads with totals");
 assert(!nodes.some(node => node.type === "table"), "file tables stay collapsed until requested");
+const flat = node => typeof node === "string" ? node : Array.isArray(node) ? node.map(flat).join("") : node && node.children ? flat(node.children) : "";
+assert(nodes.some(node => node.type === "Metric" && node.props.value === "1 file"), "counts are pluralized");
+const skippedBox = nodes.find(node => node.props && node.props.className === "dirty-compactor-skipped");
+assert.equal(flat(skippedBox), "Why 15 files were skipped12 Already at or below target bitrate3 Scene has files shared with another scene");
 assert(nodes.some(node => node.type === "Button" && node.children.includes("Show files")));
 assert(nodes.some(node => node.type === "video"), "output review must render");
 console.log("DirtyCompactor UI algorithms and registration passed");

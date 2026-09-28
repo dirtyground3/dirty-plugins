@@ -14,6 +14,7 @@
   var normalize = rules.normalize, validation = rules.validation, filterSummary = rules.filterSummary;
   var FINISHED = ["completed", "failed", "cancelled"];
   var RECOVERABLE = ["recovery", "running", "finalizing", "reconciling", "queued", "acceptQueued", "discarding"];
+  var ESTIMATE_SAMPLE = 200;
   var AUTOMATION_HELP = "Automatic rules run after each successful library scan. A Stash tab must be open to notice the scan; queued work continues without it. The first matching rule wins, even when it is Manual.";
   function field(id, label, value, change, options, help, action) {
     var props = { value: value, onChange: function (event) { change(event.target.value); }, className: "form-control" + (options ? " dirty-ui-select" : "") };
@@ -25,20 +26,22 @@
   function hidden(text) { return html`<span className="sr-only">${text}</span>`; }
   function RuleRow(props) {
     var r = props.rule, filterState = useState(false), openFilter = filterState[0], setOpenFilter = filterState[1];
-    var matchState = useState(null), matches = matchState[0], setMatches = matchState[1];
+    var sampleState = useState(null), sample = sampleState[0], setSample = sampleState[1];
     var preset = rules.RESOLUTIONS.some(function (item) { return item[0] === r.width + "x" + r.height; });
     var sizeState = useState(!preset), customSize = sizeState[0], setCustomSize = sizeState[1];
     var matchKey = JSON.stringify(r.condition);
     useEffect(function () {
       var active = true;
-      setMatches(null);
+      setSample(null);
       var timer = setTimeout(function () {
         var condition = r.condition || {};
         if (!condition.all && !Object.keys(condition.scene || {}).length && !(condition.find || {}).q) return;
-        hub.graphql("query($find:FindFilterType,$scene:SceneFilterType){findScenes(filter:$find,scene_filter:$scene){count}}",
-          { find: Object.assign({}, condition.find, { per_page: 1 }), scene: condition.scene || {} })
-          .then(function (data) { if (active) setMatches(data.findScenes.count); })
-          .catch(function () { if (active) setMatches("unavailable"); });
+        // A fixed-seed random sample keeps the estimate stable while editing.
+        hub.graphql("query($find:FindFilterType,$scene:SceneFilterType){findScenes(filter:$find,scene_filter:$scene){count filesize " +
+          "scenes{files{size duration width height bit_rate frame_rate}}}}",
+          { find: Object.assign({}, condition.find, { per_page: ESTIMATE_SAMPLE, page: 1, sort: "random_20260928" }), scene: condition.scene || {} })
+          .then(function (data) { if (active) setSample(data.findScenes); })
+          .catch(function () { if (active) setSample("unavailable"); });
       }, 500);
       return function () { active = false; clearTimeout(timer); };
     }, [matchKey]);
@@ -49,19 +52,22 @@
     });
     if (!encoderOptions.some(function (option) { return option[0] === r.encoder; })) encoderOptions.push([r.encoder, r.encoder.toUpperCase() + " (not detected; CPU fallback)"]);
     var detected = props.capabilities && (props.capabilities.encoders[r.codec] || []);
+    var matches = sample && typeof sample === "object" ? sample.count : null;
     var scenes = typeof matches === "number" ? matches + (matches === 1 ? " scene" : " scenes") : "";
+    var guess = matches ? rules.estimate(r, sample) : null;
+    var saving = guess && guess.saved > 0 ? "≈ " + bytes(guess.saved) + (r.action === "delete" ? " freed" : " saved") : "";
     var condition = r.condition || {};
     var hasFilter = condition.all || Object.keys(condition.scene || {}).length || (condition.find || {}).q;
     var quality = rules.quality(r), advanced = [r.codec === "hevc" ? "H.265" : "H.264", r.encoder === "auto" ? "auto encoder" : r.encoder.toUpperCase(), r.format === "keep" ? "keep format" : "format may change"];
     return html`
-      <div className=${"dirty-compactor-rule" + (props.open ? " is-open" : "") + (r.enabled ? "" : " is-off")}>
-        <div className="dirty-compactor-rule-row">
-          <${ui.SettingsToggle} className="dirty-compactor-rule-switch" checked=${r.enabled} label=${hidden("Enable " + r.name)} onChange=${function (value) { change("enabled", value); }} />
-          <button type="button" className="dirty-compactor-rule-summary" aria-expanded=${props.open} onClick=${props.onToggle}>
-            <span className="dirty-compactor-rule-name">${(props.index + 1) + ". " + r.name}</span>
-            <span className="dirty-compactor-rule-detail">
+      <div className=${"dirty-ui-row" + (props.open ? " is-open" : "") + (r.enabled ? "" : " is-off")}>
+        <div className="dirty-ui-row-main">
+          <${ui.SettingsToggle} checked=${r.enabled} label=${hidden("Enable " + r.name)} onChange=${function (value) { change("enabled", value); }} />
+          <button type="button" className="dirty-ui-row-summary" aria-expanded=${props.open} onClick=${props.onToggle}>
+            <span className="dirty-ui-row-title">${(props.index + 1) + ". " + r.name}</span>
+            <span className="dirty-ui-row-detail">
               ${hasFilter ? filterSummary(condition, props.capture) : html`<span className="dirty-compactor-warning">Choose scenes</span>`}
-              ${scenes && " (" + scenes + ")"}
+              ${scenes && " (" + scenes + (saving ? " · " + saving : "") + ")"}
               ${" → "}
               <span className=${r.action === "delete" ? "dirty-compactor-danger" : undefined}>${rules.actionSummary(r)}</span>
             </span>
@@ -76,7 +82,7 @@
           ]} />
         </div>
         ${props.open && html`
-          <div className="dirty-compactor-rule-editor">
+          <div className="dirty-ui-row-editor">
             <div className="dirty-compactor-grid">
               ${field(r.id + "-name", "Name", r.name, function (v) { change("name", v); })}
               <div className="dirty-ui-field">
@@ -100,6 +106,10 @@
               ${r.action !== "delete" && field(r.id + "-quality", "Quality", quality, function (v) { change("quality", v); }, rules.QUALITIES, rules.qualityHint(r))}
               ${r.action !== "delete" && quality === "custom" && field(r.id + "-rate", "Video bitrate (Mbps)", r.mbps, function (v) { change("mbps", v); })}
             </div>
+            ${guess && html`<p className="dirty-compactor-estimate" title="Estimated from the matching scenes' sizes, durations, and resolutions before planning. Earlier rules may take some of these scenes; Preview gives the exact numbers.">
+              ${r.quality === "source" ? "Converting keeps sizes roughly the same." : html`<strong>${"≈ " + bytes(guess.saved)}</strong>${(r.action === "delete" ? " freed of " : " saved of ") + bytes(guess.total) +
+                (guess.total ? " (" + Math.round(100 * guess.saved / guess.total) + "%)" : "") + (guess.exact ? "" : " · estimated from " + guess.sampled + " sample scenes")}`}
+            </p>`}
             ${r.action === "delete" && html`<p className="dirty-compactor-danger">Deletes the scene, all its media files, and generated assets through Stash.${r.mode === "automatic" ? " Automatic runs will not ask again." : ""}</p>`}
             <${ui.SettingsToggle} checked=${r.mode === "automatic"} label="Run automatically after library scans" onChange=${function (value) { change("mode", value ? "automatic" : "manual"); }} />
             ${r.action !== "delete" && html`
@@ -121,7 +131,7 @@
     var showState = useState(false), showFiles = showState[0], setShowFiles = showState[1];
     var skipped = (counts.blocked || 0) + (counts.unchanged || 0) + (counts.manual || 0);
     var metrics = props.kind === "preview" ? [
-      ["Ready", (counts.ready || 0) + " files"],
+      ["Ready", (counts.ready || 0) + (counts.ready === 1 ? " file" : " files")],
       ["Estimated savings", bytes(record.estimatedSavings)],
       ["Skipped", String(skipped)],
     ] : [
@@ -141,10 +151,18 @@
         ${record.status !== "planning" && html`<div className="dirty-compactor-metrics">${metrics.map(function (item) {
           return html`<${ui.Metric} key=${item[0]} label=${item[0]} value=${item[1]} />`;
         })}</div>`}
+        ${props.kind === "preview" && skipped > 0 && html`
+          <div className="dirty-compactor-skipped">
+            <span>${"Why " + skipped + (skipped === 1 ? " file was" : " files were") + " skipped"}</span>
+            <ul>${(record.skipReasons || []).slice(0, 5).map(function (item) {
+              return html`<li key=${item[0]}><strong>${String(item[1])}</strong>${" " + item[0]}</li>`;
+            })}</ul>
+            ${(record.skipReasons || []).length > 5 && html`<span className="dirty-compactor-muted">Show files for the rest.</span>`}
+          </div>`}
         ${record.libraryBytesRemoved > 0 && html`<p className="dirty-compactor-muted">Deleted files may stay on disk depending on Stash's trash settings.</p>`}
         <div className="dirty-ui-control-row dirty-compactor-results-actions">
           ${record.total > 0 && html`<${ui.Button} tone="quiet" pressed=${showFiles} onClick=${function () { setShowFiles(!showFiles); }}>${showFiles ? "Hide files" : "Show files"}<//>`}
-          <span className="dirty-compactor-spacer"></span>
+          <span className="dirty-ui-spacer"></span>
           ${props.actions}
         </div>
         ${showFiles && html`
@@ -213,7 +231,7 @@
         <div className="dirty-ui-control-row">
           <${ui.Button} tone="primary" disabled=${busy || props.settingsPending} onClick=${function () { decide("acceptOutput"); }}>Accept and replace<//>
           <${ui.Button} disabled=${busy} onClick=${function () { decide("discardOutput"); }}>Discard<//>
-          <span className="dirty-compactor-spacer"></span>
+          <span className="dirty-ui-spacer"></span>
           <${ui.ActionMenu} ariaLabel="More review actions" items=${[
             { label: "Review later", disabled: busy, onSelect: function () { release(); props.onLater(); } },
             !props.capture && { label: "Download output", href: review.url, download: true },
@@ -315,13 +333,13 @@
     var last = history[0];
     return html`
       <div className=${"dirty-compactor" + (capture ? " dirty-compactor-capture" : "")}>
-        <div className="dirty-compactor-toolbar">
+        <div className="dirty-ui-toolbar">
           <h3>Rules</h3>
           <span title=${AUTOMATION_HELP}>
             <${ui.SettingsToggle} checked=${!draft.automationPaused} label="Automatic runs" onChange=${function (v) { changed(Object.assign({}, draft, { automationPaused: !v })); }} />
           </span>
           <${ui.SaveStatus} state=${invalid ? "invalid" : error ? "error" : dirty ? "pending" : "saved"} message=${invalid || status} />
-          <span className="dirty-compactor-spacer"></span>
+          <span className="dirty-ui-spacer"></span>
           <${ui.Button} onClick=${addRule}>Add rule<//>
           <${ui.Button} tone="primary" busy=${busy === "preview"} disabled=${Boolean(busy) || dirty || Boolean(invalid) || !draft.rules.length} onClick=${function () { act("preview"); }}>Preview<//>
         </div>
@@ -329,7 +347,7 @@
         ${run && run.review && !later && html`<${OutputReview} key=${run.review.operationId} run=${run} act=${act} capture=${capture} settingsPending=${dirty || Boolean(invalid)} onLater=${function () { setLater(true); }} />`}
         ${run && run.review && later && html`<${ui.StateView} title="An encoded file is waiting for your review" detail=${"Original unchanged · temporary output " + bytes(run.review.outputSize)} actions=${html`<${ui.Button} onClick=${function () { setLater(false); }}>Review now<//>`} />`}
         ${!draft.rules.length ? html`<${ui.StateView} title="Start with a rule" detail="A rule picks scenes with a Stash filter and resizes, reencodes, or deletes them. Nothing runs until you preview and confirm." actions=${html`<${ui.Button} tone="primary" onClick=${addRule}>Add rule<//>`} />` : html`
-          <div className="dirty-compactor-rules">
+          <div className="dirty-ui-row-list">
             ${draft.rules.map(function (r, index) {
               return html`<${RuleRow} key=${r.id} rule=${r} index=${index} capture=${capture} last=${index === draft.rules.length - 1} capabilities=${caps}
                 open=${openRule === r.id} onToggle=${function () { setOpenRule(openRule === r.id ? "" : r.id); }}

@@ -99,7 +99,8 @@ def probe(executable, path):
     if int(v.get("width", 0)) % 2 or int(v.get("height", 0)) % 2:
         raise PluginError("Odd video dimensions are not supported without changing resolution")
     # Unknown bitrates must not masquerade as a reliable reduction estimate.
-    rate = float(v.get("bit_rate") or v.get("tags", {}).get("BPS") or v.get("tags", {}).get("BPS-eng") or 0)
+    rate = plausible_bitrate(v.get("bit_rate") or v.get("tags", {}).get("BPS") or v.get("tags", {}).get("BPS-eng"),
+                             data.get("format", {}).get("bit_rate"))
     if not rate:
         # Matroska often omits stream bitrate. Sum compressed packet bytes,
         # not container bitrate (which includes audio and attachments).
@@ -127,6 +128,23 @@ def probe(executable, path):
     return {"width": int(v["width"]), "height": int(v["height"]), "duration": duration, "fps": fps,
             "bitrate": rate, "codec": v.get("codec_name"), "streams": streams,
             "chapters": data.get("chapters", []), "format": data.get("format", {})}
+
+
+def plausible_bitrate(stream_rate, format_rate):
+    """Return the reported video bitrate, or 0 when it cannot be right.
+
+    ASF/WMV (VC-1) streams are commonly reported as 1 bit/s, which would make
+    every file look already compressed. Rates far below any real video, or
+    above the whole container's rate, fall back to measuring packets.
+    """
+    try:
+        rate = float(stream_rate or 0)
+        total = float(format_rate or 0)
+    except (TypeError, ValueError):
+        return 0
+    if rate < 10_000 or (total and rate > total * 1.5):
+        return 0
+    return rate
 
 
 def container_for(path, rule, media):
@@ -274,7 +292,7 @@ def build_preview(client, preview):
                             media = probe(ffprobe, op["source"])
                             op["media"] = media
                             op["dimensions"] = list(dimensions(media["width"], media["height"], rule))
-                            op["mbps"] = target_mbps(rule, op["dimensions"][0], op["dimensions"][1], media.get("fps"))
+                            op["mbps"] = target_mbps(rule, op["dimensions"][0], op["dimensions"][1], media.get("fps"), media["bitrate"])
                             suffix, muxer = container_for(op["source"], rule, media)
                             op.update(destination=str(Path(op["source"]).with_suffix(suffix)), muxer=muxer)
                             if op["destination"] != op["source"] and Path(op["destination"]).exists():
@@ -286,7 +304,9 @@ def build_preview(client, preview):
                                 op.update(status="unchanged", reason="This output was already processed with these settings")
                             elif rule["action"] == "resize" and op["dimensions"] == [media["width"], media["height"]]:
                                 op.update(status="unchanged", reason="Already within the requested resolution")
-                            elif rule["action"] == "reencode" and media["bitrate"] and media["bitrate"] <= op["mbps"] * 1e6:
+                            elif rule.get("quality") == "source" and rule["action"] == "reencode" and media["codec"] == rule["codec"]:
+                                op.update(status="unchanged", reason="Already uses " + {"h264": "H.264", "hevc": "H.265"}[rule["codec"]])
+                            elif rule.get("quality") != "source" and rule["action"] == "reencode" and media["bitrate"] and media["bitrate"] <= op["mbps"] * 1e6:
                                 op.update(status="unchanged", reason="Already at or below target bitrate")
                             elif rule["action"] == "reencode" and not media["bitrate"]:
                                 raise PluginError("Video bitrate is unknown; cannot prove a bitrate reduction")
@@ -381,9 +401,11 @@ def encode(client, run, op):
         return [(s["codec_type"], s.get("codec_name") if s["codec_type"] != "video" else "video") for s in media["streams"]]
     if streams(result) != streams(original) or len(result["chapters"]) != len(original["chapters"]):
         raise PluginError("Output stream/chapters preservation failed validation")
-    if output.stat().st_size >= op["identity"]["size"]:
+    # A "Same as source" conversion keeps the bitrate, so it may not shrink.
+    converting = op["rule"].get("quality") == "source"
+    if not converting and output.stat().st_size >= op["identity"]["size"]:
         raise PluginError("Output is not smaller; original retained")
-    if op["rule"]["action"] == "reencode" and (not result["bitrate"] or result["bitrate"] >= original["bitrate"]):
+    if not converting and op["rule"]["action"] == "reencode" and (not result["bitrate"] or result["bitrate"] >= original["bitrate"]):
         raise PluginError("Could not validate a lower video bitrate")
     run_process([ffmpeg, "-v", "error", "-xerror", "-nostdin", "-i", str(output), "-map", "0:v", "-map", "0:a?", "-f", "null", "-"], run["id"], "Validating", original["duration"])
     op.update(outputHash=file_hash(output), outputMedia=result, outputSize=output.stat().st_size, status="validated")
@@ -562,6 +584,17 @@ def output_review(run):
             "destination": op["destination"], "reason": op.get("reason"), "title": op["title"]}
 
 
+def skip_reasons(operations):
+    """Count why files were not planned, across every page of the record."""
+    counts = {}
+    for o in operations:
+        if o["status"] in ("blocked", "unchanged", "manual"):
+            # Probe errors append tool output after a colon; group by the summary.
+            reason = str(o.get("reason") or o["status"]).split(":", 1)[0].strip()
+            counts[reason] = counts.get(reason, 0) + 1
+    return sorted(([reason, count] for reason, count in counts.items()), key=lambda item: (-item[1], item[0]))
+
+
 def public_record(record, page=1):
     result = {k: v for k, v in record.items() if k not in ("operations", "settings", "_revision")}
     operations = record.get("operations", [])
@@ -572,6 +605,7 @@ def public_record(record, page=1):
                   readyActions={action: sum(o["status"] == "ready" and o["rule"]["action"] == action for o in operations) for action in ("resize", "reencode", "delete")},
                   actualSavings=sum(o.get("actualSavings", 0) for o in operations),
                   libraryBytesRemoved=sum(o.get("libraryBytesRemoved", 0) for o in operations),
+                  skipReasons=skip_reasons(operations),
                   operations=[{k: o.get(k) for k in ("id", "sceneId", "title", "fileId", "source", "destination", "status", "reason", "savings", "dimensions", "mbps", "identity", "media", "rule", "actualSavings")} for o in operations[(page - 1) * 25:page * 25]])
     if "reviewOutputs" in record:
         result["review"] = output_review(record)
