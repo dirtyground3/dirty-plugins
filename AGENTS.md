@@ -14,6 +14,7 @@ depend on the shared, unlisted **DirtyPlugins** hub runtime.
 ```text
 plugins/
 ├── DirtyPlugins/        # shared runtime: GraphQL, settings, React components, SQLite owner
+├── DirtyCompactor/      # media compaction UI and backend
 ├── DirtyFileExtractor/  # selection UI + Python extraction backend
 ├── DirtyMultiscreen/    # multiscreen playback UI
 ├── DirtyRank/           # battle/leaderboard UI + Glicko-2 backend
@@ -25,8 +26,8 @@ docs/images/             # censored screenshots used by the README
 ```
 
 Each plugin directory contains: `<manifest>.yml`, the JS/CSS assets it names,
-an optional Python backend, `README.md`, and `LICENSE`. Keep directory names and
-contents unchanged — Stash installs by directory.
+an optional Python backend and helper modules, `README.md`, and `LICENSE`.
+Keep directory names stable — Stash installs by directory.
 
 ## Shared runtime (DirtyPlugins)
 
@@ -75,12 +76,21 @@ ui:
 ## JavaScript conventions
 
 - No build step. Assets are served to Stash as-is.
+- Split code by responsibility. List browser files in dependency order under
+  the manifest's `ui.javascript`; Stash serves them in that order. Feature
+  files expose one plugin-owned API on `window`. The plugin entry file owns
+  registration; DirtyStats also has a dashboard extension that loads after
+  its core file.
 - Each file is an IIFE with `"use strict"` guarded by an `INSTANCE_KEY` on
   `window`. Re-registering cleanly (tear down prior observers/handlers) is
   required because Stash can reload assets without reloading the page.
-- Access React through `window.PluginApi.React` and create elements with
-  `React.createElement` (aliased `h`). Do not import bundlers, JSX, or npm
-  packages.
+- Put `// @ts-check` and JSDoc contracts on new feature files. Run
+  `npm ci` and `npm run typecheck` for diagnostics; TypeScript emits nothing and
+  is never shipped with the plugins.
+- Access React through `window.PluginApi.React`. Use
+  `DirtyPlugins.react.html` for markup-style render trees, and
+  `React.createElement` for low-level integration where needed. Do not import
+  bundlers, JSX, or runtime npm packages.
 - Use ES5-compatible `var` and function style to match existing files.
 - Use `useMemo`/`useCallback` where existing code does; keep components small.
 
@@ -90,6 +100,8 @@ ui:
   `urllib`, `subprocess`, `pathlib`). Do not add third-party dependencies.
 - Backends are invoked by Stash and communicate over a JSON stdin/stdout
   contract; follow the existing `interface: raw` / `exec` manifest pattern.
+- Keep the manifest's executable script as the JSON protocol entry point and
+  import same-directory modules for domain logic.
 - Keep shared storage logic in `dirty_plugins_storage.py`; plugins reuse the
   same SQLite database rather than creating their own.
 
@@ -123,6 +135,9 @@ Run the suite from the repository root:
 
 ```powershell
 python -B -m unittest discover -s tests -v
+npm ci
+npm run typecheck
+node tests/test_plugin_assets.js
 node --check plugins/DirtyRank/dirtyRank.js
 node tests/test_dirty_rank_algorithms.js
 node tests/test_dirty_rank_media.js

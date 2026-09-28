@@ -6,6 +6,8 @@ ui:
   requires:
     - dirtyPlugins
   javascript:
+    - dirtyTidySettings.js
+    - dirtyTidyPreview.js
     - dirtyTidy.js
   css:
     - dirtyTidy.css

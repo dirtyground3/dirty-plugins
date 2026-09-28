@@ -1,0 +1,11 @@
+{
+  "name": "dirty-plugins-source-checks",
+  "private": true,
+  "scripts": {
+    "test:assets": "node tests/test_plugin_assets.js",
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

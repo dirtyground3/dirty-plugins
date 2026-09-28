@@ -6,8 +6,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { sourceFor } = require("./load_plugin_scripts");
 
-const source = fs.readFileSync(path.join(__dirname, "../plugins/DirtyTidy/dirtyTidy.js"), "utf8");
+const source = sourceFor("DirtyTidy");
 const noop = () => {};
 
 const window = {

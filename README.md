@@ -308,6 +308,9 @@ Run the test suite from the repository root:
 
 ```powershell
 python -B -m unittest discover -s tests -v
+npm ci
+npm run typecheck
+node tests/test_plugin_assets.js
 node --check plugins/DirtyRank/dirtyRank.js
 node --check plugins/DirtyPlugins/dirtyPlugins.js
 node --check plugins/DirtyMultiscreen/multiscreen.js
@@ -324,6 +327,10 @@ node tests/test_dirty_stats_dashboard.js
 node tests/test_dirty_stats_contrast.js
 node tests/test_dirty_multiscreen.js
 ```
+
+TypeScript checks annotated JavaScript and emits no files. Plugin assets remain
+plain JavaScript loaded directly in the order listed by each manifest. Python
+backends keep one Stash entry script and import local helper modules.
 
 Build the package source locally on a system with Bash and `zip`:
 

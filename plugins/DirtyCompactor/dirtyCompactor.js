@@ -3,47 +3,21 @@
   var INSTANCE_KEY = "__dirtyCompactorPlugin";
   if (window[INSTANCE_KEY]) return;
   var api = window.PluginApi, hub = window.DirtyPlugins;
-  if (!api || !hub || !hub.react.SceneFilterEditor) return;
-  var React = api.React, h = React.createElement;
+  if (!api || !hub || !hub.react.SceneFilterEditor || !hub.react.html) return;
+  var React = api.React;
   var useState = React.useState, useEffect = React.useEffect, useRef = React.useRef;
-  var ui = hub.react, ID = "dirtyCompactor";
+  var ui = hub.react, html = ui.html, ID = "dirtyCompactor";
+  var rules = window.__dirtyCompactorRules, automation = window.__dirtyCompactorAutomation;
+  if (!rules || !automation) return;
   function operation(mode, args) { return hub.runPluginOperation(ID, Object.assign({ mode: mode }, args || {})); }
-  function copy(value) { return JSON.parse(JSON.stringify(value)); }
-  function bytes(value) {
-    var amount = Number(value || 0), units = ["B", "KiB", "MiB", "GiB", "TiB"], index = 0;
-    while (amount >= 1024 && index < units.length - 1) { amount /= 1024; index++; }
-    return amount.toFixed(index ? 2 : 0) + " " + units[index];
-  }
-  function newRule() {
-    return { id: "rule-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2), name: "New rule", enabled: false,
-      mode: "manual", condition: { scene: {}, find: {}, query: "", all: false }, action: "resize", width: 1920, height: 1080,
-      mbps: 4, codec: "h264", encoder: "auto", format: "keep" };
-  }
-  function normalize(value) { return { schemaVersion: 1, rules: Array.isArray(value.rules) ? value.rules : [], automationPaused: value.automationPaused !== false }; }
-  function validation(value) {
-    var ids = {};
-    for (var i = 0; i < value.rules.length; i++) {
-      var r = value.rules[i], condition = r.condition || {};
-      if (!r.id || ids[r.id]) return "Rules need unique IDs.";
-      ids[r.id] = true;
-      if (r.enabled && !r.name.trim()) return "Name each enabled rule.";
-      if (r.enabled && !condition.all && !Object.keys(condition.scene || {}).length && !(condition.find || {}).q) return "Choose a filter or All scenes for “" + r.name + "”.";
-      if (r.action !== "delete" && (!Number.isFinite(Number(r.mbps)) || Number(r.mbps) < 0.05 || Number(r.mbps) > 1000)) return "Target video bitrate must be 0.05–1000 Mbps.";
-      if (r.action === "resize" && [r.width, r.height].some(function (v) { return !Number.isInteger(Number(v)) || Number(v) < 2 || Number(v) > 16384; })) return "Dimensions must be whole numbers from 2 to 16384.";
-    }
-    return "";
-  }
-  function filterSummary(condition) {
-    if (condition.all) return "All scenes";
-    var labels = Object.keys(condition.scene || {}).map(function (key) { return key.replace(/_/g, " "); });
-    if ((condition.find || {}).q) labels.unshift("Search: " + condition.find.q);
-    return labels.join(" · ") || "No condition selected";
-  }
+  var copy = rules.copy, bytes = rules.bytes, newRule = rules.newRule;
+  var normalize = rules.normalize, validation = rules.validation, filterSummary = rules.filterSummary;
   function field(id, label, value, change, options, help) {
     var props = { value: value, onChange: function (event) { change(event.target.value); }, className: "form-control dirty-ui-select" };
-    var control = options ? h("select", props, options.map(function (item) { return h("option", { key: item[0], value: item[0] }, item[1]); }))
-      : h("input", Object.assign(props, { type: /-(width|height|rate)$/.test(id) ? "number" : "text", step: "any" }));
-    return h(ui.Field, { id: id, label: label, help: help }, control);
+    var control = options ? html`<select ...${props}>${options.map(function (item) {
+      return html`<option key=${item[0]} value=${item[0]}>${item[1]}</option>`;
+    })}</select>` : html`<input ...${Object.assign(props, { type: /-(width|height|rate)$/.test(id) ? "number" : "text", step: "any" })} />`;
+    return html`<${ui.Field} id=${id} label=${label} help=${help}>${control}<//>`;
   }
   function RuleCard(props) {
     var r = props.rule, filterState = useState(false), openFilter = filterState[0], setOpenFilter = filterState[1];
@@ -68,62 +42,88 @@
       if (kind !== "cpu") encoderOptions.push([kind, { nvenc: "NVIDIA NVENC", qsv: "Intel QSV", amf: "AMD AMF" }[kind]]);
     });
     if (!encoderOptions.some(function (option) { return option[0] === r.encoder; })) encoderOptions.push([r.encoder, r.encoder.toUpperCase() + " (not detected; CPU fallback)"]);
-    return h(ui.SettingsCard, { className: "dirty-compactor-rule", plugin: { name: (props.index + 1) + ". " + r.name,
-      description: filterSummary(r.condition) + (matches === null ? "" : " · Matches: " + matches) } },
-      h("div", { className: "dirty-ui-control-row" },
-        h(ui.SettingsToggle, { checked: r.enabled, label: "Enabled", onChange: function (value) { change("enabled", value); } }),
-        h(ui.Badge, null, r.mode === "automatic" ? "Automatic" : "Manual"),
-        h(ui.Button, { compact: true, disabled: props.index === 0, onClick: function () { props.onMove(-1); }, ariaLabel: "Move " + r.name + " up" }, "↑"),
-        h(ui.Button, { compact: true, disabled: props.last, onClick: function () { props.onMove(1); }, ariaLabel: "Move " + r.name + " down" }, "↓"),
-        h(ui.Button, { compact: true, onClick: props.onDuplicate }, "Duplicate"),
-        h(ui.Button, { compact: true, tone: "danger", onClick: props.onRemove }, "Remove")),
-      h("details", { open: props.initialOpen }, h("summary", null, "Edit rule · " + r.action),
-        h("div", { className: "dirty-compactor-grid" },
-          field(r.id + "-name", "Name", r.name, function (v) { change("name", v); }),
-          field(r.id + "-mode", "Execution", r.mode, function (v) { change("mode", v); }, [["manual", "Manual"], ["automatic", "Automatic after scans"]])),
-        h(ui.SettingsSection, { title: "Condition", description: "The first enabled matching rule wins, even when it is Manual during an automatic run." },
-          h("div", { className: "dirty-ui-control-row" },
-            h(ui.Button, { onClick: function () { setOpenFilter(true); } }, "Edit scene filter"),
-            h(ui.SettingsToggle, { checked: r.condition.all, label: "All scenes", onChange: function (value) { change("condition", { all: value, scene: {}, find: {}, query: "" }); } }))),
-        h(ui.SceneFilterEditor, { open: openFilter, value: r.condition, onClose: function () { setOpenFilter(false); }, onChange: function (v) { change("condition", v); } }),
-        h(ui.SettingsSection, { title: "Action" },
-          field(r.id + "-action", "Action", r.action, function (v) { change("action", v); }, [["resize", "Resize"], ["reencode", "Reencode"], ["delete", "Delete scene and files"]]),
-          r.action === "delete" ? h("p", { className: "dirty-compactor-danger" }, "Deletes the scene, all associated media, and generated assets through Stash. Automatic rules do not ask again after scans.")
-            : h("div", { className: "dirty-compactor-grid" },
-              r.action === "resize" && field(r.id + "-preset", "Maximum resolution", "custom", function (v) {
-                if (v === "custom") return; var next = copy(r), d = v.split("x"); next.width = Number(d[0]); next.height = Number(d[1]); props.onChange(next);
-              }, [["custom", "Custom / current dimensions"], ["854x480", "480p"], ["1280x720", "720p"], ["1920x1080", "1080p"], ["2560x1440", "1440p"], ["3840x2160", "2160p"]]),
-              r.action === "resize" && field(r.id + "-width", "Maximum width", r.width, function (v) { change("width", v); }),
-              r.action === "resize" && field(r.id + "-height", "Maximum height", r.height, function (v) { change("height", v); }),
-              field(r.id + "-rate", "Target video bitrate (Mbps)", r.mbps, function (v) { change("mbps", v); }, null, "Video only. Audio and subtitles are retained; actual file savings are validated."),
-              field(r.id + "-codec", "Video codec", r.codec, function (v) { change("codec", v); }, [["h264", "H.264"], ["hevc", "H.265 / HEVC"]]),
-              field(r.id + "-encoder", "Encoder", r.encoder, function (v) { change("encoder", v); }, encoderOptions),
-              field(r.id + "-format", "Output format", r.format, function (v) { change("format", v); }, [["keep", "Keep format"], ["allow", "Allow format change"]], "When necessary, allow MP4 or MKV while preserving supported streams.")))));
+    var card = { name: (props.index + 1) + ". " + r.name,
+      description: filterSummary(r.condition) + (matches === null ? "" : " · Matches: " + matches) };
+    return html`
+      <${ui.SettingsCard} className="dirty-compactor-rule" plugin=${card}>
+        <div className="dirty-ui-control-row">
+          <${ui.SettingsToggle} checked=${r.enabled} label="Enabled" onChange=${function (value) { change("enabled", value); }} />
+          <${ui.Badge}>${r.mode === "automatic" ? "Automatic" : "Manual"}<//>
+          <${ui.Button} compact disabled=${props.index === 0} onClick=${function () { props.onMove(-1); }} ariaLabel=${"Move " + r.name + " up"}>↑<//>
+          <${ui.Button} compact disabled=${props.last} onClick=${function () { props.onMove(1); }} ariaLabel=${"Move " + r.name + " down"}>↓<//>
+          <${ui.Button} compact onClick=${props.onDuplicate}>Duplicate<//>
+          <${ui.Button} compact tone="danger" onClick=${props.onRemove}>Remove<//>
+        </div>
+        <details open=${props.initialOpen}>
+          <summary>${"Edit rule · " + r.action}</summary>
+          <div className="dirty-compactor-grid">
+            ${field(r.id + "-name", "Name", r.name, function (v) { change("name", v); })}
+            ${field(r.id + "-mode", "Execution", r.mode, function (v) { change("mode", v); }, [["manual", "Manual"], ["automatic", "Automatic after scans"]])}
+          </div>
+          <${ui.SettingsSection} title="Condition" description="The first enabled matching rule wins, even when it is Manual during an automatic run.">
+            <div className="dirty-ui-control-row">
+              <${ui.Button} onClick=${function () { setOpenFilter(true); }}>Edit scene filter<//>
+              <${ui.SettingsToggle} checked=${r.condition.all} label="All scenes" onChange=${function (value) { change("condition", { all: value, scene: {}, find: {}, query: "" }); }} />
+            </div>
+          <//>
+          <${ui.SceneFilterEditor} open=${openFilter} value=${r.condition} onClose=${function () { setOpenFilter(false); }} onChange=${function (v) { change("condition", v); }} />
+          <${ui.SettingsSection} title="Action">
+            ${field(r.id + "-action", "Action", r.action, function (v) { change("action", v); }, [["resize", "Resize"], ["reencode", "Reencode"], ["delete", "Delete scene and files"]])}
+            ${r.action === "delete" ? html`<p className="dirty-compactor-danger">Deletes the scene, all associated media, and generated assets through Stash. Automatic rules do not ask again after scans.</p>` : html`
+              <div className="dirty-compactor-grid">
+                ${r.action === "resize" && field(r.id + "-preset", "Maximum resolution", "custom", function (v) {
+                  if (v === "custom") return; var next = copy(r), d = v.split("x"); next.width = Number(d[0]); next.height = Number(d[1]); props.onChange(next);
+                }, [["custom", "Custom / current dimensions"], ["854x480", "480p"], ["1280x720", "720p"], ["1920x1080", "1080p"], ["2560x1440", "1440p"], ["3840x2160", "2160p"]])}
+                ${r.action === "resize" && field(r.id + "-width", "Maximum width", r.width, function (v) { change("width", v); })}
+                ${r.action === "resize" && field(r.id + "-height", "Maximum height", r.height, function (v) { change("height", v); })}
+                ${field(r.id + "-rate", "Target video bitrate (Mbps)", r.mbps, function (v) { change("mbps", v); }, null, "Video only. Audio and subtitles are retained; actual file savings are validated.")}
+                ${field(r.id + "-codec", "Video codec", r.codec, function (v) { change("codec", v); }, [["h264", "H.264"], ["hevc", "H.265 / HEVC"]])}
+                ${field(r.id + "-encoder", "Encoder", r.encoder, function (v) { change("encoder", v); }, encoderOptions)}
+                ${field(r.id + "-format", "Output format", r.format, function (v) { change("format", v); }, [["keep", "Keep format"], ["allow", "Allow format change"]], "When necessary, allow MP4 or MKV while preserving supported streams.")}
+              </div>`}
+          <//>
+        </details>
+      <//>`;
   }
   function Results(props) {
     var record = props.record;
-    return h(ui.SettingsSection, { title: props.title, description: record.status + " · " + record.total + " operations" },
-      record.error && h(ui.StateView, { title: "Planning failed", detail: record.error }),
-      h("p", null, "Estimated savings: " + bytes(record.estimatedSavings) + " · Reclaimed: " + bytes(record.actualSavings)),
-      record.libraryBytesRemoved > 0 && h("p", null, "Removed from library: " + bytes(record.libraryBytesRemoved) + ". Disk space reclaimed depends on Stash trash settings."),
-      record.progress && h("div", { role: "status" }, record.progress.stage, " ", Math.round(record.progress.progress * 100) + "%"),
-      h("div", { className: "dirty-ui-table-wrap" }, h("table", { className: "dirty-ui-table dirty-compactor-table" },
-        h("thead", null, h("tr", null, ["Scene / file", "Rule / action", "Proposed output", "Status"].map(function (label) { return h("th", { key: label, scope: "col" }, label); }))),
-        h("tbody", null, (record.operations || []).map(function (op) {
-          return h("tr", { key: op.id },
-            h("td", null, props.onExclude && h(ui.SettingsToggle, { checked: props.excluded.indexOf(op.sceneId) < 0, label: "Include scene " + op.sceneId,
-              onChange: function (value) { props.onExclude(op.sceneId, !value); } }),
-              h("a", { href: "/scenes/" + op.sceneId }, props.capture ? "Scene hidden" : op.title),
-              h("details", null, h("summary", null, "File details"), h("span", { className: "dirty-compactor-path" }, props.capture ? "Path hidden" : op.source),
-                op.media && h("div", null, op.media.width + " × " + op.media.height + " · " + (op.media.bitrate / 1e6).toFixed(2) + " Mbps"),
-                op.identity && h("div", null, bytes(op.identity.size)))),
-            h("td", null, op.rule.name, h("br"), op.rule.action),
-            h("td", null, op.dimensions ? op.dimensions.join(" × ") + " · " + op.rule.mbps + " Mbps" : "Delete scene and files",
-              h("div", null, "Estimated saving " + bytes(op.savings)),
-              op.destination !== op.source && h("div", { className: "dirty-compactor-path" }, props.capture ? "Path hidden" : op.destination)),
-            h("td", null, h(ui.Badge, null, op.status), op.reason && h("p", null, op.reason)));
-        })))),
-      h(ui.Pagination, { page: record.page, totalPages: record.pages, onPageChange: props.onPage, ariaLabel: "Operation pages", summary: "Page " + record.page + " of " + record.pages }));
+    return html`
+      <${ui.SettingsSection} title=${props.title} description=${record.status + " · " + record.total + " operations"}>
+        ${record.error && html`<${ui.StateView} title="Planning failed" detail=${record.error} />`}
+        <p>${"Estimated savings: " + bytes(record.estimatedSavings) + " · Reclaimed: " + bytes(record.actualSavings)}</p>
+        ${record.libraryBytesRemoved > 0 && html`<p>${"Removed from library: " + bytes(record.libraryBytesRemoved) + ". Disk space reclaimed depends on Stash trash settings."}</p>`}
+        ${record.progress && html`<div role="status">${record.progress.stage} ${Math.round(record.progress.progress * 100) + "%"}</div>`}
+        <div className="dirty-ui-table-wrap">
+          <table className="dirty-ui-table dirty-compactor-table">
+            <thead><tr>${["Scene / file", "Rule / action", "Proposed output", "Status"].map(function (label) {
+              return html`<th key=${label} scope="col">${label}</th>`;
+            })}</tr></thead>
+            <tbody>${(record.operations || []).map(function (op) {
+              return html`
+                <tr key=${op.id}>
+                  <td>
+                    ${props.onExclude && html`<${ui.SettingsToggle} checked=${props.excluded.indexOf(op.sceneId) < 0} label=${"Include scene " + op.sceneId} onChange=${function (value) { props.onExclude(op.sceneId, !value); }} />`}
+                    <a href=${"/scenes/" + op.sceneId}>${props.capture ? "Scene hidden" : op.title}</a>
+                    <details>
+                      <summary>File details</summary>
+                      <span className="dirty-compactor-path">${props.capture ? "Path hidden" : op.source}</span>
+                      ${op.media && html`<div>${op.media.width + " × " + op.media.height + " · " + (op.media.bitrate / 1e6).toFixed(2) + " Mbps"}</div>`}
+                      ${op.identity && html`<div>${bytes(op.identity.size)}</div>`}
+                    </details>
+                  </td>
+                  <td>${op.rule.name}<br />${op.rule.action}</td>
+                  <td>
+                    ${op.dimensions ? op.dimensions.join(" × ") + " · " + op.rule.mbps + " Mbps" : "Delete scene and files"}
+                    <div>${"Estimated saving " + bytes(op.savings)}</div>
+                    ${op.destination !== op.source && html`<div className="dirty-compactor-path">${props.capture ? "Path hidden" : op.destination}</div>`}
+                  </td>
+                  <td><${ui.Badge}>${op.status}<//>${op.reason && html`<p>${op.reason}</p>`}</td>
+                </tr>`;
+            })}</tbody>
+          </table>
+        </div>
+        <${ui.Pagination} page=${record.page} totalPages=${record.pages} onPageChange=${props.onPage} ariaLabel="Operation pages" summary=${"Page " + record.page + " of " + record.pages} />
+      <//>`;
   }
   function OutputReview(props) {
     var review = props.run.review, player = useRef(null);
@@ -137,23 +137,28 @@
       props.act(mode, { id: props.run.id, operationId: review.operationId }).finally(function () { setBusy(false); });
     }
     var saved = review.originalSize - review.outputSize;
-    return h(ui.SettingsCard, { className: "dirty-compactor-review", plugin: { name: "Encoded output ready for review", description: "Original unchanged. Accept installs this exact file without encoding again." } },
-      h("h3", null, props.capture ? "Scene hidden" : review.title),
-      props.capture ? h("div", { className: "dirty-compactor-media-placeholder" }, "Media hidden for documentation")
-        : !busy && h("video", { ref: player, src: review.url, controls: true, preload: "metadata", playsInline: true, onError: function () { setFailed(true); }, "aria-label": "Encoded output preview" }),
-      failed && h(ui.StateView, { title: "This browser cannot play the output", detail: "Download the exact output for inspection in an external player. The preview is never transcoded." }),
-      h("div", { className: "dirty-compactor-grid" },
-      h("p", null, "Original: " + review.original.width + " × " + review.original.height + " · " + review.original.codec + " · " + (review.original.bitrate / 1e6).toFixed(2) + " Mbps · " + bytes(review.originalSize)),
-        h("p", null, "Output: " + review.output.width + " × " + review.output.height + " · " + review.output.codec + " · " + (review.output.bitrate / 1e6).toFixed(2) + " Mbps · " + bytes(review.outputSize)),
-        h("p", null, "Potential savings: " + bytes(saved) + " (" + (100 * saved / review.originalSize).toFixed(1) + "%)"),
-        h("p", null, "Encoder: " + review.encoder + (review.fallback ? " · CPU fallback" : ""))),
-      h("p", { className: "dirty-compactor-path" }, props.capture ? "Destination hidden" : review.destination),
-      review.reason && h(ui.StateView, { title: "Output requires attention", detail: review.reason }),
-      h("div", { className: "dirty-ui-control-row" },
-        !props.capture && h("a", { className: "dirty-ui-button btn btn-secondary", href: review.url, download: "", target: "_blank", rel: "noreferrer" }, "Download output"),
-        h(ui.Button, { tone: "primary", disabled: busy || props.settingsPending, onClick: function () { decide("acceptOutput"); } }, "Accept and replace"),
-        h(ui.Button, { disabled: busy, onClick: function () { decide("discardOutput"); } }, "Discard and keep original"),
-        h(ui.Button, { disabled: busy, onClick: function () { release(); props.onLater(); } }, "Review later")));
+    var card = { name: "Encoded output ready for review", description: "Original unchanged. Accept installs this exact file without encoding again." };
+    return html`
+      <${ui.SettingsCard} className="dirty-compactor-review" plugin=${card}>
+        <h3>${props.capture ? "Scene hidden" : review.title}</h3>
+        ${props.capture ? html`<div className="dirty-compactor-media-placeholder">Media hidden for documentation</div>`
+          : !busy && html`<video ref=${player} src=${review.url} controls preload="metadata" playsInline onError=${function () { setFailed(true); }} aria-label="Encoded output preview" />`}
+        ${failed && html`<${ui.StateView} title="This browser cannot play the output" detail="Download the exact output for inspection in an external player. The preview is never transcoded." />`}
+        <div className="dirty-compactor-grid">
+          <p>${"Original: " + review.original.width + " × " + review.original.height + " · " + review.original.codec + " · " + (review.original.bitrate / 1e6).toFixed(2) + " Mbps · " + bytes(review.originalSize)}</p>
+          <p>${"Output: " + review.output.width + " × " + review.output.height + " · " + review.output.codec + " · " + (review.output.bitrate / 1e6).toFixed(2) + " Mbps · " + bytes(review.outputSize)}</p>
+          <p>${"Potential savings: " + bytes(saved) + " (" + (100 * saved / review.originalSize).toFixed(1) + "%)"}</p>
+          <p>${"Encoder: " + review.encoder + (review.fallback ? " · CPU fallback" : "")}</p>
+        </div>
+        <p className="dirty-compactor-path">${props.capture ? "Destination hidden" : review.destination}</p>
+        ${review.reason && html`<${ui.StateView} title="Output requires attention" detail=${review.reason} />`}
+        <div className="dirty-ui-control-row">
+          ${!props.capture && html`<a className="dirty-ui-button btn btn-secondary" href=${review.url} download="" target="_blank" rel="noreferrer">Download output</a>`}
+          <${ui.Button} tone="primary" disabled=${busy || props.settingsPending} onClick=${function () { decide("acceptOutput"); }}>Accept and replace<//>
+          <${ui.Button} disabled=${busy} onClick=${function () { decide("discardOutput"); }}>Discard and keep original<//>
+          <${ui.Button} disabled=${busy} onClick=${function () { release(); props.onLater(); }}>Review later<//>
+        </div>
+      <//>`;
   }
   function Settings(props) {
     var draftState = useState(normalize(props.configuration || {})), draft = draftState[0], setDraft = draftState[1];
@@ -240,65 +245,67 @@
       }).catch(function (failure) { setError(failure.message || String(failure)); }).finally(function () { setBusy(false); });
     }
     var readyCount = preview && preview.counts && preview.counts.ready || 0;
-    return h("div", { className: "dirty-compactor" + (capture ? " dirty-compactor-capture" : "") },
-      h(ui.SettingsSection, { title: "DirtyCompactor", description: "First matching rule wins. Automatic runs need an open Stash tab to detect successful scans; queued work continues without the browser." },
-        h("div", { className: "dirty-ui-control-row" },
-          h(ui.SettingsToggle, { checked: !draft.automationPaused, label: "Automation active", onChange: function (v) { changed(Object.assign({}, draft, { automationPaused: !v })); } }),
-          h(ui.Button, { onClick: function () { var next = copy(draft); next.rules.push(newRule()); changed(next); } }, "Add rule"),
-          h(ui.Button, { disabled: busy, onClick: function () { act("capabilities"); } }, "Detect encoders"),
-          h(ui.Button, { tone: "primary", disabled: busy || dirty || Boolean(invalid) || !draft.rules.length, onClick: function () { act("preview"); } }, "Preview rules"),
-          h(ui.SaveStatus, { state: invalid ? "invalid" : error ? "error" : dirty ? "pending" : "saved", message: invalid || status }))),
-      error && h(ui.StateView, { title: "DirtyCompactor needs attention", detail: error, actions: h(ui.Button, { onClick: load }, "Reload saved settings") }),
-      !draft.rules.length && h(ui.StateView, { title: "No rules yet", detail: "Add a rule, choose its scene filter and action, then preview its effect." }),
-      draft.rules.map(function (r, index) { return h(RuleCard, { key: r.id, rule: r, index: index, last: index === draft.rules.length - 1, capabilities: caps,
-        initialOpen: !r.enabled, onChange: function (value) { updateRule(index, value); },
-        onMove: function (direction) { var next = copy(draft), other = index + direction; var temp = next.rules[index]; next.rules[index] = next.rules[other]; next.rules[other] = temp; changed(next); },
-        onDuplicate: function () { var next = copy(draft), duplicate = copy(r); duplicate.id = newRule().id; duplicate.enabled = false; duplicate.mode = "manual"; duplicate.name += " copy"; next.rules.splice(index + 1, 0, duplicate); changed(next); },
-        onRemove: function () { var next = copy(draft); next.rules.splice(index, 1); changed(next); } }); }),
-      preview && h(React.Fragment, null, h(Results, { record: preview, title: "Operation preview", onPage: setPage, capture: capture, excluded: excluded,
-        onExclude: function (id, remove) { setExcluded(function (current) { return remove ? current.concat(id).filter(function (v, i, a) { return a.indexOf(v) === i; }) : current.filter(function (v) { return v !== id; }); }); } }),
-        h(ui.Button, { tone: "primary", disabled: busy || dirty || preview.status !== "ready" || !readyCount, onClick: function () { setConfirm(true); } }, "Review and run")),
-      h(ui.Dialog, { open: confirm, ariaLabel: "Confirm manual run", onClose: function () { setConfirm(false); }, className: "dirty-ui-panel dirty-compactor-confirm" },
-        h("h2", null, "Run these operations?"),
-        h("p", null, readyCount + " ready operations before exclusions. " + excluded.length + " scenes excluded. Delete rules remove scenes and files through Stash."),
-        preview && preview.readyActions && h("p", { className: "dirty-compactor-danger" }, "Resize: " + preview.readyActions.resize + " · Reencode: " + preview.readyActions.reencode + " · Delete scenes: " + preview.readyActions.delete),
-        h(ui.SettingsToggle, { checked: review, label: "Review encoded outputs before replacing originals", onChange: setReview }),
-        h("p", null, review ? "Encode one complete file, then wait for Accept or Discard. Original files remain untouched while awaiting review. Delete rules have no encoded preview." : "Validated smaller outputs replace originals automatically during this manual run."),
-        h("div", { className: "dirty-ui-control-row" }, h(ui.Button, { onClick: function () { setConfirm(false); } }, "Cancel"),
-          h(ui.Button, { tone: "danger", disabled: busy || dirty, onClick: function () { act("startRun", { id: previewId, reviewOutputs: review, excludedScenes: excluded }); } }, "Start manual run"))),
-      run && h(React.Fragment, null,
-        run.review && !later && h(OutputReview, { key: run.review.operationId, run: run, act: act, capture: capture, settingsPending: dirty || Boolean(invalid), onLater: function () { setLater(true); } }),
-        run.review && later && h(ui.StateView, { title: "Output waiting for review", detail: "Original unchanged · temporary output " + bytes(run.review.outputSize), actions: h(ui.Button, { onClick: function () { setLater(false); } }, "Resume review") }),
-        h(Results, { record: run, title: "Current run", onPage: setPage, capture: capture }),
-        ["completed", "failed", "cancelled"].indexOf(run.status) < 0 && h("div", { className: "dirty-ui-control-row" },
-          h(ui.Button, { disabled: busy, onClick: function () { act("cancelRun", { id: run.id }); } }, "Cancel run"),
-          ["recovery", "running", "finalizing", "reconciling", "queued", "acceptQueued", "discarding"].indexOf(run.status) >= 0 && h(ui.Button, { disabled: busy, onClick: function () { act("retryRecovery", { id: run.id }); } }, "Recover interrupted run"),
-          run.status === "recovery" && h(ui.Button, { disabled: busy, onClick: function () { act("restoreOriginal", { id: run.id }); } }, "Restore original"))),
-      h(ui.SettingsSection, { title: "Run history" }, history.length ? h("ul", { className: "dirty-compactor-history" }, history.map(function (item) {
-        return h("li", { key: item.id }, h(ui.Button, { onClick: function () { setRunId(item.id); setPage(1); setLater(false); } }, new Date(item.created * 1000).toLocaleString()),
-          " · " + (item.automatic ? "Automatic" : "Manual") + " · " + item.status + " · " + bytes(item.actualSavings) + " reclaimed");
-      })) : h("p", null, "No runs yet.")));
+    return html`
+      <div className=${"dirty-compactor" + (capture ? " dirty-compactor-capture" : "")}>
+        <${ui.SettingsSection} title="DirtyCompactor" description="First matching rule wins. Automatic runs need an open Stash tab to detect successful scans; queued work continues without the browser.">
+          <div className="dirty-ui-control-row">
+            <${ui.SettingsToggle} checked=${!draft.automationPaused} label="Automation active" onChange=${function (v) { changed(Object.assign({}, draft, { automationPaused: !v })); }} />
+            <${ui.Button} onClick=${function () { var next = copy(draft); next.rules.push(newRule()); changed(next); }}>Add rule<//>
+            <${ui.Button} disabled=${busy} onClick=${function () { act("capabilities"); }}>Detect encoders<//>
+            <${ui.Button} tone="primary" disabled=${busy || dirty || Boolean(invalid) || !draft.rules.length} onClick=${function () { act("preview"); }}>Preview rules<//>
+            <${ui.SaveStatus} state=${invalid ? "invalid" : error ? "error" : dirty ? "pending" : "saved"} message=${invalid || status} />
+          </div>
+        <//>
+        ${error && html`<${ui.StateView} title="DirtyCompactor needs attention" detail=${error} actions=${html`<${ui.Button} onClick=${load}>Reload saved settings<//>`} />`}
+        ${!draft.rules.length && html`<${ui.StateView} title="No rules yet" detail="Add a rule, choose its scene filter and action, then preview its effect." />`}
+        ${draft.rules.map(function (r, index) {
+          return html`<${RuleCard} key=${r.id} rule=${r} index=${index} last=${index === draft.rules.length - 1} capabilities=${caps}
+            initialOpen=${!r.enabled} onChange=${function (value) { updateRule(index, value); }}
+            onMove=${function (direction) { var next = copy(draft), other = index + direction; var temp = next.rules[index]; next.rules[index] = next.rules[other]; next.rules[other] = temp; changed(next); }}
+            onDuplicate=${function () { var next = copy(draft), duplicate = copy(r); duplicate.id = newRule().id; duplicate.enabled = false; duplicate.mode = "manual"; duplicate.name += " copy"; next.rules.splice(index + 1, 0, duplicate); changed(next); }}
+            onRemove=${function () { var next = copy(draft); next.rules.splice(index, 1); changed(next); }} />`;
+        })}
+        ${preview && html`
+          <${React.Fragment}>
+            <${Results} record=${preview} title="Operation preview" onPage=${setPage} capture=${capture} excluded=${excluded}
+              onExclude=${function (id, remove) { setExcluded(function (current) { return remove ? current.concat(id).filter(function (v, i, a) { return a.indexOf(v) === i; }) : current.filter(function (v) { return v !== id; }); }); }} />
+            <${ui.Button} tone="primary" disabled=${busy || dirty || preview.status !== "ready" || !readyCount} onClick=${function () { setConfirm(true); }}>Review and run<//>
+          <//>`}
+        <${ui.Dialog} open=${confirm} ariaLabel="Confirm manual run" onClose=${function () { setConfirm(false); }} className="dirty-ui-panel dirty-compactor-confirm">
+          <h2>Run these operations?</h2>
+          <p>${readyCount + " ready operations before exclusions. " + excluded.length + " scenes excluded. Delete rules remove scenes and files through Stash."}</p>
+          ${preview && preview.readyActions && html`<p className="dirty-compactor-danger">${"Resize: " + preview.readyActions.resize + " · Reencode: " + preview.readyActions.reencode + " · Delete scenes: " + preview.readyActions.delete}</p>`}
+          <${ui.SettingsToggle} checked=${review} label="Review encoded outputs before replacing originals" onChange=${setReview} />
+          <p>${review ? "Encode one complete file, then wait for Accept or Discard. Original files remain untouched while awaiting review. Delete rules have no encoded preview." : "Validated smaller outputs replace originals automatically during this manual run."}</p>
+          <div className="dirty-ui-control-row">
+            <${ui.Button} onClick=${function () { setConfirm(false); }}>Cancel<//>
+            <${ui.Button} tone="danger" disabled=${busy || dirty} onClick=${function () { act("startRun", { id: previewId, reviewOutputs: review, excludedScenes: excluded }); }}>Start manual run<//>
+          </div>
+        <//>
+        ${run && html`
+          <${React.Fragment}>
+            ${run.review && !later && html`<${OutputReview} key=${run.review.operationId} run=${run} act=${act} capture=${capture} settingsPending=${dirty || Boolean(invalid)} onLater=${function () { setLater(true); }} />`}
+            ${run.review && later && html`<${ui.StateView} title="Output waiting for review" detail=${"Original unchanged · temporary output " + bytes(run.review.outputSize)} actions=${html`<${ui.Button} onClick=${function () { setLater(false); }}>Resume review<//>`} />`}
+            <${Results} record=${run} title="Current run" onPage=${setPage} capture=${capture} />
+            ${["completed", "failed", "cancelled"].indexOf(run.status) < 0 && html`
+              <div className="dirty-ui-control-row">
+                <${ui.Button} disabled=${busy} onClick=${function () { act("cancelRun", { id: run.id }); }}>Cancel run<//>
+                ${["recovery", "running", "finalizing", "reconciling", "queued", "acceptQueued", "discarding"].indexOf(run.status) >= 0 && html`<${ui.Button} disabled=${busy} onClick=${function () { act("retryRecovery", { id: run.id }); }}>Recover interrupted run<//>`}
+                ${run.status === "recovery" && html`<${ui.Button} disabled=${busy} onClick=${function () { act("restoreOriginal", { id: run.id }); }}>Restore original<//>`}
+              </div>`}
+          <//>`}
+        <${ui.SettingsSection} title="Run history">
+          ${history.length ? html`<ul className="dirty-compactor-history">${history.map(function (item) {
+            return html`<li key=${item.id}><${ui.Button} onClick=${function () { setRunId(item.id); setPage(1); setLater(false); }}>${new Date(item.created * 1000).toLocaleString()}<//>${" · " + (item.automatic ? "Automatic" : "Manual") + " · " + item.status + " · " + bytes(item.actualSavings) + " reclaimed"}</li>`;
+          })}</ul>` : html`<p>No runs yet.</p>`}
+        <//>
+      </div>`;
   }
-  function AutomationMonitor() {
-    var subscribe = api.GQL && api.GQL.useJobsSubscribeSubscription;
-    if (!subscribe) return null;
-    var subscription = subscribe(), event = subscription && subscription.data && subscription.data.jobsSubscribe;
-    var job = event && event.job, seen = useRef({});
-    useEffect(function () {
-      if (!job || event.type !== "REMOVE" || job.status !== "FINISHED" || job.description !== "Scanning..." || !job.startTime) return;
-      var key = job.id + "@" + job.startTime;
-      if (seen.current[key]) return;
-      seen.current[key] = true;
-      operation("startAutomaticRun", { jobId: String(job.id), startTime: job.startTime }).catch(function (error) {
-        delete seen.current[key]; hub.ui.notify("DirtyCompactor could not queue automation: " + error.message);
-      });
-    }, [event && event.type, job && job.id, job && job.status, job && job.startTime]);
-    return null;
-  }
+  var AutomationMonitor = automation.createAutomationMonitor({ api: api, hub: hub, useRef: useRef, useEffect: useEffect, operation: operation });
   hub.registerSettingsPanel(ID, Settings);
   if (api.patch && api.patch.after) api.patch.after("App", function () {
     var args = Array.prototype.slice.call(arguments), result = args.pop();
-    return h(React.Fragment, null, result, h(AutomationMonitor));
+    return html`<${React.Fragment}>${result}<${AutomationMonitor} /><//>`;
   });
   window[INSTANCE_KEY] = { settingsPanel: Settings, automationMonitor: AutomationMonitor, algorithms: { newRule: newRule, validation: validation, filterSummary: filterSummary, bytes: bytes } };
 })();

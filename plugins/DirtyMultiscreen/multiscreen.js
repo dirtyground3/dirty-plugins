@@ -28,42 +28,11 @@
   var useRef = React.useRef;
   var useState = React.useState;
 
-  // Playlist helpers are authored here; this plugin has no build step.
-  function shuffleMultiscreenItems(items) {
-    var shuffledItems = items.slice();
-    for (var i = shuffledItems.length - 1; i > 0; i--) {
-      var j = Math.floor(Math.random() * (i + 1));
-      var item = shuffledItems[i];
-      shuffledItems[i] = shuffledItems[j];
-      shuffledItems[j] = item;
-    }
-    return shuffledItems;
-  }
-  function splitMultiscreenItemsByIndex(items, total) {
-    var groups = Array.from({ length: Math.max(0, total) }, function () {
-      return [];
-    });
-    items.forEach(function (item, index) {
-      var group = groups[index % total];
-      if (group) group.push(item);
-    });
-    return groups;
-  }
-  function createMultiscreenPlaylists(items, totalScreens, randomize, splitItems) {
-    if (items.length === 0) {
-      return Array.from({ length: Math.max(0, totalScreens) }, function () {
-        return [];
-      });
-    }
-    if (splitItems) {
-      var sourceItems = randomize ? shuffleMultiscreenItems(items) : items.slice();
-      return splitMultiscreenItemsByIndex(sourceItems, totalScreens);
-    }
-    return Array.from(
-      { length: Math.max(0, totalScreens) },
-      function () { return randomize ? shuffleMultiscreenItems(items) : items.slice(); }
-    );
-  }
+  var playlists = window.__dirtyMultiscreenPlaylists;
+  if (!playlists) return;
+  var shuffleMultiscreenItems = playlists.shuffleMultiscreenItems;
+  var splitMultiscreenItemsByIndex = playlists.splitMultiscreenItemsByIndex;
+  var createMultiscreenPlaylists = playlists.createMultiscreenPlaylists;
 
   // Stash integrations below own route and patch registration for this asset.
   var PluginApi = window.PluginApi;
@@ -84,7 +53,6 @@
   var PERFORMERS_ROUTE_PATH = "/performers";
   var STUDIOS_ROUTE_PATH = "/studios";
   var LAUNCH_CONTEXT_STORAGE_KEY = "multiscreen.launchContext";
-  var MAX_SCENE_PAGE_SIZE = 240;
   var latestSceneListContext = null;
   var latestMarkerListContext = null;
   var latestPerformerListContext = null;
@@ -97,19 +65,11 @@
   var SCENE_COUNT_CACHE_MS = 3e4;
   var SCENE_COUNT_DEBOUNCE_MS = 300;
   var MAX_SCENE_COUNT_CACHE_ENTRIES = 100;
-  var NON_RANDOM_SCENE_SORT = "title";
-  var DEFAULT_SETTINGS = {
-    totalScreens: 4,
-    rows: 2,
-    columns: 2,
-    randomize: true,
-    splitScenes: false,
-    startMuted: true,
-    randomStart: true,
-    loopScenes: true,
-    markerDuration: 30,
-    pauseWhenHidden: true
-  };
+  var settingsModule = window.__dirtyMultiscreenSettings;
+  if (!settingsModule) return;
+  var DEFAULT_SETTINGS = settingsModule.defaults, NON_RANDOM_SCENE_SORT = settingsModule.nonRandomSort;
+  var normalizeSettings = settingsModule.normalizeSettings, getPlaybackSettings = settingsModule.getPlaybackSettings;
+  var getSceneLimit = settingsModule.getSceneLimit, getSceneSort = settingsModule.getSceneSort;
   var ICONS = {
     close: solidIcons.faXmark ?? solidIcons.faTimes,
     error: solidIcons.faTriangleExclamation ?? solidIcons.faExclamationTriangle,
@@ -130,46 +90,12 @@
       onClick
     }
   );
-  var clampInteger = DirtyPlugins.values.clampInteger;
-  var coerceBoolean = DirtyPlugins.values.coerceBoolean;
-  var normalizeSettings = (rawSettings) => {
-    const rows = clampInteger(rawSettings.rows, DEFAULT_SETTINGS.rows, 1, 12);
-    const columns = clampInteger(rawSettings.columns, DEFAULT_SETTINGS.columns, 1, 12);
-    return {
-      // The CSS grid only has rows x columns cells; extra tiles would play
-      // off-screen while being clipped by the viewport.
-      totalScreens: Math.min(clampInteger(rawSettings.totalScreens, DEFAULT_SETTINGS.totalScreens, 1, 36), rows * columns),
-      rows,
-      columns,
-      randomize: coerceBoolean(rawSettings.randomize, DEFAULT_SETTINGS.randomize),
-      splitScenes: coerceBoolean(rawSettings.splitScenes, DEFAULT_SETTINGS.splitScenes),
-      startMuted: coerceBoolean(rawSettings.startMuted, DEFAULT_SETTINGS.startMuted),
-      randomStart: coerceBoolean(rawSettings.randomStart, DEFAULT_SETTINGS.randomStart),
-      loopScenes: coerceBoolean(rawSettings.loopScenes, DEFAULT_SETTINGS.loopScenes),
-      markerDuration: clampInteger(rawSettings.markerDuration, DEFAULT_SETTINGS.markerDuration, 1, 600),
-      pauseWhenHidden: coerceBoolean(rawSettings.pauseWhenHidden, DEFAULT_SETTINGS.pauseWhenHidden)
-    };
-  };
-  var getPlaybackSettings = (settings) => ({
-    startMuted: settings.startMuted,
-    randomStart: settings.randomStart,
-    loop: settings.loopScenes,
-    pauseWhenHidden: settings.pauseWhenHidden
-  });
   // Tiles mount their video/player asynchronously. Watching the subtree keeps
   // the range/audio effects attached without polling.
   var observeSubtree = (target, callback) => {
     const observer = new MutationObserver(callback);
     observer.observe(target, { childList: true, subtree: true });
     return observer;
-  };
-  var getSceneLimit = (settings) => {
-    const multiplier = settings.splitScenes ? 8 : 12;
-    return Math.min(MAX_SCENE_PAGE_SIZE, Math.max(settings.totalScreens, settings.totalScreens * multiplier));
-  };
-  var getSceneSort = (settings) => {
-    if (settings.randomize) return "random";
-    return NON_RANDOM_SCENE_SORT;
   };
   var subscribeToContextChanges = (listener) => {
     contextChangeListeners.add(listener);

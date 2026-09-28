@@ -1,15 +1,9 @@
-.dirty-file-extractor-selection-actions {
-  display: flex;
-  flex-wrap: wrap;
-  margin: .5rem 0;
+.dirty-file-extractor-action-anchor {
+  display: none;
 }
 
-.dirty-file-extractor-selection-actions .extract-scenes-action {
-  box-shadow: var(--dirty-ui-shadow);
-  max-width: 100%;
-  height: auto;
-  min-height: 2.5rem;
-  white-space: normal;
+.dirty-file-extractor-menu-action {
+  text-align: left;
 }
 
 .dirty-file-extractor-browse {

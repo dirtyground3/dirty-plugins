@@ -4,6 +4,9 @@ Reclaim media space with ordered scene-filter rules. Requires Stash 0.31.1+,
 DirtyPlugins, Python 3.9+, FFmpeg, and FFprobe. No Python packages are required.
 The installed plugin ID is `dirtyCompactor`.
 
+The UI uses `DirtyPlugins.react.html` to render React components from plain
+JavaScript without a build step. The shared hub bundles HTM locally.
+
 ## Rules
 
 Open **Dirty Plugins → DirtyCompactor**, add a rule, choose its scene filter,

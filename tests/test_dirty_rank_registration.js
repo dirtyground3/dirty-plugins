@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const source = fs.readFileSync(path.join(__dirname, "../plugins/DirtyRank/dirtyRank.js"), "utf8");
+const source = require("./load_plugin_scripts").sourceFor("DirtyRank");
 const noop = function () {};
 
 const calls = { routes: 0, patches: 0 };

@@ -141,6 +141,8 @@ Check keyboard focus, Escape/Tab in dialogs and nested native popups, reduced
 motion, 360px width, and all suite themes.
 Run the Python contract suite and the affected Node tests. The shared source
 is plain PluginApi React and CSS served directly by Stash, with no build step.
+For markup-style rendering, use `DirtyPlugins.react.html` (HTM bound to
+`React.createElement`) rather than loading another copy in a plugin.
 Keep a plugin's one-time route and PluginApi patch registrations behind its
 `INSTANCE_KEY` guard: Stash cannot unregister those integrations when it
 reloads an asset. Component effects are different; disconnect their observers
@@ -160,3 +162,7 @@ data (`vendor/world.js`, 244,998 bytes). Their license and notice files live
 beside those assets. The Stats manifest loads ECharts and the map before its
 own chart code. No other plugin should acquire these assets simply to share a
 control or colour token.
+
+The shared hub bundles HTM 3.1.1 (`vendor/htm.umd.js`, Apache-2.0) so suite
+plugins can write React templates without a build step. Its license and source
+notice live beside the browser asset.

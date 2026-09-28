@@ -1,14 +1,15 @@
 (function () {
   "use strict";
-  if (window.__dirtyStatsDashboard) return;
+  var INSTANCE_KEY = "__dirtyStatsDashboard";
+  if (window[INSTANCE_KEY]) return;
 
   var api = window.PluginApi;
   var hub = window.DirtyPlugins;
   var core = window.__dirtyStatsPlugin;
-  if (!api || !hub || !core || !core.algorithms) return;
+  if (!api || !hub || !hub.react || !hub.react.html || !core || !core.algorithms) return;
 
   var React = api.React;
-  var h = React.createElement;
+  var html = hub.react.html;
   var algorithms = core.algorithms;
   var charts = window.echarts;
   var world = window.__dirtyStatsWorld;
@@ -202,8 +203,12 @@
   }
 
   function State(props) {
-    if (StateView) return h(StateView, props);
-    return h("div", { className: "dirty-stats-dashboard-state", role: props.role || "status" }, h("strong", null, props.title), props.detail ? h("p", null, props.detail) : null, props.actions || null);
+    if (StateView) return html`<${StateView} ...${props} />`;
+    return html`<div className="dirty-stats-dashboard-state" role=${props.role || "status"}>
+      <strong>${props.title}</strong>
+      ${props.detail ? html`<p>${props.detail}</p>` : null}
+      ${props.actions || null}
+    </div>`;
   }
 
   function Chart(props) {
@@ -231,9 +236,16 @@
       } catch (chartError) { setError(chartError.message); }
       return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); };
     }, [props.option, props.map]);
-    return h(React.Fragment, null,
-      error ? h("p", { className: "dirty-stats-dashboard-chart-error", role: "alert" }, error) : null,
-      h("div", { ref: node, className: "dirty-stats-dashboard-chart", role: "img", "aria-label": props.label, "aria-hidden": error ? "true" : undefined }));
+    return html`<${React.Fragment}>
+      ${error ? html`<p className="dirty-stats-dashboard-chart-error" role="alert">${error}</p>` : null}
+      <div
+        ref=${node}
+        className="dirty-stats-dashboard-chart"
+        role="img"
+        aria-label=${props.label}
+        aria-hidden=${error ? "true" : undefined}
+       />
+    <//>`;
   }
 
   function axes(size, xName, yName) {
@@ -249,12 +261,17 @@
   }
 
   function metric(label, value, detail) {
-    return h(sharedReact.Metric, { className: "dirty-stats-dashboard-metric", label: label, value: value, detail: detail });
+    return html`<${sharedReact.Metric}
+      className="dirty-stats-dashboard-metric"
+      label=${label}
+      value=${value}
+      detail=${detail}
+     />`;
   }
 
   function widgetHeader(widget) {
     if (widget.options.showHeader === false) return null;
-    return h.apply(null, ["div", { className: "dirty-stats-dashboard-metrics" }].concat(Array.prototype.slice.call(arguments, 1)));
+    return html`<div className="dirty-stats-dashboard-metrics">${Array.prototype.slice.call(arguments, 1)}</div>`;
   }
 
   function ratingWidget(items, widget, entity) {
@@ -262,19 +279,32 @@
     var rated = stats.rows.filter(function (row) { return row.name !== "Unrated"; }).reduce(function (sum, row) { return sum + row.value; }, 0);
     var data = stats.rows.map(function (row) { return { name: row.name === "Unrated" ? "Unrated" : row.name + "/10", value: row.value }; });
     var option = { backgroundColor: "transparent", color: algorithms.themePalette(), tooltip: { trigger: "item", renderMode: "richText" }, legend: { show: widget.size === "large", type: "scroll", bottom: 0, textStyle: { color: algorithms.themeColor("text") } }, series: [{ type: "pie", radius: widget.size === "small" ? ["58%", "82%"] : ["34%", "70%"], center: ["50%", widget.size === "large" ? "43%" : "50%"], label: { show: widget.size !== "small", color: algorithms.themeColor("text"), formatter: widget.size === "large" ? "{b}: {c}" : "{b}" }, data: data }] };
-    return h(React.Fragment, null,
-      widgetHeader(widget, metric(entity + "s", stats.total), metric("rated", stats.total ? Math.round(rated * 100 / stats.total) + "%" : "0%")),
-      stats.total ? h(Chart, { option: option, label: entity + " rating distribution" }) : h(State, { title: "No " + entity + "s", detail: "The library has no data for this statistic." }));
+    return html`<${React.Fragment}>
+      ${widgetHeader(widget, metric(entity + "s", stats.total), metric("rated", stats.total ? Math.round(rated * 100 / stats.total) + "%" : "0%"))}
+      ${stats.total ? html`<${Chart} option=${option} label=${entity + " rating distribution"} />` : html`<${State}
+        title=${"No " + entity + "s"}
+        detail="The library has no data for this statistic."
+       />`}
+    <//>`;
   }
 
   function originWidget(performers, widget) {
     var countries = algorithms.countryIndex(world ? world.features : []);
     var stats = algorithms.aggregate(performers, countries);
-    if (!world) return h(State, { title: "World map unavailable", detail: "The bundled map data could not be loaded. Reload the Stash page.", role: "alert" });
+    if (!world) return html`<${State}
+      title="World map unavailable"
+      detail="The bundled map data could not be loaded. Reload the Stash page."
+      role="alert"
+     />`;
     var option = algorithms.originMapOption(stats, world.features, { map: "dirtyStatsDashboardWorld", showLegend: widget.size === "large", showNumbers: widget.size === "large" && widget.options.showNumbers, roam: widget.size === "large" });
-    return h(React.Fragment, null,
-      widget.size !== "small" ? widgetHeader(widget, metric("performers", stats.total), metric("countries", stats.rows.length), metric("top country", stats.rows.length ? stats.rows[0].name : "—")) : null,
-      h(Chart, { option: option, map: true, label: "Performer origin world map. Hover a country for its exact count." }));
+    return html`<${React.Fragment}>
+      ${widget.size !== "small" ? widgetHeader(widget, metric("performers", stats.total), metric("countries", stats.rows.length), metric("top country", stats.rows.length ? stats.rows[0].name : "—")) : null}
+      <${Chart}
+        option=${option}
+        map=${true}
+        label="Performer origin world map. Hover a country for its exact count."
+       />
+    <//>`;
   }
 
   function growthWidget(scenes, capacity, widget) {
@@ -283,9 +313,10 @@
     var forecast = algorithms.forecastGrowth(daily, capacity && capacity.total);
     var option = { backgroundColor: "transparent", useUTC: true, grid: { left: 8, right: 14, top: 12, bottom: widget.size === "large" ? 45 : 20, containLabel: widget.size !== "small" }, tooltip: { trigger: "axis", renderMode: "richText" }, xAxis: { type: "time", axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), hideOverlap: true }, axisLine: { lineStyle: { color: algorithms.themeColor("border") } } }, yAxis: { type: "value", min: 0, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: algorithms.formatBytes }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, dataZoom: widget.size === "large" ? [{ type: "inside" }, { type: "slider", bottom: 5, height: 16 }] : [], series: [{ type: "line", step: "end", showSymbol: false, lineStyle: { color: algorithms.themeColor("primary"), width: 2 }, areaStyle: { color: algorithms.themeColor("primary"), opacity: .15 }, data: stats.points, markLine: { silent: true, symbol: "none", data: widget.options.showCapacity && capacity && capacity.total > 0 ? [{ yAxis: capacity.total, label: { color: algorithms.themeColor("text"), formatter: "Capacity " + algorithms.formatBytes(capacity.total) }, lineStyle: { color: algorithms.themeColor("muted"), type: "dashed" } }] : [] } }] };
     if (widget.options.showForecast && forecast.points) option.series.push({ name: "Forecast", type: "line", showSymbol: false, lineStyle: { color: algorithms.themeColor("accent"), type: "dashed", width: 2 }, data: forecast.points });
-    return h(React.Fragment, null,
-      widgetHeader(widget, metric("library size", algorithms.formatBytes(stats.bytes)), metric("included scenes", stats.included), widget.size === "large" && widget.options.showForecast && forecast.reachedAt ? metric("capacity estimate", new Date(forecast.reachedAt).toISOString().slice(0, 10)) : stats.excluded ? metric("excluded", stats.excluded) : null),
-      stats.points.length ? h(Chart, { option: option, label: "Cumulative content growth" }) : h(State, { title: "No dated content", detail: "No files have usable dates and sizes." }));
+    return html`<${React.Fragment}>
+      ${widgetHeader(widget, metric("library size", algorithms.formatBytes(stats.bytes)), metric("included scenes", stats.included), widget.size === "large" && widget.options.showForecast && forecast.reachedAt ? metric("capacity estimate", new Date(forecast.reachedAt).toISOString().slice(0, 10)) : stats.excluded ? metric("excluded", stats.excluded) : null)}
+      ${stats.points.length ? html`<${Chart} option=${option} label="Cumulative content growth" />` : html`<${State} title="No dated content" detail="No files have usable dates and sizes." />`}
+    <//>`;
   }
 
   function ageWidget(scenes, widget) {
@@ -297,13 +328,22 @@
     if (widget.options.showAverageAge) summary.push(metric("average age", stats.averageAge == null ? "—" : Number(stats.averageAge.toFixed(1))));
     if (widget.size === "large") summary.push(metric("scenes", stats.scenes));
     var option = { backgroundColor: "transparent", grid: { left: 8, right: 8, top: 8, bottom: widget.size === "large" ? 38 : 18, containLabel: widget.size !== "small" }, tooltip: { trigger: "axis", renderMode: "richText" }, xAxis: { type: "category", name: widget.size === "large" ? "Age" : "", data: stats.rows.map(function (row) { return row.age; }), axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), interval: "auto" }, axisLine: { lineStyle: { color: algorithms.themeColor("border") } } }, yAxis: { type: "value", name: widget.size === "large" ? "Performers" : "", minInterval: 1, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted") }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, dataZoom: widget.size === "large" ? [{ type: "inside" }] : [], series: [{ type: "bar", data: stats.rows.map(function (row) { return row.count; }), itemStyle: { color: algorithms.themeColor("primary") } }] };
-    return h(React.Fragment, null, summary.length ? widgetHeader.apply(null, [widget].concat(summary)) : null, stats.rows.length ? h(Chart, { option: option, label: "Performer ages at scene date" }) : h(State, { title: "No age data", detail: "Scene dates and full performer birthdates are required." }));
+    return html`<${React.Fragment}>
+      ${summary.length ? widgetHeader.apply(null, [widget].concat(summary)) : null}
+      ${stats.rows.length ? html`<${Chart} option=${option} label="Performer ages at scene date" />` : html`<${State}
+      title="No age data"
+      detail="Scene dates and full performer birthdates are required."
+     />`}
+    <//>`;
   }
 
   function scatterWidget(points, widget, names, highlighted) {
     var chartAxes = axes(widget.size, names[0], names[1]);
     var option = { backgroundColor: "transparent", grid: chartAxes.grid, xAxis: chartAxes.xAxis, yAxis: chartAxes.yAxis, tooltip: { trigger: "item", renderMode: "richText" }, series: [{ type: "scatter", symbolSize: widget.size === "small" ? 5 : 8, progressive: 4000, data: points, itemStyle: { color: algorithms.themeColor("primary"), opacity: .75 } }] };
-    return h(React.Fragment, null, widgetHeader(widget, metric("points", points.length), highlighted != null ? metric("highlighted", highlighted) : null), points.length ? h(Chart, { option: option, label: names[0] + " versus " + names[1] }) : h(State, { title: "No rated data", detail: "No matching records contain the required values." }));
+    return html`<${React.Fragment}>
+      ${widgetHeader(widget, metric("points", points.length), highlighted != null ? metric("highlighted", highlighted) : null)}
+      ${points.length ? html`<${Chart} option=${option} label=${names[0] + " versus " + names[1]} />` : html`<${State} title="No rated data" detail="No matching records contain the required values." />`}
+    <//>`;
   }
 
   function performerScatterWidget(performers, widget) {
@@ -323,9 +363,13 @@
     var data = algorithms.repeatOffenderSeriesData(stats, null);
     var option = { backgroundColor: "transparent", grid: { left: 8, right: 12, top: 10, bottom: widget.size === "large" ? 42 : 18, containLabel: widget.size !== "small" }, tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { if (!p.data || !p.data.id) return p.seriesName; return p.data.title + "\n" + p.data.views + " views\nTop " + p.value[0].toFixed(1) + "% account for " + p.value[1].toFixed(1) + "% of views"; } }, xAxis: { type: "value", name: widget.size === "large" ? "Scenes ranked by views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: "{value}%" }, axisLine: { lineStyle: { color: algorithms.themeColor("border") } }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, yAxis: { type: "value", name: widget.size === "large" ? "Cumulative views (%)" : "", min: 0, max: 100, axisLabel: { show: widget.size !== "small", color: algorithms.themeColor("muted"), formatter: "{value}%" }, splitLine: { show: widget.size !== "small", lineStyle: { color: algorithms.themeColor("grid") } } }, series: [{ name: "Cumulative views", type: "line", showSymbol: false, sampling: "lttb", lineStyle: { color: algorithms.themeColor("primary"), width: 3 }, areaStyle: { color: algorithms.themeColor("primary"), opacity: .16 }, data: data, markArea: { silent: true, label: { show: widget.size === "large", color: algorithms.themeColor("text"), formatter: "Top 5%" }, itemStyle: { color: algorithms.themeColor("accent"), opacity: .10 }, data: [[{ xAxis: 0 }, { xAxis: 5 }]] } }, { name: "Equal distribution", type: "line", showSymbol: false, silent: true, lineStyle: { color: algorithms.themeColor("border"), type: "dashed", width: 1 }, data: [[0, 0], [100, 100]] }] };
     var share = Math.round(stats.topShare * 10) / 10;
-    return h(React.Fragment, null,
-      widgetHeader(widget, metric("top 5% view share", stats.totalViews ? share.toFixed(1) + "%" : "—"), metric("recorded views", stats.totalViews), widget.size === "large" ? metric("viewed scenes", stats.viewedScenes + " / " + stats.totalScenes) : null),
-      stats.totalViews ? h(Chart, { option: option, label: "Cumulative share of views by scene rank" }) : h(State, { title: "No recorded views", detail: stats.totalScenes ? "Play some scenes to reveal viewing concentration." : "No scenes match these filters." }));
+    return html`<${React.Fragment}>
+      ${widgetHeader(widget, metric("top 5% view share", stats.totalViews ? share.toFixed(1) + "%" : "—"), metric("recorded views", stats.totalViews), widget.size === "large" ? metric("viewed scenes", stats.viewedScenes + " / " + stats.totalScenes) : null)}
+      ${stats.totalViews ? html`<${Chart} option=${option} label="Cumulative share of views by scene rank" />` : html`<${State}
+        title="No recorded views"
+        detail=${stats.totalScenes ? "Play some scenes to reveal viewing concentration." : "No scenes match these filters."}
+       />`}
+    <//>`;
   }
 
   function qualityEfficiencyWidget(scenes, widget) {
@@ -335,9 +379,16 @@
     var option = { backgroundColor: "transparent", grid: chartAxes.grid, xAxis: chartAxes.xAxis, yAxis: chartAxes.yAxis,
       tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.data.title + "\nRating " + p.value[1].toFixed(1) + "/10\n" + p.value[0].toFixed(1) + " min/GiB\n" + algorithms.formatBytes(p.data.bytes); } },
       series: [{ name: "Scenes", type: "scatter", progressive: 4000, data: algorithms.qualityEfficiencySeriesData(stats) }] };
-    return h(React.Fragment, null,
-      widgetHeader(widget, metric("comparable scenes", stats.points.length), metric("best efficiency", bestEfficiency ? bestEfficiency.toFixed(1) + " min/GiB" : "—")),
-      stats.points.length ? h(Chart, { option: option, label: "Scene quality versus storage efficiency; bubble area represents file size" }) : h(State, { title: "No comparable scenes", detail: "A rating plus file size and duration are required." }));
+    return html`<${React.Fragment}>
+      ${widgetHeader(widget, metric("comparable scenes", stats.points.length), metric("best efficiency", bestEfficiency ? bestEfficiency.toFixed(1) + " min/GiB" : "—"))}
+      ${stats.points.length ? html`<${Chart}
+        option=${option}
+        label="Scene quality versus storage efficiency; bubble area represents file size"
+       />` : html`<${State}
+        title="No comparable scenes"
+        detail="A rating plus file size and duration are required."
+       />`}
+    <//>`;
   }
 
   function studioWidget(scenes, widget) {
@@ -347,7 +398,13 @@
     var data = points.map(function (point) { return { name: point.name, bytes: point.bytes, value: [point.scenes, Math.round(point.rating * 10) / 10], symbolSize: 8 + 28 * Math.sqrt(point.bytes / maxBytes) }; });
     var chartAxes = axes(widget.size, "Scenes", "Average rating"); chartAxes.yAxis.max = 10;
     var option = { backgroundColor: "transparent", grid: chartAxes.grid, xAxis: chartAxes.xAxis, yAxis: chartAxes.yAxis, tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.name + "\n" + p.value[0] + " scenes\nRating " + p.value[1] + "/10\n" + algorithms.formatBytes(p.data.bytes); } }, series: [{ type: "scatter", data: data, label: { show: widget.size === "large" && points.length <= 20, formatter: "{b}", color: algorithms.themeColor("text"), position: "right" }, itemStyle: { color: algorithms.themeColor("primary"), opacity: .8 } }] };
-    return h(React.Fragment, null, widgetHeader(widget, metric("studios", points.length), metric("scene storage", algorithms.formatBytes(stats.totalBytes))), data.length ? h(Chart, { option: option, label: "Studio scene count versus average rating" }) : h(State, { title: "No rated studios", detail: "No studios meet this widget's minimum scene count." }));
+    return html`<${React.Fragment}>
+      ${widgetHeader(widget, metric("studios", points.length), metric("scene storage", algorithms.formatBytes(stats.totalBytes)))}
+      ${data.length ? html`<${Chart} option=${option} label="Studio scene count versus average rating" />` : html`<${State}
+      title="No rated studios"
+      detail="No studios meet this widget's minimum scene count."
+     />`}
+    <//>`;
   }
 
   function tagDnaWidget(scenes, widget) {
@@ -357,7 +414,13 @@
       var metric = widget.options.metric === "play_count" ? "Views per scene " + p.data.playsPerScene.toFixed(1) : p.data.rating == null ? "No rated scenes" : "Average rating " + p.data.rating.toFixed(1) + "/10";
       return p.name + "\n" + p.value + " scene" + (p.value === 1 ? "" : "s") + "\n" + metric;
     } }, series: [{ type: "treemap", roam: widget.size === "large", nodeClick: false, breadcrumb: { show: false }, top: 2, right: 2, bottom: 2, left: 2, squareRatio: 1.1, label: { show: true, color: "#fff", textBorderColor: "rgba(0,0,0,.5)", textBorderWidth: 2, overflow: "truncate", formatter: widget.size === "small" ? "{b}" : "{b}\n{c}" }, emphasis: { itemStyle: { borderColor: "#fff", borderWidth: 3 } }, data: data }] };
-    return h(React.Fragment, null, widgetHeader(widget, metric("tags", stats.tags), metric("tagged scenes", stats.taggedScenes), widget.size === "large" ? metric("untagged", stats.untaggedScenes) : null), data.length ? h(Chart, { option: option, label: "Tag DNA treemap sized by scene count and colored by " + algorithms.tagDnaMetricLabel(widget.options.metric).toLowerCase() }) : h(State, { title: "No tagged scenes", detail: "No matching scenes contain tags." }));
+    return html`<${React.Fragment}>
+      ${widgetHeader(widget, metric("tags", stats.tags), metric("tagged scenes", stats.taggedScenes), widget.size === "large" ? metric("untagged", stats.untaggedScenes) : null)}
+      ${data.length ? html`<${Chart}
+      option=${option}
+      label=${"Tag DNA treemap sized by scene count and colored by " + algorithms.tagDnaMetricLabel(widget.options.metric).toLowerCase()}
+     />` : html`<${State} title="No tagged scenes" detail="No matching scenes contain tags." />`}
+    <//>`;
   }
 
   function constellationWidget(scenes, widget) {
@@ -366,25 +429,57 @@
     var stats = algorithms.aggregateConstellation(scenes, limit, widget.options.minShared);
     var largest = Math.max.apply(null, [1].concat(stats.nodes.map(function (node) { return node.value; })));
     var option = { backgroundColor: "transparent", tooltip: { trigger: "item", renderMode: "richText" }, series: [{ type: "graph", layout: "force", roam: widget.size === "large", draggable: widget.size === "large", data: stats.nodes.map(function (node, index) { return { id: node.id, name: node.name, value: node.value, symbolSize: 7 + 24 * Math.sqrt(node.value / largest), itemStyle: { color: node.genderColor }, label: { show: widget.size === "large" && index < 15, color: algorithms.themeColor("text"), position: "right" } }; }), links: stats.links.map(function (link) { return { source: link.source, target: link.target, value: link.value, lineStyle: { color: algorithms.themeColor("secondary"), opacity: .25, width: 1 + Math.log(link.value) / Math.log(2) } }; }), force: { initLayout: "circular", repulsion: widget.size === "small" ? 70 : 150, edgeLength: widget.size === "small" ? 35 : 70, gravity: .05, layoutAnimation: true }, emphasis: { focus: "adjacency" } }] };
-    return h(React.Fragment, null, widgetHeader(widget, metric("performers", stats.totalPerformers), metric("connections", stats.links.length), metric("scenes", stats.totalScenes)), stats.nodes.length ? h(Chart, { option: option, label: "Cast constellation network" }) : h(State, { title: "No cast connections", detail: "No performer connections meet this widget's threshold." }));
+    return html`<${React.Fragment}>
+      ${widgetHeader(widget, metric("performers", stats.totalPerformers), metric("connections", stats.links.length), metric("scenes", stats.totalScenes))}
+      ${stats.nodes.length ? html`<${Chart} option=${option} label="Cast constellation network" />` : html`<${State}
+      title="No cast connections"
+      detail="No performer connections meet this widget's threshold."
+     />`}
+    <//>`;
   }
 
   var MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   function monthCalendar(entries, year, month) {
     var counts = {}, days = new Date(Date.UTC(year, month, 0)).getUTCDate(), start = new Date(Date.UTC(year, month - 1, 1)).getUTCDay(), cells = [];
     entries.forEach(function (entry) { if (entry.month === month) counts[entry.day] = (counts[entry.day] || 0) + 1; });
-    for (var blank = 0; blank < start; blank += 1) cells.push(h("span", { key: "b" + blank, className: "dirty-stats-dashboard-calendar-blank" }));
-    for (var day = 1; day <= days; day += 1) cells.push(h("span", { key: day, className: "dirty-stats-dashboard-calendar-day" + (counts[day] ? " has-birthday" : ""), title: counts[day] ? counts[day] + " birthday" + (counts[day] === 1 ? "" : "s") : "" }, day, counts[day] > 1 ? h("small", null, counts[day]) : null));
-    return h("section", { className: "dirty-stats-dashboard-calendar-month", "aria-label": MONTHS[month - 1] + " birthdays" }, h("h4", null, MONTHS[month - 1]), h("div", { className: "dirty-stats-dashboard-calendar-grid" }, cells));
+    for (var blank = 0; blank < start; blank += 1) cells.push(html`<span key=${"b" + blank} className="dirty-stats-dashboard-calendar-blank" />`);
+    for (var day = 1; day <= days; day += 1) cells.push(html`<span
+      key=${day}
+      className=${"dirty-stats-dashboard-calendar-day" + (counts[day] ? " has-birthday" : "")}
+      title=${counts[day] ? counts[day] + " birthday" + (counts[day] === 1 ? "" : "s") : ""}
+    >
+      ${day}
+      ${counts[day] > 1 ? html`<small>${counts[day]}</small>` : null}
+    </span>`);
+    return html`<section
+      className="dirty-stats-dashboard-calendar-month"
+      aria-label=${MONTHS[month - 1] + " birthdays"}
+    >
+      <h4>${MONTHS[month - 1]}</h4>
+      <div className="dirty-stats-dashboard-calendar-grid">${cells}</div>
+    </section>`;
   }
 
   function birthdayWidget(performers, widget) {
     var stats = algorithms.aggregateBirthdays(performers);
     var upcoming = stats.entries.slice().sort(function (left, right) { return left.daysUntil - right.daysUntil || left.name.localeCompare(right.name); }).slice(0, widget.options.upcomingCount);
     var now = new Date(), year = now.getUTCFullYear();
-    if (widget.size === "small") return h(React.Fragment, null, widgetHeader(widget, metric("birthdays", stats.valid), metric("next 30 days", stats.upcoming)), h("ol", { className: "dirty-stats-dashboard-upcoming" }, upcoming.slice(0, 3).map(function (entry) { return h("li", { key: entry.id, className: entry.deceased ? "is-deceased" : "" }, h("strong", null, entry.name), h("span", null, algorithms.birthdayDayLabel(entry.month, entry.day) + (entry.daysUntil === 0 ? " · today" : " · " + entry.daysUntil + " day" + (entry.daysUntil === 1 ? "" : "s")) + (entry.deceased ? " · in memoriam" : ""))); })));
+    if (widget.size === "small") return html`<${React.Fragment}>
+      ${widgetHeader(widget, metric("birthdays", stats.valid), metric("next 30 days", stats.upcoming))}
+      <ol className="dirty-stats-dashboard-upcoming">${upcoming.slice(0, 3).map(function (entry) { return html`<li key=${entry.id} className=${entry.deceased ? "is-deceased" : ""}>
+      <strong>${entry.name}</strong>
+      <span>${algorithms.birthdayDayLabel(entry.month, entry.day) + (entry.daysUntil === 0 ? " · today" : " · " + entry.daysUntil + " day" + (entry.daysUntil === 1 ? "" : "s")) + (entry.deceased ? " · in memoriam" : "")}</span>
+    </li>`; })}</ol>
+    <//>`;
     var months = widget.size === "medium" ? [now.getUTCMonth() + 1] : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-    return h(React.Fragment, null, widgetHeader(widget, metric("birthdays", stats.valid), metric("next 30 days", stats.upcoming), stats.today ? metric("today", stats.today) : null), h("ol", { className: "dirty-stats-dashboard-upcoming" }, upcoming.map(function (entry) { return h("li", { key: entry.id, className: entry.deceased ? "is-deceased" : "" }, h("strong", null, entry.name), h("span", null, algorithms.birthdayDayLabel(entry.month, entry.day) + (entry.daysUntil === 0 ? " · today" : " · " + entry.daysUntil + " day" + (entry.daysUntil === 1 ? "" : "s")) + (entry.deceased ? " · in memoriam" : ""))); })), h("div", { className: "dirty-stats-dashboard-calendars" }, months.map(function (month) { return monthCalendar(stats.entries, year, month); })));
+    return html`<${React.Fragment}>
+      ${widgetHeader(widget, metric("birthdays", stats.valid), metric("next 30 days", stats.upcoming), stats.today ? metric("today", stats.today) : null)}
+      <ol className="dirty-stats-dashboard-upcoming">${upcoming.map(function (entry) { return html`<li key=${entry.id} className=${entry.deceased ? "is-deceased" : ""}>
+      <strong>${entry.name}</strong>
+      <span>${algorithms.birthdayDayLabel(entry.month, entry.day) + (entry.daysUntil === 0 ? " · today" : " · " + entry.daysUntil + " day" + (entry.daysUntil === 1 ? "" : "s")) + (entry.deceased ? " · in memoriam" : "")}</span>
+    </li>`; })}</ol>
+      <div className="dirty-stats-dashboard-calendars">${months.map(function (month) { return monthCalendar(stats.entries, year, month); })}</div>
+    <//>`;
   }
 
   function PerformerCardWidget(props) {
@@ -405,29 +500,49 @@
       variables: { performer_ids: ids, filter: { page: 1, per_page: props.widget.options.cardCount }, performer_filter: {} },
       skip: docsCapture || !ready || !ids.length
     });
-    if (!ids.length) return h(State, { title: "No performers", detail: "No performers match this widget's filters." });
-    if (docsCapture) return h(State, { title: "Performer cards hidden", detail: "Cards are hidden while capturing documentation." });
-    if (error) return h(State, { title: "Could not load performer cards", detail: error, role: "alert" });
-    if (!ready || query.loading) return h(State, { title: "Loading performer cards…" });
-    if (query.error) return h(State, { title: "Could not load performer cards", detail: query.error.message, role: "alert" });
+    if (!ids.length) return html`<${State} title="No performers" detail="No performers match this widget's filters." />`;
+    if (docsCapture) return html`<${State}
+      title="Performer cards hidden"
+      detail="Cards are hidden while capturing documentation."
+     />`;
+    if (error) return html`<${State}
+      title="Could not load performer cards"
+      detail=${error}
+      role="alert"
+     />`;
+    if (!ready || query.loading) return html`<${State} title="Loading performer cards…" />`;
+    if (query.error) return html`<${State}
+      title="Could not load performer cards"
+      detail=${query.error.message}
+      role="alert"
+     />`;
     var cards = algorithms.orderedCards(query.data && query.data.findPerformers ? query.data.findPerformers.performers : [], ids);
     var deceasedIds = new Set(rows.filter(function (performer) { return performer.death_date; }).map(function (performer) { return String(performer.id); }));
-    return h("div", { className: "dirty-stats-dashboard-performer-cards" },
-      props.widget.options.showHeader === false ? null : h("p", { className: "dirty-stats-dashboard-card-count" }, "Showing " + cards.length + " performer" + (cards.length === 1 ? "" : "s")),
-      h("div", { className: "dirty-stats-dashboard-card-grid" }, cards.map(function (performer) {
+    return html`<div className="dirty-stats-dashboard-performer-cards">
+      ${props.widget.options.showHeader === false ? null : html`<p className="dirty-stats-dashboard-card-count">${"Showing " + cards.length + " performer" + (cards.length === 1 ? "" : "s")}</p>`}
+      <div className="dirty-stats-dashboard-card-grid">${cards.map(function (performer) {
         var deceased = deceasedIds.has(String(performer.id));
-        return h("div", { key: performer.id, className: "dirty-stats-performer-column" + (deceased ? " is-deceased" : "") },
-          deceased ? h("span", { className: "dirty-stats-memorial-label" }, "In memoriam") : null,
-          h(api.components.PerformerCard, { performer: performer }));
-      })));
+        return html`<div
+          key=${performer.id}
+          className=${"dirty-stats-performer-column" + (deceased ? " is-deceased" : "")}
+        >
+          ${deceased ? html`<span className="dirty-stats-memorial-label">In memoriam</span>` : null}
+          <${api.components.PerformerCard} performer=${performer} />
+        </div>`;
+      })}</div>
+    </div>`;
   }
 
   function renderWidget(widget, resources) {
     var resource = resources[resourceKey(widget)];
-    if (!resource || resource.loading) return h(State, { title: "Loading " + WIDGETS[widget.statistic].label.toLowerCase() + "…" });
-    if (resource.error) return h(State, { title: "Could not load this widget", detail: resource.error, role: "alert" });
+    if (!resource || resource.loading) return html`<${State} title=${"Loading " + WIDGETS[widget.statistic].label.toLowerCase() + "…"} />`;
+    if (resource.error) return html`<${State}
+      title="Could not load this widget"
+      detail=${resource.error}
+      role="alert"
+     />`;
     var rows = resource.rows || [];
-    if (widget.statistic === "performerCards") return h(PerformerCardWidget, { widget: widget, rows: rows });
+    if (widget.statistic === "performerCards") return html`<${PerformerCardWidget} widget=${widget} rows=${rows} />`;
     if (widget.statistic === "origin") return originWidget(rows, widget);
     if (widget.statistic === "growth") return growthWidget(rows, resource.capacity, widget);
     if (widget.statistic === "ages") return ageWidget(rows, widget);
@@ -446,9 +561,17 @@
   function SelectControl(props) {
     var id = React.useRef(null);
     if (!id.current) id.current = "dirty-stats-dashboard-control-" + (++controlId);
-    return h(Field, { id: id.current, label: props.label, className: "dirty-stats-dashboard-field" + (props.className ? " " + props.className : "") },
-      h("select", { className: "form-control form-control-sm dirty-ui-select", value: props.value, onChange: function (event) { props.onChange(event.target.value); } },
-        props.values.map(function (value) { return h("option", { key: String(value), value: value }, props.labels && props.labels[value] != null ? props.labels[value] : String(value)); })));
+    return html`<${Field}
+      id=${id.current}
+      label=${props.label}
+      className=${"dirty-stats-dashboard-field" + (props.className ? " " + props.className : "")}
+    >
+      <select
+        className="form-control form-control-sm dirty-ui-select"
+        value=${props.value}
+        onChange=${function (event) { props.onChange(event.target.value); }}
+      >${props.values.map(function (value) { return html`<option key=${String(value)} value=${value}>${props.labels && props.labels[value] != null ? props.labels[value] : String(value)}</option>`; })}</select>
+    <//>`;
   }
 
   function NumberControl(props) {
@@ -466,61 +589,102 @@
       if (validCount(raw)) { setInvalid(false); props.onChange(Number(raw)); }
       else setInvalid(true);
     }
-    return h(Field, { id: id.current, label: props.label, error: invalid ? props.invalidLabel : null, className: "dirty-stats-dashboard-field" + (props.className ? " " + props.className : "") },
-      h("input", { type: "number", className: "form-control form-control-sm", id: id.current, min: props.min, max: props.max, step: 1, inputMode: "numeric", value: text, onChange: function (event) { change(event.target.value); }, onBlur: function () { setText(String(props.value)); setInvalid(false); } }));
+    return html`<${Field}
+      id=${id.current}
+      label=${props.label}
+      error=${invalid ? props.invalidLabel : null}
+      className=${"dirty-stats-dashboard-field" + (props.className ? " " + props.className : "")}
+    >
+      <input
+        type="number"
+        className="form-control form-control-sm"
+        id=${id.current}
+        min=${props.min}
+        max=${props.max}
+        step=${1}
+        inputMode="numeric"
+        value=${text}
+        onChange=${function (event) { change(event.target.value); }}
+        onBlur=${function () { setText(String(props.value)); setInvalid(false); }}
+       />
+    <//>`;
   }
 
   function CheckControl(props) {
-    return h(Toggle, { className: "dirty-stats-dashboard-check", checked: props.value, label: props.label, onChange: props.onChange });
+    return html`<${Toggle}
+      className="dirty-stats-dashboard-check"
+      checked=${props.value}
+      label=${props.label}
+      onChange=${props.onChange}
+     />`;
   }
 
   function FilterControl(props) {
     var id = React.useRef(null);
     if (!id.current) id.current = "dirty-stats-dashboard-control-" + (++controlId);
-    return h(Field, { id: id.current, label: filterSummary(props.filter, props.entity), className: "dirty-stats-dashboard-field dirty-stats-dashboard-filter-setting" },
-      h("button", { type: "button", className: "btn btn-secondary dirty-ui-button", "aria-label": "Change filters: " + filterSummary(props.filter, props.entity), onClick: props.onChange }, "Change filters"));
+    return html`<${Field}
+      id=${id.current}
+      label=${filterSummary(props.filter, props.entity)}
+      className="dirty-stats-dashboard-field dirty-stats-dashboard-filter-setting"
+    >
+      <button
+        type="button"
+        className="btn btn-secondary dirty-ui-button"
+        aria-label=${"Change filters: " + filterSummary(props.filter, props.entity)}
+        onClick=${props.onChange}
+      >Change filters</button>
+    <//>`;
   }
 
   function WidgetOptions(props) {
-    return h(React.Fragment, null,
-      props.kind === "fields" ? null : h(CheckControl, { label: "Show header", value: props.widget.options.showHeader, onChange: function (value) {
+    return html`<${React.Fragment}>
+      ${props.kind === "fields" ? null : html`<${CheckControl}
+        label="Show header"
+        value=${props.widget.options.showHeader}
+        onChange=${function (value) {
         props.onChange(Object.assign({}, props.widget.options, { showHeader: value }));
-      } }),
-      StatisticWidgetOptions(props));
+      }}
+       />`}
+      ${StatisticWidgetOptions(props)}
+    <//>`;
   }
 
   function StatisticWidgetOptions(props) {
     var widget = props.widget, options = widget.options;
     function set(name, value) { var next = Object.assign({}, options); next[name] = value; props.onChange(next); }
-    function field(component, controlProps) { return props.kind === "toggles" ? null : h(component, controlProps); }
-    function check(controlProps) { return props.kind === "fields" ? null : h(CheckControl, controlProps); }
-    if (widget.statistic === "origin") return h(React.Fragment, null,
-      widget.size === "large" ? check({ label: "Show map numbers", value: options.showNumbers, onChange: function (value) { set("showNumbers", value); } }) : null);
-    if (widget.statistic === "growth") return h(React.Fragment, null,
-      field(SelectControl, { label: "Date basis", value: options.dateBasis, values: WIDGETS.growth.choices.dateBasis, labels: { created_at: "Created at", mod_time: "File modified", scene_date: "Scene date" }, onChange: function (value) { set("dateBasis", value); } }),
-      field(SelectControl, { label: "Group by", value: options.grouping, values: WIDGETS.growth.choices.grouping, onChange: function (value) { set("grouping", value); } }),
-      check({ label: "Show capacity", value: options.showCapacity, onChange: function (value) { set("showCapacity", value); } }),
-      check({ label: "Show forecast", value: options.showForecast, onChange: function (value) { set("showForecast", value); } }));
-    if (widget.statistic === "ages") return h(React.Fragment, null,
-      check({ label: "Show performer count", value: options.showPerformerCount, onChange: function (value) { set("showPerformerCount", value); } }),
-      check({ label: "Show mode age", value: options.showModeAge, onChange: function (value) { set("showModeAge", value); } }),
-      check({ label: "Show median age", value: options.showMedianAge, onChange: function (value) { set("showMedianAge", value); } }),
-      check({ label: "Show average age", value: options.showAverageAge, onChange: function (value) { set("showAverageAge", value); } }));
+    function field(component, controlProps) { return props.kind === "toggles" ? null : html`<${component} ...${controlProps} />`; }
+    function check(controlProps) { return props.kind === "fields" ? null : html`<${CheckControl} ...${controlProps} />`; }
+    if (widget.statistic === "origin") return html`<${React.Fragment}>${widget.size === "large" ? check({ label: "Show map numbers", value: options.showNumbers, onChange: function (value) { set("showNumbers", value); } }) : null}<//>`;
+    if (widget.statistic === "growth") return html`<${React.Fragment}>
+      ${field(SelectControl, { label: "Date basis", value: options.dateBasis, values: WIDGETS.growth.choices.dateBasis, labels: { created_at: "Created at", mod_time: "File modified", scene_date: "Scene date" }, onChange: function (value) { set("dateBasis", value); } })}
+      ${field(SelectControl, { label: "Group by", value: options.grouping, values: WIDGETS.growth.choices.grouping, onChange: function (value) { set("grouping", value); } })}
+      ${check({ label: "Show capacity", value: options.showCapacity, onChange: function (value) { set("showCapacity", value); } })}
+      ${check({ label: "Show forecast", value: options.showForecast, onChange: function (value) { set("showForecast", value); } })}
+    <//>`;
+    if (widget.statistic === "ages") return html`<${React.Fragment}>
+      ${check({ label: "Show performer count", value: options.showPerformerCount, onChange: function (value) { set("showPerformerCount", value); } })}
+      ${check({ label: "Show mode age", value: options.showModeAge, onChange: function (value) { set("showModeAge", value); } })}
+      ${check({ label: "Show median age", value: options.showMedianAge, onChange: function (value) { set("showMedianAge", value); } })}
+      ${check({ label: "Show average age", value: options.showAverageAge, onChange: function (value) { set("showAverageAge", value); } })}
+    <//>`;
     if (widget.statistic === "ratings" || widget.statistic === "performerRatings") return field(SelectControl, { label: "Rating rounding", value: options.rounding, values: WIDGETS[widget.statistic].choices.rounding, labels: { 0: "Exact", 0.5: "0.5", 1: "1" }, onChange: function (value) { set("rounding", Number(value)); } });
-    if (widget.statistic === "performerScatter") return h(React.Fragment, null,
-      field(SelectControl, { label: "Minimum rating", value: options.minRating, values: WIDGETS.performerScatter.choices.minRating, labels: { 0: "Any" }, onChange: function (value) { set("minRating", Number(value)); } }),
-      field(SelectControl, { label: "Maximum scenes", value: options.maxScenes, values: WIDGETS.performerScatter.choices.maxScenes, labels: { 0: "Any" }, onChange: function (value) { set("maxScenes", Number(value)); } }));
+    if (widget.statistic === "performerScatter") return html`<${React.Fragment}>
+      ${field(SelectControl, { label: "Minimum rating", value: options.minRating, values: WIDGETS.performerScatter.choices.minRating, labels: { 0: "Any" }, onChange: function (value) { set("minRating", Number(value)); } })}
+      ${field(SelectControl, { label: "Maximum scenes", value: options.maxScenes, values: WIDGETS.performerScatter.choices.maxScenes, labels: { 0: "Any" }, onChange: function (value) { set("maxScenes", Number(value)); } })}
+    <//>`;
     if (widget.statistic === "performerCards") return field(NumberControl, { label: "Cards to display", value: options.cardCount, min: 1, max: MAX_CARD_COUNT, invalidLabel: "Enter a whole number from 1 to " + MAX_CARD_COUNT + ".", onChange: function (value) { set("cardCount", value); } });
     if (widget.statistic === "countRating") return field(SelectControl, { label: "Count", value: options.metric, values: WIDGETS.countRating.choices.metric, labels: { play_count: "View count", o_counter: "O count" }, onChange: function (value) { set("metric", value); } });
     if (widget.statistic === "studios") return field(SelectControl, { label: "Minimum scenes", value: options.minScenes, values: WIDGETS.studios.choices.minScenes, onChange: function (value) { set("minScenes", Number(value)); } });
-    if (widget.statistic === "tags") return h(React.Fragment, null,
-      field(SelectControl, { label: "Color by", value: options.metric, values: WIDGETS.tags.choices.metric, labels: { rating: "Average rating", play_count: "Views per scene" }, onChange: function (value) { set("metric", value); } }),
-      field(SelectControl, { label: "Maximum tags", value: options.maxTags, values: WIDGETS.tags.choices.maxTags, labels: { 0: "All" }, onChange: function (value) { set("maxTags", Number(value)); } }));
-    if (widget.statistic === "constellation") return h(React.Fragment, null,
-      field(SelectControl, { label: "Maximum performers", value: options.maxPerformers, values: WIDGETS.constellation.choices.maxPerformers, labels: { 0: "All" }, onChange: function (value) { set("maxPerformers", Number(value)); } }),
-      field(SelectControl, { label: "Minimum shared scenes", value: options.minShared, values: WIDGETS.constellation.choices.minShared, onChange: function (value) { set("minShared", Number(value)); } }));
+    if (widget.statistic === "tags") return html`<${React.Fragment}>
+      ${field(SelectControl, { label: "Color by", value: options.metric, values: WIDGETS.tags.choices.metric, labels: { rating: "Average rating", play_count: "Views per scene" }, onChange: function (value) { set("metric", value); } })}
+      ${field(SelectControl, { label: "Maximum tags", value: options.maxTags, values: WIDGETS.tags.choices.maxTags, labels: { 0: "All" }, onChange: function (value) { set("maxTags", Number(value)); } })}
+    <//>`;
+    if (widget.statistic === "constellation") return html`<${React.Fragment}>
+      ${field(SelectControl, { label: "Maximum performers", value: options.maxPerformers, values: WIDGETS.constellation.choices.maxPerformers, labels: { 0: "All" }, onChange: function (value) { set("maxPerformers", Number(value)); } })}
+      ${field(SelectControl, { label: "Minimum shared scenes", value: options.minShared, values: WIDGETS.constellation.choices.minShared, onChange: function (value) { set("minShared", Number(value)); } })}
+    <//>`;
     if (widget.statistic === "birthdays") return field(SelectControl, { label: "Upcoming performers", value: options.upcomingCount, values: WIDGETS.birthdays.choices.upcomingCount, onChange: function (value) { set("upcomingCount", Number(value)); } });
-    return props.kind === "toggles" ? null : h("span", { className: "dirty-stats-dashboard-no-options" }, "This statistic has no additional widget options.");
+    return props.kind === "toggles" ? null : html`<span className="dirty-stats-dashboard-no-options">This statistic has no additional widget options.</span>`;
   }
 
   function filterSummary(filter, entity) {
@@ -554,48 +718,138 @@
         window.__dirtyStatsDashboardFilterListener = null;
       };
     }, [props.entity, docsCapture]);
-    if (docsCapture) return h("div", { className: "dirty-stats-dashboard-native-filter dirty-stats-capture-filter", role: "note" },
-      "Native filter results are hidden while capturing documentation.");
-    if (error) return h(State, { title: "Filters unavailable", detail: error, role: "alert" });
-    if (!ready) return h(State, { title: "Loading " + props.entity + " filters…" });
+    if (docsCapture) return html`<div
+      className="dirty-stats-dashboard-native-filter dirty-stats-capture-filter"
+      role="note"
+    >Native filter results are hidden while capturing documentation.</div>`;
+    if (error) return html`<${State}
+      title="Filters unavailable"
+      detail=${error}
+      role="alert"
+     />`;
+    if (!ready) return html`<${State} title=${"Loading " + props.entity + " filters…"} />`;
     var FilteredList = props.entity === "performers" ? api.components.FilteredPerformerList : api.components.FilteredSceneList;
-    return h("div", { className: "dirty-stats-dashboard-native-filter dirty-stats-native-filters" },
-      h(FilteredList, { key: props.filterKey, view: props.entity, alterQuery: false, extraCriteria: { dirtyStatsDashboardFilter: true } }));
+    return html`<div className="dirty-stats-dashboard-native-filter dirty-stats-native-filters">
+      <${FilteredList}
+        key=${props.filterKey}
+        view=${props.entity}
+        alterQuery=${false}
+        extraCriteria=${{ dirtyStatsDashboardFilter: true }}
+       />
+    </div>`;
   }
 
   function DashboardFilterDialog(props) {
-    return h(sharedReact.Dialog, {
-      backdropClassName: "dirty-stats-dashboard-dialog-backdrop " + algorithms.statsThemeClass(),
-      className: "dirty-stats-dashboard-filter-dialog dirty-ui-panel",
-      labelledBy: props.labelId,
-      allowNativePopup: true,
-      onClose: props.onClose,
-    },
-      h("header", { className: "dirty-stats-dashboard-dialog-header" }, h("h2", { id: props.labelId }, props.title), h("button", { type: "button", className: "dirty-ui-icon-button dirty-ui-icon-button-compact", onClick: props.onClose, "aria-label": "Close filter dialog" }, "×")),
-      props.children);
+    return html`<${sharedReact.Dialog}
+      backdropClassName=${"dirty-stats-dashboard-dialog-backdrop " + algorithms.statsThemeClass()}
+      className="dirty-stats-dashboard-filter-dialog dirty-ui-panel"
+      labelledBy=${props.labelId}
+      allowNativePopup=${true}
+      onClose=${props.onClose}
+    >
+      <header className="dirty-stats-dashboard-dialog-header">
+        <h2 id=${props.labelId}>${props.title}</h2>
+        <button
+          type="button"
+          className="dirty-ui-icon-button dirty-ui-icon-button-compact"
+          onClick=${props.onClose}
+          aria-label="Close filter dialog"
+        >×</button>
+      </header>
+      ${props.children}
+    <//>`;
   }
 
   function DashboardWidget(props) {
     var widget = props.widget, definition = WIDGETS[widget.statistic];
     var title = widgetTitle(widget);
     var compact = widget.size !== "large" && !props.editing;
-    return h("article", { className: "dirty-stats-dashboard-widget dirty-stats-dashboard-widget-" + widget.size + " dirty-stats-dashboard-height-" + widgetHeightUnits(widget) + (compact ? " is-compact" : "") + (props.dragging ? " is-dragging" : ""), "data-statistic": widget.statistic, "data-widget-index": props.index, "aria-grabbed": props.dragging ? "true" : undefined },
-      h("header", { className: "dirty-stats-dashboard-widget-header" + (compact ? " is-compact" : "") },
-        h("div", { className: "dirty-stats-dashboard-widget-title" }, props.editing ?
-          h("input", { type: "text", className: "dirty-stats-dashboard-title-input", value: widget.title || "", placeholder: definition.label, maxLength: 100, "aria-label": definition.label + " widget title", onChange: function (event) { props.onTitle(event.target.value); } }) :
-          h("h2", { title: title }, title)),
-        h("div", { className: "dirty-stats-dashboard-widget-actions" },
-          props.editing || widget.statistic === "performerCards" ? null : h(Link, { className: "dirty-stats-dashboard-open-link", to: hub.captureUrl(definition.route), title: "Open " + definition.label + " full view", "aria-label": "Open " + definition.label + " full view" }, h("span", { "aria-hidden": true }, "↗")),
-          props.editing ? h(React.Fragment, null,
-            h("button", { type: "button", className: "dirty-ui-icon-button dirty-ui-icon-button-compact dirty-stats-dashboard-drag-handle", title: "Drag to reorder; arrow keys also move this widget", "aria-label": "Reorder " + title + "; use arrow keys or drag", onPointerDown: props.onDragStart, onKeyDown: props.onDragKeyDown }, h("span", { "aria-hidden": true }, "⠿")),
-            h("button", { type: "button", className: "dirty-ui-icon-button dirty-ui-icon-button-compact dirty-ui-icon-button-danger dirty-stats-dashboard-remove", title: "Remove widget", "aria-label": "Remove " + title + " widget", onClick: props.onRemove }, h("span", { "aria-hidden": true }, "×"))) : null)),
-      props.editing ? h("div", { className: "dirty-stats-dashboard-editor", role: "group", "aria-label": definition.label + " widget settings" },
-        h("div", { className: "dirty-stats-dashboard-fields" },
-          h(SelectControl, { label: "Size", value: widget.size, values: SIZES, labels: SIZE_LABELS, onChange: props.onSize }),
-          h(FilterControl, { filter: widget.filter, entity: definition.entity, onChange: props.onFilter }),
-          h(WidgetOptions, { widget: widget, kind: "fields", onChange: props.onOptions })),
-        h("div", { className: "dirty-stats-dashboard-toggles" }, h(WidgetOptions, { widget: widget, kind: "toggles", onChange: props.onOptions }))) : null,
-      h("div", { className: "dirty-stats-dashboard-widget-body" }, renderWidget(widget, props.resources)));
+    return html`<article
+      className=${"dirty-stats-dashboard-widget dirty-stats-dashboard-widget-" + widget.size + " dirty-stats-dashboard-height-" + widgetHeightUnits(widget) + (compact ? " is-compact" : "") + (props.dragging ? " is-dragging" : "")}
+      data-statistic=${widget.statistic}
+      data-widget-index=${props.index}
+      aria-grabbed=${props.dragging ? "true" : undefined}
+    >
+      <header
+        className=${"dirty-stats-dashboard-widget-header" + (compact ? " is-compact" : "")}
+      >
+        <div className="dirty-stats-dashboard-widget-title">${props.editing ?
+          html`<input
+            type="text"
+            className="dirty-stats-dashboard-title-input"
+            value=${widget.title || ""}
+            placeholder=${definition.label}
+            maxLength=${100}
+            aria-label=${definition.label + " widget title"}
+            onChange=${function (event) { props.onTitle(event.target.value); }}
+           />` :
+          html`<h2 title=${title}>${title}</h2>`}</div>
+        <div className="dirty-stats-dashboard-widget-actions">
+          ${props.editing || widget.statistic === "performerCards" ? null : html`<${Link}
+            className="dirty-stats-dashboard-open-link"
+            to=${hub.captureUrl(definition.route)}
+            title=${"Open " + definition.label + " full view"}
+            aria-label=${"Open " + definition.label + " full view"}
+          >
+            <span aria-hidden=${true}>↗</span>
+          <//>`}
+          ${props.editing ? html`<${React.Fragment}>
+            <button
+              type="button"
+              className="dirty-ui-icon-button dirty-ui-icon-button-compact dirty-stats-dashboard-drag-handle"
+              title="Drag to reorder; arrow keys also move this widget"
+              aria-label=${"Reorder " + title + "; use arrow keys or drag"}
+              onPointerDown=${props.onDragStart}
+              onKeyDown=${props.onDragKeyDown}
+            >
+              <span aria-hidden=${true}>⠿</span>
+            </button>
+            <button
+              type="button"
+              className="dirty-ui-icon-button dirty-ui-icon-button-compact dirty-ui-icon-button-danger dirty-stats-dashboard-remove"
+              title="Remove widget"
+              aria-label=${"Remove " + title + " widget"}
+              onClick=${props.onRemove}
+            >
+              <span aria-hidden=${true}>×</span>
+            </button>
+          <//>` : null}
+        </div>
+      </header>
+      ${props.editing ? html`<div
+        className="dirty-stats-dashboard-editor"
+        role="group"
+        aria-label=${definition.label + " widget settings"}
+      >
+        <div className="dirty-stats-dashboard-fields">
+          <${SelectControl}
+            label="Size"
+            value=${widget.size}
+            values=${SIZES}
+            labels=${SIZE_LABELS}
+            onChange=${props.onSize}
+           />
+          <${FilterControl}
+            filter=${widget.filter}
+            entity=${definition.entity}
+            onChange=${props.onFilter}
+           />
+          <${WidgetOptions}
+            widget=${widget}
+            kind="fields"
+            onChange=${props.onOptions}
+           />
+        </div>
+        <div className="dirty-stats-dashboard-toggles">
+          <${WidgetOptions}
+            widget=${widget}
+            kind="toggles"
+            onChange=${props.onOptions}
+           />
+        </div>
+      </div>` : null}
+      <div className="dirty-stats-dashboard-widget-body">${renderWidget(widget, props.resources)}</div>
+    </article>`;
   }
 
   function DashboardPage(props) {
@@ -718,36 +972,160 @@
     }
     function toggleAdding() { setAdding(!adding); setDraft(null); setFilterEdit(null); setPendingFilter(null); }
     var filterWidget = filterEdit == null ? null : widgets[filterEdit];
-    if (!ready) return h(State, { title: "Loading dashboard…" });
-    return h("section", { className: "dirty-stats-dashboard", "aria-label": "DirtyStats dashboard" },
-      h("div", { className: "dirty-stats-dashboard-heading" }, props.selector,
-        h("div", { className: "dirty-stats-actions dirty-ui-control-row" },
-          editing ? h("button", { type: "button", className: "btn btn-secondary dirty-ui-button dirty-ui-control", disabled: !adding && widgets.length >= MAX_WIDGETS, onClick: toggleAdding }, adding ? "Close widget picker" : "Add widget") : null,
-          h("button", { type: "button", className: "btn btn-primary dirty-ui-button dirty-ui-control", onClick: toggleEditing }, editing ? "Done editing" : "Edit dashboard"))),
-      h("p", { className: "dirty-stats-dashboard-visually-hidden", role: "status", "aria-live": "polite" }, dragAnnouncement),
-      adding ? h("section", { className: "dirty-stats-dashboard-picker dirty-ui-panel", "aria-label": "Add a statistic widget" },
-        h("h2", null, "Add widget"),
-        h("p", null, "Add another view of any statistic and give it its own filters and display options."),
-        h("div", { className: "dirty-stats-dashboard-picker-grid" }, WIDGET_ORDER.map(function (statistic) { return h("button", { key: statistic, type: "button", className: "btn btn-secondary dirty-ui-button", disabled: widgets.length >= MAX_WIDGETS, onClick: function () { beginAdd(statistic); } }, WIDGETS[statistic].label); }))) : null,
-      draft ? h(DashboardFilterDialog, { labelId: "dirty-stats-add-widget-dialog", title: "Add " + WIDGETS[draft.statistic].label, onClose: function () { setDraft(null); } },
-        h("div", { className: "dirty-stats-dashboard-add-settings" },
-          h(Field, { id: "dirty-stats-widget-title", label: "Custom title", className: "dirty-stats-dashboard-field dirty-stats-dashboard-title-field" }, h("input", { type: "text", className: "form-control form-control-sm", value: draft.title || "", placeholder: WIDGETS[draft.statistic].label, maxLength: 100, onChange: function (event) { updateDraft({ title: event.target.value }); } })),
-          h(SelectControl, { label: "Size", value: draft.size, values: SIZES, labels: SIZE_LABELS, onChange: function (size) { updateDraft({ size: size }); } }),
-          h("div", { className: "dirty-stats-dashboard-options" }, h(WidgetOptions, { widget: draft, onChange: function (options) { updateDraft({ options: normalizeOptions(WIDGETS[draft.statistic], options) }); } }))),
-        h("div", { className: "dirty-stats-dashboard-filter-heading" }, h("div", null, h("h3", null, "Filters"), h("p", null, "Use the same native filters as the full view. Changes apply to this widget only.")), draft.filter ? h("strong", null, filterSummary(draft.filter, WIDGETS[draft.statistic].entity)) : null),
-        h(DashboardFilterChooser, { filterKey: "add-" + draft.id, entity: WIDGETS[draft.statistic].entity, onChange: function (filter) { updateDraft({ filter: filter }); } }),
-        h("div", { className: "dirty-stats-dashboard-picker-actions" },
-          h("button", { type: "button", className: "btn btn-secondary dirty-ui-button", onClick: function () { setDraft(null); } }, "Cancel"),
-          h("button", { type: "button", className: "btn btn-primary dirty-ui-button", disabled: !draft.filter, onClick: addDraft }, "Add widget"))) : null,
-      filterWidget ? h(DashboardFilterDialog, { labelId: "dirty-stats-edit-filter-dialog", title: "Change filters · " + WIDGETS[filterWidget.statistic].label, onClose: function () { setFilterEdit(null); setPendingFilter(null); } },
-        h("p", null, "Current selection: " + filterSummary(filterWidget.filter, WIDGETS[filterWidget.statistic].entity) + ". Choose a new selection below; it will replace the current filters when applied."),
-        h(DashboardFilterChooser, { filterKey: "edit-" + filterWidget.id, entity: WIDGETS[filterWidget.statistic].entity, onChange: setPendingFilter }),
-        h("div", { className: "dirty-stats-dashboard-picker-actions" },
-          h("button", { type: "button", className: "btn btn-secondary dirty-ui-button", onClick: function () { setFilterEdit(null); setPendingFilter(null); } }, "Cancel"),
-          h("button", { type: "button", className: "btn btn-primary dirty-ui-button", disabled: !pendingFilter, onClick: applyFilterEdit }, "Apply filters"))) : null,
-      !widgets.length ? h(State, { title: "Your dashboard is empty", detail: editing ? "Choose Add widget to build your library overview." : "Enter edit mode to add your first widget.", actions: editing ? h("button", { type: "button", className: "btn btn-primary dirty-ui-button", onClick: function () { setAdding(true); } }, "Add widget") : h("button", { type: "button", className: "btn btn-primary dirty-ui-button", onClick: toggleEditing }, "Edit dashboard") }) :
-        h("div", { className: "dirty-stats-dashboard-grid" + (editing ? " is-editing" : "") + (draggingId ? " is-reordering" : "") }, widgets.map(function (widget, index) { return h(DashboardWidget, { key: widget.id, widget: widget, index: index, editing: editing, dragging: draggingId === widget.id, resources: resources, onDragStart: function (event) { startDrag(index, event); }, onDragKeyDown: function (event) { moveWithKeyboard(index, event); }, onRemove: function () { remove(index); }, onTitle: function (title) { replace(index, { title: title }); }, onSize: function (size) { replace(index, { size: size }); }, onFilter: function () { beginFilterEdit(index); }, onOptions: function (options) { replace(index, { options: normalizeOptions(WIDGETS[widget.statistic], options) }); } }); })));
+    if (!ready) return html`<${State} title="Loading dashboard…" />`;
+    return html`<section className="dirty-stats-dashboard" aria-label="DirtyStats dashboard">
+      <div className="dirty-stats-dashboard-heading">
+        ${props.selector}
+        <div className="dirty-stats-actions dirty-ui-control-row">
+          ${editing ? html`<button
+            type="button"
+            className="btn btn-secondary dirty-ui-button dirty-ui-control"
+            disabled=${!adding && widgets.length >= MAX_WIDGETS}
+            onClick=${toggleAdding}
+          >${adding ? "Close widget picker" : "Add widget"}</button>` : null}
+          <button
+            type="button"
+            className="btn btn-primary dirty-ui-button dirty-ui-control"
+            onClick=${toggleEditing}
+          >${editing ? "Done editing" : "Edit dashboard"}</button>
+        </div>
+      </div>
+      <p
+        className="dirty-stats-dashboard-visually-hidden"
+        role="status"
+        aria-live="polite"
+      >${dragAnnouncement}</p>
+      ${adding ? html`<section
+        className="dirty-stats-dashboard-picker dirty-ui-panel"
+        aria-label="Add a statistic widget"
+      >
+        <h2>Add widget</h2>
+        <p>Add another view of any statistic and give it its own filters and display options.</p>
+        <div className="dirty-stats-dashboard-picker-grid">${WIDGET_ORDER.map(function (statistic) { return html`<button
+          key=${statistic}
+          type="button"
+          className="btn btn-secondary dirty-ui-button"
+          disabled=${widgets.length >= MAX_WIDGETS}
+          onClick=${function () { beginAdd(statistic); }}
+        >${WIDGETS[statistic].label}</button>`; })}</div>
+      </section>` : null}
+      ${draft ? html`<${DashboardFilterDialog}
+        labelId="dirty-stats-add-widget-dialog"
+        title=${"Add " + WIDGETS[draft.statistic].label}
+        onClose=${function () { setDraft(null); }}
+      >
+        <div className="dirty-stats-dashboard-add-settings">
+          <${Field}
+            id="dirty-stats-widget-title"
+            label="Custom title"
+            className="dirty-stats-dashboard-field dirty-stats-dashboard-title-field"
+          >
+            <input
+              type="text"
+              className="form-control form-control-sm"
+              value=${draft.title || ""}
+              placeholder=${WIDGETS[draft.statistic].label}
+              maxLength=${100}
+              onChange=${function (event) { updateDraft({ title: event.target.value }); }}
+             />
+          <//>
+          <${SelectControl}
+            label="Size"
+            value=${draft.size}
+            values=${SIZES}
+            labels=${SIZE_LABELS}
+            onChange=${function (size) { updateDraft({ size: size }); }}
+           />
+          <div className="dirty-stats-dashboard-options">
+            <${WidgetOptions}
+              widget=${draft}
+              onChange=${function (options) { updateDraft({ options: normalizeOptions(WIDGETS[draft.statistic], options) }); }}
+             />
+          </div>
+        </div>
+        <div className="dirty-stats-dashboard-filter-heading">
+          <div>
+            <h3>Filters</h3>
+            <p>Use the same native filters as the full view. Changes apply to this widget only.</p>
+          </div>
+          ${draft.filter ? html`<strong>${filterSummary(draft.filter, WIDGETS[draft.statistic].entity)}</strong>` : null}
+        </div>
+        <${DashboardFilterChooser}
+          filterKey=${"add-" + draft.id}
+          entity=${WIDGETS[draft.statistic].entity}
+          onChange=${function (filter) { updateDraft({ filter: filter }); }}
+         />
+        <div className="dirty-stats-dashboard-picker-actions">
+          <button
+            type="button"
+            className="btn btn-secondary dirty-ui-button"
+            onClick=${function () { setDraft(null); }}
+          >Cancel</button>
+          <button
+            type="button"
+            className="btn btn-primary dirty-ui-button"
+            disabled=${!draft.filter}
+            onClick=${addDraft}
+          >Add widget</button>
+        </div>
+      <//>` : null}
+      ${filterWidget ? html`<${DashboardFilterDialog}
+        labelId="dirty-stats-edit-filter-dialog"
+        title=${"Change filters · " + WIDGETS[filterWidget.statistic].label}
+        onClose=${function () { setFilterEdit(null); setPendingFilter(null); }}
+      >
+        <p>${"Current selection: " + filterSummary(filterWidget.filter, WIDGETS[filterWidget.statistic].entity) + ". Choose a new selection below; it will replace the current filters when applied."}</p>
+        <${DashboardFilterChooser}
+          filterKey=${"edit-" + filterWidget.id}
+          entity=${WIDGETS[filterWidget.statistic].entity}
+          onChange=${setPendingFilter}
+         />
+        <div className="dirty-stats-dashboard-picker-actions">
+          <button
+            type="button"
+            className="btn btn-secondary dirty-ui-button"
+            onClick=${function () { setFilterEdit(null); setPendingFilter(null); }}
+          >Cancel</button>
+          <button
+            type="button"
+            className="btn btn-primary dirty-ui-button"
+            disabled=${!pendingFilter}
+            onClick=${applyFilterEdit}
+          >Apply filters</button>
+        </div>
+      <//>` : null}
+      ${!widgets.length ? html`<${State}
+        title="Your dashboard is empty"
+        detail=${editing ? "Choose Add widget to build your library overview." : "Enter edit mode to add your first widget."}
+        actions=${editing ? html`<button
+        type="button"
+        className="btn btn-primary dirty-ui-button"
+        onClick=${function () { setAdding(true); }}
+      >Add widget</button>` : html`<button
+        type="button"
+        className="btn btn-primary dirty-ui-button"
+        onClick=${toggleEditing}
+      >Edit dashboard</button>`}
+       />` :
+        html`<div
+          className=${"dirty-stats-dashboard-grid" + (editing ? " is-editing" : "") + (draggingId ? " is-reordering" : "")}
+        >${widgets.map(function (widget, index) { return html`<${DashboardWidget}
+          key=${widget.id}
+          widget=${widget}
+          index=${index}
+          editing=${editing}
+          dragging=${draggingId === widget.id}
+          resources=${resources}
+          onDragStart=${function (event) { startDrag(index, event); }}
+          onDragKeyDown=${function (event) { moveWithKeyboard(index, event); }}
+          onRemove=${function () { remove(index); }}
+          onTitle=${function (title) { replace(index, { title: title }); }}
+          onSize=${function (size) { replace(index, { size: size }); }}
+          onFilter=${function () { beginFilterEdit(index); }}
+          onOptions=${function (options) { replace(index, { options: normalizeOptions(WIDGETS[widget.statistic], options) }); }}
+         />`; })}</div>`}
+    </section>`;
   }
 
-  window.__dirtyStatsDashboard = { Component: DashboardPage, Widget: DashboardWidget, FilterChooser: DashboardFilterChooser, widgetOptions: WidgetOptions, algorithms: { normalizeWidgets: normalizeWidgets, dashboardNeedsInitialSave: dashboardNeedsInitialSave, normalizeOptions: normalizeOptions, normalizeFilter: normalizeFilter, widgetTitle: widgetTitle, widgetHeightUnits: widgetHeightUnits, requiredGroups: requiredGroups, requiredResources: requiredResources, resourceKey: resourceKey, fetchPages: fetchPages, reorderWidgets: reorderWidgets, nextWidgetId: nextWidgetId }, registry: WIDGETS, defaults: DEFAULT_WIDGETS, maxWidgets: MAX_WIDGETS };
+  window[INSTANCE_KEY] = { Component: DashboardPage, Widget: DashboardWidget, FilterChooser: DashboardFilterChooser, widgetOptions: WidgetOptions, algorithms: { normalizeWidgets: normalizeWidgets, dashboardNeedsInitialSave: dashboardNeedsInitialSave, normalizeOptions: normalizeOptions, normalizeFilter: normalizeFilter, widgetTitle: widgetTitle, widgetHeightUnits: widgetHeightUnits, requiredGroups: requiredGroups, requiredResources: requiredResources, resourceKey: resourceKey, fetchPages: fetchPages, reorderWidgets: reorderWidgets, nextWidgetId: nextWidgetId }, registry: WIDGETS, defaults: DEFAULT_WIDGETS, maxWidgets: MAX_WIDGETS };
 })();

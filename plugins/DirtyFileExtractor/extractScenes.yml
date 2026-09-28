@@ -1,11 +1,12 @@
 name: DirtyFileExtractor
 description: Copy selected scene and image files or extract selected marker clips into a separate folder without changing the originals.
-version: 0.4.5
+version: 0.4.6
 
 ui:
   requires:
     - dirtyPlugins
   javascript:
+    - extractScenesPicker.js
     - extractScenes.js
   css:
     - extractScenes.css

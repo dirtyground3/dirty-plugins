@@ -1,5 +1,8 @@
 # DirtyStats
 
+The UI uses the shared `DirtyPlugins.react.html` tag for React templates, so
+its browser files run directly in Stash without a build step.
+
 Explore Stash statistics from the **Prairie Grid icon** (red, blue, and yellow
 tiles) in the utility navigation.
 The icon opens a customizable **Dashboard** at

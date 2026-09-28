@@ -7,7 +7,24 @@ ROOT = Path(__file__).parents[1]
 
 
 def read(relative_path):
-    return (ROOT / relative_path).read_text(encoding="utf-8")
+    path = ROOT / relative_path
+    if path.suffix == ".js" and path.parent.parent.name == "plugins":
+        manifest = next(path.parent.glob("*.yml"))
+        contents = manifest.read_text(encoding="utf-8")
+        scripts = []
+        in_javascript = False
+        for line in contents.splitlines():
+            if line.strip() == "javascript:":
+                in_javascript = True
+                continue
+            if in_javascript and line.lstrip().startswith("- "):
+                name = line.split("-", 1)[1].strip().strip("\"'")
+                if not name.startswith("vendor/"):
+                    scripts.append((path.parent / name).read_text(encoding="utf-8"))
+            elif in_javascript and line.strip():
+                break
+        return "\n".join(scripts)
+    return path.read_text(encoding="utf-8")
 
 
 def css_rule_bodies(styles, selector):
@@ -16,6 +33,18 @@ def css_rule_bodies(styles, selector):
 
 
 class SharedUIContractTests(unittest.TestCase):
+    def test_hub_owns_shared_htm_runtime(self):
+        hub_manifest = read("plugins/DirtyPlugins/dirtyPlugins.yml")
+        compactor_manifest = read("plugins/DirtyCompactor/dirtyCompactor.yml")
+        hub_script = read("plugins/DirtyPlugins/dirtyPlugins.js")
+        compactor_script = read("plugins/DirtyCompactor/dirtyCompactor.js")
+        self.assertIn("- vendor/htm.umd.js", hub_manifest)
+        self.assertNotIn("htm.umd.js", compactor_manifest)
+        self.assertIn("var html = htm.bind(createElement)", hub_script)
+        self.assertIn("html: html", hub_script)
+        self.assertIn("html = ui.html", compactor_script)
+        self.assertTrue((ROOT / "plugins/DirtyPlugins/vendor/HTM-LICENSE").is_file())
+
     def test_plugins_load_the_shared_hub_first(self):
         for manifest in (
             "plugins/DirtyCompactor/dirtyCompactor.yml",
@@ -45,7 +74,8 @@ class SharedUIContractTests(unittest.TestCase):
         multiscreen_css = read("plugins/DirtyMultiscreen/multiscreen.css")
 
         self.assertIn("dirty-ui-backdrop", extractor_js)
-        self.assertIn("var(--dirty-ui-shadow)", extractor_css)
+        self.assertIn("dropdown-item dirty-file-extractor-menu-action", extractor_js)
+        self.assertIn("var(--dirty-ui-border)", extractor_css)
         self.assertIn("DirtyPlugins.react.IconButton", multiscreen_js)
         self.assertIn("DirtyPlugins.react.StateView", multiscreen_js)
         self.assertIn("var(--dirty-ui-radius-small)", multiscreen_css)
@@ -324,13 +354,20 @@ class SharedUIContractTests(unittest.TestCase):
         # Primary loading/error/empty states reuse the shared StateView instead of
         # bespoke alert/status markup.
         self.assertIn("hub.react && hub.react.StateView", script)
-        self.assertIn("h(StateView,", script)
+        self.assertIn("<${StateView}", script)
         # The unused field rule is gone and the duplicate filter rule is merged.
         self.assertNotIn("dirty-stats-field", styles)
         statistic = css_rule_bodies(styles, ".dirty-stats-filter-statistic")
         self.assertEqual(len(statistic), 1)
         for declaration in ("display: flex;", "gap: .5rem;", "flex-wrap: wrap;", "order: -1;"):
             self.assertIn(declaration, statistic[0])
+
+    def test_dirty_stats_uses_the_shared_template_tag(self):
+        for name in ("dirtyStats.js", "dirtyStatsDashboard.js"):
+            script = read("plugins/DirtyStats/" + name)
+            self.assertIn("var html = hub.react.html", script)
+            self.assertIn("return html`", script)
+            self.assertNotRegex(script, r"\bh\(")
 
     def test_dirty_stats_dashboard_is_registered_and_persisted(self):
         script = read("plugins/DirtyStats/dirtyStats.js")
@@ -354,18 +391,18 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("serializeDashboardFilter", script)
         self.assertIn("dirty-stats-dashboard-drag-handle", dashboard)
         self.assertIn('document.addEventListener("pointermove"', dashboard)
-        self.assertIn('"aria-live": "polite"', dashboard)
+        self.assertIn('aria-live="polite"', dashboard)
         self.assertIn("reorderWidgets", dashboard)
         self.assertIn("MAX_WIDGETS", dashboard)
         self.assertIn("nextWidgetId", dashboard)
         self.assertNotIn('label: "Theme"', dashboard)
-        self.assertIn('editing ? h(React.Fragment, null,', dashboard)
+        self.assertIn('editing ? html`<${React.Fragment}', dashboard)
         self.assertNotIn('"Refresh all"', dashboard)
         self.assertNotIn("usedStatistics", dashboard)
         self.assertNotIn('WIDGETS[statistic].label + " · added"', dashboard)
         self.assertIn("DashboardFilterDialog", dashboard)
         self.assertIn("sharedReact.Dialog", dashboard)
-        self.assertIn("allowNativePopup: true", dashboard)
+        self.assertIn("allowNativePopup=${true}", dashboard)
         self.assertIn(".dirty-stats-dashboard-dialog-backdrop", styles)
         backdrops = css_rule_bodies(styles, ".dirty-stats-dashboard-dialog-backdrop")
         self.assertTrue(any(all(declaration in body for declaration in (
@@ -641,14 +678,14 @@ class SharedUIContractTests(unittest.TestCase):
 
     def test_dirty_tidy_exposes_the_grade_variable(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
-        backend = read("plugins/DirtyTidy/dirty_tidy.py")
+        backend = read("plugins/DirtyTidy/dirty_tidy_templates.py")
 
         self.assertIn('["grade", "Grade (A–F)"]', tidy)
         self.assertIn('"grade": _grade(rating)', backend)
 
     def test_dirty_tidy_exposes_the_stash_id_variable(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
-        backend = read("plugins/DirtyTidy/dirty_tidy.py")
+        backend = read("plugins/DirtyTidy/dirty_tidy_templates.py")
 
         self.assertIn('["stash_id", "Stash ID"]', tidy)
         self.assertIn('"stash_id": stash_ids[0] if stash_ids else UNKNOWN_VALUE', backend)

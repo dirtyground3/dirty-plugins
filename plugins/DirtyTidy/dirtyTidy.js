@@ -43,131 +43,16 @@
   if (!SettingsCard || !Section || !Toggle || !Field || !Pagination || !IconButton) return;
   var PLUGIN_ID = "dirtyTidy";
   var PREVIEW_PAGE_SIZE = 50;
-  var DEFAULT_SETTINGS = {
-    moveEnabled: true,
-    moveRequireStashId: false,
-    hierarchyLevels: ["{studio}", "{year}"],
-    renameEnabled: false,
-    renameRequireStashId: false,
-    renamePattern: "{date} - {studio} - {title}",
-    maxFilenameLength: 180,
-    multiValueSeparator: ", ",
-    automationMode: "manual",
-    approvedStrategyHash: "",
-    approvedPlanDigest: "",
-  };
-  var VARIABLES = [
-    ["title", "Title"],
-    ["scene_id", "Scene ID"],
-    ["stash_id", "Stash ID"],
-    ["date", "Date"],
-    ["year", "Year"],
-    ["month", "Month"],
-    ["day", "Day"],
-    ["rating", "Rating"],
-    ["grade", "Grade (A–F)"],
-    ["rating_bucket", "Rating bucket"],
-    ["organized", "Organized"],
-    ["studio", "Studio"],
-    ["parent_studio", "Parent studio"],
-    ["performers", "Performers"],
-    ["first_performer", "First performer"],
-    ["female_performers", "Female performers"],
-    ["male_performers", "Male performers"],
-    ["first_female_performer", "First female performer"],
-    ["first_male_performer", "First male performer"],
-    ["performer_count", "Performer count"],
-    ["tags", "Tags"],
-    ["first_tag", "First tag"],
-    ["group", "Group"],
-    ["group_position", "Group position"],
-    ["resolution", "Resolution"],
-    ["height", "Height"],
-    ["video_codec", "Video codec"],
-    ["duration", "Duration (minutes)"],
-    ["duration_bucket", "Duration bucket"],
-    ["source", "Source"],
-    ["original_name", "Original name"],
-    ["extension", "Extension"],
-  ];
-
-  // The Python backend's normalize_settings() is the single source of truth.
-  // These helpers mirror it exactly so a saved draft always hashes to the same
-  // strategy the server planned with, and so a stale preview cannot be caused
-  // by the two sides defaulting differently.
-  function parseLevels(value) {
-    if (typeof value === "string") {
-      try { value = JSON.parse(value); } catch (_error) { value = [value]; }
-    }
-    if (!Array.isArray(value)) return DEFAULT_SETTINGS.hierarchyLevels.slice();
-    // An explicit all-empty list stays empty rather than reverting to the
-    // defaults the server would never plan with.
-    return value.map(function (item) {
-      var template = (typeof item === "object" && item) ? item.template : item;
-      return template ? String(template).trim() : "";
-    }).filter(Boolean);
-  }
-
-  function parseMaxFilenameLength(value) {
-    var number;
-    if (typeof value === "number" && Number.isFinite(value)) number = Math.trunc(value);
-    else if (typeof value === "string" && /^[+-]?\d+$/.test(value.trim())) number = parseInt(value.trim(), 10);
-    else return DEFAULT_SETTINGS.maxFilenameLength;
-    return Math.max(16, Math.min(255, number));
-  }
-
-  function parseSeparator(value) {
-    var separator = value == null ? DEFAULT_SETTINGS.multiValueSeparator : String(value);
-    if (!separator) separator = DEFAULT_SETTINGS.multiValueSeparator;
-    return separator.slice(0, 10);
-  }
-
-  function parseRenamePattern(source) {
-    if (!Object.prototype.hasOwnProperty.call(source, "renamePattern")) {
-      return DEFAULT_SETTINGS.renamePattern;
-    }
-    return source.renamePattern ? String(source.renamePattern).trim() : "";
-  }
-
-  function parseBoolean(value, fallback) {
-    if (typeof value === "boolean") return value;
-    if (typeof value === "string") {
-      var normalized = value.trim().toLowerCase();
-      if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") return true;
-      if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") return false;
-      return Boolean(value);
-    }
-    if (value === null || value === undefined) return fallback;
-    if (typeof value === "number") return value !== 0;
-    return Boolean(value);
-  }
-
-  function parseAutomationMode(value) {
-    var mode = String(value == null ? "" : value).trim().toLowerCase();
-    return ["manual", "scan", "generate"].indexOf(mode) >= 0 ? mode : "manual";
-  }
-
-  function parseApprovalHash(value) {
-    var hash = String(value == null ? "" : value).trim().toLowerCase();
-    return /^[0-9a-f]{64}$/.test(hash) ? hash : "";
-  }
-
-  function settingsFromConfiguration(configuration) {
-    var source = DirtyPlugins.values.asObject(configuration);
-    return {
-      moveEnabled: parseBoolean(source.moveEnabled, true),
-      moveRequireStashId: parseBoolean(source.moveRequireStashId, false),
-      hierarchyLevels: parseLevels(source.hierarchyLevels),
-      renameEnabled: parseBoolean(source.renameEnabled, false),
-      renameRequireStashId: parseBoolean(source.renameRequireStashId, false),
-      renamePattern: parseRenamePattern(source),
-      maxFilenameLength: parseMaxFilenameLength(source.maxFilenameLength),
-      multiValueSeparator: parseSeparator(source.multiValueSeparator),
-      automationMode: parseAutomationMode(source.automationMode),
-      approvedStrategyHash: parseApprovalHash(source.approvedStrategyHash),
-      approvedPlanDigest: parseApprovalHash(source.approvedPlanDigest),
-    };
-  }
+  var settingsModule = window.__dirtyTidySettings;
+  if (!settingsModule) return;
+  var DEFAULT_SETTINGS = settingsModule.defaults;
+  var VARIABLES = settingsModule.variables;
+  var settingsFromConfiguration = settingsModule.settingsFromConfiguration;
+  var parseLevels = settingsModule.parseLevels;
+  var parseMaxFilenameLength = settingsModule.parseMaxFilenameLength;
+  var parseSeparator = settingsModule.parseSeparator;
+  var parseRenamePattern = settingsModule.parseRenamePattern;
+  var parseBoolean = settingsModule.parseBoolean;
 
   function runPreview(settings) {
     return DirtyPlugins.runPluginOperation(PLUGIN_ID, {
@@ -292,124 +177,11 @@
     return null;
   }
 
-  function VariablePicker(props) {
-    return h(
-      "div",
-      { className: "dirty-tidy-variables", "aria-label": "Template variables" },
-      VARIABLES.map(function (variable) {
-        return h(
-          "button",
-          {
-            className: "dirty-tidy-variable",
-            key: variable[0],
-            onClick: function () { props.onInsert("{" + variable[0] + "}"); },
-            title: variable[1],
-            type: "button",
-          },
-          "{" + variable[0] + "}"
-        );
-      })
-    );
-  }
-
-  function Summary(props) {
-    var summary = props.summary || {};
-    var values = [
-      ["All", props.total || 0, "all"],
-      ["Ready", summary.ready || 0, "ready"],
-      ["Moves", summary.moves || 0, "move"],
-      ["Renames", summary.renames || 0, "rename"],
-      ["Warnings", summary.warnings || 0, "warning"],
-      ["Unchanged", summary.unchanged || 0, "unchanged"],
-      ["Blocked", summary.blocked || 0, "blocked"],
-    ];
-    return h(
-      "div",
-      { className: "dirty-tidy-summary", role: "group", "aria-label": "Filter preview" },
-      values.map(function (value) {
-        var active = props.value === value[2];
-        return h("button", {
-          "aria-pressed": active,
-          className: "dirty-tidy-summary-item dirty-ui-metric dirty-tidy-summary-" + value[2] + (active ? " dirty-tidy-summary-active" : ""),
-          disabled: props.disabled,
-          key: value[0],
-          onClick: function () { props.onChange(value[2]); },
-          type: "button",
-        },
-          h("strong", { className: "dirty-ui-metric-value" }, String(value[1])),
-          h("span", { className: "dirty-ui-metric-detail" }, value[0])
-        );
-      })
-    );
-  }
-
-  function PreviewNotes(props) {
-    var operation = props.operation || {};
-    var warnings = operation.warnings || [];
-    var blockedScenes = operation.blocked_scenes || [];
-    if (DirtyPlugins.captureEnabled && DirtyPlugins.captureEnabled(window.location && window.location.search)) {
-      return warnings.length || blockedScenes.length ? h("span", null, "Details hidden for documentation") : null;
-    }
-    return h(
-      "div",
-      { className: "dirty-tidy-notes" },
-      warnings.map(function (warning, index) {
-        return h("div", { key: "warning-" + index }, warning);
-      }),
-      blockedScenes.length > 0 && h(
-        "div",
-        { className: "dirty-tidy-blocked-scenes" },
-        h("span", null, blockedScenes.length === 1 ? "Blocked scene: " : "Blocked scenes: "),
-        blockedScenes.map(function (scene, index) {
-          return h(
-            React.Fragment,
-            { key: scene.id },
-            index > 0 && ", ",
-            h(
-              "a",
-              {
-                href: "/scenes/" + encodeURIComponent(scene.id),
-                title: "Open scene " + scene.id,
-              },
-              scene.title || ("Scene " + scene.id)
-            )
-          );
-        })
-      )
-    );
-  }
-
-  function PreviewTable(props) {
-    var operations = props.operations || [];
-    var docsCapture = DirtyPlugins.captureEnabled && DirtyPlugins.captureEnabled(window.location && window.location.search);
-    if (!operations.length) {
-      return h("p", { className: "dirty-tidy-empty" }, "No operations match this filter.");
-    }
-    return h(
-      "div",
-      { className: "dirty-tidy-preview-table-wrap dirty-ui-table-wrap" },
-      h("table", { className: "table table-sm dirty-tidy-preview-table dirty-ui-table" },
-        h("thead", null,
-          h("tr", null,
-            h("th", null, "Status"),
-            h("th", null, "Current path"),
-            h("th", null, "Proposed path"),
-            h("th", null, "Notes")
-          )
-        ),
-        h("tbody", null,
-          operations.map(function (operation) {
-            return h("tr", { key: operation.file_id, className: "dirty-tidy-row-" + operation.status },
-              h("td", null, h("span", { className: "badge dirty-ui-badge dirty-tidy-status" }, operation.status)),
-              h("td", { className: "dirty-tidy-path" }, docsCapture ? "Path hidden" : operation.source_path),
-              h("td", { className: "dirty-tidy-path" }, docsCapture ? "Path hidden" : operation.destination_path),
-              h("td", null, h(PreviewNotes, { operation: operation }))
-            );
-          })
-        )
-      )
-    );
-  }
+  var previewModule = window.__dirtyTidyPreview;
+  if (!previewModule) return;
+  var previewViews = previewModule.createPreview({ h: h, React: React, DirtyPlugins: DirtyPlugins, variables: VARIABLES });
+  var VariablePicker = previewViews.VariablePicker, Summary = previewViews.Summary;
+  var PreviewNotes = previewViews.PreviewNotes, PreviewTable = previewViews.PreviewTable;
 
   function DirtyTidySettings(props) {
     var draftState = useState(function () {

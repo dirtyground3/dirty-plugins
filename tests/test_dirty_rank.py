@@ -19,6 +19,22 @@ sys.modules[SPEC.name] = dirty_rank
 SPEC.loader.exec_module(dirty_rank)
 
 
+def rank_source():
+    manifest = MODULE_PATH.with_name("dirtyRank.yml").read_text(encoding="utf-8")
+    scripts = []
+    in_javascript = False
+    for line in manifest.splitlines():
+        if line.strip() == "javascript:":
+            in_javascript = True
+            continue
+        if in_javascript and line.lstrip().startswith("- "):
+            name = line.split("-", 1)[1].strip().strip("\"'")
+            scripts.append(MODULE_PATH.with_name(name).read_text(encoding="utf-8"))
+        elif in_javascript and line.strip():
+            break
+    return "\n".join(scripts)
+
+
 class Glicko2Tests(unittest.TestCase):
     def setUp(self):
         self.settings = dirty_rank.normalize_settings({})
@@ -515,7 +531,7 @@ class SettingsTests(unittest.TestCase):
             )
 
     def test_inactivity_configuration_is_removed(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
         manifest = MODULE_PATH.with_name("dirtyRank.yml").read_text(encoding="utf-8")
 
         self.assertNotIn("ratingPeriodDays", source)
@@ -616,7 +632,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_arrow_shortcuts_cover_tie_and_undo(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
 
         self.assertIn('event.key === "ArrowUp"', source)
         self.assertIn('event.key === "ArrowDown"', source)
@@ -630,7 +646,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('"Undo" + (undoHistory.length', source)
 
     def test_selected_battle_category_is_persisted_per_cohort(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
 
         self.assertIn("CATEGORY_PREFERENCE_STORAGE_KEY", source)
         self.assertIn("function preferredCategoryId", source)
@@ -641,7 +657,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         )
 
     def test_battle_cards_conditionally_render_images(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
         styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
 
         self.assertIn("hidePerformerImages", source)
@@ -654,7 +670,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("blur(42px)", styles)
 
     def test_battle_cards_link_performers_and_preserve_gauntlet_target(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
         styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
 
         self.assertIn('to: "/performers/" + performer.id', source)
@@ -668,7 +684,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("@media (prefers-reduced-motion: reduce)", styles)
 
     def test_next_battle_is_prepared_and_images_are_preloaded(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
         styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
 
         self.assertIn("preparedPairRef", source)
@@ -682,7 +698,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("transition: opacity 180ms", styles)
 
     def test_pending_operations_guard_navigation_and_page_close(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
 
         self.assertIn("var Prompt = Router.Prompt", source)
         self.assertIn('window.addEventListener("beforeunload", preventPendingOperationExit)', source)
@@ -691,7 +707,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("DirtyRank is still saving queued votes or undos", source)
 
     def test_gauntlet_route_and_performer_page_launch_are_registered(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
         styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
 
         self.assertIn('GAUNTLET_ROUTE_PATH = "/plugins/dirty-rank/gauntlet/:performerId"', source)
@@ -709,7 +725,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("dirty-rank-gauntlet-launch", styles)
 
     def test_dedicated_leaderboards_route_has_filters_stats_and_podium(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
         styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
 
         self.assertIn('LEADERBOARDS_ROUTE_PATH = "/plugins/dirty-rank-leaderboards"', source)
@@ -749,7 +765,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn(".dirty-rank-podium-3 {\n  grid-column: 3", styles)
 
     def test_battle_sidebar_uses_the_selected_category_standings(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
         sidebar = source[source.index("function Leaderboard(props)") : source.index("function ConfidenceIndicator")]
 
         self.assertIn("props.category.id", sidebar)
@@ -759,7 +775,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertNotIn("overallPoolFor", sidebar)
 
     def test_confidence_copy_separates_rating_precision_from_order_confidence(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
 
         self.assertIn('"order-separating"', source)
         self.assertIn('confidence.refined.toLocaleString()', source)
@@ -770,7 +786,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertNotIn("ORDER_TIE_GAP", source)
 
     def test_sex_selectors_only_render_for_multiple_enabled_cohorts(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
 
         self.assertIn("enabledCohorts", source)
         self.assertIn('availableCohorts.length > 1 && h("div"', source)
@@ -779,7 +795,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('title: "Gender boxes"', source)
 
     def test_leaderboards_navigation_is_configurable(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
 
         self.assertIn("showLeaderboardsInMenu", source)
         self.assertIn("DirtyRankLeaderboardsNavLink", source)
@@ -788,7 +804,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('label: "Show Battles in the Stash header"', source)
 
     def test_category_editor_can_configure_disabled_boxes(self):
-        source = MODULE_PATH.with_name("dirtyRank.js").read_text(encoding="utf-8")
+        source = rank_source()
 
         category_editor = source[source.index('id: "dirty-rank-category-cohort"') :]
         self.assertIn("boxOptions(draft, false)", category_editor)

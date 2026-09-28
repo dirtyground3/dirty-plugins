@@ -43,7 +43,7 @@ const document = {
   addEventListener: noop,
   documentElement: { classList: { add: key => classes.add(key), remove: key => classes.delete(key) } }
 };
-vm.runInNewContext(fs.readFileSync("plugins/DirtyPlugins/dirtyPlugins.js", "utf8"), {
+vm.runInNewContext(require("./load_plugin_scripts").sourceFor("DirtyPlugins"), {
   window, document, fetch, console: { info: noop, warn: noop, error: noop }, URLSearchParams
 });
 

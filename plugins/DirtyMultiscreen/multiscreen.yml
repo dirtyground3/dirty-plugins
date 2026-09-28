@@ -3,11 +3,13 @@ description: Immersive multiscreen scene playback grid for Stash.
 version: 0.4.9
 ui:
   requires:
-  - dirtyPlugins
+    - dirtyPlugins
   javascript:
-  - multiscreen.js
+    - multiscreenPlaylists.js
+    - multiscreenSettings.js
+    - multiscreen.js
   css:
-  - multiscreen.css
+    - multiscreen.css
 settings:
   totalScreens:
     type: NUMBER

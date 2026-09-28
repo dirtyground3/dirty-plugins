@@ -2,6 +2,8 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
+const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
+const createElement = (type, props, ...children) => ({ type, props: props || {}, children });
 const routes = [], patches = [], savedSettings = [];
 const notifications = [];
 const chartOptions = [];
@@ -24,9 +26,10 @@ const context = {
       setOption: (option) => chartOptions.push(option),
       getDataURL: (options) => options.backgroundColor
     }) },
-    PluginApi: { React: {}, libraries: {}, register: { route: (...args) => routes.push(args) }, patch: { before: (...args) => patches.push(args), instead: (...args) => patches.push(args) } },
+    PluginApi: { React: { createElement }, libraries: {}, register: { route: (...args) => routes.push(args) }, patch: { before: (...args) => patches.push(args), instead: (...args) => patches.push(args) } },
     DirtyPlugins: {
       graphql() {},
+      react: { html: htm.bind(createElement) },
       theme: { defaultKey: "classic" },
       ui: { notify: (...args) => notifications.push(args) },
       getPluginSettings: () => Promise.resolve(storedSettings),
@@ -46,7 +49,8 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/vendor/world.js", "utf8"), context);
-vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8"), context);
+const coreSource = fs.readFileSync("plugins/DirtyStats/dirtyStatsGrowth.js", "utf8") + "\n" + fs.readFileSync("plugins/DirtyStats/dirtyStatsAges.js", "utf8") + "\n" + fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8");
+vm.runInContext(coreSource, context);
 const a = context.window.__dirtyStatsPlugin.algorithms;
 const originOption = a.originMapOption({ rows: [{ name: "USA", value: 500 }, { name: "Canada", value: 12 }, { name: "France", value: 2 }] },
   ["USA", "Canada", "France", "Empty"].map(name => ({ properties: { name } })),
@@ -561,7 +565,7 @@ assert.equal(patches[0][1]({ extraCriteria: {} }, () => original), original);
 assert.equal(patches[1][1]({ filter: native }, () => original), original);
 context.window.location.pathname = "/scenes";
 assert.equal(patches[1][1]({ filter: native }, () => original), original);
-vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8"), context);
+vm.runInContext(coreSource, context);
 assert.equal(routes.length, 1);
 
 async function testNativeRouteLoading() {
@@ -599,7 +603,7 @@ async function testNativeRouteLoading() {
       PluginApi: pluginApi,
       DirtyPlugins: {
         graphql() {},
-        react: { Dialog: "Dialog", usePageTitle: (pluginName, viewTitle) => pageTitles.push(viewTitle + " - " + pluginName) },
+        react: { html: htm.bind(react.createElement), Dialog: "Dialog", usePageTitle: (pluginName, viewTitle) => pageTitles.push(viewTitle + " - " + pluginName) },
         getPluginSettings: () => Promise.resolve(routeSettings),
         configurePlugin: (id, settings) => { Object.assign(routeSettings, settings); return Promise.resolve({ settings }); },
         native: { ensureComponents: (bundle, names) => new Promise(resolve => {
@@ -617,7 +621,7 @@ async function testNativeRouteLoading() {
     console, URLSearchParams, Event
   };
   vm.createContext(routeContext);
-  vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8"), routeContext);
+  vm.runInContext(coreSource, routeContext);
   const render = () => {
     stateIndex = 0;
     effects.length = 0;

@@ -1,6 +1,6 @@
 name: DirtyPlugins
 description: Shared settings page for Dirty plugins.
-version: 0.5.0
+version: 0.5.1
 
 settings:
   visualTheme:
@@ -10,6 +10,9 @@ settings:
 
 ui:
   javascript:
+    - vendor/htm.umd.js
+    - dirtyPluginsValues.js
+    - dirtyPluginsSceneFilter.js
     - dirtyPlugins.js
   css:
     - dirtyPlugins.css

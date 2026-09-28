@@ -3,10 +3,16 @@
 
   var INSTANCE_KEY = "__dirtyPluginsSettingsHub";
   if (window[INSTANCE_KEY]) return;
+  var valuesModule = window.__dirtyPluginsValues;
+  if (!valuesModule) return;
+  var parseMaybeJson = valuesModule.parseMaybeJson, asObject = valuesModule.asObject;
+  var pluginResult = valuesModule.pluginResult, clampInteger = valuesModule.clampInteger;
+  var coerceBoolean = valuesModule.coerceBoolean;
 
   var PluginApi = window.PluginApi;
   var React = PluginApi.React;
   var createElement = React.createElement;
+  var html = htm.bind(createElement);
   var useCallback = React.useCallback;
   var useEffect = React.useEffect;
   var useMemo = React.useMemo;
@@ -416,31 +422,6 @@
       });
   }
 
-  function parseMaybeJson(value) {
-    if (typeof value !== "string") return value;
-    try {
-      return JSON.parse(value);
-    } catch (_error) {
-      return value;
-    }
-  }
-
-  function asObject(value) {
-    var parsed = parseMaybeJson(value);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed
-      : {};
-  }
-
-  function pluginResult(value) {
-    var result = parseMaybeJson(value);
-    if (result && typeof result === "object" && result.error) throw new Error(String(result.error));
-    if (result && typeof result === "object" && Object.prototype.hasOwnProperty.call(result, "output")) {
-      return parseMaybeJson(result.output);
-    }
-    return result;
-  }
-
   function runPluginOperation(pluginId, args) {
     return graphql(
       "mutation DirtyPluginsOperation($pluginId:ID!,$args:Map!){" +
@@ -476,22 +457,6 @@
       if (pluginId === "dirtyPlugins") applyVisualTheme(input && input.visualTheme);
       return result;
     });
-  }
-
-  function clampInteger(value, fallback, min, max) {
-    var next = Number(value);
-    if (!Number.isFinite(next)) return fallback;
-    return Math.max(min, Math.min(max, Math.floor(next)));
-  }
-
-  function coerceBoolean(value, fallback) {
-    if (typeof value === "boolean") return value;
-    if (typeof value === "string") {
-      var normalized = value.trim().toLowerCase();
-      if (normalized === "true") return true;
-      if (normalized === "false") return false;
-    }
-    return fallback;
   }
 
   var toastContainer = null;
@@ -997,6 +962,7 @@
     return window.getComputedStyle(root).getPropertyValue(propertyName).trim();
   };
   hubApi.react = {
+    html: html,
     Badge: Badge,
     Button: Button,
     Dialog: Dialog,
@@ -1016,66 +982,10 @@
   };
   var nativeComponentLoads = {};
   var nativeBundleLoads = {};
-  var sceneFilterListeners = {};
-  var activeSharedSceneFilter = null;
-  function serializeSceneFilter(filter) {
-    var find = Object.assign({}, filter.makeFindFilter());
-    delete find.page;
-    delete find.per_page;
-    var query = new URLSearchParams(filter.makeQueryParameters());
-    query.delete("page");
-    query.delete("per_page");
-    return { find: find, scene: JSON.parse(JSON.stringify(filter.makeFilter() || {})), query: query.toString(), all: false };
-  }
-  function SharedSceneFilterCapture(props) {
-    var value = serializeSceneFilter(props.filter);
-    var key = JSON.stringify(value);
-    useEffect(function () {
-      var listener = sceneFilterListeners[props.owner];
-      if (listener) listener(value);
-    }, [props.owner, key]);
-    return null;
-  }
-  function SceneFilterEditor(props) {
-    var readyState = useState(false), ready = readyState[0], setReady = readyState[1];
-    var errorState = useState(""), error = errorState[0], setError = errorState[1];
-    var candidate = useRef(props.value || {});
-    var owner = useRef("filter-" + Math.random().toString(36).slice(2));
-    var closeRef = useRef(null);
-    var callback = useRef(props.onChange);
-    callback.current = props.onChange;
-    useEffect(function () {
-      if (!props.open) return undefined;
-      var active = true;
-      candidate.current = props.value || {};
-      activeSharedSceneFilter = owner.current;
-      sceneFilterListeners[owner.current] = function (value) { candidate.current = value; };
-      hubApi.native.ensureComponents("SceneList", ["FilteredSceneList"]).then(function () {
-        if (active) setReady(true);
-      }).catch(function (failure) { if (active) setError(failure.message); });
-      return function () {
-        active = false; delete sceneFilterListeners[owner.current];
-        if (activeSharedSceneFilter === owner.current) activeSharedSceneFilter = null;
-      };
-    }, [props.open]);
-    return createElement(Dialog, {
-      id: "dirty-shared-scene-filter-dialog", open: props.open, ariaLabel: "Scene filter", initialFocusRef: closeRef,
-      allowNativePopup: true, onClose: props.onClose,
-      className: "dirty-ui-native-filter-dialog dirty-ui-panel",
-      backdropClassName: "dirty-ui-native-filter-overlay",
-    },
-      createElement("h2", null, "Scene filter"),
-      error ? createElement(StateView, { title: "Stash filters unavailable", detail: error })
-        : !ready ? createElement(StateView, { title: "Loading filters…" })
-        : createElement(PluginApi.libraries.ReactRouterDOM.MemoryRouter, {
-          initialEntries: [{ pathname: "/scenes", search: "?" + ((props.value || {}).query || "") }],
-        }, createElement(PluginApi.components.FilteredSceneList, { alterQuery: true, extraCriteria: { dirtySharedFilter: owner.current } })),
-      createElement("div", { className: "dirty-ui-control-row" },
-        createElement(Button, { onClick: props.onClose, buttonRef: closeRef }, "Cancel"),
-        createElement(Button, { tone: "primary", disabled: !ready || Boolean(error), onClick: function () {
-          callback.current(candidate.current); props.onClose();
-        } }, "Use filter")));
-  }
+  var filterModule = window.__dirtyPluginsSceneFilter;
+  if (!filterModule) return;
+  var filters = filterModule.createSceneFilter({ hubApi: hubApi, PluginApi: PluginApi, Dialog: Dialog, StateView: StateView, Button: Button, createElement: createElement, useEffect: useEffect, useState: useState, useRef: useRef });
+  var serializeSceneFilter = filters.serialize, SharedSceneFilterCapture = filters.Capture, SceneFilterEditor = filters.Editor;
   hubApi.react.SceneFilterEditor = SceneFilterEditor;
   hubApi.serializeSceneFilter = serializeSceneFilter;
   PluginApi.patch.instead("SceneList", function () {
@@ -1083,7 +993,7 @@
     var owner = props && props.extraCriteria && props.extraCriteria.dirtySharedFilter;
     // Stash 0.31's scene list does not forward extraCriteria to SceneList.
     // The editor is the only native scene list on suite plugin routes.
-    if (!owner && activeSharedSceneFilter && window.location.pathname.indexOf("/plugins/") === 0) owner = activeSharedSceneFilter;
+    if (!owner && filters.activeOwner() && window.location.pathname.indexOf("/plugins/") === 0) owner = filters.activeOwner();
     if (!owner || !props.filter) return next.apply(null, args);
     return createElement(SharedSceneFilterCapture, { owner: owner, filter: props.filter });
   });

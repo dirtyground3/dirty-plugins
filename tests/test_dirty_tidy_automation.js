@@ -4,7 +4,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
-const source = fs.readFileSync(path.join(__dirname, "../plugins/DirtyTidy/dirtyTidy.js"), "utf8");
+const { sourceFor } = require("./load_plugin_scripts");
+const source = sourceFor("DirtyTidy");
 const noop = () => {};
 
 // Run the real monitor with persisted browser storage and React effect semantics.

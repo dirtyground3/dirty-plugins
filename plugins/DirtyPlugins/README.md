@@ -15,6 +15,11 @@ value coercion, stacked notifications, reusable React settings-card, section,
 toggle, icon, and state components, custom settings-panel registration, and
 the visual tokens used by the Dirty plugins.
 
+`DirtyPlugins.react.html` is a shared HTM tag bound to Stash's React
+`createElement`. Plugins can use markup-style templates without a build step;
+the hub loads the local HTM runtime before plugin code. HTM 3.1.1 is bundled
+under `vendor/` with its Apache-2.0 license and source notice.
+
 ## UI contract
 
 The contributor recipes, tokens, dialog layers, native-component boundary,

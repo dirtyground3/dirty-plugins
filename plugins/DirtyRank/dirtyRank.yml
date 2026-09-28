@@ -6,6 +6,9 @@ ui:
   requires:
     - dirtyPlugins
   javascript:
+    - dirtyRankSettings.js
+    - dirtyRankRating.js
+    - dirtyRankMatchmaking.js
     - dirtyRank.js
   css:
     - dirtyRank.css

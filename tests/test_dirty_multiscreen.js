@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { sourceFor } = require("./load_plugin_scripts");
 
 const noop = () => {};
 const routes = [];
@@ -89,10 +90,7 @@ class FakeMutationObserver {
 }
 
 const context = vm.createContext({ window, console, MutationObserver: FakeMutationObserver });
-const source = fs.readFileSync(
-  path.join(__dirname, "..", "plugins", "DirtyMultiscreen", "multiscreen.js"),
-  "utf8"
-);
+const source = sourceFor("DirtyMultiscreen");
 vm.runInContext(source, context);
 
 const plugin = window.__dirtyMultiscreenPlugin;

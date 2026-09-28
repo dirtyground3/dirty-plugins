@@ -6,9 +6,10 @@ the originals.
 
 ## Features
 
-- An **Extract selected…** action row appears below the top toolbar when one or
-  more scenes, markers, or images are selected. It reserves its own space so it
-  cannot cover other buttons, including on narrow screens.
+- **Extract selected…** appears in the selected-list **…** actions menu when
+  one or more scenes, markers, or images are selected. It does not move the
+  scene grid or the existing toolbar controls. The toolbar keeps its original
+  width during selection so its left edge does not jump.
 - Scene selections on performer pages also show the extraction action.
 - Scenes copy every attached media file.
 - Markers extract only their `seconds` to `end_seconds` range from the parent
@@ -60,9 +61,9 @@ container filesystem rather than host-only paths.
 ## Usage
 
 Open Stash's **Scenes**, **Markers**, **Images**, or a performer's **Scenes** tab and select one or more
-items using the normal checkboxes. Choose **Extract selected scene(s)**,
-**Extract selected marker(s)**, or **Extract selected image(s)** below the top
-toolbar. Stash runs copying as a background job; progress and errors appear
+items using the normal checkboxes. Open the **…** actions menu and choose
+**Extract selected…**.
+Stash runs copying as a background job; progress and errors appear
 under **Tasks** and in the Stash log.
 
 For scenes, the plugin copies every attached media file. For markers, it writes

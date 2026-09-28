@@ -39,7 +39,7 @@ const window = {
   location: { pathname: "/plugins/dirty-rank" },
 };
 const document = { currentScript: null, addEventListener: noop };
-const source = fs.readFileSync(path.join(__dirname, "../plugins/DirtyPlugins/dirtyPlugins.js"), "utf8");
+const source = require("./load_plugin_scripts").sourceFor("DirtyPlugins");
 const consoleMessages = [];
 vm.runInNewContext(source, { window, document, console: {
   log: (...args) => consoleMessages.push(args),
@@ -83,6 +83,11 @@ for (const filename of ["../plugins/DirtyPlugins/dirtyPlugins.css", "../plugins/
 const hub = window.DirtyPlugins;
 const ui = hub.react;
 assert(hub && ui, "the shared hub should expose the pilot components");
+assert.equal(typeof ui.html, "function", "the hub should expose its shared HTM tag");
+const templatedButton = ui.html`<${ui.Button} disabled=${true}>Shared template<//>`;
+assert.equal(templatedButton.type, ui.Button);
+assert.equal(templatedButton.props.disabled, true);
+assert.equal(templatedButton.props.children, "Shared template");
 assert.equal(hub.theme.defaultKey, "classic", "the hub owns the suite's default visual theme");
 
 const titleObservers = [];

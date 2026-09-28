@@ -101,7 +101,7 @@ const context = vm.createContext({
     clearTimeout: id => timers.delete(id),
   },
 });
-let source = fs.readFileSync(path.join(__dirname, "../plugins/DirtyRank/dirtyRank.js"), "utf8");
+let source = require("./load_plugin_scripts").sourceFor("DirtyRank");
 source = source.replace("algorithms: {", "testing: { PerformerCard, PrecisionBadge, leaderboardRatingText, serializedSettings, LeaderboardGalleryCard, LeaderboardPodium, LeaderboardGallery, LeaderboardTable, LeaderboardPagination, DirtyRankRoute, DirtyRankLeaderboardsRoute, DirtyRankLeaderboardFilterCapture, filteredLeaderboardEntries, serializeLeaderboardPerformerFilter, queryLeaderboardPerformerIds, DirtyRankSettings, RankStatisticSelector, leaderboardStatPath, leaderboardIdFromPath, documentationCapture, loadNativePerformerCard, queryPerformers, scenePlaybackUrl, needsNativePreview, NativePreviewPlayer, LoadedNativePreview }, algorithms: {");
 source = source.replace("testing: {", "testing: { DirtyRankNavLinks, DirtyRankBattleNavLink, DirtyRankLeaderboardsNavLink, ");
 vm.runInContext(source, context);
@@ -245,7 +245,7 @@ async function main() {
   delete context.window.PluginApi.utils;
 
   const hubSource = fs.readFileSync(path.join(__dirname, "../plugins/DirtyPlugins/dirtyPlugins.js"), "utf8");
-  const graphqlSource = hubSource.slice(hubSource.indexOf("  function graphql("), hubSource.indexOf("  function parseMaybeJson("));
+  const graphqlSource = hubSource.slice(hubSource.indexOf("  function graphql("), hubSource.indexOf("  function runPluginOperation("));
   const graphql = vm.runInNewContext("(" + graphqlSource.trim() + ")", {
     fetch: (_url, options) => {
       if (!options.signal) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { ok: true } }) });
