@@ -21,7 +21,6 @@
   // Keep only the React APIs used by this no-build asset.
   var React = window.PluginApi.React;
   var Fragment = React.Fragment;
-  var createElement = React.createElement;
   var useCallback = React.useCallback;
   var useEffect = React.useEffect;
   var useMemo = React.useMemo;
@@ -37,13 +36,14 @@
   // Stash integrations below own route and patch registration for this asset.
   var PluginApi = window.PluginApi;
   var DirtyPlugins = window.DirtyPlugins;
-  if (!PluginApi || !DirtyPlugins) {
+  if (!PluginApi || !DirtyPlugins || !DirtyPlugins.react || !DirtyPlugins.react.html) {
     debugLog("multiscreen", "skipped: required runtime missing", {
       hasPluginApi: Boolean(PluginApi),
       hasDirtyPlugins: Boolean(DirtyPlugins),
     });
     return;
   }
+  var html = DirtyPlugins.react.html;
   var { NavLink, useLocation } = PluginApi.libraries.ReactRouterDOM;
   var solidIcons = PluginApi.libraries.FontAwesomeSolid ?? {};
   var PLUGIN_ID = "multiscreen";
@@ -79,17 +79,14 @@
     reload: solidIcons.faRotateRight ?? solidIcons.faRedo,
     success: solidIcons.faCheck
   };
-  var PluginIconButton = ({ ariaLabel, disabled = false, fallback, icon, onClick }) => /* @__PURE__ */ createElement(
-    DirtyPlugins.react.IconButton,
-    {
-      ariaLabel,
-      className: "ms-button",
-      disabled,
-      fallback,
-      icon,
-      onClick
-    }
-  );
+  var PluginIconButton = ({ ariaLabel, disabled = false, fallback, icon, onClick }) => html`<${DirtyPlugins.react.IconButton}
+    ariaLabel=${ariaLabel}
+    className="ms-button"
+    disabled=${disabled}
+    fallback=${fallback}
+    icon=${icon}
+    onClick=${onClick}
+  />`;
   // Tiles mount their video/player asynchronously. Watching the subtree keeps
   // the range/audio effects attached without polling.
   var observeSubtree = (target, callback) => {
@@ -848,33 +845,30 @@
       if (player.volume() !== audioState.volume) player.volume(audioState.volume);
       if (player.muted() !== audioState.muted) player.muted(audioState.muted);
     }, [audioState.muted, audioState.volume]);
-    return /* @__PURE__ */ createElement("div", { className: "ms-native-tile", ref: tileRef }, /* @__PURE__ */ createElement(
-      NavLink,
-      {
-        "aria-label": `Open scene page for ${item.title}`,
-        className: "ms-title",
-        rel: "noopener noreferrer",
-        target: "_blank",
-        title: `Open scene page: ${item.title}`,
-        to: `${SCENES_ROUTE_PATH}/${sceneId}`
-      },
-      item.title
-    ), /* @__PURE__ */ createElement(
-      NativePlayer,
-      {
-        autoplay: true,
-        hideScrubberOverride: true,
-        initialTimestamp,
-        onComplete: handleComplete,
-        onNext: nextItem,
-        onPrevious: previousItem,
-        permitLoop: playback.loop,
-        scene,
-        sendSetTimestamp: (setTimestamp) => {
-          setTimestampRef.current = setTimestamp;
-        }
-      }
-    ));
+    return html`
+      <div className="ms-native-tile" ref=${tileRef}>
+        <${NavLink}
+          aria-label=${`Open scene page for ${item.title}`}
+          className="ms-title"
+          rel="noopener noreferrer"
+          target="_blank"
+          title=${`Open scene page: ${item.title}`}
+          to=${`${SCENES_ROUTE_PATH}/${sceneId}`}
+        >${item.title}<//>
+        <${NativePlayer}
+          autoplay=${true}
+          hideScrubberOverride=${true}
+          initialTimestamp=${initialTimestamp}
+          onComplete=${handleComplete}
+          onNext=${nextItem}
+          onPrevious=${previousItem}
+          permitLoop=${playback.loop}
+          scene=${scene}
+          sendSetTimestamp=${(setTimestamp) => {
+            setTimestampRef.current = setTimestamp;
+          }}
+        />
+      </div>`;
   };
   var NativePlayerTile = ({ item, nativePlayer, nextItem, playback, previousItem, useFindScene }) => {
     const sceneId = item.scene?.id ?? item.id;
@@ -890,61 +884,42 @@
       });
     }, [playback.startMuted]);
     if (sceneQuery.loading) {
-      return /* @__PURE__ */ createElement("div", { className: "ms-error" }, /* @__PURE__ */ createElement("div", { className: "ms-error-content" }, "Loading scene"));
+      return html`<div className="ms-error"><div className="ms-error-content">Loading scene</div></div>`;
     }
     if (sceneQuery.error || !sceneQuery.data?.findScene) {
-      return /* @__PURE__ */ createElement("div", { className: "ms-native-tile ms-error-tile" }, /* @__PURE__ */ createElement(
-        NavLink,
-        {
-          "aria-label": `Open scene page for ${item.title}`,
-          className: "ms-title ms-error-title",
-          rel: "noopener noreferrer",
-          target: "_blank",
-          title: `Open scene page: ${item.title}`,
-          to: `${SCENES_ROUTE_PATH}/${sceneId}`
-        },
-        item.title
-      ), /* @__PURE__ */ createElement(
-        "div",
-        { className: "ms-error" },
-        /* @__PURE__ */ createElement("div", { className: "ms-error-content" }, "The native Stash player could not load this scene.", sceneQuery.error?.message && /* @__PURE__ */ createElement("div", { className: "ms-error-detail" }, sceneQuery.error.message))
-      ), /* @__PURE__ */ createElement(
-        "div",
-        { className: "ms-error-actions" },
-        /* @__PURE__ */ createElement(
-          PluginIconButton,
-          {
-            ariaLabel: "Previous scene",
-            fallback: "<",
-            icon: ICONS.previous,
-            onClick: previousItem
-          }
-        ),
-        /* @__PURE__ */ createElement(
-          PluginIconButton,
-          {
-            ariaLabel: "Next scene",
-            fallback: ">",
-            icon: ICONS.next,
-            onClick: nextItem
-          }
-        )
-      ));
+      return html`
+        <div className="ms-native-tile ms-error-tile">
+          <${NavLink}
+            aria-label=${`Open scene page for ${item.title}`}
+            className="ms-title ms-error-title"
+            rel="noopener noreferrer"
+            target="_blank"
+            title=${`Open scene page: ${item.title}`}
+            to=${`${SCENES_ROUTE_PATH}/${sceneId}`}
+          >${item.title}<//>
+          <div className="ms-error">
+            <div className="ms-error-content">
+              The native Stash player could not load this scene.
+              ${sceneQuery.error?.message && html`<div className="ms-error-detail">${sceneQuery.error.message}</div>`}
+            </div>
+          </div>
+          <div className="ms-error-actions">
+            <${PluginIconButton} ariaLabel="Previous scene" fallback="<" icon=${ICONS.previous} onClick=${previousItem} />
+            <${PluginIconButton} ariaLabel="Next scene" fallback=">" icon=${ICONS.next} onClick=${nextItem} />
+          </div>
+        </div>`;
     }
-    return /* @__PURE__ */ createElement(
-      LoadedNativePlayer,
-      {
-        key: item.id,
-        audioState,
-        item,
-        nativePlayer,
-        nextItem,
-        onAudioStateChange: setAudioState,
-        playback,
-        previousItem,
-        scene: sceneQuery.data.findScene
-      }
-    );
+    return html`<${LoadedNativePlayer}
+      key=${item.id}
+      audioState=${audioState}
+      item=${item}
+      nativePlayer=${nativePlayer}
+      nextItem=${nextItem}
+      onAudioStateChange=${setAudioState}
+      playback=${playback}
+      previousItem=${previousItem}
+      scene=${sceneQuery.data.findScene}
+    />`;
   };
   var NativeMultiscreenGrid = ({
     columns,
@@ -1032,57 +1007,41 @@
         return nextCursors;
       });
     }, [totalScreens]);
-    return /* @__PURE__ */ createElement(
-      "div",
-      {
-        className: "ms-grid ms-native-grid",
-        ref: gridRef,
-        style: {
-          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-          gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`
-        }
-      },
-      Array.from({ length: totalScreens }, (_, screenIndex) => {
-        const playlist = playlists[screenIndex] ?? [];
-        if (playlist.length === 0) return /* @__PURE__ */ createElement("div", { className: "ms-cell", key: `ms-native-${screenIndex}` });
-        const currentIndex = Math.min(cursors[screenIndex] ?? 0, playlist.length - 1);
-        const item = playlist[currentIndex];
-        const nextItem = () => setCursor(screenIndex, (currentIndex + 1) % playlist.length);
-        const previousItem = () => setCursor(
-          screenIndex,
-          currentIndex === 0 ? playlist.length - 1 : currentIndex - 1
-        );
-        return /* @__PURE__ */ createElement("div", { className: "ms-cell", key: `ms-native-${screenIndex}` }, /* @__PURE__ */ createElement(
-          NativePlayerTile,
-          {
-            item,
-            nativePlayer,
-            nextItem,
-            playback,
-            previousItem,
-            useFindScene
-          }
-        ));
-      })
-    );
+    const gridStyle = {
+      gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+      gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`
+    };
+    return html`
+      <div className="ms-grid ms-native-grid" ref=${gridRef} style=${gridStyle}>
+        ${Array.from({ length: totalScreens }, (_, screenIndex) => {
+          const playlist = playlists[screenIndex] ?? [];
+          if (playlist.length === 0) return html`<div className="ms-cell" key=${`ms-native-${screenIndex}`} />`;
+          const currentIndex = Math.min(cursors[screenIndex] ?? 0, playlist.length - 1);
+          const item = playlist[currentIndex];
+          const nextItem = () => setCursor(screenIndex, (currentIndex + 1) % playlist.length);
+          const previousItem = () => setCursor(
+            screenIndex,
+            currentIndex === 0 ? playlist.length - 1 : currentIndex - 1
+          );
+          return html`<div className="ms-cell" key=${`ms-native-${screenIndex}`}>
+            <${NativePlayerTile}
+              item=${item}
+              nativePlayer=${nativePlayer}
+              nextItem=${nextItem}
+              playback=${playback}
+              previousItem=${previousItem}
+              useFindScene=${useFindScene}
+            />
+          </div>`;
+        })}
+      </div>`;
   };
-  var StateView = ({ detail, onRetry, title }) => /* @__PURE__ */ createElement(
-    DirtyPlugins.react.StateView,
-    {
-      className: "ms-state",
-      detail,
-      title,
-      actions: onRetry ? /* @__PURE__ */ createElement(
-        PluginIconButton,
-        {
-          ariaLabel: "Retry",
-          fallback: "reload",
-          icon: ICONS.reload,
-          onClick: onRetry
-        }
-      ) : null
-    }
-  );
+  var StateView = ({ detail, onRetry, title }) => html`<${DirtyPlugins.react.StateView}
+    className="ms-state"
+    detail=${detail}
+    title=${title}
+    actions=${onRetry ? html`<${PluginIconButton} ariaLabel="Retry" fallback="reload" icon=${ICONS.reload} onClick=${onRetry} />` : null}
+  />`;
   var closeRoute = () => {
     if (window.history.length > 1) {
       window.history.back();
@@ -1129,22 +1088,24 @@
     var dismissing = status === "loading" || status === "success";
     var count = props.sceneIds.length;
     var label = status === "error" ? "Could not increase every visible scene O counter; retry failed scenes" : "Increase O counter for " + count + " visible scene" + (count === 1 ? "" : "s");
-    return createElement(Fragment, null,
-      !hidden && (count > 0 || status !== "idle") && createElement("div", {
-        className: "ms-o-counter" + (dismissing ? " ms-o-counter-dismissing" : ""),
-        onAnimationEnd: function (event) {
+    var message = status === "loading" ? "Saving O counters." : status === "success" ? "O counters increased." : status === "error" ? "Some O counters could not be saved. Retry the failed scenes." : "";
+    return html`<${Fragment}>
+      ${!hidden && (count > 0 || status !== "idle") && html`<div
+        className=${"ms-o-counter" + (dismissing ? " ms-o-counter-dismissing" : "")}
+        onAnimationEnd=${function (event) {
           if (event.target === event.currentTarget && dismissing) setHidden(true);
-        }
-      }, createElement(PluginIconButton, {
-        ariaLabel: label,
-        disabled: dismissing,
-        fallback: status === "error" ? "!" : "O",
-        icon: status === "error" ? ICONS.error : ICONS.oCounter,
-        onClick: increment
-      })),
-      createElement("span", { className: "ms-o-counter-status", role: "status", "aria-live": "polite" },
-        status === "loading" ? "Saving O counters." : status === "success" ? "O counters increased." : status === "error" ? "Some O counters could not be saved. Retry the failed scenes." : "")
-    );
+        }}
+      >
+        <${PluginIconButton}
+          ariaLabel=${label}
+          disabled=${dismissing}
+          fallback=${status === "error" ? "!" : "O"}
+          icon=${status === "error" ? ICONS.error : ICONS.oCounter}
+          onClick=${increment}
+        />
+      </div>`}
+      <span className="ms-o-counter-status" role="status" aria-live="polite">${message}</span>
+    <//>`;
   }
   var MultiscreenRoute = () => {
     DirtyPlugins.react.usePageTitle("DirtyMultiscreen");
@@ -1198,37 +1159,39 @@
     const error = settingsQuery.error ?? activeQuery.error ?? nativePlayerQuery.error;
     const itemType = markerMode ? "markers" : "scenes";
     const docsCapture = DirtyPlugins.captureEnabled ? DirtyPlugins.captureEnabled(window.location.search) : new URLSearchParams(window.location.search).get("docsCapture") === "1";
-    return /* @__PURE__ */ createElement("div", { className: `ms-route${docsCapture ? " ms-docs-capture" : ""}` }, loading && /* @__PURE__ */ createElement(StateView, { title: `Loading ${itemType}` }), !loading && error && /* @__PURE__ */ createElement(
-      StateView,
-      {
-        title: "Could not load DirtyMultiscreen",
-        detail: error.message,
-        onRetry: () => {
-          void reloadSettings();
-          void activeQuery.refresh();
-          nativePlayerQuery.refresh();
-        }
-      }
-    ), !loading && !error && items.length === 0 && /* @__PURE__ */ createElement(
-      StateView,
-      {
-        title: `No playable ${itemType} found`,
-        detail: markerMode ? "Add markers to scenes with streamable video files, then reload this plugin page." : "Add scenes with streamable video files, then reload this plugin page.",
-        onRetry: activeQuery.refresh
-      }
-    ), !loading && !error && items.length > 0 && nativePlayerQuery.component && /* @__PURE__ */ createElement(
-      NativeMultiscreenGrid,
-      {
-        rows: settings.rows,
-        columns: settings.columns,
-        totalScreens: settings.totalScreens,
-        playlists,
-        playback: playbackSettings,
-        nativePlayer: nativePlayerQuery.component,
-        onVisibleSceneIdsChange: setVisibleNativeSceneIds,
-        useFindScene: PluginApi.utils.StashService.useFindScene
-      }
-    ), /* @__PURE__ */ createElement("div", { className: "ms-floating" }, createElement(VisibleOCounterButton, { sceneIds: visibleNativeSceneIds }), /* @__PURE__ */ createElement(PluginIconButton, { ariaLabel: "Close DirtyMultiscreen", fallback: "x", icon: ICONS.close, onClick: closeRoute })));
+    const retryAll = () => {
+      void reloadSettings();
+      void activeQuery.refresh();
+      nativePlayerQuery.refresh();
+    };
+    return html`
+      <div className=${`ms-route${docsCapture ? " ms-docs-capture" : ""}`}>
+        ${loading && html`<${StateView} title=${`Loading ${itemType}`} />`}
+        ${!loading && error && html`<${StateView}
+          title="Could not load DirtyMultiscreen"
+          detail=${error.message}
+          onRetry=${retryAll}
+        />`}
+        ${!loading && !error && items.length === 0 && html`<${StateView}
+          title=${`No playable ${itemType} found`}
+          detail=${markerMode ? "Add markers to scenes with streamable video files, then reload this plugin page." : "Add scenes with streamable video files, then reload this plugin page."}
+          onRetry=${activeQuery.refresh}
+        />`}
+        ${!loading && !error && items.length > 0 && nativePlayerQuery.component && html`<${NativeMultiscreenGrid}
+          rows=${settings.rows}
+          columns=${settings.columns}
+          totalScreens=${settings.totalScreens}
+          playlists=${playlists}
+          playback=${playbackSettings}
+          nativePlayer=${nativePlayerQuery.component}
+          onVisibleSceneIdsChange=${setVisibleNativeSceneIds}
+          useFindScene=${PluginApi.utils.StashService.useFindScene}
+        />`}
+        <div className="ms-floating">
+          <${VisibleOCounterButton} sceneIds=${visibleNativeSceneIds} />
+          <${PluginIconButton} ariaLabel="Close DirtyMultiscreen" fallback="x" icon=${ICONS.close} onClick=${closeRoute} />
+        </div>
+      </div>`;
   };
   var ContextualMultiscreenNavLink = () => {
     const location = useLocation();
@@ -1284,14 +1247,23 @@
     const handleClick = useCallback(() => {
       storeLaunchContext(launchContext);
     }, [launchContext]);
-    return /* @__PURE__ */ createElement(DirtyPlugins.react.NavAction, { as: NavLink, className: "ms-nav-link ms-nav-button", exact: true, to: ROUTE_PATH, onClick: handleClick, label: buttonTitle, icon: /* @__PURE__ */ createElement(Fragment, null, /* @__PURE__ */ createElement("i", { className: "ms-nav-icon", "aria-hidden": "true" }, /* @__PURE__ */ createElement("i", null), /* @__PURE__ */ createElement("i", null), /* @__PURE__ */ createElement("i", null), /* @__PURE__ */ createElement("i", null)), launchContext && /* @__PURE__ */ createElement(
-      "i",
-      {
-        className: `ms-nav-count${countLoading ? " ms-loading" : ""}`,
-        "aria-label": countLoading ? `Counting ${countNoun}` : `${formattedSceneCount ?? 0} ${countNoun}`
-      },
-      countLoading ? "\u2026" : formattedSceneCount ?? "?"
-    )) });
+    // Icons use <i> rather than <span> so themes that hide navbar spans keep them.
+    const icon = html`<${Fragment}>
+      <i className="ms-nav-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></i>
+      ${launchContext && html`<i
+        className=${`ms-nav-count${countLoading ? " ms-loading" : ""}`}
+        aria-label=${countLoading ? `Counting ${countNoun}` : `${formattedSceneCount ?? 0} ${countNoun}`}
+      >${countLoading ? "\u2026" : formattedSceneCount ?? "?"}</i>`}
+    <//>`;
+    return html`<${DirtyPlugins.react.NavAction}
+      as=${NavLink}
+      className="ms-nav-link ms-nav-button"
+      exact=${true}
+      to=${ROUTE_PATH}
+      onClick=${handleClick}
+      label=${buttonTitle}
+      icon=${icon}
+    />`;
   };
   PluginApi.register.route(ROUTE_PATH, MultiscreenRoute);
   PluginApi.patch.before("SceneMarkerList", function(props) {
@@ -1361,7 +1333,7 @@
   PluginApi.patch.before("MainNavBar.UtilityItems", function(props) {
     return [
       {
-        children: /* @__PURE__ */ createElement(Fragment, null, props.children, /* @__PURE__ */ createElement(ContextualMultiscreenNavLink, null))
+        children: html`<${Fragment}>${props.children}<${ContextualMultiscreenNavLink} /><//>`
       }
     ];
   });

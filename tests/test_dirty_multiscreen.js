@@ -7,6 +7,8 @@ const vm = require("node:vm");
 const { sourceFor } = require("./load_plugin_scripts");
 
 const noop = () => {};
+const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
+const element = (type, props, ...children) => ({ type, props: props || {}, children });
 const routes = [];
 const patches = [];
 const storedValues = new Map();
@@ -56,7 +58,7 @@ const window = {
       return Promise.resolve({});
     },
     values: { clampInteger, coerceBoolean },
-    react: { IconButton: noop, StateView: noop },
+    react: { html: htm.bind(noop), IconButton: noop, StateView: noop },
   },
   sessionStorage: {
     getItem: (key) => (storedValues.has(key) ? storedValues.get(key) : null),
@@ -112,7 +114,7 @@ async function testOCounterDismissal() {
       PluginIconButton: "button",
       ICONS: { error: "error", oCounter: "O" },
       incrementSceneOQuery: "increment",
-      createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+      html: htm.bind(element),
       useState(value) {
         const index = cursor++;
         if (!(index in slots)) slots[index] = value;

@@ -380,6 +380,12 @@ class SharedUIContractTests(unittest.TestCase):
             self.assertNotRegex(script, r"\bh\(")
             self.assertNotIn("createElement", script)
 
+    def test_dirty_multiscreen_uses_the_shared_template_tag(self):
+        multiscreen = read("plugins/DirtyMultiscreen/multiscreen.js")
+        self.assertIn("var html = DirtyPlugins.react.html", multiscreen)
+        self.assertIn("return html`", multiscreen)
+        self.assertNotIn("createElement", multiscreen)
+
     def test_dirty_stats_dashboard_is_registered_and_persisted(self):
         script = read("plugins/DirtyStats/dirtyStats.js")
         dashboard = read("plugins/DirtyStats/dirtyStatsDashboard.js")
@@ -628,8 +634,8 @@ class SharedUIContractTests(unittest.TestCase):
         multiscreen = read("plugins/DirtyMultiscreen/multiscreen.js")
 
         self.assertIn('className: "dirty-rank-nav-icon"', rank)
-        self.assertIn('createElement("i", { className: "ms-nav-icon"', multiscreen)
-        self.assertIn('createElement(\n      "i",\n      {\n        className: `ms-nav-count', multiscreen)
+        self.assertIn('<i className="ms-nav-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></i>', multiscreen)
+        self.assertIn('html`<i\n        className=${`ms-nav-count', multiscreen)
 
     def test_dirty_tidy_preview_links_blocked_scenes(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
