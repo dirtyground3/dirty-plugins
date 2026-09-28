@@ -41,6 +41,39 @@ assert.match(a.validation({ rules: [rule] }), /Dimensions/);
 rule.action = "reencode";
 assert.equal(a.validation({ rules: [rule] }), "", "reencode does not use hidden resize dimensions");
 assert.equal(a.filterSummary({ all: true }), "All scenes");
+// Mirrors Stash's ListFilterModel.getEncodedParams: braces become parentheses
+// outside strings, then the criterion is URI-encoded as one c= parameter.
+function stashQuery(criteria) {
+  return criteria.map(criterion => {
+    let quoted = false, escaped = false;
+    const json = [...JSON.stringify(criterion)].map(c => {
+      if (escaped) { escaped = false; return c; }
+      if (c === "\\" && quoted) escaped = true;
+      else if (c === "\"") quoted = !quoted;
+      else if (!quoted && c === "{") return "(";
+      else if (!quoted && c === "}") return ")";
+      return c;
+    }).join("");
+    let encoded = encodeURI(json);
+    for (const c of "?#&;=+") encoded = encoded.replaceAll(c, encodeURIComponent(c));
+    return "c=" + encoded;
+  }).join("&") + "&sortby=date";
+}
+const labelled = { query: stashQuery([
+  { type: "tags", modifier: "INCLUDES_ALL", value: { items: [{ id: "1", label: "Outdoor (sunny)" }, { id: "2", label: "B&W" }], excluded: [{ id: "3", label: "Amateur" }], depth: 0 } },
+  { type: "resolution", modifier: "GREATER_THAN", value: "1080p" },
+  { type: "rating100", modifier: "LESS_THAN", value: { value: 50 } },
+  { type: "duration", modifier: "BETWEEN", value: { value: 90, value2: 3725 } },
+  { type: "organized", value: "false" },
+  { type: "path", modifier: "MATCHES_REGEX", value: "\\.wmv$" },
+  { type: "performers", modifier: "IS_NULL" },
+]), scene: { tags: {} }, find: { q: "beach" } };
+assert.equal(a.filterSummary(labelled), "Search “beach” · Tags: all of Outdoor (sunny), B&W, not Amateur · Resolution > 1080p · " +
+  "Rating < 2.5 stars · Duration between 1:30 and 1:02:05 · Organized: no · Path matches “\\.wmv$” · Performers is empty");
+assert.equal(a.filterSummary(labelled, true).split(" · ")[1], "Tags: all of 2 tags, not 1 tag", "documentation capture hides names");
+assert.equal(a.filterSummary({ scene: { resolution: { value: "FOUR_K", modifier: "EQUALS" }, rating100: { value: 20, modifier: "LESS_THAN" },
+  studios: { value: ["4", "5"], modifier: "INCLUDES", depth: 0 }, organized: true } }),
+"Resolution = 4K · Rating < 1 star · Studio: 2 studios · Organized: yes", "scene filters without a saved query still read naturally");
 assert.equal(a.bytes(1024), "1.00 KiB");
 
 let settingsPanel;

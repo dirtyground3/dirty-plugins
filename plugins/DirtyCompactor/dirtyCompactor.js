@@ -60,7 +60,7 @@
           <button type="button" className="dirty-compactor-rule-summary" aria-expanded=${props.open} onClick=${props.onToggle}>
             <span className="dirty-compactor-rule-name">${(props.index + 1) + ". " + r.name}</span>
             <span className="dirty-compactor-rule-detail">
-              ${hasFilter ? filterSummary(condition) : html`<span className="dirty-compactor-warning">Choose scenes</span>`}
+              ${hasFilter ? filterSummary(condition, props.capture) : html`<span className="dirty-compactor-warning">Choose scenes</span>`}
               ${scenes && " (" + scenes + ")"}
               ${" → "}
               <span className=${r.action === "delete" ? "dirty-compactor-danger" : undefined}>${rules.actionSummary(r)}</span>
@@ -331,7 +331,7 @@
         ${!draft.rules.length ? html`<${ui.StateView} title="Start with a rule" detail="A rule picks scenes with a Stash filter and resizes, reencodes, or deletes them. Nothing runs until you preview and confirm." actions=${html`<${ui.Button} tone="primary" onClick=${addRule}>Add rule<//>`} />` : html`
           <div className="dirty-compactor-rules">
             ${draft.rules.map(function (r, index) {
-              return html`<${RuleRow} key=${r.id} rule=${r} index=${index} last=${index === draft.rules.length - 1} capabilities=${caps}
+              return html`<${RuleRow} key=${r.id} rule=${r} index=${index} capture=${capture} last=${index === draft.rules.length - 1} capabilities=${caps}
                 open=${openRule === r.id} onToggle=${function () { setOpenRule(openRule === r.id ? "" : r.id); }}
                 detecting=${busy === "capabilities"} onDetect=${function () { act("capabilities"); }}
                 onChange=${function (value) { updateRule(index, value); }}

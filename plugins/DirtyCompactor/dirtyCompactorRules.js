@@ -66,11 +66,100 @@
       (rule.action === "resize" ? "; smaller videos get less." : ", adjusted to each video's resolution.");
   }
 
-  /** @param {{all?: boolean, scene?: object, find?: {q?: string}}} condition @returns {string} */
-  function filterSummary(condition) {
+  var FIELD_LABELS = { rating100: "Rating", o_counter: "O count", play_count: "Play count", play_duration: "Play time",
+    resume_time: "Resume time", file_count: "File count", tag_count: "Tag count", performer_count: "Performer count",
+    video_codec: "Video codec", audio_codec: "Audio codec", frame_rate: "Frame rate", average_resolution: "Average resolution",
+    is_missing: "Missing", has_markers: "Has markers", performer_favorite: "Favorite performer", performer_tags: "Performer tags",
+    performer_age: "Performer age", studios: "Studio", groups: "Groups", galleries: "Galleries", created_at: "Created",
+    updated_at: "Updated", last_played_at: "Last played", stash_id_endpoint: "StashID", code: "Studio code", url: "URL" };
+  var NOUNS = { tags: ["tag", "tags"], performer_tags: ["tag", "tags"], performers: ["performer", "performers"], studios: ["studio", "studios"],
+    groups: ["group", "groups"], galleries: ["gallery", "galleries"] };
+  var RESOLUTION_ENUMS = { VERY_LOW: "144p", LOW: "240p", R360P: "360p", STANDARD: "480p", WEB_HD: "540p", STANDARD_HD: "720p",
+    FULL_HD: "1080p", QUAD_HD: "1440p", FOUR_K: "4K", FIVE_K: "5K", SIX_K: "6K", SEVEN_K: "7K", EIGHT_K: "8K", HUGE: "Huge" };
+  var OPERATORS = { EQUALS: "=", NOT_EQUALS: "≠", GREATER_THAN: ">", LESS_THAN: "<", INCLUDES: "contains", EXCLUDES: "doesn't contain",
+    MATCHES_REGEX: "matches", NOT_MATCHES_REGEX: "doesn't match" };
+
+  /** @param {string} key @returns {string} */
+  function fieldLabel(key) { return FIELD_LABELS[key] || (key.charAt(0).toUpperCase() + key.slice(1)).replace(/_/g, " "); }
+
+  /** @param {string} type @param {number} count @returns {string} */
+  function countLabel(type, count) { var noun = NOUNS[type] || ["item", "items"]; return count + " " + noun[count === 1 ? 0 : 1]; }
+
+  /** @param {number} seconds @returns {string} */
+  function clock(seconds) {
+    var h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = Math.round(seconds % 60);
+    return (h ? h + ":" + (m < 10 ? "0" : "") : "") + m + ":" + (s < 10 ? "0" : "") + s;
+  }
+
+  /** @param {string} type @param {*} value @returns {string} */
+  function formatValue(type, value) {
+    if (value === true || value === "true") return "yes";
+    if (value === false || value === "false") return "no";
+    if (type === "rating100" && Number.isFinite(Number(value))) { var stars = Math.round(Number(value) / 2) / 10; return stars + (stars === 1 ? " star" : " stars"); }
+    if (/^(duration|play_duration|resume_time)$/.test(type) && Number.isFinite(Number(value))) return clock(Number(value));
+    if (/resolution$/.test(type)) return RESOLUTION_ENUMS[value] || String(value).replace(/k$/, "K");
+    if (typeof value === "string" && /^[A-Z][A-Z0-9_]*$/.test(value)) return value.toLowerCase().replace(/_/g, " ");
+    return typeof value === "string" ? "“" + value + "”" : String(value);
+  }
+
+  /** @param {Array<*>} items @param {string} type @param {boolean} hideNames @returns {string} */
+  function names(items, type, hideNames) {
+    if (hideNames || items.some(function (item) { return typeof item !== "object" || !item.label; })) return countLabel(type, items.length);
+    var labels = items.map(function (item) { return item.label; });
+    return labels.slice(0, 3).join(", ") + (labels.length > 3 ? " +" + (labels.length - 3) + " more" : "");
+  }
+
+  /** One readable clause for a Stash criterion. @param {string} type @param {string|undefined} modifier @param {*} value @param {boolean} hideNames @returns {string} */
+  function describeCriterion(type, modifier, value, hideNames) {
+    var label = fieldLabel(type);
+    if (/^(AND|OR|NOT)$/.test(type)) return "Combined filter";
+    if (modifier === "IS_NULL") return label + " is empty";
+    if (modifier === "NOT_NULL") return label + " is set";
+    var hierarchical = value && typeof value === "object" && Array.isArray(value.items);
+    if (hierarchical || Array.isArray(value)) {
+      var included = hierarchical ? value.items : value, excluded = hierarchical ? value.excluded || [] : [];
+      var prefix = modifier === "INCLUDES_ALL" ? "all of " : modifier === "EXCLUDES" ? "not " : "";
+      var text = included.length ? label + ": " + prefix + names(included, type, hideNames) : label + ": any";
+      return text + (excluded.length ? ", not " + names(excluded, type, hideNames) : "");
+    }
+    if (value && typeof value === "object" && "value" in value) {
+      if (modifier === "BETWEEN" || modifier === "NOT_BETWEEN") return label + (modifier === "NOT_BETWEEN" ? " not" : "") + " between " + formatValue(type, value.value) + " and " + formatValue(type, value.value2);
+      value = value.value;
+    }
+    return modifier && OPERATORS[modifier] ? label + " " + OPERATORS[modifier] + " " + formatValue(type, value) : label + ": " + formatValue(type, value);
+  }
+
+  /** Swap Stash's URL-friendly parentheses back to JSON braces outside strings. @param {string} text @returns {string} */
+  function braces(text) {
+    var quoted = false, escaped = false, out = "";
+    for (var i = 0; i < text.length; i++) {
+      var c = text.charAt(i);
+      if (escaped) escaped = false;
+      else if (c === "\\" && quoted) escaped = true;
+      else if (c === "\"") quoted = !quoted;
+      else if (!quoted && c === "(") c = "{";
+      else if (!quoted && c === ")") c = "}";
+      out += c;
+    }
+    return out;
+  }
+
+  /** Criteria saved by the native filter editor keep display labels for tags, performers, and studios. @param {string} query @returns {Array<*>} */
+  function queryCriteria(query) {
+    return String(query || "").split("&").filter(function (part) { return part.indexOf("c=") === 0; }).map(function (part) {
+      try { return JSON.parse(braces(decodeURIComponent(part.slice(2).replace(/\+/g, " ")))); } catch (error) { return null; }
+    }).filter(function (criterion) { return criterion && typeof criterion.type === "string"; });
+  }
+
+  /** @param {{all?: boolean, scene?: object, find?: {q?: string}, query?: string}} condition @param {boolean=} hideNames @returns {string} */
+  function filterSummary(condition, hideNames) {
     if (condition.all) return "All scenes";
-    var labels = Object.keys(condition.scene || {}).map(function (key) { return key.replace(/_/g, " "); });
-    if ((condition.find || {}).q) labels.unshift("Search: " + condition.find.q);
+    var labels = queryCriteria(condition.query).map(function (c) { return describeCriterion(c.type, c.modifier, c.value, Boolean(hideNames)); });
+    if (!labels.length) labels = Object.keys(condition.scene || {}).map(function (key) {
+      var entry = condition.scene[key], criterion = entry && typeof entry === "object" && "modifier" in entry;
+      return describeCriterion(key, criterion ? entry.modifier : undefined, criterion ? ("value2" in entry ? entry : entry.value) : entry, Boolean(hideNames));
+    });
+    if ((condition.find || {}).q) labels.unshift("Search “" + condition.find.q + "”");
     return labels.join(" · ") || "No condition selected";
   }
 
