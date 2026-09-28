@@ -273,7 +273,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("DirtyPlugins.react.SettingsCard", script)
         self.assertIn("registerSettingsPanel(PLUGIN_ID, DirtyRankSettings)", script)
         self.assertIn("PluginApi.register.route(ROUTE_PATH, DirtyRankRoute)", script)
-        self.assertIn('to: "/plugins/dirty-plugins?plugin=dirtyRank"', script)
+        self.assertIn('to="/plugins/dirty-plugins?plugin=dirtyRank"', script)
 
     def test_dirty_plugins_settings_are_database_backed(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
@@ -402,6 +402,13 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("Button: Button, html: html, useEffect", hub)
         self.assertIn("var html = dependencies.html", hub)
 
+    def test_dirty_rank_uses_the_shared_template_tag(self):
+        rank = read("plugins/DirtyRank/dirtyRank.js")
+        self.assertIn("var html = DirtyPlugins.react.html", rank)
+        self.assertIn("return html`", rank)
+        self.assertNotRegex(rank, r"\bh\(")
+        self.assertNotIn("createElement", rank)
+
     def test_dirty_stats_dashboard_is_registered_and_persisted(self):
         script = read("plugins/DirtyStats/dirtyStats.js")
         dashboard = read("plugins/DirtyStats/dirtyStatsDashboard.js")
@@ -481,11 +488,11 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("function addCategory()", script)
         self.assertIn("categoriesByCohort", script)
         self.assertIn("function overallPoolFor", script)
-        self.assertIn('label: "Overall weight"', script)
-        self.assertIn('label: "Evidence per battle"', script)
+        self.assertIn('label="Overall weight"', script)
+        self.assertIn('label="Evidence per battle"', script)
         self.assertIn("evidenceWeight: 2", script)
         self.assertIn('"evidenceWeight": 2.0', backend)
-        self.assertIn('"Advanced configuration"', script)
+        self.assertIn("<span>Advanced configuration</span>", script)
         self.assertNotIn("Eligibility tag IDs", script)
         self.assertNotIn("ratingPeriodDays", script)
         self.assertNotIn("ratingPeriodDays", backend)
@@ -494,7 +501,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertNotIn("Export ratings", battle_ui)
         self.assertNotIn('"Export ratings"', settings_ui)
         self.assertNotIn('"Reset current pool"', settings_ui)
-        self.assertIn('"Reset ratings"', settings_ui)
+        self.assertIn(">Reset ratings<//>", settings_ui)
         self.assertIn('resetCategoryPool(editingCohort, category)', settings_ui)
 
     def test_standard_and_dirty_rank_settings_save_automatically(self):
@@ -558,7 +565,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("startMarkerPlayback", script)
         self.assertIn('"Close marker"', script)
         self.assertIn('"▶ Play top scene"', script)
-        self.assertIn('h("video"', script)
+        self.assertIn("html`<video", script)
         self.assertIn("event.stopPropagation()", script)
         self.assertIn("dirty-rank-scene-player", stylesheet)
         self.assertLess(
@@ -649,7 +656,7 @@ class SharedUIContractTests(unittest.TestCase):
         rank = read("plugins/DirtyRank/dirtyRank.js")
         multiscreen = read("plugins/DirtyMultiscreen/multiscreen.js")
 
-        self.assertIn('className: "dirty-rank-nav-icon"', rank)
+        self.assertIn('className="dirty-rank-nav-icon"', rank)
         self.assertIn('<i className="ms-nav-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></i>', multiscreen)
         self.assertIn('html`<i\n        className=${`ms-nav-count', multiscreen)
 

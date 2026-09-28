@@ -11,7 +11,7 @@
 
   var PluginApi = window.PluginApi;
   var DirtyPlugins = window.DirtyPlugins;
-  if (!PluginApi || !DirtyPlugins || !DirtyPlugins.graphql) {
+  if (!PluginApi || !DirtyPlugins || !DirtyPlugins.graphql || !DirtyPlugins.react || !DirtyPlugins.react.html) {
     if (window.DirtyPlugins && window.DirtyPlugins.debugLog) {
       window.DirtyPlugins.debugLog("dirtyRank", "skipped: required runtime missing", {
         hasPluginApi: Boolean(PluginApi),
@@ -36,7 +36,7 @@
   debugLog("dirtyRank", "script started", { script: debugScriptSrc });
 
   var React = PluginApi.React;
-  var h = React.createElement;
+  var html = DirtyPlugins.react.html;
   var Fragment = React.Fragment;
   var useCallback = React.useCallback;
   var useEffect = React.useEffect;
@@ -74,27 +74,37 @@
   }
 
   function RankCrown() {
-    return h("svg", { "aria-hidden": "true", className: "dirty-rank-crown-icon", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.6", strokeLinecap: "round", strokeLinejoin: "round", focusable: "false" },
-      h("path", { d: "M3 8l5 4 4-8 4 8 5-4-3 11H6z", fill: "currentColor", fillOpacity: "0.18" }),
-      h("path", { d: "M6 22h12M7 16h10" }),
-      h("circle", { cx: "12", cy: "2.5", r: "1.1", fill: "currentColor", stroke: "none" }),
-      h("circle", { cx: "2", cy: "6", r: "1.1", fill: "currentColor", stroke: "none" }),
-      h("circle", { cx: "22", cy: "6", r: "1.1", fill: "currentColor", stroke: "none" })
-    );
+    return html`<svg
+      aria-hidden="true"
+      className="dirty-rank-crown-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      focusable="false"
+    >
+      <path d="M3 8l5 4 4-8 4 8 5-4-3 11H6z" fill="currentColor" fillOpacity="0.18" />
+      <path d="M6 22h12M7 16h10" />
+      <circle cx="12" cy="2.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="2" cy="6" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="22" cy="6" r="1.1" fill="currentColor" stroke="none" />
+    </svg>`;
   }
 
   function RankButton(props) {
-    if (SharedButton) return h(SharedButton, props, props.children);
-    return h("button", {
-      className: "btn btn-" + (props.tone || "secondary") +
+    if (SharedButton) return html`<${SharedButton} ...${props}>${props.children}<//>`;
+    return html`<button
+      className=${"btn btn-" + (props.tone || "secondary") +
         " dirty-ui-button dirty-ui-control" +
         (props.compact ? " dirty-ui-control-compact" : "") +
-        (props.className ? " " + props.className : ""),
-      disabled: props.disabled,
-      "aria-pressed": props.pressed == null ? undefined : Boolean(props.pressed),
-      onClick: props.onClick,
-      type: "button",
-    }, props.children);
+        (props.className ? " " + props.className : "")}
+      disabled=${props.disabled}
+      aria-pressed=${props.pressed == null ? undefined : Boolean(props.pressed)}
+      onClick=${props.onClick}
+      type="button"
+    >${props.children}</button>`;
   }
   var PERFORMERS_ROUTE_PATH = "/performers";
   var OVERALL_SORT_VALUE = "dirty_rank_overall";
@@ -303,11 +313,13 @@
 
   function NativePreviewPlayer(props) {
     var query = PluginApi.utils.StashService.useFindScene(props.media.id);
-    if (query.loading) return h("div", { className: "dirty-rank-scene-loading", role: "status" }, "Loading scene player…");
+    if (query.loading) return html`<div className="dirty-rank-scene-loading" role="status">Loading scene player…</div>`;
     if (query.error || !query.data || !query.data.findScene) {
-      return h("div", { className: "dirty-rank-scene-error", role: "alert" }, "Could not load the scene player. Close it and try again.");
+      return html`<div className="dirty-rank-scene-error" role="alert">
+        Could not load the scene player. Close it and try again.
+      </div>`;
     }
-    return h(LoadedNativePreview, { scene: query.data.findScene, marker: props.media.marker });
+    return html`<${LoadedNativePreview} scene=${query.data.findScene} marker=${props.media.marker} />`;
   }
 
   function LoadedNativePreview(props) {
@@ -372,17 +384,17 @@
         // ScenePlayer owns disposal of its player and active stream on unmount.
       };
     }, [marker]);
-    return h("div", { className: "dirty-rank-native-preview dirty-rank-scene-player", ref: hostRef },
-      h(PluginApi.components.ScenePlayer, {
-        scene: props.scene,
-        autoplay: true,
-        permitLoop: false,
-        hideScrubberOverride: true,
-        initialTimestamp: initialTimestamp,
-        sendSetTimestamp: sendSetTimestamp,
-        onComplete: sendSetTimestamp,
-      })
-    );
+    return html`<div className="dirty-rank-native-preview dirty-rank-scene-player" ref=${hostRef}>
+      <${PluginApi.components.ScenePlayer}
+        scene=${props.scene}
+        autoplay=${true}
+        permitLoop=${false}
+        hideScrubberOverride=${true}
+        initialTimestamp=${initialTimestamp}
+        sendSetTimestamp=${sendSetTimestamp}
+        onComplete=${sendSetTimestamp}
+      />
+    </div>`;
   }
 
   function parseState(performer) {
@@ -445,14 +457,10 @@
         " categories rated · mean category RD " + props.pool.deviation.toFixed(1)
       : tier.label + " precision · RD " + props.pool.deviation.toFixed(1);
     title += " · " + props.pool.matches.toLocaleString() + (props.pool.matches === 1 ? " battle" : " battles");
-    if (SharedBadge) return h(SharedBadge, {
-      className: "text-uppercase dirty-rank-status-" + tier.id,
-      title: title,
-    }, tier.label);
-    return h("span", {
-      className: "badge badge-pill text-uppercase dirty-rank-status-" + tier.id,
-      title: title,
-    }, tier.label);
+    if (SharedBadge) return html`<${SharedBadge} className=${"text-uppercase dirty-rank-status-" + tier.id} title=${title}>${tier.label}<//>`;
+    return html`<span className=${"badge badge-pill text-uppercase dirty-rank-status-" + tier.id} title=${title}>
+      ${tier.label}
+    </span>`;
   }
 
   function updatePerformerState(performer, state) {
@@ -956,124 +964,129 @@
         }
       });
     }
-    return h(
-      "div",
-      {
-        "aria-disabled": props.disabled ? "true" : undefined,
-        "aria-label": props.crowned ? "King of the hill: " + performer.name : "Choose " + performer.name,
-        className: "dirty-rank-card" + (NativePerformerCard ? " dirty-rank-battle-native" : "") + (showMedia ? "" : " dirty-rank-card-no-image") + (props.gauntletTarget ? " dirty-rank-card-gauntlet-target" : "") + (props.kingTarget ? " dirty-rank-card-king-target" : "") + (props.crowned ? " dirty-rank-card-crowned" : "") + (props.disabled ? " dirty-rank-card-disabled" : ""),
-        onClick: chooseFromClick,
-        onKeyDown: chooseFromKeyboard,
-        role: props.crowned ? "group" : "button",
-        tabIndex: props.disabled || props.crowned ? -1 : 0,
-      },
-      props.hillMode && h("div", { className: "dirty-rank-hill-role" + (props.kingTarget ? " dirty-rank-hill-role-champion" : "") },
-        h(RankCrown, null),
-        h("span", null, props.crowned ? "Hill conquered" : props.kingTarget ? "Reigning champion" : props.hillOpening ? "Contender" : "Challenger")
-      ),
-      showMedia && h(
-        "div",
-        {
-          className: "dirty-rank-image-wrap" + (imageReady ? " dirty-rank-image-ready" : "") + (scene || sceneLoading ? " dirty-rank-scene-playing" : "") + (!showImages ? " dirty-rank-media-no-portrait" : ""),
-        },
-        NativePerformerCard ? h("div", {
-          className: "dirty-rank-native-portrait dirty-rank-native-card",
-          onClickCapture: chooseNativePhoto,
-          onKeyDown: function (event) { event.stopPropagation(); },
-        },
-          h(NativePerformerCard, { performer: performer }),
-          !props.crowned && h("span", { className: "dirty-rank-native-vote-hint" }, "Click photo to vote"),
-          reveal && props.rank && h("span", { className: "dirty-rank-rank" }, "#" + props.rank)
-        ) : showImages && h("div", { className: "dirty-rank-portrait" },
-          performer.image_path
-          ? h("img", {
-              alt: "",
-              className: "dirty-rank-image",
-              loading: "eager",
-              onError: function () { setImageReady(true); },
-              onLoad: function () { setImageReady(true); },
-              src: performer.image_path,
-            })
-          : h("div", { className: "dirty-rank-image-placeholder d-flex flex-column align-items-center justify-content-center" },
-              h("span", null, "◇"),
-              h("span", null, "No performer image")
-            ),
-          performer.image_path && !imageReady && h("div", { "aria-hidden": "true", className: "dirty-rank-image-loading" }),
-          !props.crowned && (scene || sceneLoading) && h("span", { className: "dirty-rank-photo-vote-hint" }, "Click photo to vote"),
-          reveal && props.rank && h("span", { className: "dirty-rank-rank" }, "#" + props.rank)
-        ),
-        (scene || sceneLoading) && h("div", {
-          className: "dirty-rank-scene-panel",
-          onClick: function (event) { event.stopPropagation(); },
-          onKeyDown: function (event) { event.stopPropagation(); },
-        },
-          scene && needsNativePreview(scene) && PluginApi.components && PluginApi.components.ScenePlayer &&
+    return html`<div
+      aria-disabled=${props.disabled ? "true" : undefined}
+      aria-label=${props.crowned ? "King of the hill: " + performer.name : "Choose " + performer.name}
+      className=${"dirty-rank-card" + (NativePerformerCard ? " dirty-rank-battle-native" : "") + (showMedia ? "" : " dirty-rank-card-no-image") + (props.gauntletTarget ? " dirty-rank-card-gauntlet-target" : "") + (props.kingTarget ? " dirty-rank-card-king-target" : "") + (props.crowned ? " dirty-rank-card-crowned" : "") + (props.disabled ? " dirty-rank-card-disabled" : "")}
+      onClick=${chooseFromClick}
+      onKeyDown=${chooseFromKeyboard}
+      role=${props.crowned ? "group" : "button"}
+      tabIndex=${props.disabled || props.crowned ? -1 : 0}
+    >
+      ${props.hillMode && html`<div
+        className=${"dirty-rank-hill-role" + (props.kingTarget ? " dirty-rank-hill-role-champion" : "")}
+      >
+        <${RankCrown} />
+        <span>
+          ${props.crowned ? "Hill conquered" : props.kingTarget ? "Reigning champion" : props.hillOpening ? "Contender" : "Challenger"}
+        </span>
+      </div>`}
+      ${showMedia && html`<div
+        className=${"dirty-rank-image-wrap" + (imageReady ? " dirty-rank-image-ready" : "") + (scene || sceneLoading ? " dirty-rank-scene-playing" : "") + (!showImages ? " dirty-rank-media-no-portrait" : "")}
+      >
+        ${NativePerformerCard ? html`<div
+          className="dirty-rank-native-portrait dirty-rank-native-card"
+          onClickCapture=${chooseNativePhoto}
+          onKeyDown=${function (event) { event.stopPropagation(); }}
+        >
+          <${NativePerformerCard} performer=${performer} />
+          ${!props.crowned && html`<span className="dirty-rank-native-vote-hint">Click photo to vote</span>`}
+          ${reveal && props.rank && html`<span className="dirty-rank-rank">${"#" + props.rank}</span>`}
+        </div>` : showImages && html`<div className="dirty-rank-portrait">
+          ${performer.image_path
+          ? html`<img
+            alt=""
+            className="dirty-rank-image"
+            loading="eager"
+            onError=${function () { setImageReady(true); }}
+            onLoad=${function () { setImageReady(true); }}
+            src=${performer.image_path}
+          />`
+          : html`<div
+            className="dirty-rank-image-placeholder d-flex flex-column align-items-center justify-content-center"
+          >
+            <span>◇</span>
+            <span>No performer image</span>
+          </div>`}
+          ${performer.image_path && !imageReady && html`<div aria-hidden="true" className="dirty-rank-image-loading" />`}
+          ${!props.crowned && (scene || sceneLoading) && html`<span className="dirty-rank-photo-vote-hint">Click photo to vote</span>`}
+          ${reveal && props.rank && html`<span className="dirty-rank-rank">${"#" + props.rank}</span>`}
+        </div>`}
+        ${(scene || sceneLoading) && html`<div
+          className="dirty-rank-scene-panel"
+          onClick=${function (event) { event.stopPropagation(); }}
+          onKeyDown=${function (event) { event.stopPropagation(); }}
+        >
+          ${scene && needsNativePreview(scene) && PluginApi.components && PluginApi.components.ScenePlayer &&
             PluginApi.utils && PluginApi.utils.StashService && PluginApi.utils.StashService.useFindScene
-            ? h(NativePreviewPlayer, { key: scene.id, media: scene })
-            : scene ? h("video", {
-            "aria-label": "Scene preview for " + performer.name,
-            className: "dirty-rank-scene-player",
-            controls: true,
-            muted: true,
-            onLoadedMetadata: startMarkerPlayback,
-            onDurationChange: startMarkerPlayback,
-            onPlay: keepMarkerPlaybackInRange,
-            onTimeUpdate: stopAtMarkerEnd,
-            onError: function (event) {
-              if (event.currentTarget !== videoRef.current || !cardMountedRef.current) return;
-              setSceneError("This scene could not be played. Close it and try again.");
-              setVideoRef(null);
-              setScene(null);
-            },
-            playsInline: true,
-            preload: "metadata",
-            ref: setVideoRef,
-            src: scenePlaybackUrl(scene),
-          }) : h("div", { className: "dirty-rank-scene-loading", role: "status" }, "Loading top scene…"),
-          scene && h("div", { className: "dirty-rank-scene-caption" },
-            h("span", null, scene.marker
-              ? "Marker · " + (scene.marker.title || scene.title || "Untitled")
-              : scene.title || "Top-rated scene"),
-            Number.isFinite(scene.rating100) && h("span", null, "Rating " + scene.rating100)
-          )
-        )
-      ),
-      !showImages && reveal && props.rank && h("span", { className: "dirty-rank-rank" }, "#" + props.rank),
-      props.gauntletTarget && h("span", { className: "dirty-rank-gauntlet-target" }, "Gauntlet target"),
-      props.kingTarget && !props.hillMode && h("span", { className: "dirty-rank-king-target" }, h(RankCrown, null), "King of the hill"),
-      h(
-        "div",
-        { className: "dirty-rank-card-body" },
-        h("h2", { className: "dirty-rank-performer-name" },
-          h(NavLink, {
-            className: "dirty-rank-performer-link",
-            onClick: function (event) { event.stopPropagation(); },
-            title: "Open " + performer.name,
-            to: "/performers/" + performer.id,
-          }, performer.name)
-        ),
-        h("div", { className: "dirty-rank-card-meta d-flex flex-wrap align-items-center" },
-          h("span", null, Number(performer.scene_count || 0).toLocaleString() + " scenes")
-        ),
-        h("div", { className: "dirty-rank-scene-actions" },
-          h(RankButton, {
-            compact: true,
-            className: "dirty-rank-play-scene",
-            disabled: props.disabled || Number(performer.scene_count || 0) < 1,
-            onClick: toggleTopScene,
-          }, sceneLoading ? "Cancel loading" : scene ? (scene.marker ? "Close marker" : "Close top scene") : "▶ Play top scene")
-        ),
-        sceneError && h("div", { className: "dirty-rank-scene-error dirty-ui-text-error", role: "alert" }, sceneError),
-        h("div", { className: "dirty-rank-rating-row d-flex flex-wrap align-items-center" },
-          reveal
-            ? h(Fragment, null,
-                h("span", { className: "dirty-rank-rating-value" }, Math.round(pool.rating).toLocaleString()),
-                h(PrecisionBadge, { pool: pool, settings: props.settings })
-              )
-            : h("span", { className: "dirty-rank-hidden-rating" }, "Rating revealed after your choice")
-        )
-      )
-    );
+            ? html`<${NativePreviewPlayer} key=${scene.id} media=${scene} />`
+            : scene ? html`<video
+              aria-label=${"Scene preview for " + performer.name}
+              className="dirty-rank-scene-player"
+              controls=${true}
+              muted=${true}
+              onLoadedMetadata=${startMarkerPlayback}
+              onDurationChange=${startMarkerPlayback}
+              onPlay=${keepMarkerPlaybackInRange}
+              onTimeUpdate=${stopAtMarkerEnd}
+              onError=${function (event) {
+                if (event.currentTarget !== videoRef.current || !cardMountedRef.current) return;
+                setSceneError("This scene could not be played. Close it and try again.");
+                setVideoRef(null);
+                setScene(null);
+              }}
+              playsInline=${true}
+              preload="metadata"
+              ref=${setVideoRef}
+              src=${scenePlaybackUrl(scene)}
+            />` : html`<div className="dirty-rank-scene-loading" role="status">Loading top scene…</div>`}
+          ${scene && html`<div className="dirty-rank-scene-caption">
+            <span>
+              ${scene.marker
+                ? "Marker · " + (scene.marker.title || scene.title || "Untitled")
+                : scene.title || "Top-rated scene"}
+            </span>
+            ${Number.isFinite(scene.rating100) && html`<span>${"Rating " + scene.rating100}</span>`}
+          </div>`}
+        </div>`}
+      </div>`}
+      ${!showImages && reveal && props.rank && html`<span className="dirty-rank-rank">${"#" + props.rank}</span>`}
+      ${props.gauntletTarget && html`<span className="dirty-rank-gauntlet-target">Gauntlet target</span>`}
+      ${props.kingTarget && !props.hillMode && html`<span className="dirty-rank-king-target">
+        <${RankCrown} />
+        King of the hill
+      </span>`}
+      <div className="dirty-rank-card-body">
+        <h2 className="dirty-rank-performer-name">
+          <${NavLink}
+            className="dirty-rank-performer-link"
+            onClick=${function (event) { event.stopPropagation(); }}
+            title=${"Open " + performer.name}
+            to=${"/performers/" + performer.id}
+          >${performer.name}<//>
+        </h2>
+        <div className="dirty-rank-card-meta d-flex flex-wrap align-items-center">
+          <span>${Number(performer.scene_count || 0).toLocaleString() + " scenes"}</span>
+        </div>
+        <div className="dirty-rank-scene-actions">
+          <${RankButton}
+            compact=${true}
+            className="dirty-rank-play-scene"
+            disabled=${props.disabled || Number(performer.scene_count || 0) < 1}
+            onClick=${toggleTopScene}
+          >${sceneLoading ? "Cancel loading" : scene ? (scene.marker ? "Close marker" : "Close top scene") : "▶ Play top scene"}<//>
+        </div>
+        ${sceneError && html`<div className="dirty-rank-scene-error dirty-ui-text-error" role="alert">${sceneError}</div>`}
+        <div className="dirty-rank-rating-row d-flex flex-wrap align-items-center">
+          ${reveal
+            ? html`<${Fragment}>
+              <span className="dirty-rank-rating-value">${Math.round(pool.rating).toLocaleString()}</span>
+              <${PrecisionBadge} pool=${pool} settings=${props.settings} />
+            <//>`
+            : html`<span className="dirty-rank-hidden-rating">Rating revealed after your choice</span>`}
+        </div>
+      </div>
+    </div>`;
   }
 
   function Leaderboard(props) {
@@ -1083,24 +1096,29 @@
       props.cohort,
       props.settings
     ).ranked.slice(0, 12);
-    return h(
-      "aside",
-      { className: "dirty-rank-leaderboard dirty-ui-feature-card", "aria-label": "DirtyRank leaderboard" },
-      h("div", { className: "dirty-rank-leaderboard-header" },
-        h("div", { className: "dirty-rank-eyebrow" }, boxFor(props.settings, props.cohort).name + " · " + boxGendersLabel(props.settings, props.cohort)),
-        h("h2", null, props.category.name + " standings"),
-        h("div", { className: "dirty-rank-leaderboard-note" }, "Current battle category · top 12")
-      ),
-      !ranked.length && h("div", { className: "dirty-rank-empty-standings" }, "Complete a battle to start this leaderboard."),
-      ranked.map(function (performer, index) {
+    return html`<aside
+      className="dirty-rank-leaderboard dirty-ui-feature-card"
+      aria-label="DirtyRank leaderboard"
+    >
+      <div className="dirty-rank-leaderboard-header">
+        <div className="dirty-rank-eyebrow">
+          ${boxFor(props.settings, props.cohort).name + " · " + boxGendersLabel(props.settings, props.cohort)}
+        </div>
+        <h2>${props.category.name + " standings"}</h2>
+        <div className="dirty-rank-leaderboard-note">Current battle category · top 12</div>
+      </div>
+      ${!ranked.length && html`<div className="dirty-rank-empty-standings">Complete a battle to start this leaderboard.</div>`}
+      ${ranked.map(function (performer, index) {
         var pool = leaderboardPoolFor(performer, props.category.id, props.cohort, props.settings);
-        return h("div", { className: "dirty-rank-standing", key: performer.id },
-          h("span", { className: "dirty-rank-standing-position" }, index + 1),
-          h("span", { className: "dirty-rank-standing-name text-truncate", title: performer.name }, performer.name),
-          h("span", { className: "dirty-rank-standing-rating" }, Math.round(pool.rating).toLocaleString() + (pool.precision.id === "provisional" ? "?" : ""))
-        );
-      })
-    );
+        return html`<div className="dirty-rank-standing" key=${performer.id}>
+          <span className="dirty-rank-standing-position">${index + 1}</span>
+          <span className="dirty-rank-standing-name text-truncate" title=${performer.name}>${performer.name}</span>
+          <span className="dirty-rank-standing-rating">
+            ${Math.round(pool.rating).toLocaleString() + (pool.precision.id === "provisional" ? "?" : "")}
+          </span>
+        </div>`;
+      })}
+    </aside>`;
   }
 
   function ConfidenceIndicator(props) {
@@ -1112,30 +1130,34 @@
     var remaining = confidence.remainingBattles > 0
       ? "≈" + confidence.remainingBattles.toLocaleString() + " more " + battlePurpose + " battles estimated"
       : "Selected confidence goal is statistically established";
-    return h("section", {
-      className: "dirty-rank-confidence",
-      title: "Estimate based on current Glicko-2 rating deviations, expected information gain, and the selected confidence goal. Future results can change it.",
-    },
-      h("div", { className: "dirty-rank-confidence-copy" },
-        h("div", { className: "dirty-rank-confidence-heading" },
-          h("strong", null, "Category confidence · " + confidence.goalLabel),
-          h("span", null, confidence.established.toLocaleString() + "/" + confidence.goalTotal.toLocaleString() + " " + confidence.goalUnit + " established")
-        ),
-        h("div", { className: "dirty-rank-confidence-detail" },
-          remaining + " · " + confidence.refined.toLocaleString() + "/" + confidence.eligible.toLocaleString() + " refined · " +
+    return html`<section
+      className="dirty-rank-confidence"
+      title="Estimate based on current Glicko-2 rating deviations, expected information gain, and the selected confidence goal. Future results can change it."
+    >
+      <div className="dirty-rank-confidence-copy">
+        <div className="dirty-rank-confidence-heading">
+          <strong>${"Category confidence · " + confidence.goalLabel}</strong>
+          <span>
+            ${confidence.established.toLocaleString() + "/" + confidence.goalTotal.toLocaleString() + " " + confidence.goalUnit + " established"}
+          </span>
+        </div>
+        <div className="dirty-rank-confidence-detail">
+          ${remaining + " · " + confidence.refined.toLocaleString() + "/" + confidence.eligible.toLocaleString() + " refined · " +
           confidence.excellent.toLocaleString() + " excellent · target RD ≤ " + Number(target).toLocaleString() + " · " +
-          confidence.completedBattles.toLocaleString() + " completed"
-        )
-      ),
-      h("div", {
-        "aria-label": "Confidence progress for " + confidence.goalLabel,
-        "aria-valuemax": 100,
-        "aria-valuemin": 0,
-        "aria-valuenow": Math.round(confidence.progress),
-        className: "dirty-rank-confidence-track",
-        role: "progressbar",
-      }, h("span", { style: { width: Math.max(0, Math.min(100, confidence.progress)) + "%" } }))
-    );
+          confidence.completedBattles.toLocaleString() + " completed"}
+        </div>
+      </div>
+      <div
+        aria-label=${"Confidence progress for " + confidence.goalLabel}
+        aria-valuemax=${100}
+        aria-valuemin=${0}
+        aria-valuenow=${Math.round(confidence.progress)}
+        className="dirty-rank-confidence-track"
+        role="progressbar"
+      >
+        <span style=${{ width: Math.max(0, Math.min(100, confidence.progress)) + "%" }} />
+      </div>
+    </section>`;
   }
 
   function GauntletConfidenceIndicator(props) {
@@ -1162,45 +1184,47 @@
     var status = remaining > 0
       ? "≈" + remaining.toLocaleString() + " more target battles estimated"
       : "Target rating precision is " + tier.label.toLowerCase();
-    return h("section", {
-      className: "dirty-rank-confidence dirty-rank-gauntlet-confidence" +
+    return html`<section
+      className=${"dirty-rank-confidence dirty-rank-gauntlet-confidence" +
         (tier.id !== "provisional" ? " dirty-rank-gauntlet-established" : "") +
-        (tier.id === "excellent" ? " dirty-rank-gauntlet-excellent" : ""),
-      title: "Gauntlet reaches Refined at RD " + props.settings.provisionalDeviation.toLocaleString() +
-        " and Excellent at RD " + excellentDeviationThreshold(props.settings).toLocaleString() + ".",
-    },
-      h("div", { className: "dirty-rank-confidence-copy" },
-        h("div", { className: "dirty-rank-confidence-heading" },
-          h("strong", null, "Target confidence · " + props.performer.name),
-          h(PrecisionBadge, { pool: pool, settings: props.settings })
-        ),
-        h("div", { className: "dirty-rank-confidence-detail" },
-          status + " · rating " + Math.round(pool.rating).toLocaleString() + (rank ? " · #" + rank : "")
-        )
-      ),
-      h("div", {
-        "aria-label": "Gauntlet confidence for " + props.performer.name,
-        "aria-valuemax": 100,
-        "aria-valuemin": 0,
-        "aria-valuenow": Math.round(progress),
-        className: "dirty-rank-confidence-track",
-        role: "progressbar",
-      }, h("span", { style: { width: progress + "%" } }))
-    );
+        (tier.id === "excellent" ? " dirty-rank-gauntlet-excellent" : "")}
+      title=${"Gauntlet reaches Refined at RD " + props.settings.provisionalDeviation.toLocaleString() +
+        " and Excellent at RD " + excellentDeviationThreshold(props.settings).toLocaleString() + "."}
+    >
+      <div className="dirty-rank-confidence-copy">
+        <div className="dirty-rank-confidence-heading">
+          <strong>${"Target confidence · " + props.performer.name}</strong>
+          <${PrecisionBadge} pool=${pool} settings=${props.settings} />
+        </div>
+        <div className="dirty-rank-confidence-detail">
+          ${status + " · rating " + Math.round(pool.rating).toLocaleString() + (rank ? " · #" + rank : "")}
+        </div>
+      </div>
+      <div
+        aria-label=${"Gauntlet confidence for " + props.performer.name}
+        aria-valuemax=${100}
+        aria-valuemin=${0}
+        aria-valuenow=${Math.round(progress)}
+        className="dirty-rank-confidence-track"
+        role="progressbar"
+      >
+        <span style=${{ width: progress + "%" }} />
+      </div>
+    </section>`;
   }
 
   function LeaderboardStat(props) {
-    if (SharedMetric) return h(SharedMetric, {
-      className: "dirty-rank-stat dirty-ui-feature-card",
-      label: props.label,
-      value: props.value,
-      detail: props.detail,
-    });
-    return h("div", { className: "dirty-rank-stat dirty-ui-feature-card" },
-      h("span", { className: "dirty-rank-stat-label" }, props.label),
-      h("strong", { className: "dirty-rank-stat-value" }, props.value),
-      h("span", { className: "dirty-rank-stat-detail" }, props.detail)
-    );
+    if (SharedMetric) return html`<${SharedMetric}
+      className="dirty-rank-stat dirty-ui-feature-card"
+      label=${props.label}
+      value=${props.value}
+      detail=${props.detail}
+    />`;
+    return html`<div className="dirty-rank-stat dirty-ui-feature-card">
+      <span className="dirty-rank-stat-label">${props.label}</span>
+      <strong className="dirty-rank-stat-value">${props.value}</strong>
+      <span className="dirty-rank-stat-detail">${props.detail}</span>
+    </div>`;
   }
 
   function OverallConfidence(props) {
@@ -1219,42 +1243,44 @@
     }, 0) / totalWeight : 0;
     var remaining = rows.reduce(function (sum, row) { return sum + row.confidence.remainingBattles; }, 0);
     var complete = rows.filter(function (row) { return row.confidence.remainingBattles === 0; }).length;
-    return h("section", { className: "dirty-rank-overall-confidence dirty-ui-feature-card" },
-      h("div", { className: "dirty-rank-panel-heading d-flex align-items-end justify-content-between" },
-        h("div", null,
-          h("div", { className: "dirty-rank-eyebrow" }, "Weighted category confidence"),
-          h("h2", null, "Overall confidence")
-        ),
-        h("div", { className: "dirty-rank-panel-summary" },
-          complete.toLocaleString() + "/" + rows.length.toLocaleString() + " categories established · ≈" + remaining.toLocaleString() + " battles remaining"
-        )
-      ),
-      h("div", {
-        "aria-label": "Weighted overall confidence progress",
-        "aria-valuemax": 100,
-        "aria-valuemin": 0,
-        "aria-valuenow": Math.round(progress),
-        className: "dirty-rank-confidence-track dirty-rank-overall-confidence-track",
-        role: "progressbar",
-      }, h("span", { style: { width: Math.max(0, Math.min(100, progress)) + "%" } })),
-      h("div", { className: "dirty-rank-confidence-categories" },
-        rows.map(function (row) {
+    return html`<section className="dirty-rank-overall-confidence dirty-ui-feature-card">
+      <div className="dirty-rank-panel-heading d-flex align-items-end justify-content-between">
+        <div>
+          <div className="dirty-rank-eyebrow">Weighted category confidence</div>
+          <h2>Overall confidence</h2>
+        </div>
+        <div className="dirty-rank-panel-summary">
+          ${complete.toLocaleString() + "/" + rows.length.toLocaleString() + " categories established · ≈" + remaining.toLocaleString() + " battles remaining"}
+        </div>
+      </div>
+      <div
+        aria-label="Weighted overall confidence progress"
+        aria-valuemax=${100}
+        aria-valuemin=${0}
+        aria-valuenow=${Math.round(progress)}
+        className="dirty-rank-confidence-track dirty-rank-overall-confidence-track"
+        role="progressbar"
+      >
+        <span style=${{ width: Math.max(0, Math.min(100, progress)) + "%" }} />
+      </div>
+      <div className="dirty-rank-confidence-categories">
+        ${rows.map(function (row) {
           var confidence = row.confidence;
-          return h("article", { className: "dirty-rank-confidence-category", key: row.category.id },
-            h("div", { className: "dirty-rank-confidence-category-heading" },
-              h("strong", null, row.category.name),
-              h("span", null, Math.round(confidence.progress) + "%")
-            ),
-            h("div", { className: "dirty-rank-confidence-detail" },
-              confidence.refined.toLocaleString() + "/" + confidence.eligible.toLocaleString() + " refined · " +
+          return html`<article className="dirty-rank-confidence-category" key=${row.category.id}>
+            <div className="dirty-rank-confidence-category-heading">
+              <strong>${row.category.name}</strong>
+              <span>${Math.round(confidence.progress) + "%"}</span>
+            </div>
+            <div className="dirty-rank-confidence-detail">
+              ${confidence.refined.toLocaleString() + "/" + confidence.eligible.toLocaleString() + " refined · " +
               confidence.excellent.toLocaleString() + " excellent · " +
               confidence.established.toLocaleString() + "/" + confidence.goalTotal.toLocaleString() + " established · ≈" +
-              confidence.remainingBattles.toLocaleString() + " remaining"
-            )
-          );
-        })
-      )
-    );
+              confidence.remainingBattles.toLocaleString() + " remaining"}
+            </div>
+          </article>`;
+        })}
+      </div>
+    </section>`;
   }
 
   function leaderboardTopCount(value) {
@@ -1342,29 +1368,29 @@
 
   function RankStatisticSelector(props) {
     var history = Router.useHistory();
-    return h(SharedStatisticSelector, {
-      id: "dirty-rank-statistic",
-      value: props.value,
-      options: [{ value: OVERALL_LEADERBOARD_ID, label: "Overall" }].concat(props.categories.map(function (category) { return { value: category.id, label: category.name }; })),
-      onSelect: function (id) { var path = leaderboardStatPath(id, props.boxId); history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(path) : path); },
-    });
+    return html`<${SharedStatisticSelector}
+      id="dirty-rank-statistic"
+      value=${props.value}
+      options=${[{ value: OVERALL_LEADERBOARD_ID, label: "Overall" }].concat(props.categories.map(function (category) { return { value: category.id, label: category.name }; }))}
+      onSelect=${function (id) { var path = leaderboardStatPath(id, props.boxId); history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(path) : path); }}
+    />`;
   }
 
   function LeaderboardInfoPopover(props) {
     var Dropdown = PluginApi.libraries.Bootstrap.Dropdown;
-    return h(Dropdown, { className: "dirty-rank-info-dropdown" },
-      h(Dropdown.Toggle, {
-        id: props.id,
-        variant: "secondary",
-        className: "dirty-ui-button dirty-ui-control",
-      }, props.label),
-      h(Dropdown.Menu, {
-        className: "dirty-rank-info-popover dirty-ui-panel" + (props.className ? " " + props.className : ""),
-        role: "region",
-        "aria-label": props.label,
-        renderOnMount: false,
-      }, props.children)
-    );
+    return html`<${Dropdown} className="dirty-rank-info-dropdown">
+      <${Dropdown.Toggle}
+        id=${props.id}
+        variant="secondary"
+        className="dirty-ui-button dirty-ui-control"
+      >${props.label}<//>
+      <${Dropdown.Menu}
+        className=${"dirty-rank-info-popover dirty-ui-panel" + (props.className ? " " + props.className : "")}
+        role="region"
+        aria-label=${props.label}
+        renderOnMount=${false}
+      >${props.children}<//>
+    <//>`;
   }
 
   function LeaderboardPodium(props) {
@@ -1375,40 +1401,61 @@
     var podiumOrder = [1, 0, 2];
     var displayOrder = topCount === 3 ? podiumOrder : top.map(function (_performer, index) { return index; });
     if (!top.length) {
-      return h(StateView, { title: "No rated performers", detail: "Complete a battle in this category to create its leaderboard." });
+      return html`<${StateView}
+        title="No rated performers"
+        detail="Complete a battle in this category to create its leaderboard."
+      />`;
     }
-    return h("section", {
-      "aria-label": showcase.name,
-      className: "dirty-rank-podium" + (topCount > 3 ? " dirty-rank-podium-expanded dirty-rank-showcase dirty-rank-showcase-" + showcase.theme : ""),
-      style: { "--dirty-rank-top-count": topCount },
-    },
-      displayOrder.filter(function (index) { return top[index]; }).map(function (index) {
+    return html`<section
+      aria-label=${showcase.name}
+      className=${"dirty-rank-podium" + (topCount > 3 ? " dirty-rank-podium-expanded dirty-rank-showcase dirty-rank-showcase-" + showcase.theme : "")}
+      style=${{ "--dirty-rank-top-count": topCount }}
+    >
+      ${displayOrder.filter(function (index) { return top[index]; }).map(function (index) {
         var performer = top[index];
         var pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
-        return h("article", { className: "dirty-rank-podium-place d-flex flex-column dirty-rank-podium-" + (index + 1), key: performer.id },
-          h("div", { className: NativePerformerCard ? "dirty-rank-native-card" : "dirty-rank-podium-card" },
-            NativePerformerCard ? h(NativePerformerCard, { performer: performer }) : h(NavLink, { className: "dirty-rank-podium-image-link", to: "/performers/" + performer.id },
-              performer.image_path
-                ? h("img", { alt: "", className: "dirty-rank-podium-image", loading: "lazy", src: performer.image_path })
-                : h("div", { className: "dirty-rank-podium-placeholder d-flex align-items-center justify-content-center" }, "◇")
-            ),
-            h("div", { className: "dirty-rank-podium-copy text-center" },
-              !NativePerformerCard && h(NavLink, { className: "dirty-rank-podium-name text-truncate", to: "/performers/" + performer.id }, performer.name),
-              h("div", { className: "dirty-rank-leaderboard-rating-row" },
-                h("strong", { className: "dirty-rank-leaderboard-rank" }, "#" + (index + 1)),
-                h("strong", { className: "dirty-rank-podium-rating", title: overallCategoryScoresTitle(performer, props.leaderboardId, props.cohort, props.settings) }, leaderboardRatingText(pool, props.settings))
-              )
-            )
-          ),
-          topCount === 3 && h("div", { "aria-hidden": "true", className: "dirty-rank-podium-step" },
-            h("span", null, index + 1)
-          ),
-          topCount > 3 && h("div", { "aria-hidden": "true", className: "dirty-rank-showcase-base" },
-            h("span", null, topCount === 4 ? ["I", "II", "III", "IV"][index] : index + 1)
-          )
-        );
-      })
-    );
+        return html`<article
+          className=${"dirty-rank-podium-place d-flex flex-column dirty-rank-podium-" + (index + 1)}
+          key=${performer.id}
+        >
+          <div
+            className=${NativePerformerCard ? "dirty-rank-native-card" : "dirty-rank-podium-card"}
+          >
+            ${NativePerformerCard ? html`<${NativePerformerCard} performer=${performer} />` : html`<${NavLink} className="dirty-rank-podium-image-link" to=${"/performers/" + performer.id}>
+              ${performer.image_path
+                ? html`<img
+                  alt=""
+                  className="dirty-rank-podium-image"
+                  loading="lazy"
+                  src=${performer.image_path}
+                />`
+                : html`<div
+                  className="dirty-rank-podium-placeholder d-flex align-items-center justify-content-center"
+                >◇</div>`}
+            <//>`}
+            <div className="dirty-rank-podium-copy text-center">
+              ${!NativePerformerCard && html`<${NavLink}
+                className="dirty-rank-podium-name text-truncate"
+                to=${"/performers/" + performer.id}
+              >${performer.name}<//>`}
+              <div className="dirty-rank-leaderboard-rating-row">
+                <strong className="dirty-rank-leaderboard-rank">${"#" + (index + 1)}</strong>
+                <strong
+                  className="dirty-rank-podium-rating"
+                  title=${overallCategoryScoresTitle(performer, props.leaderboardId, props.cohort, props.settings)}
+                >${leaderboardRatingText(pool, props.settings)}</strong>
+              </div>
+            </div>
+          </div>
+          ${topCount === 3 && html`<div aria-hidden="true" className="dirty-rank-podium-step">
+            <span>${index + 1}</span>
+          </div>`}
+          ${topCount > 3 && html`<div aria-hidden="true" className="dirty-rank-showcase-base">
+            <span>${topCount === 4 ? ["I", "II", "III", "IV"][index] : index + 1}</span>
+          </div>`}
+        </article>`;
+      })}
+    </section>`;
   }
 
   function LeaderboardPagination(props) {
@@ -1416,32 +1463,35 @@
     var summary = "Page " + props.page.toLocaleString() + " of " +
       props.totalPages.toLocaleString() + " · ranks " +
       props.firstRank.toLocaleString() + "–" + props.lastRank.toLocaleString();
-    if (SharedPagination) return h(SharedPagination, {
-      ariaLabel: "Leaderboard pages",
-      className: "dirty-rank-pagination",
-      onPageChange: props.onPageChange,
-      page: props.page,
-      summary: summary,
-      totalPages: props.totalPages,
-    });
-    return h("nav", { "aria-label": "Leaderboard pages", className: "dirty-rank-pagination d-flex align-items-center justify-content-between" },
-      h("button", {
-        className: "btn btn-sm btn-secondary",
-        disabled: props.page <= 1,
-        onClick: function () { props.onPageChange(props.page - 1); },
-        type: "button",
-      }, "Previous"),
-      h("span", { className: "dirty-rank-pagination-summary" },
-        "Page " + props.page.toLocaleString() + " of " + props.totalPages.toLocaleString() +
-        " · ranks " + props.firstRank.toLocaleString() + "–" + props.lastRank.toLocaleString()
-      ),
-      h("button", {
-        className: "btn btn-sm btn-secondary",
-        disabled: props.page >= props.totalPages,
-        onClick: function () { props.onPageChange(props.page + 1); },
-        type: "button",
-      }, "Next")
-    );
+    if (SharedPagination) return html`<${SharedPagination}
+      ariaLabel="Leaderboard pages"
+      className="dirty-rank-pagination"
+      onPageChange=${props.onPageChange}
+      page=${props.page}
+      summary=${summary}
+      totalPages=${props.totalPages}
+    />`;
+    return html`<nav
+      aria-label="Leaderboard pages"
+      className="dirty-rank-pagination d-flex align-items-center justify-content-between"
+    >
+      <button
+        className="btn btn-sm btn-secondary"
+        disabled=${props.page <= 1}
+        onClick=${function () { props.onPageChange(props.page - 1); }}
+        type="button"
+      >Previous</button>
+      <span className="dirty-rank-pagination-summary">
+        ${"Page " + props.page.toLocaleString() + " of " + props.totalPages.toLocaleString() +
+        " · ranks " + props.firstRank.toLocaleString() + "–" + props.lastRank.toLocaleString()}
+      </span>
+      <button
+        className="btn btn-sm btn-secondary"
+        disabled=${props.page >= props.totalPages}
+        onClick=${function () { props.onPageChange(props.page + 1); }}
+        type="button"
+      >Next</button>
+    </nav>`;
   }
 
   function leaderboardEntries(ranked) {
@@ -1539,41 +1589,62 @@
     var topCount = leaderboardFeaturedCount(props);
     var pageSize = leaderboardPageSize(props.settings, topCount, props.showFeatured === false ? 0 : Math.min(topCount, ranked.length));
     var page = paginatedLeaderboard(entries, props.page, pageSize);
-    return h("section", { className: "dirty-rank-standings-panel dirty-ui-feature-card" },
-      !page.total
-        ? h("div", { className: "dirty-rank-empty-standings" }, props.emptyMessage || (ranked.length ? "Every rated performer is featured above." : "No standings yet."))
-        : h("div", { className: "dirty-rank-table-wrap dirty-ui-table-wrap" },
-            h("table", { className: "table table-hover mb-0 dirty-ui-table dirty-rank-standings-table" },
-              h("thead", null, h("tr", null,
-                h("th", { scope: "col" }, "Rank"),
-                h("th", { scope: "col" }, "Performer"),
-                h("th", { scope: "col" }, props.leaderboardId === OVERALL_LEADERBOARD_ID ? "Score" : "Rating")
-              )),
-              h("tbody", null, page.items.map(function (entry) {
+    return html`<section className="dirty-rank-standings-panel dirty-ui-feature-card">
+      ${!page.total
+        ? html`<div className="dirty-rank-empty-standings">
+          ${props.emptyMessage || (ranked.length ? "Every rated performer is featured above." : "No standings yet.")}
+        </div>`
+        : html`<div className="dirty-rank-table-wrap dirty-ui-table-wrap">
+          <table className="table table-hover mb-0 dirty-ui-table dirty-rank-standings-table">
+            <thead>
+              <tr>
+                <th scope="col">Rank</th>
+                <th scope="col">Performer</th>
+                <th scope="col">${props.leaderboardId === OVERALL_LEADERBOARD_ID ? "Score" : "Rating"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${page.items.map(function (entry) {
                 var performer = entry.performer;
                 var rank = entry.rank;
                 var pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
-                return h("tr", { key: performer.id },
-                  h("td", { className: "dirty-rank-table-rank" }, "#" + rank),
-                  h("td", null, h(NavLink, { className: "dirty-rank-table-performer d-inline-flex align-items-center", to: "/performers/" + performer.id },
-                    performer.image_path
-                      ? h("img", { alt: "", className: "rounded-circle", loading: "lazy", src: performer.image_path })
-                      : h("span", { className: "dirty-rank-table-avatar-placeholder d-inline-flex align-items-center justify-content-center rounded-circle" }, "◇"),
-                    h("span", { className: "text-truncate" }, performer.name)
-                  )),
-                  h("td", { className: "dirty-rank-table-rating", title: overallCategoryScoresTitle(performer, props.leaderboardId, props.cohort, props.settings) }, leaderboardRatingText(pool, props.settings))
-                );
-              }))
-            ),
-            h(LeaderboardPagination, {
-              firstRank: page.firstRank,
-              lastRank: page.lastRank,
-              onPageChange: props.onPageChange,
-              page: page.currentPage,
-              totalPages: page.totalPages,
-            })
-          )
-    );
+                return html`<tr key=${performer.id}>
+                  <td className="dirty-rank-table-rank">${"#" + rank}</td>
+                  <td>
+                    <${NavLink}
+                      className="dirty-rank-table-performer d-inline-flex align-items-center"
+                      to=${"/performers/" + performer.id}
+                    >
+                      ${performer.image_path
+                        ? html`<img
+                          alt=""
+                          className="rounded-circle"
+                          loading="lazy"
+                          src=${performer.image_path}
+                        />`
+                        : html`<span
+                          className="dirty-rank-table-avatar-placeholder d-inline-flex align-items-center justify-content-center rounded-circle"
+                        >◇</span>`}
+                      <span className="text-truncate">${performer.name}</span>
+                    <//>
+                  </td>
+                  <td
+                    className="dirty-rank-table-rating"
+                    title=${overallCategoryScoresTitle(performer, props.leaderboardId, props.cohort, props.settings)}
+                  >${leaderboardRatingText(pool, props.settings)}</td>
+                </tr>`;
+              })}
+            </tbody>
+          </table>
+          <${LeaderboardPagination}
+            firstRank=${page.firstRank}
+            lastRank=${page.lastRank}
+            onPageChange=${props.onPageChange}
+            page=${page.currentPage}
+            totalPages=${page.totalPages}
+          />
+        </div>`}
+    </section>`;
   }
 
   function LeaderboardGalleryCard(props) {
@@ -1586,28 +1657,36 @@
     var failedState = useState(false);
     var imageFailed = failedState[0];
     var setImageFailed = failedState[1];
-    return h("article", { className: NativePerformerCard ? "dirty-rank-native-card" : "dirty-rank-gallery-card" },
-      NativePerformerCard ? h(NativePerformerCard, { performer: performer }) : h(NavLink, { className: "dirty-rank-gallery-image-link", to: "/performers/" + performer.id },
-        performer.image_path && !imageFailed
-          ? h("img", {
-              alt: "",
-              className: imageReady ? "dirty-rank-gallery-image dirty-rank-gallery-image-ready" : "dirty-rank-gallery-image",
-              loading: "lazy",
-              onError: function () { setImageFailed(true); setImageReady(true); },
-              onLoad: function () { setImageReady(true); },
-              src: performer.image_path,
-            })
-          : h("div", { className: "dirty-rank-gallery-placeholder d-flex align-items-center justify-content-center" }, "◇"),
-        performer.image_path && !imageFailed && !imageReady && h("span", { "aria-hidden": "true", className: "dirty-rank-gallery-loading" })
-      ),
-      h("div", { className: "dirty-rank-gallery-copy" },
-        !NativePerformerCard && h(NavLink, { className: "dirty-rank-gallery-name text-truncate", title: performer.name, to: "/performers/" + performer.id }, performer.name),
-        h("div", { className: "dirty-rank-gallery-rating-row dirty-rank-leaderboard-rating-row" },
-          h("strong", { className: "dirty-rank-leaderboard-rank" }, "#" + props.rank),
-          h("strong", { title: overallCategoryScoresTitle(performer, props.leaderboardId, props.cohort, props.settings) }, leaderboardRatingText(pool, props.settings))
-        )
-      )
-    );
+    return html`<article className=${NativePerformerCard ? "dirty-rank-native-card" : "dirty-rank-gallery-card"}>
+      ${NativePerformerCard ? html`<${NativePerformerCard} performer=${performer} />` : html`<${NavLink} className="dirty-rank-gallery-image-link" to=${"/performers/" + performer.id}>
+        ${performer.image_path && !imageFailed
+          ? html`<img
+            alt=""
+            className=${imageReady ? "dirty-rank-gallery-image dirty-rank-gallery-image-ready" : "dirty-rank-gallery-image"}
+            loading="lazy"
+            onError=${function () { setImageFailed(true); setImageReady(true); }}
+            onLoad=${function () { setImageReady(true); }}
+            src=${performer.image_path}
+          />`
+          : html`<div
+            className="dirty-rank-gallery-placeholder d-flex align-items-center justify-content-center"
+          >◇</div>`}
+        ${performer.image_path && !imageFailed && !imageReady && html`<span aria-hidden="true" className="dirty-rank-gallery-loading" />`}
+      <//>`}
+      <div className="dirty-rank-gallery-copy">
+        ${!NativePerformerCard && html`<${NavLink}
+          className="dirty-rank-gallery-name text-truncate"
+          title=${performer.name}
+          to=${"/performers/" + performer.id}
+        >${performer.name}<//>`}
+        <div className="dirty-rank-gallery-rating-row dirty-rank-leaderboard-rating-row">
+          <strong className="dirty-rank-leaderboard-rank">${"#" + props.rank}</strong>
+          <strong
+            title=${overallCategoryScoresTitle(performer, props.leaderboardId, props.cohort, props.settings)}
+          >${leaderboardRatingText(pool, props.settings)}</strong>
+        </div>
+      </div>
+    </article>`;
   }
 
   function LeaderboardGallery(props) {
@@ -1616,29 +1695,36 @@
     var topCount = leaderboardFeaturedCount(props);
     var pageSize = leaderboardPageSize(props.settings, topCount, props.showFeatured === false ? 0 : Math.min(topCount, ranked.length));
     var page = paginatedLeaderboard(entries, props.page, pageSize);
-    return h("section", { className: "dirty-rank-standings-panel dirty-ui-feature-card" },
-      !page.total
-        ? h("div", { className: "dirty-rank-empty-standings" }, props.emptyMessage || (ranked.length ? "Every rated performer is featured above." : "No standings yet."))
-        : h(Fragment, null,
-            h("div", { className: "dirty-rank-gallery-grid", style: { "--dirty-rank-gallery-columns": topCount } }, page.items.map(function (entry) {
-              return h(LeaderboardGalleryCard, {
-                cohort: props.cohort,
-                key: entry.performer.id,
-                leaderboardId: props.leaderboardId,
-                performer: entry.performer,
-                rank: entry.rank,
-                settings: props.settings,
-              });
-            })),
-            h(LeaderboardPagination, {
-              firstRank: page.firstRank,
-              lastRank: page.lastRank,
-              onPageChange: props.onPageChange,
-              page: page.currentPage,
-              totalPages: page.totalPages,
-            })
-          )
-    );
+    return html`<section className="dirty-rank-standings-panel dirty-ui-feature-card">
+      ${!page.total
+        ? html`<div className="dirty-rank-empty-standings">
+          ${props.emptyMessage || (ranked.length ? "Every rated performer is featured above." : "No standings yet.")}
+        </div>`
+        : html`<${Fragment}>
+          <div
+            className="dirty-rank-gallery-grid"
+            style=${{ "--dirty-rank-gallery-columns": topCount }}
+          >
+            ${page.items.map(function (entry) {
+              return html`<${LeaderboardGalleryCard}
+                cohort=${props.cohort}
+                key=${entry.performer.id}
+                leaderboardId=${props.leaderboardId}
+                performer=${entry.performer}
+                rank=${entry.rank}
+                settings=${props.settings}
+              />`;
+            })}
+          </div>
+          <${LeaderboardPagination}
+            firstRank=${page.firstRank}
+            lastRank=${page.lastRank}
+            onPageChange=${props.onPageChange}
+            page=${page.currentPage}
+            totalPages=${page.totalPages}
+          />
+        <//>`}
+    </section>`;
   }
 
   function DirtyRankLeaderboardsRoute() {
@@ -1773,95 +1859,165 @@
       if (page > totalPages) setPage(totalPages);
     }, [page, totalPages]);
 
-    if (loading) return h("main", { className: "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide" }, h(StateView, { title: "Loading DirtyRank leaderboards…" }));
+    if (loading) return html`<main className="dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide">
+      <${StateView} title="Loading DirtyRank leaderboards…" />
+    </main>`;
     if (error || !settings || !data) {
-      return h("main", { className: "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide" }, h(StateView, {
-        title: "Could not load DirtyRank leaderboards",
-        detail: error || "DirtyRank settings are unavailable.",
-        actions: h(RankButton, { onClick: load }, "Retry"),
-      }));
+      return html`<main className="dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide">
+        <${StateView}
+          title="Could not load DirtyRank leaderboards"
+          detail=${error || "DirtyRank settings are unavailable."}
+          actions=${html`<${RankButton} onClick=${load}>Retry<//>`}
+        />
+      </main>`;
     }
 
     var stats = data.stats;
     var leaderboardName = selectedCategory ? selectedCategory.name : "Overall";
     var censorMedia = documentationCapture();
-    return h("main", { className: "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide dirty-rank-leaderboards-route" + (censorMedia ? " dirty-rank-censored-media" : "") },
-      h("div", { className: "dirty-rank-leaderboards-shell" },
-        h("header", { className: "dirty-rank-leaderboards-header dirty-ui-page-header dirty-ui-feature-card" },
-          h("h1", { className: "dirty-rank-leaderboards-page-title" }, "Leaderboards"),
-          h("div", { className: "dirty-rank-leaderboards-controls dirty-ui-control-row" },
-            h(RankStatisticSelector, { value: leaderboardId, label: selectedCategory ? selectedCategory.name : "Overall", categories: enabledCategories, boxId: cohort === settings.defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : cohort }),
-            h("button", {
-              ref: filterTrigger,
-              className: "btn btn-secondary dirty-ui-button dirty-ui-control",
-              type: "button",
-              "aria-haspopup": "dialog",
-              "aria-expanded": filterOpen,
-              onClick: function () { setFilterOpen(true); },
-            }, "Filter", filterActive ? " (" + filterModel.count + ")" : ""),
-            h(LeaderboardInfoPopover, { id: "dirty-rank-coverage", label: "Coverage" },
-              h("section", { "aria-label": "Leaderboard statistics", className: "dirty-rank-stats" },
-              h(LeaderboardStat, {
-                detail: stats.coverage.toFixed(1) + "% of eligible performers",
-                label: "Rated coverage",
-                value: stats.rated.toLocaleString() + "/" + data.eligible.toLocaleString(),
-              }),
-              h(LeaderboardStat, {
-                detail: stats.excellent.toLocaleString() + " excellent · " + (stats.rated ? (stats.stable / stats.rated * 100).toFixed(1) + "% refined or better" : "No rated performers"),
-                label: "Refined ratings",
-                value: stats.stable.toLocaleString(),
-              }),
-              h(LeaderboardStat, { detail: "Recorded head-to-head results", label: "Completed battles", value: stats.completedBattles.toLocaleString() }),
-              h(LeaderboardStat, { detail: selectedCategory ? "Lower means more precise" : "Weighted category RD; lower means more precise", label: selectedCategory ? "Median RD" : "Median category RD", value: stats.medianDeviation.toFixed(1) }),
-              h(LeaderboardStat, { detail: "Share of completed battles", label: "Draw rate", value: stats.drawRate.toFixed(1) + "%" }),
-              h(LeaderboardStat, { detail: "Highest to lowest rated", label: selectedCategory ? "Rating spread" : "Score spread", value: selectedCategory ? Math.round(stats.ratingSpread).toLocaleString() : stats.ratingSpread.toFixed(1) })
-              )
-            ),
-            h(LeaderboardInfoPopover, { id: "dirty-rank-confidence", label: "Confidence", className: "dirty-rank-leaderboards-confidence" },
-              selectedCategory
-                ? h(ConfidenceIndicator, { category: selectedCategory, cohort: cohort, performers: performers, settings: settings })
-                : h(OverallConfidence, { cohort: cohort, performers: performers, settings: settings })
-            ),
-            h(NavLink, { className: "btn btn-secondary dirty-ui-button dirty-ui-control dirty-rank-leaderboards-battles", to: selectedCategory ? battleCategoryPath(selectedCategory.id, false, "", cohort === settings.defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : cohort) : ROUTE_PATH + (cohort === settings.defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : "?box=" + encodeURIComponent(cohort)) }, "Battles"),
-            h(NavLink, { className: "btn btn-secondary dirty-ui-button dirty-ui-control dirty-rank-leaderboards-options", to: "/plugins/dirty-plugins?plugin=dirtyRank" }, "Options")
-          )
-        ),
-        SharedDialog && h(SharedDialog, {
-          open: filterOpen,
-          id: "dirty-rank-performer-filter-dialog",
-          backdropClassName: "dirty-ui-native-filter-overlay",
-          className: "dirty-ui-native-filter-dialog dirty-ui-panel",
-          ariaLabel: "Performer filters",
-          initialFocusRef: filterClose,
-          openerRef: filterTrigger,
-          allowNativePopup: true,
-          onClose: function () { setFilterOpen(false); },
-        },
-          h("div", { className: "dirty-rank-filter-dialog-heading" },
-            h("h2", null, "Performer filters"),
-            h("button", { ref: filterClose, className: "btn btn-secondary dirty-ui-button", onClick: function () { setFilterOpen(false); }, type: "button" }, "Done")
-          ),
-          availableCohorts.length > 1 && h(Field, { className: "dirty-rank-control", id: "dirty-rank-leaderboard-cohort", label: "Gender box" },
-            h("select", { className: "form-control", id: "dirty-rank-leaderboard-cohort", onChange: function (event) {
-              var nextBox = event.target.value;
-              var nextId = categoriesFor(settings, nextBox).some(function (category) { return category.enabled && category.id === leaderboardId; }) ? leaderboardId : OVERALL_LEADERBOARD_ID;
-              var path = leaderboardStatPath(nextId, nextBox);
-              history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(path) : path);
-            }, value: cohort },
-              availableCohorts.map(function (item) { return h("option", { key: item[0], value: item[0] }, item[1]); }))
-          ),
-          nativeError ? h(StateView, { title: "Stash filters unavailable", detail: nativeError })
-            : !nativeReady ? h(StateView, { title: "Loading Stash filters…" })
-            : censorMedia ? h("p", { role: "note" }, "Native filter results are hidden while capturing documentation.")
-            : h(PluginApi.components.FilteredPerformerList, { alterQuery: false, extraCriteria: { dirtyRankLeaderboardFilter: true } })
-        ),
-        filterError ? h(StateView, { title: "Could not filter performers", detail: filterError })
+    return html`<main
+      className=${"dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide dirty-rank-leaderboards-route" + (censorMedia ? " dirty-rank-censored-media" : "")}
+    >
+      <div className="dirty-rank-leaderboards-shell">
+        <header
+          className="dirty-rank-leaderboards-header dirty-ui-page-header dirty-ui-feature-card"
+        >
+          <h1 className="dirty-rank-leaderboards-page-title">Leaderboards</h1>
+          <div className="dirty-rank-leaderboards-controls dirty-ui-control-row">
+            <${RankStatisticSelector}
+              value=${leaderboardId}
+              label=${selectedCategory ? selectedCategory.name : "Overall"}
+              categories=${enabledCategories}
+              boxId=${cohort === settings.defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : cohort}
+            />
+            <button
+              ref=${filterTrigger}
+              className="btn btn-secondary dirty-ui-button dirty-ui-control"
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded=${filterOpen}
+              onClick=${function () { setFilterOpen(true); }}
+            >
+              Filter
+              ${filterActive ? " (" + filterModel.count + ")" : ""}
+            </button>
+            <${LeaderboardInfoPopover} id="dirty-rank-coverage" label="Coverage">
+              <section aria-label="Leaderboard statistics" className="dirty-rank-stats">
+                <${LeaderboardStat}
+                  detail=${stats.coverage.toFixed(1) + "% of eligible performers"}
+                  label="Rated coverage"
+                  value=${stats.rated.toLocaleString() + "/" + data.eligible.toLocaleString()}
+                />
+                <${LeaderboardStat}
+                  detail=${stats.excellent.toLocaleString() + " excellent · " + (stats.rated ? (stats.stable / stats.rated * 100).toFixed(1) + "% refined or better" : "No rated performers")}
+                  label="Refined ratings"
+                  value=${stats.stable.toLocaleString()}
+                />
+                <${LeaderboardStat}
+                  detail="Recorded head-to-head results"
+                  label="Completed battles"
+                  value=${stats.completedBattles.toLocaleString()}
+                />
+                <${LeaderboardStat}
+                  detail=${selectedCategory ? "Lower means more precise" : "Weighted category RD; lower means more precise"}
+                  label=${selectedCategory ? "Median RD" : "Median category RD"}
+                  value=${stats.medianDeviation.toFixed(1)}
+                />
+                <${LeaderboardStat}
+                  detail="Share of completed battles"
+                  label="Draw rate"
+                  value=${stats.drawRate.toFixed(1) + "%"}
+                />
+                <${LeaderboardStat}
+                  detail="Highest to lowest rated"
+                  label=${selectedCategory ? "Rating spread" : "Score spread"}
+                  value=${selectedCategory ? Math.round(stats.ratingSpread).toLocaleString() : stats.ratingSpread.toFixed(1)}
+                />
+              </section>
+            <//>
+            <${LeaderboardInfoPopover}
+              id="dirty-rank-confidence"
+              label="Confidence"
+              className="dirty-rank-leaderboards-confidence"
+            >
+              ${selectedCategory
+                ? html`<${ConfidenceIndicator}
+                  category=${selectedCategory}
+                  cohort=${cohort}
+                  performers=${performers}
+                  settings=${settings}
+                />`
+                : html`<${OverallConfidence} cohort=${cohort} performers=${performers} settings=${settings} />`}
+            <//>
+            <${NavLink}
+              className="btn btn-secondary dirty-ui-button dirty-ui-control dirty-rank-leaderboards-battles"
+              to=${selectedCategory ? battleCategoryPath(selectedCategory.id, false, "", cohort === settings.defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : cohort) : ROUTE_PATH + (cohort === settings.defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : "?box=" + encodeURIComponent(cohort))}
+            >Battles<//>
+            <${NavLink}
+              className="btn btn-secondary dirty-ui-button dirty-ui-control dirty-rank-leaderboards-options"
+              to="/plugins/dirty-plugins?plugin=dirtyRank"
+            >Options<//>
+          </div>
+        </header>
+        ${SharedDialog && html`<${SharedDialog}
+          open=${filterOpen}
+          id="dirty-rank-performer-filter-dialog"
+          backdropClassName="dirty-ui-native-filter-overlay"
+          className="dirty-ui-native-filter-dialog dirty-ui-panel"
+          ariaLabel="Performer filters"
+          initialFocusRef=${filterClose}
+          openerRef=${filterTrigger}
+          allowNativePopup=${true}
+          onClose=${function () { setFilterOpen(false); }}
+        >
+          <div className="dirty-rank-filter-dialog-heading">
+            <h2>Performer filters</h2>
+            <button
+              ref=${filterClose}
+              className="btn btn-secondary dirty-ui-button"
+              onClick=${function () { setFilterOpen(false); }}
+              type="button"
+            >Done</button>
+          </div>
+          ${availableCohorts.length > 1 && html`<${Field}
+            className="dirty-rank-control"
+            id="dirty-rank-leaderboard-cohort"
+            label="Gender box"
+          >
+            <select
+              className="form-control"
+              id="dirty-rank-leaderboard-cohort"
+              onChange=${function (event) {
+                var nextBox = event.target.value;
+                var nextId = categoriesFor(settings, nextBox).some(function (category) { return category.enabled && category.id === leaderboardId; }) ? leaderboardId : OVERALL_LEADERBOARD_ID;
+                var path = leaderboardStatPath(nextId, nextBox);
+                history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(path) : path);
+              }}
+              value=${cohort}
+            >${availableCohorts.map(function (item) { return html`<option key=${item[0]} value=${item[0]}>${item[1]}</option>`; })}</select>
+          <//>`}
+          ${nativeError ? html`<${StateView} title="Stash filters unavailable" detail=${nativeError} />`
+            : !nativeReady ? html`<${StateView} title="Loading Stash filters…" />`
+            : censorMedia ? html`<p role="note">Native filter results are hidden while capturing documentation.</p>`
+            : html`<${PluginApi.components.FilteredPerformerList}
+              alterQuery=${false}
+              extraCriteria=${{ dirtyRankLeaderboardFilter: true }}
+            />`}
+        <//>`}
+        ${filterError ? html`<${StateView} title="Could not filter performers" detail=${filterError} />`
           : filterActive && (filterBusy || resolvedFilterKey !== filterKey)
-            ? h(StateView, { title: "Filtering performers…" })
-            : h(Fragment, null,
-                !filterActive && h(LeaderboardPodium, { cohort: cohort, leaderboardId: leaderboardId, ranked: data.ranked, settings: settings, topCount: topCount }),
-                viewMode === "gallery"
-                  ? h(LeaderboardGallery, Object.assign({
+            ? html`<${StateView} title="Filtering performers…" />`
+            : html`<${Fragment}>
+              ${!filterActive && html`<${LeaderboardPodium}
+                cohort=${cohort}
+                leaderboardId=${leaderboardId}
+                ranked=${data.ranked}
+                settings=${settings}
+                topCount=${topCount}
+              />`}
+              ${viewMode === "gallery"
+                ? html`<${LeaderboardGallery}
+                  ...${Object.assign({
                       cohort: cohort,
                       entries: standingEntries,
                       leaderboardId: leaderboardId,
@@ -1871,8 +2027,10 @@
                       topCount: topCount,
                       showFeatured: !filterActive,
                       settings: settings,
-                    }, filterActive ? filteredLeaderboardPanelProps(standingEntries) : {}))
-                  : h(LeaderboardTable, Object.assign({
+                    }, filterActive ? filteredLeaderboardPanelProps(standingEntries) : {})}
+                />`
+                : html`<${LeaderboardTable}
+                  ...${Object.assign({
                       cohort: cohort,
                       entries: standingEntries,
                       leaderboardId: leaderboardId,
@@ -1882,10 +2040,11 @@
                       topCount: topCount,
                       showFeatured: !filterActive,
                       settings: settings,
-                    }, filterActive ? filteredLeaderboardPanelProps(standingEntries) : {}))
-              )
-      )
-    );
+                    }, filterActive ? filteredLeaderboardPanelProps(standingEntries) : {})}
+                />`}
+            <//>`}
+      </div>
+    </main>`;
   }
 
   function DecisionIndicator(props) {
@@ -1893,16 +2052,16 @@
     if (!decision) return null;
     function result(person) {
       var label = person.tone === "winner" ? "Winner" : person.tone === "loser" ? "Loser" : "Tie";
-      return h("span", { className: "dirty-rank-decision-person dirty-rank-decision-" + person.tone },
-        h("span", { className: "dirty-rank-decision-label" }, label),
-        h("strong", null, person.name)
-      );
+      return html`<span className=${"dirty-rank-decision-person dirty-rank-decision-" + person.tone}>
+        <span className="dirty-rank-decision-label">${label}</span>
+        <strong>${person.name}</strong>
+      </span>`;
     }
-    return h("div", { "aria-live": "polite", className: "dirty-rank-decision d-flex flex-wrap align-items-center" },
-      h("span", { className: "dirty-rank-decision-title" }, "Last decision"),
-      result(decision.left),
-      result(decision.right)
-    );
+    return html`<div aria-live="polite" className="dirty-rank-decision d-flex flex-wrap align-items-center">
+      <span className="dirty-rank-decision-title">Last decision</span>
+      ${result(decision.left)}
+      ${result(decision.right)}
+    </div>`;
   }
 
   function hillFireworks() {
@@ -1915,41 +2074,44 @@
       for (var spark = 0; spark < 32; spark += 1) {
         var angle = spark * Math.PI * 2 / 32;
         var radius = (finale ? 12 : 8) * (spark % 2 ? 0.65 : 1);
-        sparks.push(h("span", {
-          className: "dirty-rank-firework-spark",
-          key: spark,
-          style: {
+        sparks.push(html`<span
+          className="dirty-rank-firework-spark"
+          key=${spark}
+          style=${{
             "--spark-x": (Math.cos(angle) * radius).toFixed(3) + "rem",
             "--spark-y": (Math.sin(angle) * radius).toFixed(3) + "rem",
             "--spark-angle": (spark * 360 / 32) + "deg",
-          },
-        }));
+          }}
+        />`);
       }
-      bursts.push(h("span", {
-        className: "dirty-rank-firework",
-        key: "burst-" + burst,
-        style: {
+      bursts.push(html`<span
+        className="dirty-rank-firework"
+        key=${"burst-" + burst}
+        style=${{
           left: (8 + (burst * 29 % 85)) + "%",
           top: (12 + (burst * 17 % 48)) + "%",
           "--firework-color": colors[burst % colors.length],
           "--firework-delay": (finale ? 5.4 + (burst - 12) * 0.12 : burst * 0.4).toFixed(2) + "s",
-        },
-      }, sparks));
+        }}
+      >${sparks}</span>`);
     }
     for (var piece = 0; piece < 64; piece += 1) {
-      confetti.push(h("span", {
-        className: "dirty-rank-victory-confetti",
-        key: "confetti-" + piece,
-        style: {
+      confetti.push(html`<span
+        className="dirty-rank-victory-confetti"
+        key=${"confetti-" + piece}
+        style=${{
           left: (piece * 37 % 100) + "%",
           "--confetti-color": colors[piece % colors.length],
           "--confetti-drift": ((piece * 19 % 24) - 12) + "rem",
           "--confetti-delay": (1.2 + (piece % 16) * 0.25) + "s",
           "--confetti-turn": (piece % 2 ? 720 : -720) + "deg",
-        },
-      }));
+        }}
+      />`);
     }
-    return h("div", { className: "dirty-rank-fireworks", "aria-hidden": "true" }, bursts, confetti);
+    return html`<div className="dirty-rank-fireworks" aria-hidden="true">
+      ${bursts}
+      ${confetti}
+    </div>`;
   }
 
   function battleCategoryPath(categoryId, kingsMode, performerId, cohort) {
@@ -1979,7 +2141,7 @@
     if (!routeDetails || (routeDetails.categoryId && !(props && props.match && props.match.params && props.match.params.categoryId))) return null;
     // Stash can keep the prefix route mounted alongside a more specific route.
     // Unmount the page (and its effects) when this route no longer owns it.
-    return h(DirtyRankBattlePage, { routeDetails: routeDetails, routeTargetId: routeTargetId });
+    return html`<${DirtyRankBattlePage} routeDetails=${routeDetails} routeTargetId=${routeTargetId} />`;
   }
 
   function DirtyRankBattlePage(props) {
@@ -2435,13 +2597,17 @@
       return function () { window.removeEventListener("beforeunload", preventPendingOperationExit); };
     }, [pendingVotes]);
 
-    if (loading) return h("main", { className: "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide" }, h(StateView, { title: gauntletMode ? "Loading Gauntlet…" : "Loading DirtyRank…" }));
+    if (loading) return html`<main className="dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide">
+      <${StateView} title=${gauntletMode ? "Loading Gauntlet…" : "Loading DirtyRank…"} />
+    </main>`;
     if (error && (!settings || !performers.length)) {
-      return h("main", { className: "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide" }, h(StateView, {
-        title: "Could not load DirtyRank",
-        detail: error,
-        actions: h(RankButton, { onClick: load }, "Retry"),
-      }));
+      return html`<main className="dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide">
+        <${StateView}
+          title="Could not load DirtyRank"
+          detail=${error}
+          actions=${html`<${RankButton} onClick=${load}>Retry<//>`}
+        />
+      </main>`;
     }
     if (!settings || !category) return null;
 
@@ -2451,6 +2617,8 @@
       : null;
     var arenaLeft = pair ? pair[0] : hillWinner && pairInfo.incumbentSide === "left" ? hillWinner : null;
     var arenaRight = pair ? pair[1] : hillWinner && pairInfo.incumbentSide === "right" ? hillWinner : null;
+    // Keep the same mounted card and player when this performer wins.
+    var arenaLeftKey = arenaLeft && (gauntletMode ? "gauntlet:" + arenaLeft.id : kingsMode ? "kings:" + cohort + ":" + category.id + ":" + arenaLeft.id : pairInfo.instanceId + ":left");
     var reveal = settings.showRatingsBeforeVote;
     var hillDefeated = kingsMode ? defeatedKingsRef.current.length : 0;
     var hillTotal = kingsMode && pairInfo ? Math.max(0, pairInfo.eligible - 1) : 0;
@@ -2458,49 +2626,59 @@
     var availableCohorts = boxOptions(settings, true).filter(function (item) {
       return settings.enabledCohorts.indexOf(item[0]) !== -1 && categoriesForPerformer(settings, item[0], gauntletTarget).length > 0;
     });
-    return h(Fragment, null,
-      Prompt && h(Prompt, {
-        message: "DirtyRank is still saving queued votes or undos. Wait for the queue to finish before leaving this page.",
-        when: pendingVotes > 0,
-      }),
-      h("main", { className: "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide" + (gauntletMode ? " dirty-rank-gauntlet-route" : "") + (kingsMode ? " dirty-rank-kings-route" : "") + (hideStandings ? " dirty-rank-standings-hidden" : "") + (censorMedia ? " dirty-rank-censored-media" : "") },
-      h("div", { className: "dirty-rank-shell" },
-        h("section", { className: "dirty-rank-main dirty-ui-feature-card" },
-          h("header", { className: "dirty-rank-header dirty-ui-page-header" },
-            h("div", { className: "dirty-rank-header-identity" },
-              h("h1", { className: "dirty-rank-title dirty-rank-leaderboards-page-title" }, "DirtyRank"),
-              kingsMode && h("div", { className: "dirty-rank-hill-crest" }, h(RankCrown, null), h("span", null, "King of the hill")),
-              h("fieldset", { className: "dirty-rank-category-picker", disabled: busy || pendingVotes > 0 },
-                h(SharedStatisticSelector, {
-                  id: "dirty-rank-category",
-                  ariaLabel: "Category",
-                  value: category.id,
-                  options: categoriesForPerformer(settings, cohort, gauntletTarget).map(function (item) {
-                    return { value: item.id, label: item.name };
-                  }),
-                  onSelect: function (nextCategoryId) {
-                    if (busy || pendingVotes > 0) return;
-                    var nextPath = categoryPath(nextCategoryId, kingsMode, cohort);
-                    history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(nextPath) : nextPath);
-                    setCategoryId(nextCategoryId);
-                    rememberCategory(cohort, nextCategoryId);
-                    setPairInfo(null);
-                    preparedPairRef.current = null;
-                    undoHistoryRef.current = [];
-                    defeatedKingsRef.current = [];
-                    setUndoHistory([]);
-                    setFeedback(null);
-                    setDecision(null);
-                  },
-                })
-              )
-            ),
-            h("div", { className: "dirty-rank-header-controls dirty-ui-control-row d-flex flex-wrap align-items-end justify-content-end" },
-              !gauntletMode && h(RankButton, {
-                  className: "dirty-ui-control dirty-rank-options-link",
-                  disabled: busy || pendingVotes > 0,
-                  id: "dirty-rank-battle-mode",
-                  onClick: function () {
+    return html`<${Fragment}>
+      ${Prompt && html`<${Prompt}
+        message="DirtyRank is still saving queued votes or undos. Wait for the queue to finish before leaving this page."
+        when=${pendingVotes > 0}
+      />`}
+      <main
+        className=${"dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide" + (gauntletMode ? " dirty-rank-gauntlet-route" : "") + (kingsMode ? " dirty-rank-kings-route" : "") + (hideStandings ? " dirty-rank-standings-hidden" : "") + (censorMedia ? " dirty-rank-censored-media" : "")}
+      >
+        <div className="dirty-rank-shell">
+          <section className="dirty-rank-main dirty-ui-feature-card">
+            <header className="dirty-rank-header dirty-ui-page-header">
+              <div className="dirty-rank-header-identity">
+                <h1 className="dirty-rank-title dirty-rank-leaderboards-page-title">DirtyRank</h1>
+                ${kingsMode && html`<div className="dirty-rank-hill-crest">
+                  <${RankCrown} />
+                  <span>King of the hill</span>
+                </div>`}
+                <fieldset
+                  className="dirty-rank-category-picker"
+                  disabled=${busy || pendingVotes > 0}
+                >
+                  <${SharedStatisticSelector}
+                    id="dirty-rank-category"
+                    ariaLabel="Category"
+                    value=${category.id}
+                    options=${categoriesForPerformer(settings, cohort, gauntletTarget).map(function (item) {
+                      return { value: item.id, label: item.name };
+                    })}
+                    onSelect=${function (nextCategoryId) {
+                      if (busy || pendingVotes > 0) return;
+                      var nextPath = categoryPath(nextCategoryId, kingsMode, cohort);
+                      history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(nextPath) : nextPath);
+                      setCategoryId(nextCategoryId);
+                      rememberCategory(cohort, nextCategoryId);
+                      setPairInfo(null);
+                      preparedPairRef.current = null;
+                      undoHistoryRef.current = [];
+                      defeatedKingsRef.current = [];
+                      setUndoHistory([]);
+                      setFeedback(null);
+                      setDecision(null);
+                    }}
+                  />
+                </fieldset>
+              </div>
+              <div
+                className="dirty-rank-header-controls dirty-ui-control-row d-flex flex-wrap align-items-end justify-content-end"
+              >
+                ${!gauntletMode && html`<${RankButton}
+                  className="dirty-ui-control dirty-rank-options-link"
+                  disabled=${busy || pendingVotes > 0}
+                  id="dirty-rank-battle-mode"
+                  onClick=${function () {
                     if (busy || pendingVotes > 0) return;
                     var nextPath = categoryPath(category.id, !kingsMode, cohort);
                     history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(nextPath) : nextPath);
@@ -2511,137 +2689,185 @@
                     setUndoHistory([]);
                     setFeedback(null);
                     setDecision(null);
-                  },
-                }, kingsMode ? "Standard battles" : "King of the hill"),
-              availableCohorts.length > 1 && h("div", { className: "dirty-rank-control dirty-ui-field" },
-                h("label", { htmlFor: "dirty-rank-battle-cohort" }, "Gender box"),
-                h("select", {
-                  className: "form-control",
-                  disabled: busy || pendingVotes > 0,
-                  id: "dirty-rank-battle-cohort",
-                  onChange: function (event) {
-                    var nextCohort = event.target.value;
-                    var nextCategories = categoriesForPerformer(settings, nextCohort, gauntletTarget);
-                    var preferredId = preferredCategoryId(settings, nextCohort, category.id);
-                    var nextCategoryId = nextCategories.some(function (item) { return item.id === preferredId; }) ? preferredId : nextCategories[0].id;
-                    setCategoryId(nextCategoryId);
-                    rememberCategory(nextCohort, nextCategoryId);
-                    var nextPath = categoryPath(nextCategoryId, kingsMode, nextCohort);
-                    history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(nextPath) : nextPath);
-                    setPairInfo(null);
-                    undoHistoryRef.current = [];
-                    defeatedKingsRef.current = [];
-                    setUndoHistory([]);
-                    setFeedback(null);
-                    setDecision(null);
-                  },
-                  value: cohort,
-                }, availableCohorts.map(function (item) {
-                  return h("option", { key: item[0], value: item[0] }, item[1]);
-                }))
-              ),
-              gauntletMode && gauntletTarget && h(NavLink, {
-                className: "btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact dirty-rank-options-link",
-                to: "/performers/" + gauntletTarget.id,
-              }, "Back to performer"),
-              h(NavLink, { className: "btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact dirty-rank-options-link", to: LEADERBOARDS_ROUTE_PATH + (cohort === settings.defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : "?box=" + encodeURIComponent(cohort)) }, "Leaderboards"),
-              h(NavLink, { className: "btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact dirty-rank-options-link", to: "/plugins/dirty-plugins?plugin=dirtyRank" }, "Options")
-            )
-          ),
-          (pendingVotes > 0 || feedback) && h("div", { className: "dirty-rank-statusbar d-flex flex-wrap align-items-center justify-content-between" },
-            h("div", { className: "dirty-rank-session d-flex flex-wrap" },
-              pendingVotes > 0 && h("span", { className: "dirty-rank-saving" }, pendingVotes + " queued operation" + (pendingVotes === 1 ? "" : "s"))
-            ),
-            feedback && h("div", { className: "dirty-rank-feedback", role: "status" }, feedback.text)
-          ),
-          h(DecisionIndicator, { decision: decision }),
-          refinementConfidence && refinementConfidence.refined < refinementConfidence.eligible && h("div", {
-            className: "dirty-rank-refinement-estimate",
-            title: "Cohort-wide estimate for every eligible performer in this category, assuming informative matchups. Actual battles depend on opponents, future results, and the selected matchmaking goal.",
-          }, (refinementConfidence.eligible - refinementConfidence.refined).toLocaleString() + " of " +
-            refinementConfidence.eligible.toLocaleString() + " " + boxGendersLabel(settings, cohort).toLowerCase() +
-            " performers need refinement · ≈" + refinementConfidence.remainingBattles.toLocaleString() +
-            " more battles for the whole category"),
-          kingsMode && (pair || hillWinner) && h("div", { className: "dirty-rank-hill-progress", role: "status" },
-            h("span", { className: "dirty-rank-hill-progress-label" }, hillWinner ? "The crown is claimed" : pairInfo.incumbentId ? "Defend the crown" : "Claim the crown"),
-            h("span", { className: "dirty-rank-hill-progress-track", "aria-hidden": "true" }, h("span", { style: { width: (hillTotal ? Math.min(100, hillDefeated / hillTotal * 100) : 0) + "%" } })),
-            h("span", { className: "dirty-rank-hill-progress-count" }, hillDefeated.toLocaleString() + " / " + hillTotal.toLocaleString() + " defeated")
-          ),
-          gauntletMode && gauntletTarget && h(GauntletConfidenceIndicator, {
-            category: category, cohort: cohort, performer: gauntletTarget, performers: performers, settings: settings,
-          }),
-          error && h("div", { className: "dirty-ui-text-error", role: "alert", style: { padding: "0.75rem 1.25rem 0" } }, error),
-          !pair && !hillWinner && h(StateView, {
-            title: "Not enough eligible performers",
-            detail: "This category and cohort need at least two performers" + (settings.includePerformersWithoutImages ? "." : " with profile images."),
-            actions: h(NavLink, { className: "btn btn-secondary dirty-ui-button", to: "/plugins/dirty-plugins?plugin=dirtyRank" }, "Open settings"),
-          }),
-          (pair || hillWinner) && h(Fragment, null,
-            h("div", { className: "dirty-rank-arena" + (hillWinner ? " dirty-rank-coronation dirty-rank-coronation-" + pairInfo.incumbentSide : "") },
-              arenaLeft && h(PerformerCard, {
-                crowned: Boolean(hillWinner),
-                disabled: busy,
-                // Keep the same mounted card and player when this performer wins.
-                key: gauntletMode ? "gauntlet:" + arenaLeft.id : kingsMode ? "kings:" + cohort + ":" + category.id + ":" + arenaLeft.id : pairInfo.instanceId + ":left",
-                gauntletTarget: gauntletMode,
-                hillMode: kingsMode,
-                hillOpening: kingsMode && !pairInfo.incumbentId,
-                kingTarget: kingsMode && pairInfo.incumbentId === String(arenaLeft.id),
-                onChoose: function () { submit("left"); },
-                performer: arenaLeft,
-                pool: poolFor(arenaLeft, category.id, cohort, settings),
-                rank: pairInfo.ranks[arenaLeft.id],
-                reveal: reveal,
-                settings: settings,
-              }),
-              pair && h("div", { className: "dirty-rank-versus", "aria-hidden": "true" }),
-              arenaRight && h(PerformerCard, {
-                crowned: Boolean(hillWinner),
-                disabled: busy,
-                key: kingsMode ? "kings:" + cohort + ":" + category.id + ":" + arenaRight.id : pairInfo.instanceId + ":right",
-                hillMode: kingsMode,
-                hillOpening: kingsMode && !pairInfo.incumbentId,
-                kingTarget: kingsMode && pairInfo.incumbentId === String(arenaRight.id),
-                onChoose: function () { submit("right"); },
-                performer: arenaRight,
-                pool: poolFor(arenaRight, category.id, cohort, settings),
-                rank: pairInfo.ranks[arenaRight.id],
-                reveal: reveal,
-                settings: settings,
-              }),
-              hillWinner && hillFireworks()
-            ),
-            pair && h("div", { className: "dirty-rank-actions d-flex flex-wrap align-items-center justify-content-center" },
-              !kingsMode && h(RankButton, { disabled: busy, onClick: function () { submit("draw"); } }, "Tie"),
-              !kingsMode && h(RankButton, { disabled: busy, onClick: skip }, "Skip"),
-              h(RankButton, { disabled: busy || !undoHistory.length, onClick: undo }, "Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")),
-              h("div", { className: "dirty-rank-hint" }, kingsMode
-                ? "← choose left · → choose right · ↓ undo"
-                : "← choose left · → choose right · ↑ tie · ↓ undo · S skip")
-            ),
-            hillWinner && h(StateView, {
-              title: "Hill cleared",
-              detail: hillWinner.name + " has defeated every eligible challenger in this run.",
-              actions: h(Fragment, null,
-                h(RankButton, { disabled: busy || !undoHistory.length, onClick: undo }, "Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")),
-                h(RankButton, { disabled: busy || pendingVotes > 0, onClick: restartKings }, "Start a new run")
-              ),
-            })
-          )
-        ),
-        !hideStandings && h(Leaderboard, { category: category, cohort: cohort, performers: performers, settings: settings })
-      )
-    ));
+                  }}
+                >${kingsMode ? "Standard battles" : "King of the hill"}<//>`}
+                ${availableCohorts.length > 1 && html`<div className="dirty-rank-control dirty-ui-field">
+                  <label htmlFor="dirty-rank-battle-cohort">Gender box</label>
+                  <select
+                    className="form-control"
+                    disabled=${busy || pendingVotes > 0}
+                    id="dirty-rank-battle-cohort"
+                    onChange=${function (event) {
+                      var nextCohort = event.target.value;
+                      var nextCategories = categoriesForPerformer(settings, nextCohort, gauntletTarget);
+                      var preferredId = preferredCategoryId(settings, nextCohort, category.id);
+                      var nextCategoryId = nextCategories.some(function (item) { return item.id === preferredId; }) ? preferredId : nextCategories[0].id;
+                      setCategoryId(nextCategoryId);
+                      rememberCategory(nextCohort, nextCategoryId);
+                      var nextPath = categoryPath(nextCategoryId, kingsMode, nextCohort);
+                      history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(nextPath) : nextPath);
+                      setPairInfo(null);
+                      undoHistoryRef.current = [];
+                      defeatedKingsRef.current = [];
+                      setUndoHistory([]);
+                      setFeedback(null);
+                      setDecision(null);
+                    }}
+                    value=${cohort}
+                  >
+                    ${availableCohorts.map(function (item) {
+                      return html`<option key=${item[0]} value=${item[0]}>${item[1]}</option>`;
+                    })}
+                  </select>
+                </div>`}
+                ${gauntletMode && gauntletTarget && html`<${NavLink}
+                  className="btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact dirty-rank-options-link"
+                  to=${"/performers/" + gauntletTarget.id}
+                >Back to performer<//>`}
+                <${NavLink}
+                  className="btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact dirty-rank-options-link"
+                  to=${LEADERBOARDS_ROUTE_PATH + (cohort === settings.defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : "?box=" + encodeURIComponent(cohort))}
+                >Leaderboards<//>
+                <${NavLink}
+                  className="btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact dirty-rank-options-link"
+                  to="/plugins/dirty-plugins?plugin=dirtyRank"
+                >Options<//>
+              </div>
+            </header>
+            ${(pendingVotes > 0 || feedback) && html`<div
+              className="dirty-rank-statusbar d-flex flex-wrap align-items-center justify-content-between"
+            >
+              <div className="dirty-rank-session d-flex flex-wrap">
+                ${pendingVotes > 0 && html`<span className="dirty-rank-saving">
+                  ${pendingVotes + " queued operation" + (pendingVotes === 1 ? "" : "s")}
+                </span>`}
+              </div>
+              ${feedback && html`<div className="dirty-rank-feedback" role="status">${feedback.text}</div>`}
+            </div>`}
+            <${DecisionIndicator} decision=${decision} />
+            ${refinementConfidence && refinementConfidence.refined < refinementConfidence.eligible && html`<div
+              className="dirty-rank-refinement-estimate"
+              title="Cohort-wide estimate for every eligible performer in this category, assuming informative matchups. Actual battles depend on opponents, future results, and the selected matchmaking goal."
+            >
+              ${(refinementConfidence.eligible - refinementConfidence.refined).toLocaleString() + " of " +
+                refinementConfidence.eligible.toLocaleString() + " " + boxGendersLabel(settings, cohort).toLowerCase() +
+                " performers need refinement · ≈" + refinementConfidence.remainingBattles.toLocaleString() +
+                " more battles for the whole category"}
+            </div>`}
+            ${kingsMode && (pair || hillWinner) && html`<div className="dirty-rank-hill-progress" role="status">
+              <span className="dirty-rank-hill-progress-label">
+                ${hillWinner ? "The crown is claimed" : pairInfo.incumbentId ? "Defend the crown" : "Claim the crown"}
+              </span>
+              <span className="dirty-rank-hill-progress-track" aria-hidden="true">
+                <span
+                  style=${{ width: (hillTotal ? Math.min(100, hillDefeated / hillTotal * 100) : 0) + "%" }}
+                />
+              </span>
+              <span className="dirty-rank-hill-progress-count">
+                ${hillDefeated.toLocaleString() + " / " + hillTotal.toLocaleString() + " defeated"}
+              </span>
+            </div>`}
+            ${gauntletMode && gauntletTarget && html`<${GauntletConfidenceIndicator}
+              category=${category}
+              cohort=${cohort}
+              performer=${gauntletTarget}
+              performers=${performers}
+              settings=${settings}
+            />`}
+            ${error && html`<div
+              className="dirty-ui-text-error"
+              role="alert"
+              style=${{ padding: "0.75rem 1.25rem 0" }}
+            >${error}</div>`}
+            ${!pair && !hillWinner && html`<${StateView}
+              title="Not enough eligible performers"
+              detail=${"This category and cohort need at least two performers" + (settings.includePerformersWithoutImages ? "." : " with profile images.")}
+              actions=${html`<${NavLink}
+                className="btn btn-secondary dirty-ui-button"
+                to="/plugins/dirty-plugins?plugin=dirtyRank"
+              >Open settings<//>`}
+            />`}
+            ${(pair || hillWinner) && html`<${Fragment}>
+              <div
+                className=${"dirty-rank-arena" + (hillWinner ? " dirty-rank-coronation dirty-rank-coronation-" + pairInfo.incumbentSide : "")}
+              >
+                ${arenaLeft && html`<${PerformerCard}
+                  crowned=${Boolean(hillWinner)}
+                  disabled=${busy}
+                  key=${arenaLeftKey}
+                  gauntletTarget=${gauntletMode}
+                  hillMode=${kingsMode}
+                  hillOpening=${kingsMode && !pairInfo.incumbentId}
+                  kingTarget=${kingsMode && pairInfo.incumbentId === String(arenaLeft.id)}
+                  onChoose=${function () { submit("left"); }}
+                  performer=${arenaLeft}
+                  pool=${poolFor(arenaLeft, category.id, cohort, settings)}
+                  rank=${pairInfo.ranks[arenaLeft.id]}
+                  reveal=${reveal}
+                  settings=${settings}
+                />`}
+                ${pair && html`<div className="dirty-rank-versus" aria-hidden="true" />`}
+                ${arenaRight && html`<${PerformerCard}
+                  crowned=${Boolean(hillWinner)}
+                  disabled=${busy}
+                  key=${kingsMode ? "kings:" + cohort + ":" + category.id + ":" + arenaRight.id : pairInfo.instanceId + ":right"}
+                  hillMode=${kingsMode}
+                  hillOpening=${kingsMode && !pairInfo.incumbentId}
+                  kingTarget=${kingsMode && pairInfo.incumbentId === String(arenaRight.id)}
+                  onChoose=${function () { submit("right"); }}
+                  performer=${arenaRight}
+                  pool=${poolFor(arenaRight, category.id, cohort, settings)}
+                  rank=${pairInfo.ranks[arenaRight.id]}
+                  reveal=${reveal}
+                  settings=${settings}
+                />`}
+                ${hillWinner && hillFireworks()}
+              </div>
+              ${pair && html`<div
+                className="dirty-rank-actions d-flex flex-wrap align-items-center justify-content-center"
+              >
+                ${!kingsMode && html`<${RankButton} disabled=${busy} onClick=${function () { submit("draw"); }}>Tie<//>`}
+                ${!kingsMode && html`<${RankButton} disabled=${busy} onClick=${skip}>Skip<//>`}
+                <${RankButton} disabled=${busy || !undoHistory.length} onClick=${undo}>
+                  ${"Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")}
+                <//>
+                <div className="dirty-rank-hint">
+                  ${kingsMode
+                    ? "← choose left · → choose right · ↓ undo"
+                    : "← choose left · → choose right · ↑ tie · ↓ undo · S skip"}
+                </div>
+              </div>`}
+              ${hillWinner && html`<${StateView}
+                title="Hill cleared"
+                detail=${hillWinner.name + " has defeated every eligible challenger in this run."}
+                actions=${html`<${Fragment}>
+                  <${RankButton} disabled=${busy || !undoHistory.length} onClick=${undo}>
+                    ${"Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")}
+                  <//>
+                  <${RankButton} disabled=${busy || pendingVotes > 0} onClick=${restartKings}>Start a new run<//>
+                <//>`}
+              />`}
+            <//>`}
+          </section>
+          ${!hideStandings && html`<${Leaderboard}
+            category=${category}
+            cohort=${cohort}
+            performers=${performers}
+            settings=${settings}
+          />`}
+        </div>
+      </main>
+    <//>`;
   }
 
   function Field(props) {
-    if (SharedField) return h(SharedField, props, props.children);
-    return h("div", { className: "dirty-rank-field" + (props.className ? " " + props.className : "") },
-      h("label", { htmlFor: props.id }, props.label),
-      props.children,
-      props.help && h("p", { className: "dirty-rank-field-help" }, props.help),
-      props.error && h("p", { className: "dirty-ui-text-error", role: "alert" }, props.error)
-    );
+    if (SharedField) return html`<${SharedField} ...${props}>${props.children}<//>`;
+    return html`<div className=${"dirty-rank-field" + (props.className ? " " + props.className : "")}>
+      <label htmlFor=${props.id}>${props.label}</label>
+      ${props.children}
+      ${props.help && html`<p className="dirty-rank-field-help">${props.help}</p>`}
+      ${props.error && html`<p className="dirty-ui-text-error" role="alert">${props.error}</p>`}
+    </div>`;
   }
 
   function DirtyRankSettings(props) {
@@ -2973,288 +3199,506 @@
         : status.indexOf("Backup created:") === 0 ? "Backup created; path hidden in documentation mode." : status
       : error || status;
 
-    return h(SettingsCard, {
-      className: "dirty-rank-settings-card dirty-ui-pilot",
-      bodyClassName: "dirty-rank-settings-body",
-      plugin: props.plugin,
-      footer: h("div", { className: "card-footer dirty-plugins-card-footer dirty-rank-settings-actions" },
-        SharedSaveStatus ? h(SharedSaveStatus, {
-          className: "dirty-rank-settings-status",
-          message: visibleStatus || (dirty ? "Waiting to save automatically…" : ""),
-          state: error ? "error" : busy || saving ? "saving" : dirty ? "pending" : "saved",
-        }) : h("span", {
-          className: "dirty-rank-settings-status" + (error ? " dirty-ui-text-error" : ""),
-          role: error ? "alert" : "status",
-        }, visibleStatus)
-      ),
-    },
-      h(Section, {
-        title: "Gender boxes",
-        description: "Name each box and choose the genders that battle and rank together. Each box has its own categories and ratings. Rename or expand an existing box to keep its ratings; new boxes start unrated.",
-      },
-        h("div", { className: "dirty-rank-category-list" }, draft.genderBoxes.map(function (box) {
-          var nameError = !String(box.name || "").trim() ? "Enter a box name." : draft.genderBoxes.some(function (other) {
-            return other.id !== box.id && String(other.name || "").trim().toLowerCase() === String(box.name || "").trim().toLowerCase();
-          }) ? "Choose a unique box name." : "";
-          return h("div", { className: "dirty-rank-category-editor dirty-rank-box-editor", key: box.id, "data-box-id": box.id },
-            h(Field, { id: "dirty-rank-box-name-" + box.id, label: "Box name", error: nameError },
-              h("input", { className: "form-control", id: "dirty-rank-box-name-" + box.id, value: box.name, maxLength: 80, type: "text",
-                onChange: function (event) { updateBox(box.id, { name: event.target.value }); } })
-            ),
-            h("fieldset", { className: "dirty-rank-category-genders" },
-              h("legend", null, "Genders in this box"),
-              h("div", { className: "dirty-rank-cohort-options" }, COHORTS.map(function (item) {
-                var checked = box.genders.indexOf(item[0]) !== -1;
-                return h(Toggle, { id: "dirty-rank-box-gender-" + box.id + "-" + item[0], key: item[0], label: item[1], checked: checked,
-                  disabled: checked && box.genders.length === 1,
-                  onChange: function (value) {
-                    var genders = box.genders.filter(function (gender) { return gender !== item[0]; });
-                    if (value) genders.push(item[0]);
-                    if (genders.length) updateBox(box.id, { genders: parseEnabledCohorts(genders, box.genders) });
-                  } });
-              }))
-            ),
-            h("div", { className: "dirty-rank-data-tools d-flex flex-wrap align-items-center" },
-              h(Toggle, { checked: box.enabled, label: "Enable this box", disabled: box.enabled && draft.enabledCohorts.length === 1,
-                onChange: function (value) { toggleCohort(box.id, value); } }),
-              h(RankButton, { onClick: function () {
-                setEditingCohort(box.id);
-                var section = document.getElementById && document.getElementById("dirty-rank-category-cohort");
-                if (section && section.scrollIntoView) section.scrollIntoView({ block: "center", behavior: "smooth" });
-              } }, "Edit categories"),
-              h(RankButton, { disabled: draft.genderBoxes.length <= 1 || (box.enabled && draft.enabledCohorts.length === 1),
-                onClick: function () { removeBox(box.id); }, title: "Remove this box from the options; its stored ratings are retained" }, "Remove box")
-            )
-          );
-        })),
-        h(RankButton, { disabled: draft.genderBoxes.length >= 24, onClick: addBox }, "+ Add gender box"),
-        draft.enabledCohorts.length > 1 && h("div", { className: "dirty-rank-settings-grid dirty-rank-settings-grid-compact", style: { marginTop: "0.9rem" } },
-          h(Field, { id: "dirty-rank-default-cohort", label: "Default gender box" },
-            h("select", {
-              className: "form-control",
-              id: "dirty-rank-default-cohort",
-              onChange: function (event) { changed({ defaultCohort: event.target.value }); },
-              value: draft.defaultCohort,
-            }, boxOptions(draft, true).map(function (item) { return h("option", { key: item[0], value: item[0] }, item[1]); }))
-          )
-        )
-      ),
-      h(Section, {
-        title: "Navigation",
-        description: "Choose which DirtyRank pages appear in Stash's utility navigation. Hidden pages remain available through direct links.",
-      },
-        h("div", { className: "dirty-rank-settings-row" },
-          h(Toggle, { checked: draft.showBattlesInMenu, label: "Show Battles in the Stash header", onChange: function (value) { changed({ showBattlesInMenu: value }); } }),
-          h(Toggle, { checked: draft.showLeaderboardsInMenu, label: "Show Leaderboards in the Stash header", onChange: function (value) { changed({ showLeaderboardsInMenu: value }); } })
-        )
-      ),
-      h(Section, {
-        title: "Leaderboard presentation",
-        description: "Choose the featured layout and standings view. Changes save automatically and apply to every leaderboard statistic.",
-      },
-        h("div", { className: "dirty-rank-settings-grid dirty-rank-leaderboard-settings" },
-          h(Field, { id: "dirty-rank-leaderboard-top-count", label: "Featured performers" },
-            h("select", { className: "form-control", id: "dirty-rank-leaderboard-top-count", onChange: function (event) {
-              var topCount = leaderboardTopCount(event.target.value);
-              changed({ leaderboardTopCount: topCount, leaderboardPerformerCount: leaderboardPerformerCount(draft.leaderboardPerformerCount, topCount) });
-            }, value: draft.leaderboardTopCount },
-              LEADERBOARD_TOP_OPTIONS.map(function (option) { return h("option", { key: option.count, value: option.count }, option.name); }))
-          ),
-          h(Field, {
-            id: "dirty-rank-leaderboard-performer-count",
-            label: "Performers per page",
-            help: "Includes the featured performers. Use a multiple of " + draft.leaderboardTopCount + "; changing the layout rounds the count up to a valid multiple.",
-            error: leaderboardPerformerCountError(draft),
-          }, h("input", {
-            className: "form-control",
-            id: "dirty-rank-leaderboard-performer-count",
-            type: "number",
-            min: draft.leaderboardTopCount * 2,
-            max: Math.floor(1000 / draft.leaderboardTopCount) * draft.leaderboardTopCount,
-            step: draft.leaderboardTopCount,
-            value: draft.leaderboardPerformerCount,
-            onChange: function (event) { changed({ leaderboardPerformerCount: event.target.value }); },
-          })),
-          h(Field, { id: "dirty-rank-leaderboard-view", label: "Standings view" },
-            h("select", { className: "form-control", id: "dirty-rank-leaderboard-view", onChange: function (event) { changed({ leaderboardView: event.target.value }); }, value: draft.leaderboardView },
-              h("option", { value: "gallery" }, "Gallery"), h("option", { value: "table" }, "Table"))
-          )
-        )
-      ),
-      h(Section, {
-        title: "Battle presentation",
-        description: "Control what is revealed on performer cards. These choices do not change the rating pools.",
-      },
-        h("div", { className: "dirty-rank-settings-row" },
-          h(Toggle, { checked: draft.showRatingsBeforeVote, label: "Show ratings and ranks before voting", onChange: function (value) { changed({ showRatingsBeforeVote: value }); } }),
-          h(Toggle, { checked: draft.hidePerformerImages, label: "Hide performer images in battles", onChange: function (value) { changed({ hidePerformerImages: value }); } }),
-          h(Toggle, { checked: draft.hideBattleStandings, label: "Hide standings during battles", onChange: function (value) { changed({ hideBattleStandings: value }); } }),
-          h(Toggle, {
-            checked: draft.autoPlayTopScenes,
-            label: h("span", {
-              title: "Automatic previews play each performer's highest-rated full scene, muted, from a random point between 30% and 70%. Photos remain clickable for voting unless hidden above.",
-            }, "Automatically play top scenes"),
-            onChange: function (value) { changed({ autoPlayTopScenes: value }); },
-          }),
-          h(Toggle, { checked: draft.includePerformersWithoutImages, label: "Include performers without profile images", onChange: function (value) { changed({ includePerformersWithoutImages: value }); } })
-        )
-      ),
-      h(Section, {
-        title: "Confidence goal",
-        description: "Choose what the information-gain matchmaker should stabilize. Every mode samples all eligible performers at least once; narrower goals stop refining ratings that no longer affect the result.",
-      },
-        h("div", { className: "dirty-rank-settings-grid dirty-rank-settings-grid-compact" },
-          h(Field, { id: "dirty-rank-confidence-goal", label: "Optimize battles for" },
-            h("select", {
-              className: "form-control",
-              id: "dirty-rank-confidence-goal",
-              onChange: function (event) { changed({ confidenceGoal: event.target.value }); },
-              value: draft.confidenceGoal,
-            },
-              h("option", { value: "ranking" }, "Leaderboard order (recommended)"),
-              h("option", { value: "top" }, "Top performers"),
-              h("option", { value: "all" }, "Every performer rating")
-            )
-          ),
-          draft.confidenceGoal === "top" && h(Field, {
-            id: "dirty-rank-confidence-top-n",
-            label: "Top performers to stabilize",
-            error: !String(draft.confidenceTopN).trim() || !Number.isInteger(Number(draft.confidenceTopN)) ||
+    return html`<${SettingsCard}
+      className="dirty-rank-settings-card dirty-ui-pilot"
+      bodyClassName="dirty-rank-settings-body"
+      plugin=${props.plugin}
+      footer=${html`<div className="card-footer dirty-plugins-card-footer dirty-rank-settings-actions">
+        ${SharedSaveStatus ? html`<${SharedSaveStatus}
+          className="dirty-rank-settings-status"
+          message=${visibleStatus || (dirty ? "Waiting to save automatically…" : "")}
+          state=${error ? "error" : busy || saving ? "saving" : dirty ? "pending" : "saved"}
+        />` : html`<span
+          className=${"dirty-rank-settings-status" + (error ? " dirty-ui-text-error" : "")}
+          role=${error ? "alert" : "status"}
+        >${visibleStatus}</span>`}
+      </div>`}
+    >
+      <${Section}
+        title="Gender boxes"
+        description="Name each box and choose the genders that battle and rank together. Each box has its own categories and ratings. Rename or expand an existing box to keep its ratings; new boxes start unrated."
+      >
+        <div className="dirty-rank-category-list">
+          ${draft.genderBoxes.map(function (box) {
+            var nameError = !String(box.name || "").trim() ? "Enter a box name." : draft.genderBoxes.some(function (other) {
+              return other.id !== box.id && String(other.name || "").trim().toLowerCase() === String(box.name || "").trim().toLowerCase();
+            }) ? "Choose a unique box name." : "";
+            return html`<div
+              className="dirty-rank-category-editor dirty-rank-box-editor"
+              key=${box.id}
+              data-box-id=${box.id}
+            >
+              <${Field} id=${"dirty-rank-box-name-" + box.id} label="Box name" error=${nameError}>
+                <input
+                  className="form-control"
+                  id=${"dirty-rank-box-name-" + box.id}
+                  value=${box.name}
+                  maxLength=${80}
+                  type="text"
+                  onChange=${function (event) { updateBox(box.id, { name: event.target.value }); }}
+                />
+              <//>
+              <fieldset className="dirty-rank-category-genders">
+                <legend>Genders in this box</legend>
+                <div className="dirty-rank-cohort-options">
+                  ${COHORTS.map(function (item) {
+                    var checked = box.genders.indexOf(item[0]) !== -1;
+                    return html`<${Toggle}
+                      id=${"dirty-rank-box-gender-" + box.id + "-" + item[0]}
+                      key=${item[0]}
+                      label=${item[1]}
+                      checked=${checked}
+                      disabled=${checked && box.genders.length === 1}
+                      onChange=${function (value) {
+                        var genders = box.genders.filter(function (gender) { return gender !== item[0]; });
+                        if (value) genders.push(item[0]);
+                        if (genders.length) updateBox(box.id, { genders: parseEnabledCohorts(genders, box.genders) });
+                      }}
+                    />`;
+                  })}
+                </div>
+              </fieldset>
+              <div className="dirty-rank-data-tools d-flex flex-wrap align-items-center">
+                <${Toggle}
+                  checked=${box.enabled}
+                  label="Enable this box"
+                  disabled=${box.enabled && draft.enabledCohorts.length === 1}
+                  onChange=${function (value) { toggleCohort(box.id, value); }}
+                />
+                <${RankButton}
+                  onClick=${function () {
+                    setEditingCohort(box.id);
+                    var section = document.getElementById && document.getElementById("dirty-rank-category-cohort");
+                    if (section && section.scrollIntoView) section.scrollIntoView({ block: "center", behavior: "smooth" });
+                  }}
+                >Edit categories<//>
+                <${RankButton}
+                  disabled=${draft.genderBoxes.length <= 1 || (box.enabled && draft.enabledCohorts.length === 1)}
+                  onClick=${function () { removeBox(box.id); }}
+                  title="Remove this box from the options; its stored ratings are retained"
+                >Remove box<//>
+              </div>
+            </div>`;
+          })}
+        </div>
+        <${RankButton} disabled=${draft.genderBoxes.length >= 24} onClick=${addBox}>+ Add gender box<//>
+        ${draft.enabledCohorts.length > 1 && html`<div
+          className="dirty-rank-settings-grid dirty-rank-settings-grid-compact"
+          style=${{ marginTop: "0.9rem" }}
+        >
+          <${Field} id="dirty-rank-default-cohort" label="Default gender box">
+            <select
+              className="form-control"
+              id="dirty-rank-default-cohort"
+              onChange=${function (event) { changed({ defaultCohort: event.target.value }); }}
+              value=${draft.defaultCohort}
+            >${boxOptions(draft, true).map(function (item) { return html`<option key=${item[0]} value=${item[0]}>${item[1]}</option>`; })}</select>
+          <//>
+        </div>`}
+      <//>
+      <${Section}
+        title="Navigation"
+        description="Choose which DirtyRank pages appear in Stash's utility navigation. Hidden pages remain available through direct links."
+      >
+        <div className="dirty-rank-settings-row">
+          <${Toggle}
+            checked=${draft.showBattlesInMenu}
+            label="Show Battles in the Stash header"
+            onChange=${function (value) { changed({ showBattlesInMenu: value }); }}
+          />
+          <${Toggle}
+            checked=${draft.showLeaderboardsInMenu}
+            label="Show Leaderboards in the Stash header"
+            onChange=${function (value) { changed({ showLeaderboardsInMenu: value }); }}
+          />
+        </div>
+      <//>
+      <${Section}
+        title="Leaderboard presentation"
+        description="Choose the featured layout and standings view. Changes save automatically and apply to every leaderboard statistic."
+      >
+        <div className="dirty-rank-settings-grid dirty-rank-leaderboard-settings">
+          <${Field} id="dirty-rank-leaderboard-top-count" label="Featured performers">
+            <select
+              className="form-control"
+              id="dirty-rank-leaderboard-top-count"
+              onChange=${function (event) {
+                var topCount = leaderboardTopCount(event.target.value);
+                changed({ leaderboardTopCount: topCount, leaderboardPerformerCount: leaderboardPerformerCount(draft.leaderboardPerformerCount, topCount) });
+              }}
+              value=${draft.leaderboardTopCount}
+            >${LEADERBOARD_TOP_OPTIONS.map(function (option) { return html`<option key=${option.count} value=${option.count}>${option.name}</option>`; })}</select>
+          <//>
+          <${Field}
+            id="dirty-rank-leaderboard-performer-count"
+            label="Performers per page"
+            help=${"Includes the featured performers. Use a multiple of " + draft.leaderboardTopCount + "; changing the layout rounds the count up to a valid multiple."}
+            error=${leaderboardPerformerCountError(draft)}
+          >
+            <input
+              className="form-control"
+              id="dirty-rank-leaderboard-performer-count"
+              type="number"
+              min=${draft.leaderboardTopCount * 2}
+              max=${Math.floor(1000 / draft.leaderboardTopCount) * draft.leaderboardTopCount}
+              step=${draft.leaderboardTopCount}
+              value=${draft.leaderboardPerformerCount}
+              onChange=${function (event) { changed({ leaderboardPerformerCount: event.target.value }); }}
+            />
+          <//>
+          <${Field} id="dirty-rank-leaderboard-view" label="Standings view">
+            <select
+              className="form-control"
+              id="dirty-rank-leaderboard-view"
+              onChange=${function (event) { changed({ leaderboardView: event.target.value }); }}
+              value=${draft.leaderboardView}
+            >
+              <option value="gallery">Gallery</option>
+              <option value="table">Table</option>
+            </select>
+          <//>
+        </div>
+      <//>
+      <${Section}
+        title="Battle presentation"
+        description="Control what is revealed on performer cards. These choices do not change the rating pools."
+      >
+        <div className="dirty-rank-settings-row">
+          <${Toggle}
+            checked=${draft.showRatingsBeforeVote}
+            label="Show ratings and ranks before voting"
+            onChange=${function (value) { changed({ showRatingsBeforeVote: value }); }}
+          />
+          <${Toggle}
+            checked=${draft.hidePerformerImages}
+            label="Hide performer images in battles"
+            onChange=${function (value) { changed({ hidePerformerImages: value }); }}
+          />
+          <${Toggle}
+            checked=${draft.hideBattleStandings}
+            label="Hide standings during battles"
+            onChange=${function (value) { changed({ hideBattleStandings: value }); }}
+          />
+          <${Toggle}
+            checked=${draft.autoPlayTopScenes}
+            label=${html`<span
+              title="Automatic previews play each performer's highest-rated full scene, muted, from a random point between 30% and 70%. Photos remain clickable for voting unless hidden above."
+            >Automatically play top scenes</span>`}
+            onChange=${function (value) { changed({ autoPlayTopScenes: value }); }}
+          />
+          <${Toggle}
+            checked=${draft.includePerformersWithoutImages}
+            label="Include performers without profile images"
+            onChange=${function (value) { changed({ includePerformersWithoutImages: value }); }}
+          />
+        </div>
+      <//>
+      <${Section}
+        title="Confidence goal"
+        description="Choose what the information-gain matchmaker should stabilize. Every mode samples all eligible performers at least once; narrower goals stop refining ratings that no longer affect the result."
+      >
+        <div className="dirty-rank-settings-grid dirty-rank-settings-grid-compact">
+          <${Field} id="dirty-rank-confidence-goal" label="Optimize battles for">
+            <select
+              className="form-control"
+              id="dirty-rank-confidence-goal"
+              onChange=${function (event) { changed({ confidenceGoal: event.target.value }); }}
+              value=${draft.confidenceGoal}
+            >
+              <option value="ranking">Leaderboard order (recommended)</option>
+              <option value="top">Top performers</option>
+              <option value="all">Every performer rating</option>
+            </select>
+          <//>
+          ${draft.confidenceGoal === "top" && html`<${Field}
+            id="dirty-rank-confidence-top-n"
+            label="Top performers to stabilize"
+            error=${!String(draft.confidenceTopN).trim() || !Number.isInteger(Number(draft.confidenceTopN)) ||
               Number(draft.confidenceTopN) < 1 || Number(draft.confidenceTopN) > 1000
-              ? "Enter a whole number from 1 to 1000." : "",
-          },
-            h("input", {
-              className: "form-control",
-              id: "dirty-rank-confidence-top-n",
-              max: 1000,
-              min: 1,
-              onChange: function (event) { changed({ confidenceTopN: event.target.value }); },
-              step: 1,
-              type: "number",
-              value: draft.confidenceTopN,
-            })
-          )
-        )
-      ),
-      h(Section, {
-        title: "Overall scoring",
-        description: "Experiment with how categories combine into the overall leaderboard and Stash performer sort. Changes save automatically and recalculate existing scores; category ratings and battle history are kept.",
-      },
-        h(Field, { id: "dirty-rank-overall-strategy", label: "Scoring strategy",
-          help: overallScoreStrategy(draft.overallScoreStrategy).description },
-          h("select", {
-            className: "form-control", id: "dirty-rank-overall-strategy", value: draft.overallScoreStrategy,
-            onChange: function (event) { changed({ overallScoreStrategy: event.target.value }); },
-          }, OVERALL_SCORE_STRATEGIES.map(function (strategy) {
-            return h("option", { key: strategy.id, value: strategy.id }, strategy.name);
-          }))
-        ),
-        draft.overallScoreStrategy === "power" && h("div", { className: "dirty-rank-settings-grid" },
-          OVERALL_SCORE_PARAMETERS.filter(function (definition) {
+              ? "Enter a whole number from 1 to 1000." : ""}
+          >
+            <input
+              className="form-control"
+              id="dirty-rank-confidence-top-n"
+              max=${1000}
+              min=${1}
+              onChange=${function (event) { changed({ confidenceTopN: event.target.value }); }}
+              step=${1}
+              type="number"
+              value=${draft.confidenceTopN}
+            />
+          <//>`}
+        </div>
+      <//>
+      <${Section}
+        title="Overall scoring"
+        description="Experiment with how categories combine into the overall leaderboard and Stash performer sort. Changes save automatically and recalculate existing scores; category ratings and battle history are kept."
+      >
+        <${Field}
+          id="dirty-rank-overall-strategy"
+          label="Scoring strategy"
+          help=${overallScoreStrategy(draft.overallScoreStrategy).description}
+        >
+          <select
+            className="form-control"
+            id="dirty-rank-overall-strategy"
+            value=${draft.overallScoreStrategy}
+            onChange=${function (event) { changed({ overallScoreStrategy: event.target.value }); }}
+          >
+            ${OVERALL_SCORE_STRATEGIES.map(function (strategy) {
+              return html`<option key=${strategy.id} value=${strategy.id}>${strategy.name}</option>`;
+            })}
+          </select>
+        <//>
+        ${draft.overallScoreStrategy === "power" && html`<div className="dirty-rank-settings-grid">
+          ${OVERALL_SCORE_PARAMETERS.filter(function (definition) {
             return definition.strategy === draft.overallScoreStrategy;
           }).map(function (definition) {
             var id = "dirty-rank-" + definition.key;
-            return h(Field, { key: definition.key, id: id, label: definition.label, help: definition.help,
-              error: overallScoreParameterError(draft[definition.key], definition) },
-              h("input", {
-                className: "form-control", id: id, type: "number", min: definition.min, max: definition.max,
-                step: definition.step, value: draft[definition.key],
-                onChange: function (event) {
+            return html`<${Field}
+              key=${definition.key}
+              id=${id}
+              label=${definition.label}
+              help=${definition.help}
+              error=${overallScoreParameterError(draft[definition.key], definition)}
+            >
+              <input
+                className="form-control"
+                id=${id}
+                type="number"
+                min=${definition.min}
+                max=${definition.max}
+                step=${definition.step}
+                value=${draft[definition.key]}
+                onChange=${function (event) {
                   var update = {};
                   update[definition.key] = event.target.value;
                   changed(update);
-                },
-              })
-            );
-          })
-        )
-      ),
-      h(Section, {
-        title: "Rating categories",
-        description: "Choose a gender box, then define its categories and their weights. Categories and ratings are independent between boxes.",
-      },
-        draft.genderBoxes.length > 1 && h("div", { className: "dirty-rank-category-cohort" },
-          h(Field, { id: "dirty-rank-category-cohort", label: "Categories for gender box" },
-            h("select", {
-              className: "form-control",
-              id: "dirty-rank-category-cohort",
-              onChange: function (event) { setEditingCohort(event.target.value); },
-              value: editingCohort,
-            }, boxOptions(draft, false).map(function (item) { return h("option", { key: item[0], value: item[0] }, item[1]); }))
-          )
-        ),
-        h("div", { className: "dirty-rank-category-list" },
-          editingCategories.map(function (category, index) {
-            return h("div", { className: "dirty-rank-category-editor", key: editingCohort + ":" + category.id },
-              h("div", { className: "dirty-rank-category-toolbar d-flex flex-wrap align-items-center justify-content-between" },
-                h("span", { className: "dirty-rank-category-sex" }, boxFor(draft, editingCohort).name),
-                h("div", { className: "dirty-rank-data-tools d-flex flex-wrap align-items-center" },
-                  h(RankButton, { className: "dirty-rank-category-reset", disabled: busy || saving || dirty, tone: "danger", title: "Reset ratings for " + boxFor(draft, editingCohort).name + " / " + category.name,
-                    onClick: function () { resetCategoryPool(editingCohort, category); } }, "Reset ratings"),
-                  SharedIconButton ? h(SharedIconButton, { ariaLabel: "Move category up", disabled: index === 0, fallback: "↑", onClick: function () { moveCategory(index, -1); } }) : h("button", { "aria-label": "Move category up", className: "dirty-ui-icon-button", disabled: index === 0, onClick: function () { moveCategory(index, -1); }, type: "button" }, "↑"),
-                  SharedIconButton ? h(SharedIconButton, { ariaLabel: "Move category down", disabled: index === editingCategories.length - 1, fallback: "↓", onClick: function () { moveCategory(index, 1); } }) : h("button", { "aria-label": "Move category down", className: "dirty-ui-icon-button", disabled: index === editingCategories.length - 1, onClick: function () { moveCategory(index, 1); }, type: "button" }, "↓"),
-                  SharedIconButton ? h(SharedIconButton, { ariaLabel: "Remove category", disabled: editingCategories.length <= 1, fallback: "×", onClick: function () { removeCategory(index); } }) : h("button", { "aria-label": "Remove category", className: "dirty-ui-icon-button", disabled: editingCategories.length <= 1, onClick: function () { removeCategory(index); }, type: "button" }, "×")
-                )
-              ),
-              h("div", { className: "dirty-rank-category-basics" },
-                h(Field, { id: "dirty-rank-category-name-" + editingCohort + "-" + index, label: "Name", error: categoryNameError(category, index) },
-                  h("input", { className: "form-control", id: "dirty-rank-category-name-" + editingCohort + "-" + index, maxLength: 80, onChange: function (event) { updateCategory(index, { name: event.target.value }); }, type: "text", value: category.name })
-                ),
-                h(Field, {
-                  id: "dirty-rank-category-weight-" + editingCohort + "-" + index,
-                  label: "Overall weight",
-                  error: String(category.weight).trim() && Number(category.weight) >= 0.01 && Number(category.weight) <= 1000
-                    ? "" : "Enter a weight between 0.01 and 1000.",
-                },
-                  h("input", { className: "form-control", id: "dirty-rank-category-weight-" + editingCohort + "-" + index, min: 0.01, max: 1000, step: 0.1, onChange: function (event) { updateCategory(index, { weight: event.target.value }); }, type: "number", value: category.weight })
-                )
-              ),
-              h(Field, { id: "dirty-rank-category-description-" + editingCohort + "-" + index, label: "Description" },
-                h("textarea", { className: "form-control", id: "dirty-rank-category-description-" + editingCohort + "-" + index, maxLength: 500, onChange: function (event) { updateCategory(index, { description: event.target.value }); }, rows: 2, value: category.description })
-              ),
-              h(Toggle, { checked: category.enabled, label: "Enable this category", onChange: function (value) { updateCategory(index, { enabled: value }); } })
-            );
-          }),
-          h(RankButton, { onClick: addCategory }, "+ Add category")
-        )
-      ),
-      h("details", { className: "dirty-rank-advanced" },
-        h("summary", { className: "dirty-rank-advanced-summary" },
-          h("span", null, "Advanced configuration"),
-          h("span", { className: "dirty-rank-advanced-hint" }, "Matchmaking and Glicko-2 parameters")
-        ),
-        h("div", { className: "dirty-rank-advanced-body" },
-          h("div", { className: "dirty-rank-preset-row" },
-          h("div", { className: "dirty-rank-data-tools d-flex flex-wrap align-items-center", role: "group", "aria-label": "Rating presets" },
-            h(RankButton, { className: "dirty-rank-preset-current", disabled: busy, tone: "primary", title: "Restore advanced values from when this settings page was opened", onClick: function () { changed(currentParameters); } }, "Current"),
-            RATING_PRESETS.map(function (preset) {
-              var selected = ratingPresetFor(draft) === preset;
-              return h(RankButton, { key: preset.id, disabled: busy, pressed: selected, tone: selected ? "primary" : "secondary", onClick: function () { changed(preset.settings); } }, preset.name);
-            })
-          ),
-          h("span", { className: "dirty-rank-preset-estimate", role: "status", "aria-live": "polite", title: "Fresh category for the gender box selected under Rating categories. Assumes informative close matchups until every performer reaches Refined; each battle updates two performers. Actual totals depend on results and matchmaking. Parameters that do not change predicted uncertainty can leave the rounded total unchanged." },
-            presetEstimate ? (presetEstimate.capped ? "≥" : "") + presetEstimate.battles.toLocaleString() + " battles expected to rank 1 category for " + presetEstimate.performers.toLocaleString() + " performers"
-              : estimateError ? "Battle estimate unavailable" : "Loading battle estimate…"
-          )),
-          h("p", { className: "dirty-rank-advanced-copy", "aria-live": "polite" }, ratingPresetFor(draft)
-            ? ratingPresetFor(draft).description
-            : "Custom configuration. Choose a preset or adjust the values below."),
-          h("p", { className: "dirty-rank-advanced-copy" }, "Presets save automatically and apply to future battles. Existing ratings and history are kept; starting values apply to unrated performers. Battle weight drives faster refinement; lower tau limits volatility changes. Recent-pair avoidance and calibration are soft matchmaking preferences. DirtyRank does not inflate uncertainty during inactivity."),
-          h("div", { className: "dirty-rank-settings-grid" },
-            h(Field, {
-              id: "dirty-rank-evidence-weight",
-              label: "Evidence per battle",
-              help: "How strongly one comparison reduces uncertainty. 1.0 is standard Glicko-2; 2.0 treats a consistent subjective choice as twice the rating evidence while still recording one battle.",
-            },
-              h("input", { className: "form-control", id: "dirty-rank-evidence-weight", min: 1, max: 3, onChange: function (event) { changed({ evidenceWeight: Number(event.target.value) }); }, step: 0.1, type: "number", value: draft.evidenceWeight })
-            ),
-            h(Field, { id: "dirty-rank-repeat-window", label: "Recent pairs to avoid", help: "Prefer different pairings within this many recent battles. A small pool may still repeat a pair." },
-              h("input", { className: "form-control", id: "dirty-rank-repeat-window", min: 0, max: 100, onChange: function (event) { changed({ avoidRepeatWindow: Number(event.target.value) }); }, type: "number", value: draft.avoidRepeatWindow })
-            ),
-            h(Field, { id: "dirty-rank-calibration", label: "Calibration matches (%)", help: "Chance of favouring broader rating gaps. Lower values focus on the matchups expected to reduce uncertainty most." },
-              h("input", { className: "form-control", id: "dirty-rank-calibration", min: 0, max: 100, onChange: function (event) { changed({ calibrationPercent: Number(event.target.value) }); }, type: "number", value: draft.calibrationPercent })
-            ),
-            [
+                }}
+              />
+            <//>`;
+          })}
+        </div>`}
+      <//>
+      <${Section}
+        title="Rating categories"
+        description="Choose a gender box, then define its categories and their weights. Categories and ratings are independent between boxes."
+      >
+        ${draft.genderBoxes.length > 1 && html`<div className="dirty-rank-category-cohort">
+          <${Field} id="dirty-rank-category-cohort" label="Categories for gender box">
+            <select
+              className="form-control"
+              id="dirty-rank-category-cohort"
+              onChange=${function (event) { setEditingCohort(event.target.value); }}
+              value=${editingCohort}
+            >${boxOptions(draft, false).map(function (item) { return html`<option key=${item[0]} value=${item[0]}>${item[1]}</option>`; })}</select>
+          <//>
+        </div>`}
+        <div className="dirty-rank-category-list">
+          ${editingCategories.map(function (category, index) {
+            return html`<div className="dirty-rank-category-editor" key=${editingCohort + ":" + category.id}>
+              <div
+                className="dirty-rank-category-toolbar d-flex flex-wrap align-items-center justify-content-between"
+              >
+                <span className="dirty-rank-category-sex">${boxFor(draft, editingCohort).name}</span>
+                <div className="dirty-rank-data-tools d-flex flex-wrap align-items-center">
+                  <${RankButton}
+                    className="dirty-rank-category-reset"
+                    disabled=${busy || saving || dirty}
+                    tone="danger"
+                    title=${"Reset ratings for " + boxFor(draft, editingCohort).name + " / " + category.name}
+                    onClick=${function () { resetCategoryPool(editingCohort, category); }}
+                  >Reset ratings<//>
+                  ${SharedIconButton ? html`<${SharedIconButton}
+                    ariaLabel="Move category up"
+                    disabled=${index === 0}
+                    fallback="↑"
+                    onClick=${function () { moveCategory(index, -1); }}
+                  />` : html`<button
+                    aria-label="Move category up"
+                    className="dirty-ui-icon-button"
+                    disabled=${index === 0}
+                    onClick=${function () { moveCategory(index, -1); }}
+                    type="button"
+                  >↑</button>`}
+                  ${SharedIconButton ? html`<${SharedIconButton}
+                    ariaLabel="Move category down"
+                    disabled=${index === editingCategories.length - 1}
+                    fallback="↓"
+                    onClick=${function () { moveCategory(index, 1); }}
+                  />` : html`<button
+                    aria-label="Move category down"
+                    className="dirty-ui-icon-button"
+                    disabled=${index === editingCategories.length - 1}
+                    onClick=${function () { moveCategory(index, 1); }}
+                    type="button"
+                  >↓</button>`}
+                  ${SharedIconButton ? html`<${SharedIconButton}
+                    ariaLabel="Remove category"
+                    disabled=${editingCategories.length <= 1}
+                    fallback="×"
+                    onClick=${function () { removeCategory(index); }}
+                  />` : html`<button
+                    aria-label="Remove category"
+                    className="dirty-ui-icon-button"
+                    disabled=${editingCategories.length <= 1}
+                    onClick=${function () { removeCategory(index); }}
+                    type="button"
+                  >×</button>`}
+                </div>
+              </div>
+              <div className="dirty-rank-category-basics">
+                <${Field}
+                  id=${"dirty-rank-category-name-" + editingCohort + "-" + index}
+                  label="Name"
+                  error=${categoryNameError(category, index)}
+                >
+                  <input
+                    className="form-control"
+                    id=${"dirty-rank-category-name-" + editingCohort + "-" + index}
+                    maxLength=${80}
+                    onChange=${function (event) { updateCategory(index, { name: event.target.value }); }}
+                    type="text"
+                    value=${category.name}
+                  />
+                <//>
+                <${Field}
+                  id=${"dirty-rank-category-weight-" + editingCohort + "-" + index}
+                  label="Overall weight"
+                  error=${String(category.weight).trim() && Number(category.weight) >= 0.01 && Number(category.weight) <= 1000
+                    ? "" : "Enter a weight between 0.01 and 1000."}
+                >
+                  <input
+                    className="form-control"
+                    id=${"dirty-rank-category-weight-" + editingCohort + "-" + index}
+                    min=${0.01}
+                    max=${1000}
+                    step=${0.1}
+                    onChange=${function (event) { updateCategory(index, { weight: event.target.value }); }}
+                    type="number"
+                    value=${category.weight}
+                  />
+                <//>
+              </div>
+              <${Field}
+                id=${"dirty-rank-category-description-" + editingCohort + "-" + index}
+                label="Description"
+              >
+                <textarea
+                  className="form-control"
+                  id=${"dirty-rank-category-description-" + editingCohort + "-" + index}
+                  maxLength=${500}
+                  onChange=${function (event) { updateCategory(index, { description: event.target.value }); }}
+                  rows=${2}
+                  value=${category.description}
+                />
+              <//>
+              <${Toggle}
+                checked=${category.enabled}
+                label="Enable this category"
+                onChange=${function (value) { updateCategory(index, { enabled: value }); }}
+              />
+            </div>`;
+          })}
+          <${RankButton} onClick=${addCategory}>+ Add category<//>
+        </div>
+      <//>
+      <details className="dirty-rank-advanced">
+        <summary className="dirty-rank-advanced-summary">
+          <span>Advanced configuration</span>
+          <span className="dirty-rank-advanced-hint">Matchmaking and Glicko-2 parameters</span>
+        </summary>
+        <div className="dirty-rank-advanced-body">
+          <div className="dirty-rank-preset-row">
+            <div
+              className="dirty-rank-data-tools d-flex flex-wrap align-items-center"
+              role="group"
+              aria-label="Rating presets"
+            >
+              <${RankButton}
+                className="dirty-rank-preset-current"
+                disabled=${busy}
+                tone="primary"
+                title="Restore advanced values from when this settings page was opened"
+                onClick=${function () { changed(currentParameters); }}
+              >Current<//>
+              ${RATING_PRESETS.map(function (preset) {
+                var selected = ratingPresetFor(draft) === preset;
+                return html`<${RankButton}
+                  key=${preset.id}
+                  disabled=${busy}
+                  pressed=${selected}
+                  tone=${selected ? "primary" : "secondary"}
+                  onClick=${function () { changed(preset.settings); }}
+                >${preset.name}<//>`;
+              })}
+            </div>
+            <span
+              className="dirty-rank-preset-estimate"
+              role="status"
+              aria-live="polite"
+              title="Fresh category for the gender box selected under Rating categories. Assumes informative close matchups until every performer reaches Refined; each battle updates two performers. Actual totals depend on results and matchmaking. Parameters that do not change predicted uncertainty can leave the rounded total unchanged."
+            >
+              ${presetEstimate ? (presetEstimate.capped ? "≥" : "") + presetEstimate.battles.toLocaleString() + " battles expected to rank 1 category for " + presetEstimate.performers.toLocaleString() + " performers"
+                : estimateError ? "Battle estimate unavailable" : "Loading battle estimate…"}
+            </span>
+          </div>
+          <p className="dirty-rank-advanced-copy" aria-live="polite">
+            ${ratingPresetFor(draft)
+              ? ratingPresetFor(draft).description
+              : "Custom configuration. Choose a preset or adjust the values below."}
+          </p>
+          <p className="dirty-rank-advanced-copy">
+            Presets save automatically and apply to future battles. Existing ratings and history are kept; starting values apply to unrated performers. Battle weight drives faster refinement; lower tau limits volatility changes. Recent-pair avoidance and calibration are soft matchmaking preferences. DirtyRank does not inflate uncertainty during inactivity.
+          </p>
+          <div className="dirty-rank-settings-grid">
+            <${Field}
+              id="dirty-rank-evidence-weight"
+              label="Evidence per battle"
+              help="How strongly one comparison reduces uncertainty. 1.0 is standard Glicko-2; 2.0 treats a consistent subjective choice as twice the rating evidence while still recording one battle."
+            >
+              <input
+                className="form-control"
+                id="dirty-rank-evidence-weight"
+                min=${1}
+                max=${3}
+                onChange=${function (event) { changed({ evidenceWeight: Number(event.target.value) }); }}
+                step=${0.1}
+                type="number"
+                value=${draft.evidenceWeight}
+              />
+            <//>
+            <${Field}
+              id="dirty-rank-repeat-window"
+              label="Recent pairs to avoid"
+              help="Prefer different pairings within this many recent battles. A small pool may still repeat a pair."
+            >
+              <input
+                className="form-control"
+                id="dirty-rank-repeat-window"
+                min=${0}
+                max=${100}
+                onChange=${function (event) { changed({ avoidRepeatWindow: Number(event.target.value) }); }}
+                type="number"
+                value=${draft.avoidRepeatWindow}
+              />
+            <//>
+            <${Field}
+              id="dirty-rank-calibration"
+              label="Calibration matches (%)"
+              help="Chance of favouring broader rating gaps. Lower values focus on the matchups expected to reduce uncertainty most."
+            >
+              <input
+                className="form-control"
+                id="dirty-rank-calibration"
+                min=${0}
+                max=${100}
+                onChange=${function (event) { changed({ calibrationPercent: Number(event.target.value) }); }}
+                type="number"
+                value=${draft.calibrationPercent}
+              />
+            <//>
+            ${[
               ["initialRating", "Initial rating", -100000, 100000, 1],
               ["initialDeviation", "Initial deviation", 30, 1000, 1],
               ["initialVolatility", "Initial volatility", 0.0001, 1, 0.001],
@@ -3262,78 +3706,111 @@
               ["deviationFloor", "Deviation floor", 1, 1000, 1],
               ["provisionalDeviation", "Provisional threshold", 1, 1000, 1],
             ].map(function (definition) {
-              return h(Field, { id: "dirty-rank-" + definition[0], key: definition[0], label: definition[1] },
-                h("input", { className: "form-control", id: "dirty-rank-" + definition[0], min: definition[2], max: definition[3], step: definition[4], onChange: function (event) { var update = {}; update[definition[0]] = Number(event.target.value); changed(update); }, type: "number", value: draft[definition[0]] })
-              );
-            })
-          )
-        )
-      )
-    );
+              return html`<${Field}
+                id=${"dirty-rank-" + definition[0]}
+                key=${definition[0]}
+                label=${definition[1]}
+              >
+                <input
+                  className="form-control"
+                  id=${"dirty-rank-" + definition[0]}
+                  min=${definition[2]}
+                  max=${definition[3]}
+                  step=${definition[4]}
+                  onChange=${function (event) { var update = {}; update[definition[0]] = Number(event.target.value); changed(update); }}
+                  type="number"
+                  value=${draft[definition[0]]}
+                />
+              <//>`;
+            })}
+          </div>
+        </div>
+      </details>
+    <//>`;
   }
 
   function DirtyRankBattleNavLink() {
-    if (SharedNavAction) return h(SharedNavAction, {
-      as: NavLink,
-      className: "dirty-rank-nav-link dirty-rank-nav-button",
-      exact: false,
-      icon: RankNavGlyph("battle"),
-      label: "DirtyRank performer battles",
-      to: ROUTE_PATH,
-    });
-    return h(NavLink, { className: "nav-utility dirty-rank-nav-link", exact: false, to: ROUTE_PATH },
-      h("button", { className: "minimal d-flex align-items-center h-100 dirty-rank-nav-button", title: "DirtyRank performer battles", type: "button" },
-        RankNavGlyph("battle")
-      )
-    );
+    if (SharedNavAction) return html`<${SharedNavAction}
+      as=${NavLink}
+      className="dirty-rank-nav-link dirty-rank-nav-button"
+      exact=${false}
+      icon=${RankNavGlyph("battle")}
+      label="DirtyRank performer battles"
+      to=${ROUTE_PATH}
+    />`;
+    return html`<${NavLink} className="nav-utility dirty-rank-nav-link" exact=${false} to=${ROUTE_PATH}>
+      <button
+        className="minimal d-flex align-items-center h-100 dirty-rank-nav-button"
+        title="DirtyRank performer battles"
+        type="button"
+      >${RankNavGlyph("battle")}</button>
+    <//>`;
   }
 
   function DirtyRankGauntletLaunch(props) {
-    return h("div", { className: "dirty-rank-gauntlet-launch" },
-      h(NavLink, {
-        className: "btn btn-secondary dirty-rank-gauntlet-launch-button",
-        title: "Refine this performer's category ratings through focused DirtyRank battles",
-        to: GAUNTLET_ROUTE_PATH.replace(":performerId", props.performer.id),
-      }, h("span", { "aria-hidden": "true" }, "⚔"), " Start Gauntlet")
-    );
+    return html`<div className="dirty-rank-gauntlet-launch">
+      <${NavLink}
+        className="btn btn-secondary dirty-rank-gauntlet-launch-button"
+        title="Refine this performer's category ratings through focused DirtyRank battles"
+        to=${GAUNTLET_ROUTE_PATH.replace(":performerId", props.performer.id)}
+      >
+        <span aria-hidden="true">⚔</span>
+        ${" Start Gauntlet"}
+      <//>
+    </div>`;
   }
 
   function RankNavGlyph(kind) {
-    return h("i", { "aria-hidden": "true", className: "dirty-rank-nav-icon" },
-      h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "var(--dirty-ui-icon-white)", strokeWidth: "1.8" },
-        kind === "battle"
+    return html`<i aria-hidden="true" className="dirty-rank-nav-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--dirty-ui-icon-white)" strokeWidth="1.8">
+        ${kind === "battle"
           ? ["red", "blue"].map(function (color, index) {
-              return h("g", { key: color, transform: index ? "translate(24 0) scale(-1 1)" : undefined, strokeLinejoin: "round", strokeLinecap: "round" },
-                h("path", { d: "M2.5 2.5l4 1L17 14l-3 3L3.5 6.5z", fill: "var(--dirty-ui-icon-" + color + ")", strokeWidth: "0.7" }),
-                h("path", { d: "M16.5 16.5l4 4", strokeWidth: "3.2" }),
-                h("path", { d: "M16.5 16.5l4 4", stroke: "var(--dirty-ui-icon-blue)", strokeWidth: "1.6" }),
-                h("path", { d: "M12.5 18.5l6-6M19 22l3-3", strokeWidth: "1.8" })
-              );
+              return html`<g
+                key=${color}
+                transform=${index ? "translate(24 0) scale(-1 1)" : undefined}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              >
+                <path
+                  d="M2.5 2.5l4 1L17 14l-3 3L3.5 6.5z"
+                  fill=${"var(--dirty-ui-icon-" + color + ")"}
+                  strokeWidth="0.7"
+                />
+                <path d="M16.5 16.5l4 4" strokeWidth="3.2" />
+                <path d="M16.5 16.5l4 4" stroke="var(--dirty-ui-icon-blue)" strokeWidth="1.6" />
+                <path d="M12.5 18.5l6-6M19 22l3-3" strokeWidth="1.8" />
+              </g>`;
             })
-          : h(Fragment, null,
-              h("path", { d: "M7 5H4v2c0 2 1 3 4 4", stroke: "var(--dirty-ui-icon-red)" }),
-              h("path", { d: "M17 5h3v2c0 2-1 3-4 4", stroke: "var(--dirty-ui-icon-blue)" }),
-              h("path", { d: "M7 3h10v6c0 3-2 5-5 5s-5-2-5-5V3z", fill: "var(--dirty-ui-icon-blue)" }),
-              h("path", { d: "M12 14v5M8 21h8M10 19h4" })
-            )
-      )
-    );
+          : html`<${Fragment}>
+            <path d="M7 5H4v2c0 2 1 3 4 4" stroke="var(--dirty-ui-icon-red)" />
+            <path d="M17 5h3v2c0 2-1 3-4 4" stroke="var(--dirty-ui-icon-blue)" />
+            <path d="M7 3h10v6c0 3-2 5-5 5s-5-2-5-5V3z" fill="var(--dirty-ui-icon-blue)" />
+            <path d="M12 14v5M8 21h8M10 19h4" />
+          <//>`}
+      </svg>
+    </i>`;
   }
 
   function DirtyRankLeaderboardsNavLink() {
-    if (SharedNavAction) return h(SharedNavAction, {
-      as: NavLink,
-      className: "dirty-rank-nav-link dirty-rank-leaderboards-nav-link dirty-rank-nav-button",
-      exact: true,
-      icon: RankNavGlyph("leaderboard"),
-      label: "DirtyRank leaderboards",
-      to: LEADERBOARDS_ROUTE_PATH,
-    });
-    return h(NavLink, { className: "nav-utility dirty-rank-nav-link dirty-rank-leaderboards-nav-link", exact: true, to: LEADERBOARDS_ROUTE_PATH },
-      h("button", { className: "minimal d-flex align-items-center h-100 dirty-rank-nav-button", title: "DirtyRank leaderboards", type: "button" },
-        RankNavGlyph("leaderboard")
-      )
-    );
+    if (SharedNavAction) return html`<${SharedNavAction}
+      as=${NavLink}
+      className="dirty-rank-nav-link dirty-rank-leaderboards-nav-link dirty-rank-nav-button"
+      exact=${true}
+      icon=${RankNavGlyph("leaderboard")}
+      label="DirtyRank leaderboards"
+      to=${LEADERBOARDS_ROUTE_PATH}
+    />`;
+    return html`<${NavLink}
+      className="nav-utility dirty-rank-nav-link dirty-rank-leaderboards-nav-link"
+      exact=${true}
+      to=${LEADERBOARDS_ROUTE_PATH}
+    >
+      <button
+        className="minimal d-flex align-items-center h-100 dirty-rank-nav-button"
+        title="DirtyRank leaderboards"
+        type="button"
+      >${RankNavGlyph("leaderboard")}</button>
+    <//>`;
   }
 
   function DirtyRankNavLinks() {
@@ -3361,10 +3838,10 @@
       };
     }, []);
 
-    return h(Fragment, null,
-      navigation && navigation.showBattlesInMenu && h(DirtyRankBattleNavLink, null),
-      navigation && navigation.showLeaderboardsInMenu && h(DirtyRankLeaderboardsNavLink, null)
-    );
+    return html`<${Fragment}>
+      ${navigation && navigation.showBattlesInMenu && html`<${DirtyRankBattleNavLink} />`}
+      ${navigation && navigation.showLeaderboardsInMenu && html`<${DirtyRankLeaderboardsNavLink} />`}
+    <//>`;
   }
 
   PluginApi.register.route(ROUTE_PATH, DirtyRankRoute);
@@ -3389,14 +3866,17 @@
     var args = Array.prototype.slice.call(arguments);
     var result = args.pop();
     if (!isPerformerListRoute()) return result;
-    return h(DirtyRankPerformerListShell, null, result);
+    return html`<${DirtyRankPerformerListShell}>${result}<//>`;
   });
   PluginApi.patch.after("PerformerDetailsPanel", function () {
     var args = Array.prototype.slice.call(arguments);
     var result = args.pop();
     var props = args[0];
     if (!props || !props.performer || !props.performer.id) return result;
-    return h(Fragment, null, result, h(DirtyRankGauntletLaunch, { performer: props.performer }));
+    return html`<${Fragment}>
+      ${result}
+      <${DirtyRankGauntletLaunch} performer=${props.performer} />
+    <//>`;
   });
   PluginApi.patch.instead("PerformerList", function () {
     var args = Array.prototype.slice.call(arguments);
@@ -3404,15 +3884,18 @@
     var props = args[0];
     if (props && props.filter && props.extraCriteria && props.extraCriteria.dirtyRankLeaderboardFilter &&
         window.location.pathname.indexOf(LEADERBOARDS_ROUTE_PATH) === 0) {
-      return h(DirtyRankLeaderboardFilterCapture, { filter: props.filter });
+      return html`<${DirtyRankLeaderboardFilterCapture} filter=${props.filter} />`;
     }
     if (!isPerformerListRoute() || !props || !props.filter || !props.filter[OVERALL_SORT_ACTIVE]) {
       return next.apply(null, args);
     }
-    return h(DirtyRankSortedPerformerList, { listProps: props, next: next });
+    return html`<${DirtyRankSortedPerformerList} listProps=${props} next=${next} />`;
   });
   PluginApi.patch.before("MainNavBar.UtilityItems", function (props) {
-    return [{ children: h(Fragment, null, props.children, h(DirtyRankNavLinks, null)) }];
+    return [{ children: html`<${Fragment}>
+      ${props.children}
+      <${DirtyRankNavLinks} />
+    <//>` }];
   });
   window[INSTANCE_KEY] = {
     algorithms: {

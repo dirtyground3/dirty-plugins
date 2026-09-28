@@ -4,6 +4,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
+const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
 
 // Exercise the actual component and asynchronous handlers without a Stash server.
 const noop = function () {};
@@ -48,6 +49,7 @@ let nextTimer = 0;
 let response = () => Promise.resolve({ findPerformers: { performers: [] } });
 const runtime = {
   react: {
+    html: htm.bind(React.createElement),
     usePageTitle() {},
     SettingsCard: function SettingsCard() {},
     SettingsSection: function SettingsSection() {},

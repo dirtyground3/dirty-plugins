@@ -12,6 +12,7 @@ function parseMaybeJson(value) {
   }
 }
 
+const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
 const noop = function () {};
 const React = {
   Fragment: "fragment",
@@ -29,7 +30,7 @@ global.window = {
     getPluginSettings: function () { return Promise.resolve({}); },
     graphql: function () { return Promise.resolve({ findPerformers: { performers: [] } }); },
     runPluginOperation: function () { return Promise.resolve({ version: 2, revision: 0, states: {} }); },
-    react: {},
+    react: { html: htm.bind(noop) },
     registerSettingsPanel: noop,
     values: {
       asObject: function (value) { return value && typeof value === "object" ? value : {}; },

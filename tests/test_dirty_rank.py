@@ -663,8 +663,8 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("hidePerformerImages", source)
         self.assertIn("dirty-rank-card-no-image", source)
         self.assertIn("var showMedia = showImages || Boolean(scene) || sceneLoading", source)
-        self.assertIn("showMedia && h(", source)
-        self.assertIn('showImages && h("div", { className: "dirty-rank-portrait" }', source)
+        self.assertIn("showMedia && html`", source)
+        self.assertIn('showImages && html`<div className="dirty-rank-portrait">', source)
         self.assertIn('get("censorMedia") === "1"', source)
         self.assertIn("dirty-rank-censored-media", styles)
         self.assertIn("blur(42px)", styles)
@@ -673,11 +673,12 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         source = rank_source()
         styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
 
-        self.assertIn('to: "/performers/" + performer.id', source)
+        self.assertIn('to=${"/performers/" + performer.id}', source)
         self.assertIn('event.stopPropagation()', source)
-        self.assertIn('className: "dirty-rank-scene-panel"', source)
-        self.assertIn('key: gauntletMode ? "gauntlet:" + arenaLeft.id : kingsMode ? "kings:"', source)
-        self.assertIn('key: kingsMode ? "kings:"', source)
+        self.assertIn('className="dirty-rank-scene-panel"', source)
+        self.assertIn('var arenaLeftKey = arenaLeft && (gauntletMode ? "gauntlet:" + arenaLeft.id : kingsMode ? "kings:"', source)
+        self.assertIn("key=${arenaLeftKey}", source)
+        self.assertIn('key=${kingsMode ? "kings:"', source)
         self.assertIn("@keyframes dirty-rank-card-change", styles)
         self.assertIn("@keyframes dirty-rank-firework-burst", styles)
         self.assertIn(".dirty-rank-image-ready .dirty-rank-image", styles)
@@ -703,7 +704,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("var Prompt = Router.Prompt", source)
         self.assertIn('window.addEventListener("beforeunload", preventPendingOperationExit)', source)
         self.assertIn('window.removeEventListener("beforeunload", preventPendingOperationExit)', source)
-        self.assertIn("when: pendingVotes > 0", source)
+        self.assertIn("when=${pendingVotes > 0}", source)
         self.assertIn("DirtyRank is still saving queued votes or undos", source)
 
     def test_gauntlet_route_and_performer_page_launch_are_registered(self):
@@ -738,7 +739,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         podium = source[source.index("function LeaderboardPodium(props)") : source.index("function LeaderboardTable")]
         self.assertNotIn("dirty-rank-podium-medal", podium)
         self.assertNotIn("dirty-rank-showcase-heading", podium)
-        self.assertNotIn("h(PrecisionBadge", podium)
+        self.assertNotIn("<${PrecisionBadge}", podium)
         self.assertIn("dirty-rank-leaderboard-rating-row", podium)
         self.assertIn("leaderboardRatingText(pool, props.settings)", podium)
         self.assertIn("var podiumOrder = [1, 0, 2]", source)
@@ -747,14 +748,14 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('function RankStatisticSelector(props)', source)
         self.assertIn('source.leaderboardView === "table" ? "table" : "gallery"', source)
         self.assertIn('leaderboardTopCount: leaderboardTopCount(source.leaderboardTopCount)', source)
-        self.assertIn('h("option", { value: "gallery" }, "Gallery")', source)
-        self.assertIn('h("option", { value: "table" }, "Table")', source)
+        self.assertIn('<option value="gallery">Gallery</option>', source)
+        self.assertIn('<option value="table">Table</option>', source)
         self.assertNotIn('LEADERBOARD_TOP_STORAGE_KEY', source)
         self.assertIn("function LeaderboardGallery", source)
         self.assertIn("function LeaderboardPagination", source)
         self.assertIn("function leaderboardPageSize", source)
         self.assertIn("function leaderboardPerformerCount", source)
-        self.assertIn('id: "dirty-rank-leaderboard-performer-count"', source)
+        self.assertIn('id="dirty-rank-leaderboard-performer-count"', source)
         self.assertIn("dirty-rank-gallery-grid", styles)
         self.assertIn("dirty-rank-pagination", styles)
         self.assertIn("function precisionTier", source)
@@ -770,7 +771,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
 
         self.assertIn("props.category.id", sidebar)
         self.assertIn('props.category.name + " standings"', sidebar)
-        self.assertIn('"Current battle category · top 12"', sidebar)
+        self.assertIn(">Current battle category · top 12<", sidebar)
         self.assertNotIn("rankOverallPerformers", sidebar)
         self.assertNotIn("overallPoolFor", sidebar)
 
@@ -789,10 +790,10 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         source = rank_source()
 
         self.assertIn("enabledCohorts", source)
-        self.assertIn('availableCohorts.length > 1 && h("div"', source)
-        self.assertIn('id: "dirty-rank-battle-cohort"', source)
-        self.assertIn('id: "dirty-rank-leaderboard-cohort"', source)
-        self.assertIn('title: "Gender boxes"', source)
+        self.assertIn('availableCohorts.length > 1 && html`<div', source)
+        self.assertIn('id="dirty-rank-battle-cohort"', source)
+        self.assertIn('id="dirty-rank-leaderboard-cohort"', source)
+        self.assertIn('title="Gender boxes"', source)
 
     def test_leaderboards_navigation_is_configurable(self):
         source = rank_source()
@@ -800,17 +801,17 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("showLeaderboardsInMenu", source)
         self.assertIn("DirtyRankLeaderboardsNavLink", source)
         self.assertIn("dirty-rank-leaderboards-nav-link", source)
-        self.assertIn('label: "Show Leaderboards in the Stash header"', source)
-        self.assertIn('label: "Show Battles in the Stash header"', source)
+        self.assertIn('label="Show Leaderboards in the Stash header"', source)
+        self.assertIn('label="Show Battles in the Stash header"', source)
 
     def test_category_editor_can_configure_disabled_boxes(self):
         source = rank_source()
 
-        category_editor = source[source.index('id: "dirty-rank-category-cohort"') :]
+        category_editor = source[source.index('id="dirty-rank-category-cohort"') :]
         self.assertIn("boxOptions(draft, false)", category_editor)
-        self.assertIn('label: "Categories for gender box"', category_editor)
+        self.assertIn('label="Categories for gender box"', category_editor)
         self.assertIn(
-            'draft.genderBoxes.length > 1 && h("div", { className: "dirty-rank-category-cohort" }',
+            'draft.genderBoxes.length > 1 && html`<div className="dirty-rank-category-cohort">',
             source,
         )
 

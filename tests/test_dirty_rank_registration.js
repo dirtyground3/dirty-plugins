@@ -7,6 +7,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const source = require("./load_plugin_scripts").sourceFor("DirtyRank");
+const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
 const noop = function () {};
 
 const calls = { routes: 0, patches: 0 };
@@ -16,7 +17,7 @@ const window = {
     getPluginSettings: function () { return Promise.resolve({}); },
     graphql: function () { return Promise.resolve({ findPerformers: { performers: [] } }); },
     runPluginOperation: function () { return Promise.resolve({ version: 2, revision: 0, states: {} }); },
-    react: {},
+    react: { html: htm.bind(noop) },
     registerSettingsPanel: noop,
     values: {
       asObject: function (value) { return value && typeof value === "object" ? value : {}; },
