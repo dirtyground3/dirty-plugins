@@ -1,6 +1,6 @@
 # DirtyMultiscreen
 
-DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can launch from Stash scene and marker contexts while preserving the active list order when appropriate.
+DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can launch from Stash scene, marker, performer, and studio contexts while preserving the active list order when appropriate.
 
 ## Features
 
@@ -19,8 +19,8 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 
 ![DirtyMultiscreen four-pane playback grid with video frames blurred](../../docs/images/dirty-multiscreen-grid-censored.png)
 
-The capture shows a real edge-to-edge four-pane session. Only the video frames
-are blurred for the public repository.
+The capture shows a real edge-to-edge four-pane session. The video frames and
+scene titles are blurred for the public repository.
 
 ### Settings
 
@@ -46,9 +46,12 @@ The following playback options are enabled by default: **Random scenes**,
 
 ## Source
 
-The source code and build script are maintained in the `infinitescreens` project. This folder contains the built files required to install the Stash plugin.
+The plugin has no build step. Stash serves `multiscreenPlaylists.js`,
+`multiscreenSettings.js`, and `multiscreen.js` directly, in the order listed
+in `multiscreen.yml`, and the UI renders through the shared
+`DirtyPlugins.react.html` template tag.
 
-The built UI consumes DirtyPlugins' shared GraphQL client, value helpers, React
+The UI consumes DirtyPlugins' shared GraphQL client, value helpers, React
 icon/state components, and visual tokens so its controls remain consistent with
 the other plugins in this repository.
 The navigation action is one focusable link, and overlay controls become fully

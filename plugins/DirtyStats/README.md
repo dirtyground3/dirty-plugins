@@ -323,6 +323,37 @@ native result lists cannot expose media.
 Future statistics will use the same selector with their own filters and optional
 settings: scene bitrates. That view is not implemented yet.
 
+## Screenshots
+
+These captures use `?docsCapture=1` and the De Stijl Dark suite theme; native
+performer and scene cards are replaced by placeholders.
+
+### Dashboard
+
+![DirtyStats dashboard with content growth, rating and origin widgets](../../docs/images/dirty-stats-dashboard.png)
+
+A medium Content growth widget beside small Performer and Scene ratings
+widgets, above a large Performer origin map with numbers enabled.
+
+![DirtyStats birthday, quality-efficiency and age-at-scene widgets](../../docs/images/dirty-stats-widgets.png)
+
+Performer birthdays lists the nearest upcoming dates; Quality efficiency and
+Age at scene keep their summary metrics in the widget header.
+
+### Content growth
+
+![DirtyStats content growth view with capacity line and forecast](../../docs/images/dirty-stats-growth.png)
+
+The full view adds the native scene filter bar, date basis, capacity, forecast,
+grouping, the range slider, and PNG export.
+
+### Cast constellation
+
+![DirtyStats cast constellation performer network](../../docs/images/dirty-stats-constellation.png)
+
+The constellation as a large dashboard widget, with gender-coloured nodes sized
+by matching scenes.
+
 ## Bundled dependencies
 
 - Apache ECharts **5.6.0**, Apache-2.0: https://echarts.apache.org/

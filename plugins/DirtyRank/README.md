@@ -238,25 +238,27 @@ adding it to repository documentation.
 
 ### Performer battles
 
-![DirtyRank Performance battle with performer media blurred](../../docs/images/dirty-rank-battle-censored.png)
+![DirtyRank Face battle with performer photos and scene previews blurred](../../docs/images/dirty-rank-battle-censored.png)
 
-Each comparison keeps the selected category, confidence estimate, vote
-controls, and current-category standings together while the next matchup is
-prepared in the background.
+A standard battle with **Hide standings during battles** and **Automatically
+play top scenes** enabled: click a native performer card's photo to vote, while
+each top scene plays in its own panel below. Photos and video are blurred for
+the repository.
 
 ### Leaderboards
 
-![DirtyRank gold, silver, and bronze podium with performer media blurred](../../docs/images/dirty-rank-leaderboard-censored.png)
+![DirtyRank Mount Rushmore leaderboard with performer media blurred](../../docs/images/dirty-rank-leaderboard-censored.png)
 
-The leaderboard combines its Podium, Mount Rushmore and Fingers displays with
-rating precision, completed battles, confidence, and full paginated standings.
+The Overall leaderboard with the Mount Rushmore display. Filter, Coverage, and
+Confidence stay in the toolbar; the gallery or table standings continue below.
 
 ### Settings
 
-![DirtyRank performer pool and rating settings](../../docs/images/dirty-rank-settings.png)
+![DirtyRank gender boxes, presentation, confidence goal and scoring settings](../../docs/images/dirty-rank-settings.png)
 
-Choose performer pools, battle presentation, confidence goals, weighted
-categories, category resets, and advanced Glicko-2 parameters from the shared hub.
+Configure gender boxes, navigation buttons, leaderboard and battle
+presentation, the confidence goal, and overall scoring from the shared hub.
+Rating categories, resets, and advanced Glicko-2 parameters follow below.
 
 ## Data and compatibility
 

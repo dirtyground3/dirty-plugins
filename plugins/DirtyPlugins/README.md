@@ -1,14 +1,16 @@
 # DirtyPlugins
 
+DirtyPlugins provides the shared runtime and unlisted settings page used by
+plugins in this repository. It is installed automatically as a dependency
+when a Dirty plugin is installed from the package source.
+
+![DirtyPlugins General tab with the suite theme selector and database backup](../../docs/images/dirty-plugins-general.png)
+
 DirtyCompactor uses this hub for its rule settings, native scene-filter editor,
 run journals, and output-review decisions. Compactor-owned refresh scans are
 identified through the shared backend so they do not trigger another Compactor
 or DirtyTidy automatic run. `dirty_plugins_client.py` provides a standard-library
 Stash transport and Windows child-process containment for backend workers.
-
-DirtyPlugins provides the shared runtime and unlisted settings page used by
-plugins in this repository. It is installed automatically as a dependency
-when a Dirty plugin is installed from the package source.
 
 The shared runtime includes the GraphQL client, plugin-configuration helpers,
 value coercion, stacked notifications, reusable React settings-card, section,
@@ -99,13 +101,14 @@ hooks. Runtime database and WAL files are excluded from plugin packages and
 remain in the installed DirtyPlugins directory across ordinary updates.
 
 The database is also the authoritative settings store for DirtyFileExtractor,
-DirtyMultiscreen, DirtyTidy, DirtyRank, and DirtyStats. The Stash manifests retain setting
+DirtyMultiscreen, DirtyTidy, DirtyRank, DirtyStats, and DirtyCompactor. The Stash manifests retain setting
 definitions so the shared hub can render typed controls, but Stash's plugin
 configuration values are not read or written by Dirty plugins.
 
 Managed settings tabs include General, DirtyFileExtractor, DirtyMultiscreen,
-DirtyTidy, DirtyRank, and DirtyStats. DirtyRank uses a custom hub panel for its categories,
-performer cohort, Glicko-2 parameters, and guarded data tools.
+DirtyTidy, DirtyRank, DirtyStats, and DirtyCompactor. DirtyRank uses a custom hub
+panel for its gender boxes, categories, Glicko-2 parameters, and guarded data
+tools; DirtyCompactor uses one for its rules, previews, and runs.
 
 The page has no navigation entry. Open it using the link shown in the normal
 Stash settings panel for a managed Dirty plugin. Each installed plugin has its
@@ -142,10 +145,11 @@ level** to `Debug` and open **Settings → Logs** to read it.
 
 ## Screenshot
 
-![Dirty Plugins shared settings hub showing DirtyRank configuration](../../docs/images/dirty-rank-settings.png)
+![Dirty Plugins shared settings hub showing DirtyMultiscreen settings](../../docs/images/dirty-multiscreen-settings.png)
 
 The hub gives every installed Dirty plugin its own tab and consistent settings
-layout. This capture shows DirtyRank's custom panel inside the shared page.
+layout. This capture shows DirtyMultiscreen's standard typed settings; DirtyRank,
+DirtyTidy, and DirtyCompactor render custom panels in the same page.
 
 For a manual installation, copy this directory alongside the other Dirty
 plugin directories and reload plugins in Stash.

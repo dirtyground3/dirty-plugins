@@ -18,6 +18,12 @@ and select one action:
 | Reencode | Keep the resolution and lower the video bitrate. |
 | Delete | Remove the scene, its media files, and generated assets using Stash's deletion workflow. |
 
+![DirtyCompactor rule editor with condition and reencode action](../../docs/images/dirty-compactor-settings.png)
+
+A Reencode rule with its scene-filter condition, target bitrate, codec,
+encoder, and output-format choice. The toolbar holds automation, **Add rule**,
+**Detect encoders**, and **Preview rules**; run history appears below.
+
 Rules autosave after a short delay. New rules are disabled and Manual. Enable
 them after choosing a native Stash filter, or explicitly select **All scenes**.
 Use Move up/down to set priority. The first enabled matching rule wins;
