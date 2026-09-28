@@ -9,8 +9,9 @@ JavaScript without a build step. The shared hub bundles HTM locally.
 
 ## Rules
 
-Open **Dirty Plugins → DirtyCompactor**, add a rule, choose its scene filter,
-and select one action:
+Open **Dirty Plugins → DirtyCompactor** and select **Add rule**. Rules appear
+as one-line rows; click a row to edit it. Move, duplicate, and delete rules
+from the row's ⋮ menu. Choose the rule's scenes and one action:
 
 | Action | Effect |
 | --- | --- |
@@ -18,11 +19,12 @@ and select one action:
 | Reencode | Keep the resolution and lower the video bitrate. |
 | Delete | Remove the scene, its media files, and generated assets using Stash's deletion workflow. |
 
-![DirtyCompactor rule editor with condition and reencode action](../../docs/images/dirty-compactor-settings.png)
+![DirtyCompactor rule list with one rule open showing its quality preset](../../docs/images/dirty-compactor-settings.png)
 
-A Reencode rule with its scene-filter condition, target bitrate, codec,
-encoder, and output-format choice. The toolbar holds automation, **Add rule**,
-**Detect encoders**, and **Preview rules**; run history appears below.
+Three rules as compact rows, with the Reencode rule open: its scenes, action,
+and Balanced quality preset. Codec, encoder, and container sit under
+**Advanced**. The toolbar holds automation, **Add rule**, and **Preview**; run
+history appears below.
 
 Rules autosave after a short delay. New rules are disabled and Manual. Enable
 them after choosing a native Stash filter, or explicitly select **All scenes**.
@@ -30,8 +32,22 @@ Use Move up/down to set priority. The first enabled matching rule wins;
 unsupported or already-small files do not fall through to a later rule.
 Every eligible file associated with a scene is processed.
 
-Encoding rules select H.264 or H.265, a target video bitrate in decimal Mbps,
-and an encoder. **Detect encoders** tests actual availability. Auto GPU tries
+Encoding rules pick a **Quality** preset instead of a bitrate:
+
+| Preset | 1080p H.264 | 1080p H.265 |
+| --- | --- | --- |
+| High quality | 8 Mbps | 5 Mbps |
+| Balanced (default) | 5 Mbps | 3 Mbps |
+| Smallest files | 3 Mbps | 1.8 Mbps |
+
+The bitrate is chosen per file from its output resolution (scaled by pixel
+count to the power 0.75) and frame rate (up to ×1.41 for 60 fps), so one
+Balanced rule suits a mixed 720p/4K library. **Custom bitrate** sets a fixed
+Mbps for every file; rules saved before presets existed keep their bitrate.
+The preview table shows the bitrate chosen for each file.
+
+Codec (H.264 or H.265), encoder, and container live under **Advanced**.
+**Detect** next to the encoder tests actual availability. Auto GPU tries
 NVIDIA NVENC, Intel QSV, and AMD AMF before CPU. Hardware-specific failures
 retry once on CPU with the same codec. Audio, subtitles, chapters, and supported
 metadata are retained rather than deliberately compressed or removed.
@@ -42,11 +58,12 @@ and streams. Unrelated destination files are never overwritten.
 
 ## Manual runs and output review
 
-1. Select **Preview rules**. Planning runs as a Stash background task.
-2. Review file actions, estimated savings, and blocked/unchanged reasons.
-   Exclude any scenes you do not want in the run.
-3. Select **Review and run** and confirm the operations. Optionally enable
-   **Review encoded outputs before replacing originals** for the whole run.
+1. Select **Preview**. Planning runs as a Stash background task.
+2. Review the totals: ready files, estimated savings, and skipped files.
+   **Show files** lists each operation with blocked/unchanged reasons and
+   lets you exclude scenes.
+3. Select **Run…** and confirm the operations. Optionally enable
+   **Let me check each encoded file before it replaces the original**.
 
 With output review enabled, DirtyCompactor encodes and validates one complete
 file, then pauses. **The original and its Stash association remain unchanged.**
@@ -56,8 +73,8 @@ For codecs the browser cannot play, download the output for an external player.
 
 - **Accept and replace** installs exactly the reviewed bytes, refreshes Stash,
   and removes the original backup after reconciliation succeeds.
-- **Discard and keep original** removes the trial output and continues.
-- **Review later** retains the pending output without accepting it. Reopen
+- **Discard** removes the trial output, keeps the original, and continues.
+- **Review later** (⋮ menu, next to **Download output**) retains the pending output without accepting it. Reopen
   DirtyCompactor to resume. There is no automatic expiry or acceptance.
 
 Each encoded file needs its own decision. Delete rules have no output review;
@@ -67,7 +84,8 @@ discard the trial and build a new preview.
 
 ## Automatic execution
 
-Set selected rules to Automatic and enable **Automation active**. After a
+Enable **Run automatically after library scans** on selected rules and turn
+on **Automatic runs** in the toolbar. After a
 successful Stash scan, enabled rules are evaluated against the whole library.
 The Stash UI must be open to observe scan completion; queued jobs continue if
 the browser closes. A first matching Manual rule protects that scene from
@@ -98,9 +116,9 @@ retains original files. Once replacement begins, reconciliation or recovery
 must finish before stopping. A Windows job object also contains FFmpeg when
 Stash forcibly terminates a worker.
 
-If a job is interrupted, use **Recover interrupted run** once its Stash tasks
-have stopped. Reconciliation failures keep recovery files and offer
-**Restore original**. Never manually remove a recorded backup while recovery
+If a job is interrupted, use **Recover interrupted run** from the run's ⋮ menu
+once its Stash tasks have stopped. Reconciliation failures keep recovery files
+and offer **Retry recovery** and **Restore original**. Never manually remove a recorded backup while recovery
 is pending. The plugin never writes Stash's database directly.
 
 ## Initial compatibility boundaries

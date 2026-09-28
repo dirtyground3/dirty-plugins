@@ -8,6 +8,11 @@ from pathlib import Path
 
 ENCODERS = {"h264": {"cpu": "libx264", "nvenc": "h264_nvenc", "qsv": "h264_qsv", "amf": "h264_amf"},
             "hevc": {"cpu": "libx265", "nvenc": "hevc_nvenc", "qsv": "hevc_qsv", "amf": "hevc_amf"}}
+# Video Mbps for a 1080p, 30 fps output. Other outputs scale by pixel count
+# (sub-linearly) and frame rate, so one preset suits a mixed library.
+QUALITY_MBPS_1080P = {"h264": {"high": 8, "balanced": 5, "small": 3},
+                      "hevc": {"high": 5, "balanced": 3, "small": 1.8}}
+QUALITIES = ("high", "balanced", "small", "custom")
 
 
 class PluginError(RuntimeError):
@@ -66,8 +71,10 @@ def validate_settings(value):
                 raise PluginError("Invalid codec or encoder")
             if rule.get("format") not in ("keep", "allow"):
                 raise PluginError("Invalid format policy")
+            if rule.get("quality", "custom") not in QUALITIES:
+                raise PluginError("Invalid quality preset")
             try:
-                rate = float(rule.get("mbps", 0))
+                rate = float(rule.get("mbps", 0)) if rule.get("quality", "custom") == "custom" else 1
                 sizes = [float(rule.get(key, 0)) for key in ("width", "height")] if rule["action"] == "resize" else [2, 2]
             except (ValueError, TypeError):
                 raise PluginError("Enter valid bitrate and dimensions")
@@ -87,3 +94,13 @@ def dimensions(width, height, rule):
     if factor == 1:
         return width, height
     return max(2, int(width * factor) // 2 * 2), max(2, int(height * factor) // 2 * 2)
+
+
+def target_mbps(rule, width, height, fps=None):
+    """Return the video bitrate for one output; rules without a preset use their custom Mbps."""
+    quality = rule.get("quality", "custom")
+    if quality == "custom":
+        return float(rule["mbps"])
+    pixels = max(1, width * height) / (1920 * 1080)
+    motion = max(1, min(float(fps or 30), 120) / 30) ** 0.5
+    return round(max(0.2, QUALITY_MBPS_1080P[rule["codec"]][quality] * pixels ** 0.75 * motion), 2)

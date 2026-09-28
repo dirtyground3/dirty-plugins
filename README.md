@@ -196,9 +196,11 @@ an automation trigger, and preview the complete plan before approving changes.
 - Ordered rules, each with a native Stash scene filter (or **All scenes**) and
   one action: **Resize**, **Reencode**, or **Delete**. The first enabled
   matching rule wins.
-- H.264 or H.265 at a target bitrate, with encoder detection and automatic
-  NVIDIA NVENC, Intel QSV, or AMD AMF acceleration that falls back to CPU.
-- **Preview rules** plans the run as a background task and estimates savings
+- **Quality presets** (High, Balanced, Smallest files) pick a bitrate for each
+  file from its resolution; a custom bitrate is still available. H.264 or
+  H.265 with automatic NVIDIA NVENC, Intel QSV, or AMD AMF acceleration that
+  falls back to CPU.
+- **Preview** plans the run as a background task and estimates savings
   before anything changes.
 - Optional per-file **output review**: play or download the actual encoded
   file, then accept it, discard it, or decide later. Originals stay untouched
@@ -208,7 +210,7 @@ an automation trigger, and preview the complete plan before approving changes.
 
 #### DirtyCompactor rules
 
-![DirtyCompactor rule editor with condition and reencode action](docs/images/dirty-compactor-settings.png)
+![DirtyCompactor rule list with one rule open showing its quality preset](docs/images/dirty-compactor-settings.png)
 
 Each rule combines a scene filter with an action and its encoding options.
 Rules autosave; new rules start disabled and Manual.
@@ -251,8 +253,8 @@ own tab there.
   machine or container running Stash.
 - **DirtyTidy:** configure a folder/filename strategy, generate a preview,
   review it, then use **Confirm and save** before running or enabling automation.
-- **DirtyCompactor:** add a rule, choose its scene filter and action, select
-  **Detect encoders**, then **Preview rules** before the first run.
+- **DirtyCompactor:** add a rule, choose its scenes, action, and quality
+  preset, then **Preview** before the first run.
 
 ## Manual installation
 

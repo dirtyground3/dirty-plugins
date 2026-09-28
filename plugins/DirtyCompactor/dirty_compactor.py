@@ -23,7 +23,7 @@ import dirty_plugins_storage as storage
 from dirty_plugins_client import StashClient as BaseClient, contain_child_process
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dirty_compactor_rules import (
-    ENCODERS, PluginError, Cancelled, digest, file_hash, identity, validate_settings, dimensions,
+    ENCODERS, PluginError, Cancelled, digest, file_hash, identity, validate_settings, dimensions, target_mbps,
 )
 
 PLUGIN_ID = "dirtyCompactor"
@@ -119,7 +119,12 @@ def probe(executable, path):
             if packet_process.poll() is None:
                 packet_process.kill()
                 packet_process.wait()
-    return {"width": int(v["width"]), "height": int(v["height"]), "duration": duration,
+    try:
+        numerator, denominator = (v.get("avg_frame_rate") or "0/1").split("/")
+        fps = float(numerator) / float(denominator) if float(denominator) else 0
+    except ValueError:
+        fps = 0
+    return {"width": int(v["width"]), "height": int(v["height"]), "duration": duration, "fps": fps,
             "bitrate": rate, "codec": v.get("codec_name"), "streams": streams,
             "chapters": data.get("chapters", []), "format": data.get("format", {})}
 
@@ -269,6 +274,7 @@ def build_preview(client, preview):
                             media = probe(ffprobe, op["source"])
                             op["media"] = media
                             op["dimensions"] = list(dimensions(media["width"], media["height"], rule))
+                            op["mbps"] = target_mbps(rule, op["dimensions"][0], op["dimensions"][1], media.get("fps"))
                             suffix, muxer = container_for(op["source"], rule, media)
                             op.update(destination=str(Path(op["source"]).with_suffix(suffix)), muxer=muxer)
                             if op["destination"] != op["source"] and Path(op["destination"]).exists():
@@ -280,11 +286,11 @@ def build_preview(client, preview):
                                 op.update(status="unchanged", reason="This output was already processed with these settings")
                             elif rule["action"] == "resize" and op["dimensions"] == [media["width"], media["height"]]:
                                 op.update(status="unchanged", reason="Already within the requested resolution")
-                            elif rule["action"] == "reencode" and media["bitrate"] and media["bitrate"] <= float(rule["mbps"]) * 1e6:
+                            elif rule["action"] == "reencode" and media["bitrate"] and media["bitrate"] <= op["mbps"] * 1e6:
                                 op.update(status="unchanged", reason="Already at or below target bitrate")
                             elif rule["action"] == "reencode" and not media["bitrate"]:
                                 raise PluginError("Video bitrate is unknown; cannot prove a bitrate reduction")
-                            estimated = float(rule["mbps"]) * 1e6 * media["duration"] / 8
+                            estimated = op["mbps"] * 1e6 * media["duration"] / 8
                             other = sum(float(s.get("bit_rate") or 0) for s in media["streams"] if s["codec_type"] != "video") * media["duration"] / 8
                             op["savings"] = max(0, op["identity"]["size"] - int((estimated + other) * 1.02))
                 except (OSError, ValueError, PluginError) as error:
@@ -318,11 +324,16 @@ def revalidate(client, run, op):
             raise PluginError("A file is now shared with another scene")
 
 
+def op_mbps(op):
+    # Runs planned before quality presets stored only the rule's custom Mbps.
+    return float(op.get("mbps") or op["rule"]["mbps"])
+
+
 def command_for(ffmpeg, op, output, encoder):
     rule, media = op["rule"], op["media"]
     command = [ffmpeg, "-hide_banner", "-v", "error", "-nostdin", "-n", "-noautorotate", "-i", op["source"],
                "-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-c", "copy", "-c:v:0", encoder,
-               "-b:v:0", str(int(float(rule["mbps"]) * 1e6))]
+               "-b:v:0", str(int(op_mbps(op) * 1e6))]
     if op["dimensions"] != [media["width"], media["height"]]:
         command += ["-filter:v:0", "scale={}:{}".format(*op["dimensions"])]
     if encoder.startswith("lib"):
@@ -338,7 +349,7 @@ def encode(client, run, op):
     suffix = Path(op["destination"]).suffix
     PRIVATE.mkdir(parents=True, exist_ok=True)
     output = PRIVATE / (op["id"] + suffix) if run["reviewOutputs"] else Path(op["source"]).with_name(".dirty-compactor-" + op["id"] + ".tmp")
-    needed = max(op["identity"]["size"], int(float(op["rule"]["mbps"]) * 1e6 * op["media"]["duration"] / 8 * 1.2))
+    needed = max(op["identity"]["size"], int(op_mbps(op) * 1e6 * op["media"]["duration"] / 8 * 1.2))
     if shutil.disk_usage(output.parent).free < needed + 64 * 1024 * 1024:
         raise PluginError("Insufficient temporary disk space")
     op.update(output=str(output), status="encoding")
@@ -561,7 +572,7 @@ def public_record(record, page=1):
                   readyActions={action: sum(o["status"] == "ready" and o["rule"]["action"] == action for o in operations) for action in ("resize", "reencode", "delete")},
                   actualSavings=sum(o.get("actualSavings", 0) for o in operations),
                   libraryBytesRemoved=sum(o.get("libraryBytesRemoved", 0) for o in operations),
-                  operations=[{k: o.get(k) for k in ("id", "sceneId", "title", "fileId", "source", "destination", "status", "reason", "savings", "dimensions", "identity", "media", "rule", "actualSavings")} for o in operations[(page - 1) * 25:page * 25]])
+                  operations=[{k: o.get(k) for k in ("id", "sceneId", "title", "fileId", "source", "destination", "status", "reason", "savings", "dimensions", "mbps", "identity", "media", "rule", "actualSavings")} for o in operations[(page - 1) * 25:page * 25]])
     if "reviewOutputs" in record:
         result["review"] = output_review(record)
     result["progress"] = storage.compactor_get("progress", record["id"]) if record["status"] in ("running", "planning", "reconciling", "finalizing") else None

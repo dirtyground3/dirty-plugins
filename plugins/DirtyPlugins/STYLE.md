@@ -20,6 +20,7 @@ reusing save/error colours.
 | Route action | `NavAction` | Route and icon meaning |
 | Browser page title | `react.usePageTitle(pluginName, viewTitle)` | Plugin name and current view label |
 | Statistic navigation | `StatisticSelector` | Available statistics and their routes |
+| Secondary row actions | `ActionMenu` (⋮ overflow menu) | Which actions are rare enough to hide |
 | Modal | `react.Dialog` or `ui.manageDialog` for DOM-created content | Dialog body and data operation |
 
 Call `DirtyPlugins.react.usePageTitle("Plugin", "View")` in each route component.

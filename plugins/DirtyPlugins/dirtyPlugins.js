@@ -858,6 +858,47 @@
       <//>`;
   }
 
+  // Overflow menu for secondary row actions. Items are {label, onSelect,
+  // disabled, tone} or links {label, href, download}; falsy entries are
+  // skipped so callers can inline guards.
+  function ActionMenu(props) {
+    var bootstrap = PluginApi.libraries.Bootstrap;
+    var Dropdown = bootstrap.Dropdown;
+    var solidIcons = PluginApi.libraries.FontAwesomeSolid || {};
+    var items = (props.items || []).filter(Boolean);
+    function select(key) {
+      var item = items[Number(key)];
+      if (item && !item.disabled && item.onSelect) item.onSelect();
+    }
+    return html`
+      <${Dropdown}
+        className=${"dirty-ui-action-menu" + (props.label ? " dirty-ui-action-menu-labelled" : "") + (props.className ? " " + props.className : "")}
+        onSelect=${select}
+      >
+        <${Dropdown.Toggle}
+          variant="secondary"
+          id=${props.id}
+          className="dirty-ui-action-menu-toggle"
+          aria-label=${props.ariaLabel || "More actions"}
+          title=${props.ariaLabel || "More actions"}
+        >${props.label || html`<${Glyph} icon=${solidIcons.faEllipsisV || solidIcons.faEllipsisVertical} fallback="⋮" />`}<//>
+        <${Dropdown.Menu} alignRight=${true}>
+          ${items.map(function (item, index) {
+            return html`<${Dropdown.Item}
+              key=${item.key || index}
+              eventKey=${String(index)}
+              disabled=${Boolean(item.disabled)}
+              href=${item.href}
+              download=${item.download ? "" : undefined}
+              target=${item.href ? "_blank" : undefined}
+              rel=${item.href ? "noreferrer" : undefined}
+              className=${item.tone === "danger" ? "dirty-ui-action-menu-danger" : undefined}
+            >${item.label}<//>`;
+          })}
+        <//>
+      <//>`;
+  }
+
   function loggedGraphql(query, variables, options) {
     var operationName = debugGraphqlOperationName(query);
     var started = debugNow();
@@ -947,6 +988,7 @@
   };
   hubApi.react = {
     html: html,
+    ActionMenu: ActionMenu,
     Badge: Badge,
     Button: Button,
     Dialog: Dialog,

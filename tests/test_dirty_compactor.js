@@ -17,14 +17,25 @@ const rule = a.newRule();
 assert.equal(rule.enabled, false);
 assert.equal(rule.mode, "manual");
 assert.equal(rule.format, "keep");
+assert.equal(rule.quality, "balanced", "new rules use a quality preset instead of a raw bitrate");
 assert.equal(a.validation({ rules: [rule] }), "");
 rule.enabled = true;
 assert.match(a.validation({ rules: [rule] }), /filter/);
 rule.condition.all = true;
 assert.equal(a.validation({ rules: [rule] }), "");
 rule.mbps = "bad";
+assert.equal(a.validation({ rules: [rule] }), "", "presets ignore the hidden custom bitrate");
+rule.quality = "custom";
 assert.match(a.validation({ rules: [rule] }), /bitrate/);
 rule.mbps = 4;
+delete rule.quality;
+assert.equal(a.validation({ rules: [rule] }), "", "rules saved before presets keep their custom bitrate");
+assert.equal(a.targetMbps({ quality: "balanced", codec: "h264" }, 1920, 1080), 5);
+assert.equal(a.targetMbps({ quality: "balanced", codec: "hevc" }, 3840, 2160), 8.49);
+assert.equal(a.targetMbps({ quality: "small", codec: "hevc" }, 854, 480), 0.53);
+assert.equal(a.targetMbps({ quality: "custom", mbps: "2.5", codec: "h264" }, 3840, 2160), 2.5);
+assert.equal(a.actionSummary({ action: "resize", width: 1280, height: 720, codec: "hevc", quality: "small" }), "Resize · max 720p · H.265 · smallest files");
+assert.equal(a.actionSummary({ action: "reencode", codec: "h264", quality: "custom", mbps: 3 }), "Reencode · H.264 · 3 Mbps");
 rule.width = "";
 assert.match(a.validation({ rules: [rule] }), /Dimensions/);
 rule.action = "reencode";
@@ -43,7 +54,7 @@ const React = {
   useEffect() {},
 };
 const ui = Object.fromEntries(["SettingsCard", "SettingsSection", "SettingsToggle", "Badge", "Button", "Field",
-  "SceneFilterEditor", "StateView", "Pagination", "SaveStatus", "Dialog"].map(name => [name, name]));
+  "SceneFilterEditor", "StateView", "Pagination", "SaveStatus", "Dialog", "ActionMenu", "Metric"].map(name => [name, name]));
 ui.usePageTitle = () => {};
 const renderWindow = { location: { search: "" }, PluginApi: { React, patch: { after() {} } }, DirtyPlugins: {
   react: ui, captureEnabled: () => false, registerSettingsPanel(id, component) { settingsPanel = component; },
@@ -64,7 +75,8 @@ const run = { id: "run-1", status: "running", total: 1, operations: [operation],
   review: { operationId: "op-1", title: "Scene", url: "/preview", originalSize: 200, outputSize: 100,
     original: { width: 1920, height: 1080, codec: "h264", bitrate: 2000000 },
     output: { width: 1280, height: 720, codec: "h264", bitrate: 1000000 }, encoder: "cpu", destination: "output.mp4" } };
-hookValues = { 4: preview, 6: run };
+// Settings state order: 4 preview, 6 run, 15 open rule editor.
+hookValues = { 4: preview, 6: run, 15: sampleRule.id };
 let root = settingsPanel({ configuration: { rules: [sampleRule], automationPaused: false } });
 const nodes = [];
 function visit(value) {
@@ -79,9 +91,15 @@ function visit(value) {
   value.children.forEach(visit);
 }
 visit(root);
-assert(nodes.some(node => node.type === "SettingsToggle" && node.props.label === "Automation active" && node.props.checked === true));
+assert(nodes.some(node => node.type === "SettingsToggle" && node.props.label === "Automatic runs" && node.props.checked === true));
 assert(nodes.some(node => node.type === "Button" && node.children.includes("Add rule")));
-assert(nodes.some(node => node.type === "Field"), "rule editor must render");
-assert(nodes.some(node => node.type === "table"), "preview and run results must render");
+assert(nodes.some(node => node.type === "Field"), "open rule editor must render");
+assert(nodes.some(node => node.type === "Field" && node.props.label === "Quality"), "encoding rules offer quality presets");
+assert(!nodes.some(node => node.type === "Field" && /bitrate/i.test(node.props.label)), "custom bitrate stays hidden for presets");
+const ruleMenu = nodes.find(node => node.type === "ActionMenu" && /^Actions for/.test(node.props.ariaLabel));
+assert.equal(JSON.stringify(ruleMenu.props.items.map(item => item.label)), JSON.stringify(["Close editor", "Move up", "Move down", "Duplicate", "Delete rule"]));
+assert(nodes.some(node => node.type === "Metric" && node.props.label === "Estimated savings"), "preview leads with totals");
+assert(!nodes.some(node => node.type === "table"), "file tables stay collapsed until requested");
+assert(nodes.some(node => node.type === "Button" && node.children.includes("Show files")));
 assert(nodes.some(node => node.type === "video"), "output review must render");
 console.log("DirtyCompactor UI algorithms and registration passed");

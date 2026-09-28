@@ -851,6 +851,63 @@
   color: var(--dirty-ui-accent) !important;
 }
 
+/* Overflow menu for secondary actions (shared ActionMenu). */
+#root .dirty-ui-action-menu .dirty-ui-action-menu-toggle {
+  box-sizing: border-box;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.55rem !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--dirty-ui-radius) !important;
+  background: transparent !important;
+  color: var(--dirty-ui-muted) !important;
+  box-shadow: none !important;
+}
+
+#root .dirty-ui-action-menu-labelled .dirty-ui-action-menu-toggle {
+  height: var(--dirty-ui-control-height);
+  border-color: var(--dirty-ui-border) !important;
+  color: var(--dirty-ui-text) !important;
+}
+
+#root .dirty-ui-action-menu .dirty-ui-action-menu-toggle:hover,
+#root .dirty-ui-action-menu .dirty-ui-action-menu-toggle:focus-visible,
+#root .dirty-ui-action-menu.show .dirty-ui-action-menu-toggle {
+  border-color: var(--dirty-ui-border) !important;
+  color: var(--dirty-ui-text) !important;
+}
+
+#root .dirty-ui-action-menu:not(.dirty-ui-action-menu-labelled) .dirty-ui-action-menu-toggle::after {
+  display: none;
+}
+
+#root .dirty-ui-action-menu .dropdown-menu {
+  min-width: 11rem;
+  border: 1px solid var(--dirty-ui-border);
+  border-radius: var(--dirty-ui-radius);
+  background: var(--dirty-theme-panel) !important;
+  box-shadow: var(--dirty-ui-shadow);
+}
+
+#root .dirty-ui-action-menu .dropdown-item {
+  background: var(--dirty-theme-panel) !important;
+  color: var(--dirty-ui-text) !important;
+}
+
+#root .dirty-ui-action-menu .dropdown-item.disabled {
+  color: var(--dirty-ui-muted) !important;
+}
+
+#root .dirty-ui-action-menu .dropdown-item:hover:not(.disabled),
+#root .dirty-ui-action-menu .dropdown-item:focus:not(.disabled) {
+  background: var(--dirty-theme-soft) !important;
+  color: var(--dirty-ui-accent) !important;
+}
+
+#root .dirty-ui-action-menu .dropdown-item.dirty-ui-action-menu-danger:not(.disabled) {
+  color: var(--dirty-ui-danger) !important;
+}
+
 :root.dirty-ui-theme-arcade #root .dirty-ui-statistic-selector .dropdown-toggle {
   text-transform: uppercase;
   text-shadow: 2px 2px 0 var(--dirty-theme-highlight);

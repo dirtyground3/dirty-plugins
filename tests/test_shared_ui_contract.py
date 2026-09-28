@@ -101,6 +101,8 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertRegex(dropdown[0], r"box-sizing:\s*border-box;")
         self.assertRegex(dropdown[0], r"height:\s*var\(--dirty-ui-control-height\);")
         self.assertIn("StatisticSelector: StatisticSelector", hub_js)
+        self.assertIn("ActionMenu: ActionMenu", hub_js)
+        self.assertIn("ui.ActionMenu", read("plugins/DirtyCompactor/dirtyCompactor.js"))
         self.assertIn("hub.react.StatisticSelector", read("plugins/DirtyStats/dirtyStats.js"))
         self.assertIn("SharedStatisticSelector", rank_js)
         self.assertNotIn(".dirty-rank-stat-selector .dropdown-toggle", read("plugins/DirtyRank/dirtyRank.css"))

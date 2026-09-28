@@ -86,6 +86,19 @@ class CompactorRulesTests(unittest.TestCase):
             with self.assertRaises(compactor.PluginError):
                 compactor.validate_settings({"rules": rules})
 
+    def test_quality_presets_scale_bitrate_per_output(self):
+        preset = rule(quality="balanced", mbps="ignored")
+        compactor.validate_settings({"rules": [preset]})
+        self.assertEqual(compactor.target_mbps(preset, 1920, 1080), 5)
+        self.assertEqual(compactor.target_mbps(dict(preset, codec="hevc"), 3840, 2160), 8.49)
+        self.assertEqual(compactor.target_mbps(dict(preset, quality="small", codec="hevc"), 854, 480), 0.53)
+        self.assertGreater(compactor.target_mbps(preset, 1920, 1080, 60), 5)
+        self.assertEqual(compactor.target_mbps(rule(), 1920, 1080), .2, "rules without a preset keep their custom Mbps")
+        with self.assertRaises(compactor.PluginError):
+            compactor.validate_settings({"rules": [rule(quality="ultra")]})
+        with self.assertRaises(compactor.PluginError):
+            compactor.validate_settings({"rules": [rule(quality="custom", mbps="bad")]})
+
     def test_resize_dimensions_are_integral_and_reencode_ignores_them(self):
         for value in (320.5, "", float("nan"), float("inf")):
             with self.assertRaises(compactor.PluginError):
