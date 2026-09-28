@@ -1379,12 +1379,14 @@ async function verifyKingsMode() {
 
 async function verifyLeaderboardDisplays() {
   const { PrecisionBadge, LeaderboardPodium, LeaderboardGallery, LeaderboardGalleryCard, LeaderboardTable, LeaderboardPagination, DirtyRankLeaderboardsRoute } = plugin.testing;
+  // Ratings use the viewer's locale; format expectations the same way so the test passes on any host.
+  const n = value => value.toLocaleString();
   for (const [deviation, matches, tier] of [[350, 0, "Provisional"], [75, 12, "Refined"], [50, 20, "Excellent"], [75, 1, "Refined"]]) {
     const badge = PrecisionBadge({ pool: { deviation, matches }, settings });
     assert.strictEqual(visibleText(badge), tier);
     assert.strictEqual(badge.props.title, `${tier} precision · RD ${deviation.toFixed(1)} · ${matches} ${matches === 1 ? "battle" : "battles"}`);
     assert.strictEqual(plugin.testing.leaderboardRatingText({ rating: 1400, deviation, matches }, settings),
-      "1,400" + (tier === "Provisional" ? "*" : ""), "leaderboards only mark ratings that need more comparisons");
+      n(1400) + (tier === "Provisional" ? "*" : ""), "leaderboards only mark ratings that need more comparisons");
   }
   const battle = card(false);
   battle.props.reveal = true;
@@ -1405,7 +1407,7 @@ async function verifyLeaderboardDisplays() {
   } } } });
   const overallProps = { ranked: [ranked[0]], settings: tooltipSettings, cohort: "FEMALE", leaderboardId: "__overall__", page: 1, onPageChange: noop };
   plugin.algorithms.setOverallReferencePerformers(ranked);
-  const tooltip = "Overall: 50.0 · Simple weighted · 1/2 categories rated\nAppearance: #1 (1,200) · score 50.00\nPerformance: Unrated · score 50.00";
+  const tooltip = `Overall: 50.0 · Simple weighted · 1/2 categories rated\nAppearance: #1 (${n(1200)}) · score 50.00\nPerformance: Unrated · score 50.00`;
   assert.strictEqual(find(LeaderboardPodium(overallProps), node => node.props.className === "dirty-rank-podium-rating").props.title, tooltip);
   active = { slots: [], effects: [], cursor: 0 };
   assert.strictEqual(find(LeaderboardGalleryCard({ ...overallProps, performer: ranked[0], rank: 1 }), node => node.type === "strong" && node.props.title).props.title, tooltip);
@@ -1430,13 +1432,13 @@ async function verifyLeaderboardDisplays() {
   plugin.algorithms.applyRatingIndex({ revision: 2, states: rankStates });
   const rankTitle = (performer, options = {}) => find(LeaderboardPodium({ ...overallProps, ...options, ranked: [performer] }),
     node => node.props.className === "dirty-rank-podium-rating").props.title;
-  assert(rankTitle(ranked[0]).includes("Appearance: #2 (1,200)"), "tooltip rank must use the full category leaderboard, not the visible subset");
-  assert(rankTitle(ranked[2]).includes("Appearance: #3 (1,200)"), "equal ratings must retain the category leaderboard's displayed positions");
-  assert(rankTitle(ranked[0], { settings: { ...tooltipSettings, includePerformersWithoutImages: true } }).includes("Appearance: #3 (1,200)"),
+  assert(rankTitle(ranked[0]).includes(`Appearance: #2 (${n(1200)})`), "tooltip rank must use the full category leaderboard, not the visible subset");
+  assert(rankTitle(ranked[2]).includes(`Appearance: #3 (${n(1200)})`), "equal ratings must retain the category leaderboard's displayed positions");
+  assert(rankTitle(ranked[0], { settings: { ...tooltipSettings, includePerformersWithoutImages: true } }).includes(`Appearance: #3 (${n(1200)})`),
     "tooltip positions must follow the leaderboard's image eligibility setting");
   rankStates["rank-1"].pools["appearance|FEMALE"].rating = 1900;
   plugin.algorithms.applyRatingIndex({ revision: 3, states: rankStates });
-  assert(rankTitle(ranked[0]).includes("Appearance: #1 (1,900)"), "rating updates must invalidate cached tooltip positions");
+  assert(rankTitle(ranked[0]).includes(`Appearance: #1 (${n(1900)})`), "rating updates must invalidate cached tooltip positions");
   const props = { ranked, settings, cohort: "FEMALE", leaderboardId: "appearance", page: 1, onPageChange: noop };
   const articleIds = tree => findAll(tree, node => node.type === "article").map(node => node.props.key);
   for (const topCount of [3, 4, 5]) {
