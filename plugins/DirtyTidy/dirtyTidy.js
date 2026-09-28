@@ -29,7 +29,7 @@
   debugLog("dirtyTidy", "script started", { script: debugScriptSrc });
 
   var React = PluginApi.React;
-  var h = React.createElement;
+  var html = DirtyPlugins.react && DirtyPlugins.react.html;
   var useEffect = React.useEffect;
   var useMemo = React.useMemo;
   var useRef = React.useRef;
@@ -40,7 +40,7 @@
   var Field = DirtyPlugins.react && DirtyPlugins.react.Field;
   var Pagination = DirtyPlugins.react && DirtyPlugins.react.Pagination;
   var IconButton = DirtyPlugins.react && DirtyPlugins.react.IconButton;
-  if (!SettingsCard || !Section || !Toggle || !Field || !Pagination || !IconButton) return;
+  if (!html || !SettingsCard || !Section || !Toggle || !Field || !Pagination || !IconButton) return;
   var PLUGIN_ID = "dirtyTidy";
   var PREVIEW_PAGE_SIZE = 50;
   var settingsModule = window.__dirtyTidySettings;
@@ -179,7 +179,7 @@
 
   var previewModule = window.__dirtyTidyPreview;
   if (!previewModule) return;
-  var previewViews = previewModule.createPreview({ h: h, React: React, DirtyPlugins: DirtyPlugins, variables: VARIABLES });
+  var previewViews = previewModule.createPreview({ html: html, React: React, DirtyPlugins: DirtyPlugins, variables: VARIABLES });
   var VariablePicker = previewViews.VariablePicker, Summary = previewViews.Summary;
   var PreviewNotes = previewViews.PreviewNotes, PreviewTable = previewViews.PreviewTable;
 
@@ -448,178 +448,179 @@
       return "DirtyTidy will " + actions.join(" and ") + ".";
     }, [draft.moveEnabled, draft.renameEnabled, draft.hierarchyLevels.length]);
 
-    return h(
-      SettingsCard,
-      { bodyClassName: "dirty-tidy-body", className: "dirty-tidy-card", plugin: props.plugin },
-        h(Section, {
-          title: "Organize folders",
-          description: "Every level stays relative to the file's current Stash source. Missing values render as Unknown.",
-        },
-          h(Toggle, {
-            checked: draft.moveEnabled,
-            label: "Move files into the configured hierarchy",
-            onChange: function (value) { changed({ moveEnabled: value }); },
-          }),
-          h(Toggle, {
-            checked: draft.moveRequireStashId,
-            label: "Only move files for scenes with a Stash ID",
-            onChange: function (value) { changed({ moveRequireStashId: value }); },
-          }),
-          h("div", { className: "dirty-tidy-levels" },
-            draft.hierarchyLevels.map(function (level, index) {
-              return h("div", { className: "dirty-tidy-level", key: index },
-                h("span", { className: "dirty-tidy-level-number" }, String(index + 1)),
-                h("input", {
-                  "aria-label": "Hierarchy level " + (index + 1),
-                  className: "form-control",
-                  disabled: !draft.moveEnabled,
-                  onChange: function (event) { updateLevel(index, event.target.value); },
-                  onFocus: function () { setFocusTarget({ kind: "level", index: index }); },
-                  type: "text",
-                  value: level,
-                }),
-                h(IconButton, { ariaLabel: "Move level up", fallback: "↑", disabled: index === 0, onClick: function () { moveLevel(index, -1); } }),
-                h(IconButton, { ariaLabel: "Move level down", fallback: "↓", disabled: index === draft.hierarchyLevels.length - 1, onClick: function () { moveLevel(index, 1); } }),
-                h(IconButton, { ariaLabel: "Remove level", fallback: "×", tone: "danger", onClick: function () { removeLevel(index); } })
-              );
-            }),
-            h("button", { className: "btn btn-secondary dirty-ui-button", disabled: !draft.moveEnabled, onClick: addLevel, type: "button" }, "+ Add hierarchy level")
-          )
-        ),
-        h(Section, {
-          title: "Rename files",
-          description: "Missing variables are skipped. The original extension is preserved, and invalid filename characters are removed before the maximum length is applied.",
-        },
-          h(Toggle, {
-            checked: draft.renameEnabled,
-            label: "Rename files using a template",
-            onChange: function (value) { changed({ renameEnabled: value }); },
-          }),
-          h(Toggle, {
-            checked: draft.renameRequireStashId,
-            label: "Only rename files for scenes with a Stash ID",
-            onChange: function (value) { changed({ renameRequireStashId: value }); },
-          }),
-          h(Field, { id: "dirty-tidy-rename-pattern", label: "Filename pattern", className: "dirty-tidy-field" },
-            h("input", {
-              className: "form-control",
-              disabled: !draft.renameEnabled,
-              onChange: function (event) { changed({ renamePattern: event.target.value }); },
-              onFocus: function () { setFocusTarget({ kind: "rename" }); },
-              type: "text",
-              value: draft.renamePattern,
-            })
-          ),
-          h("div", { className: "dirty-tidy-field-row" },
-            h(Field, { id: "dirty-tidy-max-length", label: "Maximum filename length", className: "dirty-tidy-field" },
-              h("input", {
-                className: "form-control",
-                disabled: !draft.renameEnabled,
-                max: 255,
-                min: 16,
-                onChange: function (event) { changed({ maxFilenameLength: Number(event.target.value) }); },
-                type: "number",
-                value: draft.maxFilenameLength,
-              })
-            ),
-            h(Field, { id: "dirty-tidy-separator", label: "Multi-value separator", className: "dirty-tidy-field" },
-              h("input", {
-                className: "form-control",
-                maxLength: 10,
-                onChange: function (event) { changed({ multiValueSeparator: event.target.value }); },
-                type: "text",
-                value: draft.multiValueSeparator,
-              })
-            )
-          )
-        ),
-        h(Section, {
-          title: "Template variables",
-          description: "Focus a hierarchy level or the filename pattern, then choose a variable to insert it.",
-        }, h(VariablePicker, { onInsert: insertVariable })),
-        h(Section, {
-          title: "Automation",
-          description: "Automation applies the approved folder and filename rules to the current library, including new scenes and updated metadata. The Stash UI must remain open until the selected Scan or Generate job finishes.",
-        },
-          h("select", {
-            "aria-label": "DirtyTidy automation mode",
-            className: "form-control dirty-ui-select dirty-tidy-automation",
-            disabled: busy,
-            onChange: function (event) { changed({ automationMode: event.target.value }, false); },
-            value: draft.automationMode,
-          },
-            h("option", { value: "manual" }, "Manual only"),
-            h("option", { value: "scan" }, "After Scan completes"),
-            h("option", { value: "generate" }, "After Generate completes")
-          ),
-          draft.automationMode !== "manual" && h(
-            "p",
-            { className: "dirty-tidy-automation-state" },
-            draft.approvedStrategyHash
-              ? "Automation is approved for the current strategy, including future scenes."
-              : "Automation is inactive. Preview and review the strategy, then use Confirm and save before approving below."
-          )
-        ),
-        h(Section, {
-          title: "Preview and run",
-          description: strategyDescription,
-        },
-          h("div", { className: "dirty-tidy-actions" },
-            h("button", { className: "btn btn-secondary dirty-ui-button", disabled: busy, onClick: saveStrategy, type: "button" }, busy ? "Working…" : "Save strategy"),
-            h("button", { className: "btn btn-primary dirty-ui-button", disabled: busy || (!draft.moveEnabled && !draft.renameEnabled), onClick: generatePreview, type: "button" }, busy ? "Working…" : "Preview")
-          ),
-          error && h("div", { className: "dirty-tidy-message dirty-ui-text-error", role: "alert" }, error),
-          status && h("div", { className: "dirty-tidy-message", role: "status" }, status),
-          preview && h(React.Fragment, null,
-            settingsDirty && h(
-              "div",
-              { className: "dirty-tidy-message", role: "status" },
-              "This preview uses unsaved settings. Use Confirm and save before running or enabling automation."
-            ),
-            h(Summary, {
-              disabled: busy,
-              onChange: changePreviewFilter,
-              summary: preview.summary,
-              total: preview.total,
-              value: previewFilter,
-            }),
-            h(PreviewTable, { operations: visibleOperations }),
-            previewPages > 1 && h(Pagination, { className: "dirty-tidy-pagination", ariaLabel: "Preview pages", page: previewPage, totalPages: previewPages, onPageChange: setPreviewPage, summary: "Page " + previewPage + " of " + previewPages + " · " + filteredTotal + " matching" }),
-            h("div", { className: "dirty-tidy-confirm" },
-              h("button", {
-                className: "btn btn-primary dirty-ui-button",
-                disabled: busy || confirmed,
-                onClick: confirmAndSavePreview,
-                type: "button",
-              }, "Confirm and save"),
-              h("button", {
-                className: "btn btn-danger dirty-ui-button",
-                disabled: busy || !confirmed || !previewReady || settingsDirty,
-                onClick: execute,
-                type: "button",
-              }, "Run " + ((preview.summary && preview.summary.ready) || 0) + " operation(s)"),
-              draft.automationMode !== "manual" && h("button", {
-                className: "btn btn-primary dirty-ui-button",
-                disabled: busy || !confirmed || settingsDirty,
-                onClick: approveAutomation,
-                type: "button",
-              }, "Approve and enable after " + (draft.automationMode === "scan" ? "Scan" : "Generate"))
-            )
-          )
-        )
-    );
+    return html`
+      <${SettingsCard} bodyClassName="dirty-tidy-body" className="dirty-tidy-card" plugin=${props.plugin}>
+        <${Section}
+          title="Organize folders"
+          description="Every level stays relative to the file's current Stash source. Missing values render as Unknown."
+        >
+          <${Toggle}
+            checked=${draft.moveEnabled}
+            label="Move files into the configured hierarchy"
+            onChange=${function (value) { changed({ moveEnabled: value }); }}
+          />
+          <${Toggle}
+            checked=${draft.moveRequireStashId}
+            label="Only move files for scenes with a Stash ID"
+            onChange=${function (value) { changed({ moveRequireStashId: value }); }}
+          />
+          <div className="dirty-tidy-levels">
+            ${draft.hierarchyLevels.map(function (level, index) {
+              return html`<div className="dirty-tidy-level" key=${index}>
+                <span className="dirty-tidy-level-number">${String(index + 1)}</span>
+                <input
+                  aria-label=${"Hierarchy level " + (index + 1)}
+                  className="form-control"
+                  disabled=${!draft.moveEnabled}
+                  onChange=${function (event) { updateLevel(index, event.target.value); }}
+                  onFocus=${function () { setFocusTarget({ kind: "level", index: index }); }}
+                  type="text"
+                  value=${level}
+                />
+                <${IconButton} ariaLabel="Move level up" fallback="↑" disabled=${index === 0} onClick=${function () { moveLevel(index, -1); }} />
+                <${IconButton} ariaLabel="Move level down" fallback="↓" disabled=${index === draft.hierarchyLevels.length - 1} onClick=${function () { moveLevel(index, 1); }} />
+                <${IconButton} ariaLabel="Remove level" fallback="×" tone="danger" onClick=${function () { removeLevel(index); }} />
+              </div>`;
+            })}
+            <button className="btn btn-secondary dirty-ui-button" disabled=${!draft.moveEnabled} onClick=${addLevel} type="button">+ Add hierarchy level</button>
+          </div>
+        <//>
+        <${Section}
+          title="Rename files"
+          description="Missing variables are skipped. The original extension is preserved, and invalid filename characters are removed before the maximum length is applied."
+        >
+          <${Toggle}
+            checked=${draft.renameEnabled}
+            label="Rename files using a template"
+            onChange=${function (value) { changed({ renameEnabled: value }); }}
+          />
+          <${Toggle}
+            checked=${draft.renameRequireStashId}
+            label="Only rename files for scenes with a Stash ID"
+            onChange=${function (value) { changed({ renameRequireStashId: value }); }}
+          />
+          <${Field} id="dirty-tidy-rename-pattern" label="Filename pattern" className="dirty-tidy-field">
+            <input
+              className="form-control"
+              disabled=${!draft.renameEnabled}
+              onChange=${function (event) { changed({ renamePattern: event.target.value }); }}
+              onFocus=${function () { setFocusTarget({ kind: "rename" }); }}
+              type="text"
+              value=${draft.renamePattern}
+            />
+          <//>
+          <div className="dirty-tidy-field-row">
+            <${Field} id="dirty-tidy-max-length" label="Maximum filename length" className="dirty-tidy-field">
+              <input
+                className="form-control"
+                disabled=${!draft.renameEnabled}
+                max=${255}
+                min=${16}
+                onChange=${function (event) { changed({ maxFilenameLength: Number(event.target.value) }); }}
+                type="number"
+                value=${draft.maxFilenameLength}
+              />
+            <//>
+            <${Field} id="dirty-tidy-separator" label="Multi-value separator" className="dirty-tidy-field">
+              <input
+                className="form-control"
+                maxLength=${10}
+                onChange=${function (event) { changed({ multiValueSeparator: event.target.value }); }}
+                type="text"
+                value=${draft.multiValueSeparator}
+              />
+            <//>
+          </div>
+        <//>
+        <${Section}
+          title="Template variables"
+          description="Focus a hierarchy level or the filename pattern, then choose a variable to insert it."
+        >
+          <${VariablePicker} onInsert=${insertVariable} />
+        <//>
+        <${Section}
+          title="Automation"
+          description="Automation applies the approved folder and filename rules to the current library, including new scenes and updated metadata. The Stash UI must remain open until the selected Scan or Generate job finishes."
+        >
+          <select
+            aria-label="DirtyTidy automation mode"
+            className="form-control dirty-ui-select dirty-tidy-automation"
+            disabled=${busy}
+            onChange=${function (event) { changed({ automationMode: event.target.value }, false); }}
+            value=${draft.automationMode}
+          >
+            <option value="manual">Manual only</option>
+            <option value="scan">After Scan completes</option>
+            <option value="generate">After Generate completes</option>
+          </select>
+          ${draft.automationMode !== "manual" && html`
+            <p className="dirty-tidy-automation-state">
+              ${draft.approvedStrategyHash
+                ? "Automation is approved for the current strategy, including future scenes."
+                : "Automation is inactive. Preview and review the strategy, then use Confirm and save before approving below."}
+            </p>`}
+        <//>
+        <${Section} title="Preview and run" description=${strategyDescription}>
+          <div className="dirty-tidy-actions">
+            <button className="btn btn-secondary dirty-ui-button" disabled=${busy} onClick=${saveStrategy} type="button">${busy ? "Working…" : "Save strategy"}</button>
+            <button className="btn btn-primary dirty-ui-button" disabled=${busy || (!draft.moveEnabled && !draft.renameEnabled)} onClick=${generatePreview} type="button">${busy ? "Working…" : "Preview"}</button>
+          </div>
+          ${error && html`<div className="dirty-tidy-message dirty-ui-text-error" role="alert">${error}</div>`}
+          ${status && html`<div className="dirty-tidy-message" role="status">${status}</div>`}
+          ${preview && html`<${React.Fragment}>
+            ${settingsDirty && html`
+              <div className="dirty-tidy-message" role="status">
+                This preview uses unsaved settings. Use Confirm and save before running or enabling automation.
+              </div>`}
+            <${Summary}
+              disabled=${busy}
+              onChange=${changePreviewFilter}
+              summary=${preview.summary}
+              total=${preview.total}
+              value=${previewFilter}
+            />
+            <${PreviewTable} operations=${visibleOperations} />
+            ${previewPages > 1 && html`<${Pagination}
+              className="dirty-tidy-pagination"
+              ariaLabel="Preview pages"
+              page=${previewPage}
+              totalPages=${previewPages}
+              onPageChange=${setPreviewPage}
+              summary=${"Page " + previewPage + " of " + previewPages + " · " + filteredTotal + " matching"}
+            />`}
+            <div className="dirty-tidy-confirm">
+              <button
+                className="btn btn-primary dirty-ui-button"
+                disabled=${busy || confirmed}
+                onClick=${confirmAndSavePreview}
+                type="button"
+              >Confirm and save</button>
+              <button
+                className="btn btn-danger dirty-ui-button"
+                disabled=${busy || !confirmed || !previewReady || settingsDirty}
+                onClick=${execute}
+                type="button"
+              >${"Run " + ((preview.summary && preview.summary.ready) || 0) + " operation(s)"}</button>
+              ${draft.automationMode !== "manual" && html`<button
+                className="btn btn-primary dirty-ui-button"
+                disabled=${busy || !confirmed || settingsDirty}
+                onClick=${approveAutomation}
+                type="button"
+              >${"Approve and enable after " + (draft.automationMode === "scan" ? "Scan" : "Generate")}</button>`}
+            </div>
+          <//>`}
+        <//>
+      <//>`;
   }
 
   if (PluginApi.patch && PluginApi.patch.after) {
     PluginApi.patch.after("App", function () {
       var args = Array.prototype.slice.call(arguments);
       var result = args.pop();
-      return h(
-        React.Fragment,
-        null,
-        result,
-        h(DirtyTidyAutomationMonitor, { key: "dirty-tidy-automation-monitor" })
-      );
+      return html`<${React.Fragment}>
+        ${result}
+        <${DirtyTidyAutomationMonitor} key="dirty-tidy-automation-monitor" />
+      <//>`;
     });
   }
   DirtyPlugins.registerSettingsPanel(PLUGIN_ID, DirtyTidySettings);

@@ -369,6 +369,17 @@ class SharedUIContractTests(unittest.TestCase):
             self.assertIn("return html`", script)
             self.assertNotRegex(script, r"\bh\(")
 
+    def test_dirty_tidy_uses_the_shared_template_tag(self):
+        tidy = read("plugins/DirtyTidy/dirtyTidy.js")
+        preview = read("plugins/DirtyTidy/dirtyTidyPreview.js")
+        self.assertIn("var html = DirtyPlugins.react && DirtyPlugins.react.html", tidy)
+        self.assertIn("createPreview({ html: html,", tidy)
+        self.assertIn("var html = dependencies.html", preview)
+        for script in (tidy, preview):
+            self.assertIn("return html`", script)
+            self.assertNotRegex(script, r"\bh\(")
+            self.assertNotIn("createElement", script)
+
     def test_dirty_stats_dashboard_is_registered_and_persisted(self):
         script = read("plugins/DirtyStats/dirtyStats.js")
         dashboard = read("plugins/DirtyStats/dirtyStatsDashboard.js")
@@ -476,7 +487,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("Waiting to save automatically…", rank)
         self.assertIn("Saving automatically…", rank)
         self.assertNotIn('Save settings")', rank)
-        self.assertIn('}, "Confirm and save")', tidy)
+        self.assertIn('>Confirm and save</button>', tidy)
 
     def test_dirty_rank_advances_before_background_vote_persistence(self):
         script = read("plugins/DirtyRank/dirtyRank.js")
@@ -601,9 +612,9 @@ class SharedUIContractTests(unittest.TestCase):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
         backend = read("plugins/DirtyTidy/dirty_tidy.py")
 
-        self.assertIn('value: "scan"', tidy)
-        self.assertIn('value: "generate"', tidy)
-        self.assertNotIn('disabled: true, value: "manual"', tidy)
+        self.assertIn('<option value="scan">', tidy)
+        self.assertIn('<option value="generate">', tidy)
+        self.assertIn('<option value="manual">Manual only</option>', tidy)
         self.assertIn("useJobsSubscribeSubscription", tidy)
         self.assertIn("job && job.startTime", tidy)
         self.assertIn('event.type !== "REMOVE"', tidy)
@@ -625,7 +636,7 @@ class SharedUIContractTests(unittest.TestCase):
 
         self.assertIn("function PreviewNotes", tidy)
         self.assertIn("operation.blocked_scenes", tidy)
-        self.assertIn('href: "/scenes/" + encodeURIComponent(scene.id)', tidy)
+        self.assertIn('href=${"/scenes/" + encodeURIComponent(scene.id)}', tidy)
         self.assertIn('["female_performers", "Female performers"]', tidy)
         self.assertIn('["male_performers", "Male performers"]', tidy)
 
@@ -656,7 +667,7 @@ class SharedUIContractTests(unittest.TestCase):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
 
         self.assertIn("function confirmAndSavePreview", tidy)
-        self.assertIn('}, "Confirm and save")', tidy)
+        self.assertIn('>Confirm and save</button>', tidy)
         self.assertIn("setConfirmed(true)", tidy)
         self.assertIn("DirtyPlugins.configurePlugin(PLUGIN_ID, draft)", tidy)
         self.assertNotIn("I reviewed this preview", tidy)

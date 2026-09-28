@@ -10,6 +10,8 @@ const { sourceFor } = require("./load_plugin_scripts");
 
 const source = sourceFor("DirtyTidy");
 const noop = () => {};
+const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
+const element = (type, props, ...children) => ({ type, props: props || {}, children });
 
 const window = {
   PluginApi: {
@@ -17,7 +19,7 @@ const window = {
   },
   DirtyPlugins: {
     registerSettingsPanel: noop,
-    react: { SettingsCard: noop, SettingsSection: noop, SettingsToggle: noop, Field: noop, Pagination: noop, IconButton: noop },
+    react: { html: htm.bind(element), SettingsCard: noop, SettingsSection: noop, SettingsToggle: noop, Field: noop, Pagination: noop, IconButton: noop },
     values: {
       asObject: (value) => (value && typeof value === "object" && !Array.isArray(value) ? value : {}),
     },
@@ -80,5 +82,39 @@ assert.deepEqual(
 // Adopting the server's normalized settings and normalizing again is a no-op.
 assert.deepEqual(clean(a.settingsFromConfiguration(canonical)), clean(canonical));
 assert.deepEqual(clean(a.settingsFromConfiguration(empties)), clean(empties));
+
+// The preview views render through the shared htm template tag.
+const text = (node) => node == null || node === false ? "" :
+  Array.isArray(node) ? node.map(text).join("") :
+  typeof node === "object" ? text(node.children) : String(node);
+const find = (node, match) => {
+  if (Array.isArray(node)) return node.map((child) => find(child, match)).find(Boolean);
+  if (!node || typeof node !== "object") return undefined;
+  return match(node) ? node : find(node.children, match);
+};
+const views = window.__dirtyTidyPreview.createPreview({
+  html: window.DirtyPlugins.react.html,
+  React: { Fragment: "Fragment" },
+  DirtyPlugins: {},
+  variables: [["studio", "Studio name"]],
+});
+const picker = views.VariablePicker({ onInsert: noop });
+assert.equal(picker.type, "div");
+assert.equal(picker.props["aria-label"], "Template variables");
+assert.equal(text(picker), "{studio}");
+const table = views.PreviewTable({ operations: [{
+  file_id: 1, status: "blocked", source_path: "/a.mp4", destination_path: "/b.mp4",
+  warnings: ["Collision"], blocked_scenes: [{ id: "7", title: "First" }, { id: "8" }],
+}] });
+const row = find(table, (node) => node.type === "tr" && node.props.className);
+assert.equal(row.props.className, "dirty-tidy-row-blocked");
+assert.equal(text(row), "blocked/a.mp4/b.mp4");
+const notes = views.PreviewNotes(find(row, (node) => node.props.operation).props);
+assert.equal(text(notes), "CollisionBlocked scenes: First, Scene 8");
+assert.equal(text(views.PreviewTable({ operations: [] })), "No operations match this filter.");
+const summary = views.Summary({ summary: { ready: 2 }, total: 5, value: "ready", onChange: noop });
+const ready = find(summary, (node) => node.props["aria-pressed"] === true);
+assert.equal(ready.props.className.includes("dirty-tidy-summary-active"), true);
+assert.equal(text(ready), "2Ready");
 
 console.log("DirtyTidy settings normalization tests passed");
