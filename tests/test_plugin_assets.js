@@ -7,6 +7,7 @@ const vm = require("node:vm");
 const { scriptPaths } = require("./load_plugin_scripts");
 
 const entries = {
+  DirtyCaptions: "dirtyCaptions.js",
   DirtyCompactor: "dirtyCompactor.js",
   DirtyFileExtractor: "extractScenes.js",
   DirtyMultiscreen: "multiscreen.js",

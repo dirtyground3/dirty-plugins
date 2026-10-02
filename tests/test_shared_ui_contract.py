@@ -47,6 +47,7 @@ class SharedUIContractTests(unittest.TestCase):
 
     def test_plugins_load_the_shared_hub_first(self):
         for manifest in (
+            "plugins/DirtyCaptions/dirtyCaptions.yml",
             "plugins/DirtyCompactor/dirtyCompactor.yml",
             "plugins/DirtyFileExtractor/extractScenes.yml",
             "plugins/DirtyMultiscreen/multiscreen.yml",
@@ -219,13 +220,32 @@ class SharedUIContractTests(unittest.TestCase):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
 
         self.assertIn(
-            'var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor"]',
+            'var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor", "dirtyCaptions"]',
             hub,
         )
         self.assertIn("data-dirty-plugin-id=${props.pluginId}", hub)
         self.assertIn("orderMainPluginSettingsGroups", hub)
         self.assertIn("document.createComment", hub)
         self.assertIn("MAIN_PAGE_PLUGIN_ID_SET.has(pluginId)", hub)
+
+    def test_captions_use_native_tracks_and_shared_hub(self):
+        script = read("plugins/DirtyCaptions/dirtyCaptions.js")
+        backend = read("plugins/DirtyCaptions/dirty_captions.py")
+        hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
+        self.assertIn('api.patch.after("ScenePlayer"', script)
+        self.assertIn('hub.runPluginOperation("dirtyCaptions"', script)
+        self.assertIn('hub.getPluginSettings("dirtyCaptions")', script)
+        self.assertIn("selector.addTextTrack(options, true)", script)
+        self.assertIn("encodeURIComponent(track.vtt)", script)
+        self.assertIn("selector.removeTextTrack(record.element)", script)
+        self.assertNotIn('fetch("/graphql"', script)
+        self.assertIn("from dirty_plugins_client import StashClient", backend)
+        self.assertIn('dirtyCaptions: ["enabled", "showByDefault", "preferredLanguage"]', hub)
+        self.assertIn('"dirtyCaptions"', read("plugins/DirtyPlugins/dirty_plugins.py"))
+        styles = read("plugins/DirtyCaptions/dirtyCaptions.css")
+        self.assertIn(".dirty-captions-capture .scrubber-wrapper", styles)
+        self.assertIn(".dirty-captions-capture .vjs-text-track-display", styles)
+        self.assertIn("visibility: hidden", styles)
 
     def test_settings_page_protects_unsaved_changes(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")

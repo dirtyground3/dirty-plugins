@@ -3,7 +3,7 @@
 Dirty Plugins is a collection of integrated plugins for
 [Stash](https://stashapp.cc/). The suite adds a statistics dashboard, safe
 media extraction, multiscreen playback, performer ranking, preview-first file
-organization, and rule-based space reclamation.
+organization, rule-based space reclamation, and embedded text subtitles.
 
 All plugins share the hidden **DirtyPlugins** runtime and settings hub. The hub
 keeps their interfaces consistent, stores settings and high-frequency data in
@@ -21,7 +21,8 @@ a shared SQLite database, and is installed automatically as a dependency.
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 0.4.6 |
 | [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 0.4.0 |
 | [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 0.2.2 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 0.5.3 |
+| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles in the native player without separate subtitle files or video re-encoding. | 0.1.0 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 0.5.4 |
 
 ## Shared look and settings
 
@@ -217,6 +218,23 @@ and queues the plan.
 Each rule combines a scene filter with an action and its encoding options.
 Rules autosave; new rules start disabled and Manual.
 
+### DirtyCaptions
+
+- Displays embedded text subtitles in the native player CC menu, including
+  MP4 `mov_text` and embedded SRT/WebVTT.
+- Converts subtitle text in memory without separate files or video re-encoding.
+- Supports language selection, automatic display, seeking, and native scene
+  players in DirtyRank and DirtyMultiscreen.
+- ASS/SSA is displayed as ordinary text; bitmap subtitles are unsupported.
+
+After installing, reload plugins and hard-refresh the browser (**Ctrl+F5**).
+Open a scene and wait for extraction; captions show automatically by default.
+The **CC** menu identifies tracks with **embedded** and lets you change language
+or turn captions off. Existing external captions remain available. Settings
+live in **Dirty Plugins settings → DirtyCaptions** and require DirtyPlugins
+0.5.4 or newer. See the [DirtyCaptions guide](plugins/DirtyCaptions/README.md) for
+setup, supported formats, and troubleshooting.
+
 ## Installation from Stash
 
 The recommended installation method is the published package source.
@@ -230,7 +248,7 @@ The recommended installation method is the published package source.
 
 3. Reload the available plugin packages.
 4. Install any of **DirtyStats**, **DirtyRank**, **DirtyMultiscreen**,
-   **DirtyFileExtractor**, **DirtyTidy**, or **DirtyCompactor**.
+   **DirtyFileExtractor**, **DirtyTidy**, **DirtyCompactor**, or **DirtyCaptions**.
 5. Reload the Stash page after installation or an update.
 
 The source URL must end in `index.yml`; the GitHub repository URL is not a
@@ -257,6 +275,8 @@ own tab there.
   review it, then confirm in **Run…** to save, run, or approve automation.
 - **DirtyCompactor:** add a rule, choose its scenes, action, and quality
   preset, then **Preview** before the first run.
+- **DirtyCaptions:** open a scene and use its native **CC** menu. Set a preferred
+  language or turn off automatic caption display in its settings tab.
 
 ## Manual installation
 
@@ -276,6 +296,7 @@ The Python-backed plugins require Python 3.9 or newer in the environment where
 Stash runs; no Python packages are needed. DirtyFileExtractor uses Stash's
 configured FFmpeg executable, and DirtyCompactor needs Stash 0.31.1 or newer
 with FFmpeg and FFprobe.
+DirtyCaptions requires Stash 0.25 or newer with FFmpeg and ffprobe on the server.
 
 ## Updating
 
@@ -292,6 +313,10 @@ directory. It stores settings for all managed plugins, the DirtyStats dashboard
 layout, DirtyRank's rating pools and battle journal, and DirtyCompactor's rules,
 run snapshots, and recovery journals. The database uses WAL mode for responsive
 concurrent reads and writes.
+
+DirtyCaptions stores only its settings in this database. Embedded subtitle text
+is read on demand, stays in memory, and is extracted again when a scene is
+reopened. No subtitle files are created beside the media.
 
 Standard settings save automatically after a short debounce and serialized
 writes prevent an older request from overwriting a newer value. DirtyTidy is
@@ -345,10 +370,14 @@ finished loading.
 The Python backends log through Stash's plugin log protocol, so their output
 appears in Stash's own log with a `[Plugin / DirtyPlugins]`,
 `[Plugin / DirtyRank]`, `[Plugin / DirtyTidy]`, `[Plugin / DirtyStats]`,
-`[Plugin / DirtyCompactor]`, or `[Plugin / DirtyFileExtractor]` prefix. Every
-backend logs a `started` line and a `finished` line (with the operation mode and
+`[Plugin / DirtyCompactor]`, or `[Plugin / DirtyFileExtractor]` prefix. These
+backends log a `started` line and a `finished` line (with the operation mode and
 elapsed milliseconds), and logs failures. A `started` line with no matching
 `finished` line identifies a backend call that hung.
+
+DirtyCaptions reports extraction failures and failed tracks under
+`[Plugin / DirtyCaptions]`. Its browser log records player registration and
+loaded track counts without including subtitle text.
 
 To see these, keep plugins enabled and set **Settings → General → Log level** to
 `Debug` (or at least `Info`), then open **Settings → Logs**. This is separate
@@ -370,11 +399,14 @@ Append `?docsCapture=1` to a suite page to replace native cards, media, and
 private paths with placeholders, and inspect every image anyway. Store images
 under `docs/images/`, use descriptive filenames and alt text, and keep
 uncensored captures outside the repository and its Git history.
+On native scene pages, DirtyCaptions capture mode hides the player media,
+scrubber thumbnails, and captions; other scene-page images still need review.
 
 ## Repository layout
 
 ```text
 plugins/
+├── DirtyCaptions/       # embedded text subtitles via in-memory WebVTT
 ├── DirtyPlugins/        # shared UI, GraphQL helpers, settings and SQLite owner
 ├── DirtyCompactor/      # compaction rules UI and FFmpeg backend
 ├── DirtyFileExtractor/  # selection UI and Python extraction backend
@@ -396,6 +428,7 @@ python -B -m unittest discover -s tests -v
 npm ci
 npm run typecheck
 node tests/test_plugin_assets.js
+node tests/test_dirty_captions.js
 node --check plugins/DirtyRank/dirtyRank.js
 node --check plugins/DirtyPlugins/dirtyPlugins.js
 node --check plugins/DirtyMultiscreen/multiscreen.js
@@ -434,6 +467,7 @@ main/
 ├── index.yml
 ├── dirtyPlugins.zip
 ├── dirtyCompactor.zip
+├── dirtyCaptions.zip
 ├── extractScenes.zip
 ├── multiscreen.zip
 ├── dirtyRank.zip
@@ -446,6 +480,7 @@ main/
 This repository and its plugins are distributed under the [MIT License](LICENSE):
 
 - [DirtyPlugins](plugins/DirtyPlugins/LICENSE)
+- [DirtyCaptions](plugins/DirtyCaptions/LICENSE)
 - [DirtyCompactor](plugins/DirtyCompactor/LICENSE)
 - [DirtyFileExtractor](plugins/DirtyFileExtractor/LICENSE)
 - [DirtyMultiscreen](plugins/DirtyMultiscreen/LICENSE)

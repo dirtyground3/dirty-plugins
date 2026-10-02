@@ -28,12 +28,13 @@
   var UNSAVED_SETTINGS_MESSAGE = "You have unsaved Dirty Plugins settings. Leave without saving them?";
   var DEFAULT_VISUAL_THEME = "classic";
 
-  var MANAGED_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor"];
+  var MANAGED_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor", "dirtyCaptions"];
   var MANAGED_PLUGIN_ID_SET = new Set(MANAGED_PLUGIN_IDS);
-  var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor"];
+  var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor", "dirtyCaptions"];
   var MAIN_PAGE_PLUGIN_ID_SET = new Set(MAIN_PAGE_PLUGIN_IDS);
   var PLUGIN_SETTING_ORDER = {
     dirtyPlugins: ["visualTheme"],
+    dirtyCaptions: ["enabled", "showByDefault", "preferredLanguage"],
     extractScenes: [
       "destinationFolder",
       "collisionPolicy",
@@ -55,6 +56,11 @@
     ],
   };
   var PLUGIN_DEFAULTS = {
+    dirtyCaptions: {
+      enabled: true,
+      showByDefault: true,
+      preferredLanguage: "",
+    },
     dirtyPlugins: {
       visualTheme: DEFAULT_VISUAL_THEME,
     },

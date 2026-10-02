@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dirty_plugins_storage as storage
 
 
-MANAGED_PLUGIN_IDS = {"dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor"}
+MANAGED_PLUGIN_IDS = {"dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor", "dirtyCaptions"}
 
 
 class PluginError(RuntimeError):

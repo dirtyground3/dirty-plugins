@@ -13,6 +13,7 @@ depend on the shared, unlisted **DirtyPlugins** hub runtime.
 
 ```text
 plugins/
+├── DirtyCaptions/       # embedded text subtitles via in-memory WebVTT tracks
 ├── DirtyPlugins/        # shared runtime: GraphQL, settings, React components, SQLite owner
 ├── DirtyCompactor/      # media compaction UI and backend
 ├── DirtyFileExtractor/  # selection UI + Python extraction backend
@@ -138,6 +139,7 @@ python -B -m unittest discover -s tests -v
 npm ci
 npm run typecheck
 node tests/test_plugin_assets.js
+node tests/test_dirty_captions.js
 node --check plugins/DirtyRank/dirtyRank.js
 node tests/test_dirty_rank_algorithms.js
 node tests/test_dirty_rank_media.js
@@ -171,7 +173,15 @@ Stash runs on port `9999` with `plugins_path: C:\Users\FABIO\.stash\plugins`.
 Installed directories are the plugin IDs (not the repo directory names):
 `DirtyPlugins`→`dirtyPlugins`, `DirtyFileExtractor`→`extractScenes`,
 `DirtyMultiscreen`→`multiscreen`, `DirtyRank`→`dirtyRank`,
-`DirtyStats`→`dirtyStats`, `DirtyTidy`→`dirtyTidy`.
+`DirtyStats`→`dirtyStats`, `DirtyTidy`→`dirtyTidy`,
+`DirtyCaptions`→`dirtyCaptions`.
+
+DirtyCaptions requires DirtyPlugins 0.5.4+ for its hub-managed settings. Keep
+subtitle payloads in memory: its backend converts through FFmpeg stdout and its
+frontend uses data URLs accepted by Stash's default CSP. Register tracks with
+the native source selector to preserve transcode timing adjustments, and remove
+only plugin-owned tracks on cleanup. Do not persist subtitle text or create
+sidecars as part of this playback feature.
 
 ```powershell
 # 1. Copy changed files into the installed plugin directory.

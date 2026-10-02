@@ -1,0 +1,24 @@
+.dirty-captions-status {
+  padding: var(--dirty-ui-space-2, 0.5rem);
+  font-size: 0.875rem;
+  color: var(--dirty-ui-muted);
+}
+
+.dirty-captions-status:empty {
+  display: none;
+}
+
+.dirty-captions-status [role="alert"] {
+  color: var(--dirty-ui-warning);
+}
+
+.dirty-captions-capture video,
+.dirty-captions-capture img,
+.dirty-captions-capture canvas,
+.dirty-captions-capture .scrubber-wrapper,
+.dirty-captions-capture .vjs-vtt-thumbnail-display,
+.dirty-captions-capture [style*="background-image"],
+.dirty-captions-capture .vjs-poster,
+.dirty-captions-capture .vjs-text-track-display {
+  visibility: hidden;
+}

@@ -1,0 +1,29 @@
+name: DirtyCaptions
+description: Display embedded text subtitles in the native scene player without separate subtitle files.
+version: 0.1.0
+ui:
+  requires:
+    - dirtyPlugins
+  javascript:
+    - dirtyCaptionsTracks.js
+    - dirtyCaptions.js
+  css:
+    - dirtyCaptions.css
+exec:
+  - python
+  - "{pluginDir}/dirty_captions.py"
+interface: raw
+errLog: error
+settings:
+  enabled:
+    displayName: Load embedded captions
+    description: Read embedded text subtitles when a native scene player opens. No subtitle files are created.
+    type: BOOLEAN
+  showByDefault:
+    displayName: Show captions automatically
+    description: Select a preferred embedded track when no existing captions are showing. You can change it in the player CC menu.
+    type: BOOLEAN
+  preferredLanguage:
+    displayName: Preferred language
+    description: A language code such as en, eng, fr, or fra. Leave blank to use the browser language, then the file default.
+    type: STRING

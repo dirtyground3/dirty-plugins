@@ -101,14 +101,23 @@ hooks. Runtime database and WAL files are excluded from plugin packages and
 remain in the installed DirtyPlugins directory across ordinary updates.
 
 The database is also the authoritative settings store for DirtyFileExtractor,
-DirtyMultiscreen, DirtyTidy, DirtyRank, DirtyStats, and DirtyCompactor. The Stash manifests retain setting
-definitions so the shared hub can render typed controls, but Stash's plugin
+DirtyMultiscreen, DirtyTidy, DirtyRank, DirtyStats, DirtyCompactor, and DirtyCaptions.
+The Stash manifests retain setting definitions so the shared hub can render
+typed controls, but Stash's plugin
 configuration values are not read or written by Dirty plugins.
 
 Managed settings tabs include General, DirtyFileExtractor, DirtyMultiscreen,
-DirtyTidy, DirtyRank, DirtyStats, and DirtyCompactor. DirtyRank uses a custom hub
-panel for its gender boxes, categories, Glicko-2 parameters, and guarded data
+DirtyTidy, DirtyRank, DirtyStats, DirtyCompactor, and DirtyCaptions. DirtyRank uses
+a custom hub panel for its gender boxes, categories, Glicko-2 parameters, and guarded data
 tools; DirtyCompactor uses one for its rules, previews, and runs.
+
+DirtyCaptions uses standard autosaving controls for embedded-caption loading,
+automatic display, and preferred language. Its tab requires DirtyPlugins 0.5.4
+or newer and opens directly at `/plugins/dirty-plugins?plugin=dirtyCaptions`.
+Only these settings are stored in SQLite. Subtitle text is extracted on demand
+and remains in memory; it is not saved in the shared database or beside media.
+See the [DirtyCaptions guide](../DirtyCaptions/README.md) for playback and format
+support.
 
 The page has no navigation entry. Open it using the link shown in the normal
 Stash settings panel for a managed Dirty plugin. Each installed plugin has its
