@@ -46,7 +46,8 @@ const context = vm.createContext({ window, Blob, Intl, MutationObserver: Observe
 const source = sourceFor("DirtyCaptions");
 vm.runInContext(source, context);
 vm.runInContext(source, context);
-assert.equal(patches.length, 1, "asset reload must not stack patches");
+assert.equal(patches.length, 3, "asset reload must not stack patches");
+const playerPatch = patches.find(([name]) => name === "ScenePlayer")[1];
 const api = window.__dirtyCaptionsTracks;
 const scene = { id: "1479", files: [{ id: "1493", size: 100 }] };
 const track = (index, language, isDefault = false) => ({ index, language, default: isDefault, forced: false,
@@ -112,10 +113,10 @@ async function run() {
 
   const original = element("div", { className: "VideoPlayer" }, element("div", { className: "video-wrapper" }));
   window.location.search = "?docsCapture=1";
-  const patched = patches[0][1]({ scene }, {}, original);
+  const patched = playerPatch({ scene }, {}, original);
   assert.match(patched.props.className, /dirty-captions-capture/);
   assert.equal(patched.props.children[0], original.props.children);
-  assert.equal(patches[0][1]({ scene: { files: [] } }, original), original);
+  assert.equal(playerPatch({ scene: { files: [] } }, original), original);
 
   const activePlayer = player();
   currentRoot = { querySelector: () => ({ player: activePlayer }) };

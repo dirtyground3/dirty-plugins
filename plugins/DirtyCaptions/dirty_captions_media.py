@@ -87,13 +87,22 @@ def file_identity(path):
     return stat.st_size, stat.st_mtime_ns
 
 
-def read_captions(ffprobe, ffmpeg, path):
-    deadline = time.monotonic() + 120
-    original = file_identity(path)
+def probe_subtitles(ffprobe, path):
     raw = run_tool([ffprobe, "-v", "error", "-select_streams", "s", "-show_entries",
                     "stream=index,codec_name:stream_tags=language,title:stream_disposition=default,forced",
                     "-of", "json", str(path)], timeout=30, limit=1024 * 1024)
     streams = json.loads(raw).get("streams", [])
+    if not isinstance(streams, list) or any(not isinstance(item, dict) for item in streams):
+        raise CaptionError("ffprobe returned invalid subtitle metadata.")
+    return streams
+
+
+def read_captions(ffprobe, ffmpeg, path, on_probe=None):
+    deadline = time.monotonic() + 120
+    original = file_identity(path)
+    streams = probe_subtitles(ffprobe, path)
+    if on_probe:
+        on_probe(streams, original)
     tracks, warnings, retryable = [], [], False
     text_streams = [stream for stream in streams if stream.get("codec_name") in TEXT_CODECS]
     unsupported = sorted({stream.get("codec_name") or "unknown" for stream in streams

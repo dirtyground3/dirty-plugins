@@ -140,6 +140,7 @@ npm ci
 npm run typecheck
 node tests/test_plugin_assets.js
 node tests/test_dirty_captions.js
+node tests/test_dirty_captions_index.js
 node --check plugins/DirtyRank/dirtyRank.js
 node tests/test_dirty_rank_algorithms.js
 node tests/test_dirty_rank_media.js
@@ -176,12 +177,25 @@ Installed directories are the plugin IDs (not the repo directory names):
 `DirtyStats`→`dirtyStats`, `DirtyTidy`→`dirtyTidy`,
 `DirtyCaptions`→`dirtyCaptions`.
 
-DirtyCaptions requires DirtyPlugins 0.5.4+ for its hub-managed settings. Keep
+DirtyCaptions requires DirtyPlugins 0.5.6+ for its hub-managed settings. Keep
 subtitle payloads in memory: its backend converts through FFmpeg stdout and its
 frontend uses data URLs accepted by Stash's default CSP. Register tracks with
 the native source selector to preserve transcode timing adjustments, and remove
 only plugin-owned tracks on cleanup. Do not persist subtitle text or create
 sidecars as part of this playback feature.
+The caption index stores fingerprints and status through shared storage metadata;
+only its three owned scene custom fields are updated with partial GraphQL writes.
+Preserve unknown/error results and hook-loop protection. Server hooks queue work;
+optional refresh after Scan uses the browser's successful job-completion events,
+as in DirtyTidy. Deduplicate by job ID plus startTime in shared storage and skip
+internal scans. Do not add timer-based library checks.
+The persistent file-ID map must skip unchanged media before statting or probing
+files. Discover changes using Stash's stored size, mod_time, and content hashes;
+do not calculate hashes again. Preserve a separate forced reprobe action.
+Caption choices belong in one Embedded captions criterion in the native scene
+filter dialog. Reuse native enum criterion prototypes and value controls,
+preserve unrelated custom fields in either criterion order,
+and serialize URLs and saved filters as normal Stash custom-field criteria.
 
 ```powershell
 # 1. Copy changed files into the installed plugin directory.

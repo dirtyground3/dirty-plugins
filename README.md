@@ -21,8 +21,8 @@ a shared SQLite database, and is installed automatically as a dependency.
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 0.4.6 |
 | [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 0.4.0 |
 | [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 0.2.2 |
-| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles in the native player without separate subtitle files or video re-encoding. | 0.1.0 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 0.5.4 |
+| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 0.2.3 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 0.5.6 |
 
 ## Shared look and settings
 
@@ -226,13 +226,20 @@ Rules autosave; new rules start disabled and Manual.
 - Supports language selection, automatic display, seeking, and native scene
   players in DirtyRank and DirtyMultiscreen.
 - ASS/SSA is displayed as ordinary text; bitmap subtitles are unsupported.
+- Provides one native **Embedded captions** filter with caption-type and
+  index-status choices, automatic metadata indexing, and a manual library
+  refresh. An optional setting refreshes the caption index
+  after each successful Scan, using the same browser completion events as
+  DirtyTidy. A persistent file map skips unchanged media; only new or changed
+  files are probed, with a separate force-rescan action. Unknown or inaccessible
+  files remain unverified.
 
 After installing, reload plugins and hard-refresh the browser (**Ctrl+F5**).
 Open a scene and wait for extraction; captions show automatically by default.
 The **CC** menu identifies tracks with **embedded** and lets you change language
 or turn captions off. Existing external captions remain available. Settings
 live in **Dirty Plugins settings → DirtyCaptions** and require DirtyPlugins
-0.5.4 or newer. See the [DirtyCaptions guide](plugins/DirtyCaptions/README.md) for
+0.5.6 or newer. See the [DirtyCaptions guide](plugins/DirtyCaptions/README.md) for
 setup, supported formats, and troubleshooting.
 
 ## Installation from Stash
@@ -296,7 +303,7 @@ The Python-backed plugins require Python 3.9 or newer in the environment where
 Stash runs; no Python packages are needed. DirtyFileExtractor uses Stash's
 configured FFmpeg executable, and DirtyCompactor needs Stash 0.31.1 or newer
 with FFmpeg and FFprobe.
-DirtyCaptions requires Stash 0.25 or newer with FFmpeg and ffprobe on the server.
+DirtyCaptions requires Stash 0.31.1 or newer with FFmpeg and ffprobe on the server.
 
 ## Updating
 
@@ -314,9 +321,10 @@ layout, DirtyRank's rating pools and battle journal, and DirtyCompactor's rules,
 run snapshots, and recovery journals. The database uses WAL mode for responsive
 concurrent reads and writes.
 
-DirtyCaptions stores only its settings in this database. Embedded subtitle text
-is read on demand, stays in memory, and is extracted again when a scene is
-reopened. No subtitle files are created beside the media.
+DirtyCaptions stores settings, file fingerprints, and caption-index metadata in
+this database. Filterable caption flags are published to scene custom fields.
+Embedded subtitle text is read on demand, stays in memory, and is extracted
+again when a scene is reopened. No subtitle files are created beside the media.
 
 Standard settings save automatically after a short debounce and serialized
 writes prevent an older request from overwriting a newer value. DirtyTidy is
@@ -429,6 +437,7 @@ npm ci
 npm run typecheck
 node tests/test_plugin_assets.js
 node tests/test_dirty_captions.js
+node tests/test_dirty_captions_index.js
 node --check plugins/DirtyRank/dirtyRank.js
 node --check plugins/DirtyPlugins/dirtyPlugins.js
 node --check plugins/DirtyMultiscreen/multiscreen.js

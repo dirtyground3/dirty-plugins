@@ -14,6 +14,7 @@ for folder in ("dirtyPlugins", "DirtyPlugins"):
 from dirty_plugins_client import StashClient
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dirty_captions_media import CaptionError, read_captions
+import dirty_captions_index as caption_index
 
 
 def captions(client, args):
@@ -22,7 +23,7 @@ def captions(client, args):
     scene_id = str(args.get("sceneId") or "")
     if not scene_id.isdigit():
         raise CaptionError("A scene ID is required.")
-    scene = client.call("query($id:ID!){findScene(id:$id){id files{id path}}}", {"id": scene_id}).get("findScene")
+    scene = client.call("query($id:ID!){findScene(id:$id){id files{" + caption_index.FILE_FIELDS + "}}}", {"id": scene_id}).get("findScene")
     if not scene or not scene.get("files"):
         raise CaptionError("The scene has no playable file.")
     file_id = str(args.get("fileId") or scene["files"][0]["id"])
@@ -39,7 +40,8 @@ def captions(client, args):
         if not tools[name]:
             raise CaptionError(name + " is unavailable. Configure its path in Stash.")
     # Resolve paths only from Stash. UI callers cannot request arbitrary files.
-    result = read_captions(tools["ffprobe"], tools["ffmpeg"], path)
+    result = read_captions(tools["ffprobe"], tools["ffmpeg"], path,
+                           on_probe=lambda streams, original: caption_index.record_playback(client, scene, file, streams, original))
     result.update(sceneId=scene_id, fileId=file_id)
     return result
 
@@ -53,7 +55,8 @@ def main():
         args = payload.get("args") or {}
         if not isinstance(args, dict):
             raise CaptionError("Plugin arguments must be an object.")
-        result = captions(StashClient(payload.get("server_connection") or {}), args)
+        client = StashClient(payload.get("server_connection") or {})
+        result = captions(client, args) if args.get("mode") == "captions" else caption_index.run(client, args)
         json.dump({"output": result}, sys.stdout, ensure_ascii=True)
     except Exception as error:
         print("\x01e\x02DirtyCaptions: " + str(error), file=sys.stderr)

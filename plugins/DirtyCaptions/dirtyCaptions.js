@@ -10,6 +10,21 @@
   var tracks = window["__dirtyCaptionsTracks"];
   if (!api || !hub || !tracks) return;
   var React = api.React, ui = hub.react, html = ui.html;
+  var indexModule = window["__dirtyCaptionsIndex"];
+  if (indexModule) {
+    var indexUi = indexModule.createIndexUi({ api: api, hub: hub });
+    if (hub.registerSettingsAddon) hub.registerSettingsAddon("dirtyCaptions", indexUi.SettingsAddon);
+    api.patch.after("App", function () {
+      var args = Array.prototype.slice.call(arguments), result = args.pop();
+      return React.createElement(React.Fragment, null, result, React.createElement(indexUi.Monitor));
+    });
+    api.patch.after("FilteredSceneList", function () {
+      var args = Array.prototype.slice.call(arguments), result = args.pop();
+      var intlLibrary = api.libraries && api.libraries.Intl;
+      var intl = intlLibrary && intlLibrary.useIntl ? intlLibrary.useIntl() : null;
+      return indexUi.decorateList(result, intl);
+    });
+  }
 
   /** @param {{scene:*, capture:boolean}} props */
   function CaptionsController(props) {

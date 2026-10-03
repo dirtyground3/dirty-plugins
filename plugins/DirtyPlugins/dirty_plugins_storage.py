@@ -186,6 +186,44 @@ def set_metadata(
         )
 
 
+def update_json_metadata(namespace, key, update, path=None):
+    """Atomically update a JSON record; callbacks must not perform external I/O."""
+    with transaction(path) as connection:
+        row = connection.execute(
+            "SELECT value FROM dirty_metadata WHERE namespace=? AND key=?",
+            (str(namespace), str(key)),
+        ).fetchone()
+        value = update(json.loads(row[0]) if row else {})
+        connection.execute(
+            """INSERT INTO dirty_metadata(namespace, key, value) VALUES (?, ?, ?)
+               ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value""",
+            (str(namespace), str(key), json.dumps(value, ensure_ascii=True)),
+        )
+        return value
+
+
+def list_metadata(namespace, path=None):
+    connection = connect(path)
+    try:
+        return {str(row["key"]): str(row["value"]) for row in connection.execute(
+            "SELECT key, value FROM dirty_metadata WHERE namespace=? ORDER BY key",
+            (str(namespace),),
+        )}
+    finally:
+        connection.close()
+
+
+def delete_metadata(namespace, key, path=None, expected=None):
+    """An expected value prevents removing work requested again in the meantime."""
+    with transaction(path) as connection:
+        query = "DELETE FROM dirty_metadata WHERE namespace=? AND key=?"
+        values = [str(namespace), str(key)]
+        if expected is not None:
+            query += " AND value=?"
+            values.append(str(expected))
+        return connection.execute(query, values).rowcount > 0
+
+
 def get_plugin_settings(
     plugin_id: str,
     path: str | Path | None = None,

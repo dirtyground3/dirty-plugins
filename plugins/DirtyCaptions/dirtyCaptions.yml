@@ -1,11 +1,12 @@
 name: DirtyCaptions
 description: Display embedded text subtitles in the native scene player without separate subtitle files.
-version: 0.1.0
+version: 0.2.3
 ui:
   requires:
     - dirtyPlugins
   javascript:
     - dirtyCaptionsTracks.js
+    - dirtyCaptionsIndex.js
     - dirtyCaptions.js
   css:
     - dirtyCaptions.css
@@ -14,6 +15,24 @@ exec:
   - "{pluginDir}/dirty_captions.py"
 interface: raw
 errLog: error
+tasks:
+  - name: Refresh caption index
+    description: Detect embedded subtitle tracks in new or changed scene files; skip known unchanged media using the saved map.
+    defaultArgs:
+      mode: indexRefresh
+  - name: Reprobe caption index
+    description: Bypass the saved file map and detect subtitles again in every file, including previous failed checks.
+    defaultArgs:
+      mode: indexRefresh
+      force: true
+hooks:
+  - name: Maintain caption index
+    triggeredBy:
+      - Scene.Create.Post
+      - Scene.Update.Post
+      - Scene.Destroy.Post
+    defaultArgs:
+      mode: indexHook
 settings:
   enabled:
     displayName: Load embedded captions
@@ -27,3 +46,11 @@ settings:
     displayName: Preferred language
     description: A language code such as en, eng, fr, or fra. Leave blank to use the browser language, then the file default.
     type: STRING
+  indexEnabled:
+    displayName: Maintain caption index automatically
+    description: Index new or updated scenes and refresh caption metadata during playback. An initial library scan starts when a Stash tab opens.
+    type: BOOLEAN
+  refreshAfterScan:
+    displayName: Refresh caption index after Scan
+    description: When automatic index maintenance is on, index new or changed files after a successful Scan. Known unchanged media are skipped. Keep a Stash tab open until Scan finishes. Off by default.
+    type: BOOLEAN

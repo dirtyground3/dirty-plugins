@@ -143,6 +143,8 @@ class SharedUIContractTests(unittest.TestCase):
             "hubApi.ui",
             "hubApi.react",
             "hubApi.registerSettingsPanel",
+            "hubApi.registerSettingsAddon",
+            "hubApi.unregisterSettingsAddon",
         ):
             self.assertIn(export, hub)
         for component in ("IconButton", "SettingsCard", "SettingsSection", "SettingsToggle", "StateView"):
@@ -240,7 +242,17 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("selector.removeTextTrack(record.element)", script)
         self.assertNotIn('fetch("/graphql"', script)
         self.assertIn("from dirty_plugins_client import StashClient", backend)
-        self.assertIn('dirtyCaptions: ["enabled", "showByDefault", "preferredLanguage"]', hub)
+        self.assertIn('dirtyCaptions: ["enabled", "showByDefault", "preferredLanguage", "indexEnabled", "refreshAfterScan"]', hub)
+        self.assertIn("hubApi.registerSettingsAddon", hub)
+        self.assertIn('Scene.Create.Post', read("plugins/DirtyCaptions/dirtyCaptions.yml"))
+        index_ui = read("plugins/DirtyCaptions/dirtyCaptionsIndex.js")
+        self.assertIn("filter.makeCriterion(\"custom_fields\")", index_ui)
+        self.assertIn("seed.makeCriterion().clone()", index_ui)
+        self.assertNotIn("dirty-captions-filter", index_ui)
+        self.assertIn("hub.runPluginOperation", index_ui)
+        self.assertIn("useJobsSubscribeSubscription", index_ui)
+        self.assertNotIn("reconcileHours", hub)
+        self.assertNotIn('fetch("/graphql"', index_ui)
         self.assertIn('"dirtyCaptions"', read("plugins/DirtyPlugins/dirty_plugins.py"))
         styles = read("plugins/DirtyCaptions/dirtyCaptions.css")
         self.assertIn(".dirty-captions-capture .scrubber-wrapper", styles)

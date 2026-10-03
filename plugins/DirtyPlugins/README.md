@@ -112,11 +112,20 @@ a custom hub panel for its gender boxes, categories, Glicko-2 parameters, and gu
 tools; DirtyCompactor uses one for its rules, previews, and runs.
 
 DirtyCaptions uses standard autosaving controls for embedded-caption loading,
-automatic display, and preferred language. Its tab requires DirtyPlugins 0.5.4
+automatic display, preferred language, caption-index maintenance, and optional
+refresh after Scan. Its tab requires DirtyPlugins 0.5.6
 or newer and opens directly at `/plugins/dirty-plugins?plugin=dirtyCaptions`.
-Only these settings are stored in SQLite. Subtitle text is extracted on demand
+The shared database also stores the persistent file-ID map, Stash content hashes,
+sizes and modification times, index status, pending checks,
+and the index-worker lease. Filterable caption flags are published to three
+plugin-owned scene custom fields using partial updates. Subtitle text is extracted on demand
 and remains in memory; it is not saved in the shared database or beside media.
-See the [DirtyCaptions guide](../DirtyCaptions/README.md) for playback and format
+Normal refreshes skip known unchanged media before file access. Forced refreshes
+bypass the map and retry all files.
+`registerSettingsAddon(pluginId, component)` adds controls below standard
+settings without replacing the hub's debounced saving or validation. DirtyCaptions
+uses it for index progress and refresh/stop actions.
+See the [DirtyCaptions guide](../DirtyCaptions/README.md) for filtering, playback and format
 support.
 
 The page has no navigation entry. Open it using the link shown in the normal

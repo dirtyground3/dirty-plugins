@@ -29,6 +29,11 @@ class FakeClient:
 
 
 class CaptionTests(unittest.TestCase):
+    def setUp(self):
+        self.playback_index = mock.patch.object(captions.caption_index, "record_playback")
+        self.playback_index.start()
+        self.addCleanup(self.playback_index.stop)
+
     def test_only_stash_resolved_files_can_be_read(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "scene.mp4"
@@ -86,6 +91,11 @@ class CaptionTests(unittest.TestCase):
 
 @unittest.skipUnless(FFMPEG and FFPROBE, "FFmpeg and ffprobe required")
 class CaptionMediaTests(unittest.TestCase):
+    def setUp(self):
+        self.playback_index = mock.patch.object(captions.caption_index, "record_playback")
+        self.playback_index.start()
+        self.addCleanup(self.playback_index.stop)
+
     def test_mp4_mov_text_languages_unicode_and_no_sidecars(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

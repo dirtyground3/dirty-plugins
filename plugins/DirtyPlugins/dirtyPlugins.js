@@ -34,7 +34,7 @@
   var MAIN_PAGE_PLUGIN_ID_SET = new Set(MAIN_PAGE_PLUGIN_IDS);
   var PLUGIN_SETTING_ORDER = {
     dirtyPlugins: ["visualTheme"],
-    dirtyCaptions: ["enabled", "showByDefault", "preferredLanguage"],
+    dirtyCaptions: ["enabled", "showByDefault", "preferredLanguage", "indexEnabled", "refreshAfterScan"],
     extractScenes: [
       "destinationFolder",
       "collisionPolicy",
@@ -60,6 +60,8 @@
       enabled: true,
       showByDefault: true,
       preferredLanguage: "",
+      indexEnabled: true,
+      refreshAfterScan: false,
     },
     dirtyPlugins: {
       visualTheme: DEFAULT_VISUAL_THEME,
@@ -396,6 +398,17 @@
   hubApi.registerSettingsPanel = function (pluginId, component) {
     if (settingsPanels[pluginId] === component) return;
     settingsPanels[pluginId] = component;
+    window.dispatchEvent(new CustomEvent(SETTINGS_PANELS_CHANGED_EVENT));
+  };
+  var settingsAddons = Object.create(null);
+  hubApi.registerSettingsAddon = function (pluginId, component) {
+    if (settingsAddons[pluginId] === component) return;
+    settingsAddons[pluginId] = component;
+    window.dispatchEvent(new CustomEvent(SETTINGS_PANELS_CHANGED_EVENT));
+  };
+  hubApi.unregisterSettingsAddon = function (pluginId, component) {
+    if (settingsAddons[pluginId] !== component) return;
+    delete settingsAddons[pluginId];
     window.dispatchEvent(new CustomEvent(SETTINGS_PANELS_CHANGED_EVENT));
   };
   hubApi.unregisterSettingsPanel = function (pluginId, component) {
@@ -1390,6 +1403,7 @@
               />`;
             })}
         ${plugin.id === "dirtyPlugins" && html`<${DatabaseBackupControl} />`}
+        ${settingsAddons[plugin.id] && html`<${settingsAddons[plugin.id]} plugin=${plugin} configuration=${draft} />`}
       <//>`;
   }
 
