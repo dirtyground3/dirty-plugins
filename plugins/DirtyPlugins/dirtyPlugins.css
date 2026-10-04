@@ -642,13 +642,6 @@
   justify-content: space-between;
 }
 
-.dirty-ui-toolbar {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--dirty-ui-space-2);
-}
-
 .dirty-ui-table-wrap {
   overflow-x: auto;
 }
@@ -657,14 +650,6 @@
 .dirty-ui-table td {
   border-bottom: 1px solid var(--dirty-ui-border-soft);
   padding: 0.62rem 0.8rem;
-}
-
-.dirty-ui-table th {
-  color: var(--dirty-ui-muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .dirty-ui-table tbody tr:last-child td {
@@ -770,6 +755,7 @@
   padding: var(--dirty-ui-space-4);
 }
 
+.dirty-ui-table th,
 .dirty-ui-metric-label {
   color: var(--dirty-ui-muted);
   font-size: 0.72rem;

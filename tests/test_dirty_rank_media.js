@@ -4,7 +4,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
-const { element, find, findAll, text } = require("./ui_harness");
+const { element, find, findAll, text, createHooks } = require("./ui_harness");
 const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
 
 // Exercise the actual component and asynchronous handlers without a Stash server.
@@ -17,35 +17,7 @@ const React = {
     if (typeof type === "function" && ["GenderBoxEditor", "PresentationSettings", "CategoryEditor", "RatingSettings"].includes(type.name)) return type(props || {});
     return element(type, props, ...children.flat());
   },
-  useState(initial) {
-    const owner = active;
-    const index = owner.cursor++;
-    if (!(index in owner.slots)) owner.slots[index] = typeof initial === "function" ? initial() : initial;
-    return [owner.slots[index], value => { owner.slots[index] = typeof value === "function" ? value(owner.slots[index]) : value; }];
-  },
-  useRef(initial) {
-    const index = active.cursor++;
-    if (!(index in active.slots)) active.slots[index] = { current: initial };
-    return active.slots[index];
-  },
-  useCallback(callback, deps) {
-    const index = active.cursor++;
-    const old = active.slots[index];
-    if (!old || deps.some((dep, i) => dep !== old.deps[i])) active.slots[index] = { deps, callback };
-    return active.slots[index].callback;
-  },
-  useMemo(factory, deps) { return React.useCallback(factory, deps)(); },
-  useEffect(effect, deps) {
-    const index = active.cursor++;
-    const old = active.slots[index];
-    if (!old || !deps || deps.some((dep, i) => dep !== old.deps[i])) {
-      active.slots[index] = { deps };
-      active.effects.push(() => {
-        if (old && old.cleanup) old.cleanup();
-        active.slots[index].cleanup = effect();
-      });
-    }
-  },
+  ...createHooks(() => active),
 };
 const calls = [];
 const documentListeners = new Map();

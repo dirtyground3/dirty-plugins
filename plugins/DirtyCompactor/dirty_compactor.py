@@ -1,7 +1,6 @@
 """DirtyCompactor: journaled, sequential media compaction through Stash."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import os
@@ -36,7 +35,6 @@ PREVIEWS = ROOT / "runtime" / "previews"
 PRIVATE = ROOT / "runtime" / "private"
 TERMINAL = {"completed", "cancelled", "failed"}
 FIELDS = "id title files{id path size width height duration video_codec bit_rate}"
-from dirty_plugins_protocol import StashReporter
 import dirty_plugins_protocol as protocol
 
 

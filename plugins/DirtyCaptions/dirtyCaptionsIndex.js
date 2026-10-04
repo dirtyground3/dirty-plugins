@@ -145,15 +145,13 @@
   function createIndexUi(dependencies) {
     var api = dependencies.api, hub = dependencies.hub;
     var React = api.React, ui = hub.react, html = ui.html;
+    var useCompletedJob = hub.createJobHook(React);
     function operation(mode, args) { return hub.runPluginOperation("dirtyCaptions", Object.assign({ mode: mode }, args || {})); }
 
     function Monitor() {
       var useJobsSubscription = api.GQL && api.GQL.useJobsSubscribeSubscription;
       var subscription = typeof useJobsSubscription === "function" ? useJobsSubscription() : null;
       var event = subscription && subscription.data && subscription.data.jobsSubscribe;
-      var job = event && event.job;
-      var processingJobs = React.useRef(null);
-      if (!processingJobs.current) processingJobs.current = hub.createReplayTracker();
       React.useEffect(function () {
         var pending = false, cancelled = false;
         function bootstrap() {
@@ -167,16 +165,13 @@
         window.addEventListener("dirty-plugins:configuration-changed", bootstrap);
         return function () { cancelled = true; window.removeEventListener("dirty-plugins:configuration-changed", bootstrap); };
       }, []);
-      React.useEffect(function () {
-        var completion = hub.completedJob(event);
-        if (!completion || completion.kind !== "scan" || !processingJobs.current.claim(completion.key)) return;
+      useCompletedJob(event, function (completion) {
         // The backend checks the opt-in setting and internal-scan ownership,
         // and atomically deduplicates completion events from multiple tabs.
-        operation("indexAfterScan", { jobId: completion.jobId, startTime: completion.startTime }).catch(function (error) {
-          processingJobs.current.release(completion.key);
-          if (hub.debugLog) hub.debugLog("dirtyCaptions", "Caption index refresh after Scan failed", { error: error.message });
-        });
-      }, [event && event.type, job && job.id, job && job.status, job && job.description, job && job.startTime]);
+        return operation("indexAfterScan", { jobId: completion.jobId, startTime: completion.startTime });
+      }, function (error) {
+        if (hub.debugLog) hub.debugLog("dirtyCaptions", "Caption index refresh after Scan failed", { error: error.message });
+      }, "scan");
       return null;
     }
 

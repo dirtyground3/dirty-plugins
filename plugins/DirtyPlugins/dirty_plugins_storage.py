@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import json
 import sqlite3
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
@@ -96,10 +96,10 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
 
 
 @contextmanager
-def transaction(path: str | Path | None = None) -> Iterator[sqlite3.Connection]:
+def transaction(path: str | Path | None = None, *, immediate=True) -> Iterator[sqlite3.Connection]:
     connection = connect(path)
     try:
-        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
         yield connection
         connection.commit()
     except Exception:
@@ -161,15 +161,12 @@ def get_plugin_revision(
 
 
 def get_metadata(namespace: str, key: str, path: str | Path | None = None) -> str | None:
-    connection = connect(path)
-    try:
+    with closing(connect(path)) as connection:
         row = connection.execute(
             "SELECT value FROM dirty_metadata WHERE namespace=? AND key=?",
             (str(namespace), str(key)),
         ).fetchone()
         return str(row["value"]) if row else None
-    finally:
-        connection.close()
 
 
 def set_metadata(
@@ -203,14 +200,11 @@ def update_json_metadata(namespace, key, update, path=None):
 
 
 def list_metadata(namespace, path=None):
-    connection = connect(path)
-    try:
+    with closing(connect(path)) as connection:
         return {str(row["key"]): str(row["value"]) for row in connection.execute(
             "SELECT key, value FROM dirty_metadata WHERE namespace=? ORDER BY key",
             (str(namespace),),
         )}
-    finally:
-        connection.close()
 
 
 def delete_metadata(namespace, key, path=None, expected=None):
@@ -243,50 +237,32 @@ def get_plugin_settings(
 
 def get_plugin_settings_snapshot(plugin_id: str, path: str | Path | None = None) -> dict:
     """Read one plugin's settings and revision as a single snapshot."""
-    connection = connect(path)
-    try:
-        connection.execute("BEGIN")
-        try:
-            revision = get_plugin_revision(str(plugin_id), connection=connection)
-            settings = get_plugin_settings(str(plugin_id), connection=connection)
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
+    with transaction(path, immediate=False) as connection:
+        revision = get_plugin_revision(str(plugin_id), connection=connection)
+        settings = get_plugin_settings(str(plugin_id), connection=connection)
         return {"revision": revision, "settings": settings}
-    finally:
-        connection.close()
 
 
 def get_all_plugin_settings(path: str | Path | None = None) -> dict:
-    connection = connect(path)
-    try:
+    with transaction(path, immediate=False) as connection:
         # A single read transaction keeps the settings rows and their per-plugin
         # revisions on the same snapshot.
-        connection.execute("BEGIN")
-        try:
-            result: dict[str, dict] = {}
-            for row in connection.execute(
-                "SELECT plugin_id, setting_key, value_json FROM dirty_plugin_settings ORDER BY plugin_id, setting_key"
-            ):
-                result.setdefault(str(row["plugin_id"]), {})[str(row["setting_key"])] = json.loads(row["value_json"])
-            revisions: dict[str, int] = {}
-            for row in connection.execute(
-                "SELECT key, value FROM dirty_metadata WHERE namespace=? AND key LIKE 'plugin-revision:%'",
-                (SETTINGS_NAMESPACE,),
-            ):
-                revisions[str(row["key"]).split(":", 1)[1]] = int(row["value"])
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
+        result: dict[str, dict] = {}
+        for row in connection.execute(
+            "SELECT plugin_id, setting_key, value_json FROM dirty_plugin_settings ORDER BY plugin_id, setting_key"
+        ):
+            result.setdefault(str(row["plugin_id"]), {})[str(row["setting_key"])] = json.loads(row["value_json"])
+        revisions: dict[str, int] = {}
+        for row in connection.execute(
+            "SELECT key, value FROM dirty_metadata WHERE namespace=? AND key LIKE 'plugin-revision:%'",
+            (SETTINGS_NAMESPACE,),
+        ):
+            revisions[str(row["key"]).split(":", 1)[1]] = int(row["value"])
         return {
             "revision": max(revisions.values(), default=0),
             "pluginRevisions": revisions,
             "settings": result,
         }
-    finally:
-        connection.close()
 
 
 def set_plugin_settings(

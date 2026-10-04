@@ -175,6 +175,7 @@
   hubApi.createSaveController = window.__dirtyPluginsSave.createSaveController;
   hubApi.completedJob = window.__dirtyPluginsJobs.completedJob;
   hubApi.createReplayTracker = window.__dirtyPluginsJobs.createReplayTracker;
+  hubApi.createJobHook = window.__dirtyPluginsJobs.createJobHook;
   hubApi.runSharedOperation = runSharedOperation;
   hubApi.isInternalScan = function (jobId, startTime) {
     return runSharedOperation({ mode: "isInternalScan", jobId: String(jobId), startTime: startTime })

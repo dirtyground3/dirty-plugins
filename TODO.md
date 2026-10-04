@@ -8,6 +8,32 @@ rest come from per-plugin deep dives and should be re-checked when picked up.
 
 All remaining items are open.
 
+## Remaining UI acceptance checks
+
+The shared styling implementation is in place. These acceptance checks are
+carried forward from the retired harmony report and implementation plan:
+
+- [ ] Review `tests/fixtures/dirty_suite_harmony.html` in its default, Paper
+  Picnic, and Retro Arcade themes. Include busy controls, native/fallback card
+  boundaries, and representative safe captures.
+- [ ] Finish rendered contrast checks for translucent overlays and chart labels
+  across supported themes, plus keyboard-only and reduced-motion checks on
+  remaining plugin controls. Main Stats and Rank narrow-width checks already
+  passed; the review conventions are in `plugins/DirtyPlugins/STYLE.md`.
+- [ ] Complete the remaining live state checks: hub invalid/save feedback;
+  FileExtractor and Multiscreen empty/error states; Rank Battle/Gauntlet and
+  table interactions; Stats dashboard editing and nested native filters; and
+  Tidy invalid/confirmation states. Use tests or safe previews for actions that
+  would move files, and keep private media out of captures.
+
+## Compatibility follow-up
+
+- [ ] Recheck legacy flat-array `categories` normalization in DirtyRank.
+  The completed readability refactor found that browser normalization creates
+  an extra numeric-key category pool, while the backend falls back to defaults.
+  The refactors preserved this existing difference; any fix needs explicit
+  browser/backend parity coverage and a separate behavior change.
+
 ## High / Medium bugs
 
 - [ ] **8. DirtyStats map loses zoom/pan on every interaction** (verified)

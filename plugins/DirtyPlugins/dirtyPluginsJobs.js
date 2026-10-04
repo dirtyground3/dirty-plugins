@@ -30,5 +30,21 @@
       release: function (key) { keys = keys.filter(function (item) { return item !== key; }); }
     };
   }
-  window[INSTANCE_KEY] = { completedJob: completedJob, createReplayTracker: createReplayTracker };
+  /** @param {Pick<NativeReactHooks, 'useRef' | 'useEffect'>} React */
+  function createJobHook(React) {
+    /** @param {StashJobEvent | null | undefined} event @param {JobCompletionHandler} handle @param {(error: Error) => void} onError @param {CompletedJob['kind']=} kind */
+    return function useCompletedJob(event, handle, onError, kind) {
+      var seen = React.useRef(null), job = event && event.job;
+      if (!seen.current) seen.current = createReplayTracker();
+      React.useEffect(function () {
+        var completion = completedJob(event);
+        if (!completion || (kind && completion.kind !== kind) || !seen.current.claim(completion.key)) return;
+        handle(completion).catch(function (error) {
+          seen.current.release(completion.key);
+          onError(error);
+        });
+      }, [event && event.type, job && job.id, job && job.status, job && job.description, job && job.startTime]);
+    };
+  }
+  window[INSTANCE_KEY] = { completedJob: completedJob, createReplayTracker: createReplayTracker, createJobHook: createJobHook };
 })();

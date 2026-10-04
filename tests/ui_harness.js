@@ -38,4 +38,34 @@ function events(target = {}) {
   return target;
 }
 
-module.exports = { element, find, findAll, text, events };
+// Owners expose slots/cursor/effects; suites decide when to render and flush.
+function createHooks(getOwner) {
+  const hooks = {
+    useState(initial) {
+      const owner = getOwner(), index = owner.cursor++;
+      if (!(index in owner.slots)) owner.slots[index] = typeof initial === "function" ? initial() : initial;
+      return [owner.slots[index], value => { owner.slots[index] = typeof value === "function" ? value(owner.slots[index]) : value; }];
+    },
+    useRef(initial) {
+      const owner = getOwner(), index = owner.cursor++;
+      if (!(index in owner.slots)) owner.slots[index] = { current: initial };
+      return owner.slots[index];
+    },
+    useCallback(callback, deps) {
+      const owner = getOwner(), index = owner.cursor++, old = owner.slots[index];
+      if (!old || deps.some((dep, i) => dep !== old.deps[i])) owner.slots[index] = { deps, callback };
+      return owner.slots[index].callback;
+    },
+    useMemo(factory, deps) { return hooks.useCallback(factory, deps)(); },
+    useEffect(effect, deps) {
+      const owner = getOwner(), index = owner.cursor++, old = owner.slots[index];
+      if (!old || !deps || deps.some((dep, i) => dep !== old.deps[i])) {
+        owner.slots[index] = { deps };
+        owner.effects.push(() => { if (old?.cleanup) old.cleanup(); owner.slots[index].cleanup = effect(); });
+      }
+    },
+  };
+  return hooks;
+}
+
+module.exports = { element, find, findAll, text, events, createHooks };

@@ -92,26 +92,17 @@
     });
   }
 
+  var useCompletedJob = DirtyPlugins.createJobHook(React);
   function DirtyTidyAutomationMonitor() {
     var useJobsSubscription = PluginApi.GQL && PluginApi.GQL.useJobsSubscribeSubscription;
     if (typeof useJobsSubscription !== "function") return null;
     var jobsSubscription = useJobsSubscription();
-    var processingJobs = useRef(null);
-    if (!processingJobs.current) processingJobs.current = DirtyPlugins.createReplayTracker();
     var event = jobsSubscription && jobsSubscription.data && jobsSubscription.data.jobsSubscribe;
-    var job = event && event.job;
-
-    useEffect(function () {
-      var completion = DirtyPlugins.completedJob(event);
-      if (!completion || !processingJobs.current.claim(completion.key)) return;
+    useCompletedJob(event, function (completion) {
       // A finished REMOVE carries the scan identity itself, avoiding a race
       // between the separate scan-completion and job-removal subscriptions.
-      queueApprovedAutomation(completion.kind, completion.jobId, completion.startTime)
-        .catch(function (automationError) {
-          console.error("DirtyTidy could not queue automation", automationError);
-          processingJobs.current.release(completion.key);
-        });
-    }, [event && event.type, job && job.id, job && job.status, job && job.description, job && job.startTime]);
+      return queueApprovedAutomation(completion.kind, completion.jobId, completion.startTime);
+    }, function (automationError) { console.error("DirtyTidy could not queue automation", automationError); });
 
     return null;
   }

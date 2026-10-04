@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).parents[1] / "plugins" / "DirtyPlugins" / "dirty_plugins_storage.py"
@@ -119,6 +120,34 @@ class DirtyPluginsSettingsStorageTests(unittest.TestCase):
             self.assertEqual(connection.execute("SELECT 1").fetchone()[0], 1)
         finally:
             connection.close()
+
+    def test_read_transactions_stay_deferred_and_write_transactions_are_immediate(self):
+        for immediate, expected in ((False, "BEGIN"), (True, "BEGIN IMMEDIATE")):
+            connection = storage.connect(self.database)
+            queries = []
+            connection.set_trace_callback(queries.append)
+            with mock.patch.object(storage, "connect", return_value=connection):
+                with storage.transaction(self.database, immediate=immediate) as current:
+                    self.assertEqual(current.execute("SELECT 1").fetchone()[0], 1)
+            self.assertEqual(queries[0], expected)
+            self.assertIn("COMMIT", queries)
+            with self.assertRaises(sqlite3.ProgrammingError):
+                connection.execute("SELECT 1")
+
+    def test_snapshot_failure_rolls_back_and_closes_its_owned_connection(self):
+        storage.set_plugin_settings("example", {"enabled": True}, self.database)
+        connection = storage.connect(self.database)
+        connection.execute("UPDATE dirty_plugin_settings SET value_json='invalid'")
+        connection.commit()
+        queries = []
+        connection.set_trace_callback(queries.append)
+        with mock.patch.object(storage, "connect", return_value=connection):
+            with self.assertRaises(json.JSONDecodeError):
+                storage.get_all_plugin_settings(self.database)
+        self.assertEqual(queries[0], "BEGIN")
+        self.assertIn("ROLLBACK", queries)
+        with self.assertRaises(sqlite3.ProgrammingError):
+            connection.execute("SELECT 1")
 
     def _schema_version(self):
         connection = sqlite3.connect(self.database)

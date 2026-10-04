@@ -800,8 +800,9 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("showLeaderboardsInMenu", source)
         self.assertIn("DirtyRankLeaderboardsNavLink", source)
         self.assertIn("dirty-rank-leaderboards-nav-link", source)
-        self.assertIn('label="Show Leaderboards in the Stash header"', source)
-        self.assertIn('label="Show Battles in the Stash header"', source)
+        self.assertIn('["showLeaderboardsInMenu", "Show Leaderboards in the Stash header"]', source)
+        self.assertIn('checked=${draft[key]} label=${definition[1]}', source)
+        self.assertIn('["showBattlesInMenu", "Show Battles in the Stash header"]', source)
 
     def test_category_editor_can_configure_disabled_boxes(self):
         source = rank_source()

@@ -269,28 +269,28 @@
       return null;
     }
   };
-  var getPerformerIds = async (launchContext) => {
-    const data = await graphqlRequest(findPerformersQuery, {
-      filter: {
-        ...launchContext.filter,
-        page: 1,
-        per_page: -1
-      },
-      performer_filter: launchContext.performerFilter
-    });
-    return data.findPerformers.performers.map((performer) => performer.id);
+  var RELATED_ENTITIES = {
+    performer: { root: "findPerformers", collection: "performers",
+      filter: "performer_filter", contextFilter: "performerFilter", id: "performerId" },
+    studio: { root: "findStudios", collection: "studios",
+      filter: "studio_filter", contextFilter: "studioFilter", id: "studioId" }
   };
-  var getStudioIds = async (launchContext) => {
-    const data = await graphqlRequest(findStudiosQuery, {
-      filter: {
-        ...launchContext.filter,
-        page: 1,
-        per_page: -1
-      },
-      studio_filter: launchContext.studioFilter
-    });
-    return data.findStudios.studios.map((studio) => studio.id);
-  };
+  async function relatedSceneVariables(settings, context, entity) {
+    var spec = RELATED_ENTITIES[entity], ids;
+    if (context.source === entity + "-selection") ids = context.selectedIds;
+    else if (context.source === entity + "-detail") ids = [context[spec.id]];
+    else {
+      var variables = { filter: Object.assign({}, context.filter, { page: 1, per_page: -1 }) };
+      variables[spec.filter] = context[spec.contextFilter];
+      var data = await graphqlRequest(entity === "studio" ? findStudiosQuery : findPerformersQuery, variables);
+      ids = data[spec.root][spec.collection].map(function (item) { return item.id; });
+    }
+    if (ids.length === 0) return null;
+    var sceneFilter = {};
+    sceneFilter[spec.collection] = { value: ids, modifier: "INCLUDES" };
+    if (entity === "studio") sceneFilter.studios.depth = 0;
+    return { filter: { page: 1, per_page: -1, sort: getSceneSort(settings) }, scene_filter: sceneFilter };
+  }
   var getSceneQueryVariables = async (settings, launchContext) => {
     if (launchContext?.source === "selection") {
       return {
@@ -313,40 +313,11 @@
         scene_filter: launchContext.sceneFilter
       };
     }
-    if (launchContext?.source === "performer-selection" || launchContext?.source === "performer-detail" || launchContext?.source === "performer-filter") {
-      const performerIds = launchContext.source === "performer-selection" ? launchContext.selectedIds : launchContext.source === "performer-detail" ? [launchContext.performerId] : await getPerformerIds(launchContext);
-      if (performerIds.length === 0) return null;
-      return {
-        filter: {
-          page: 1,
-          per_page: -1,
-          sort: getSceneSort(settings)
-        },
-        scene_filter: {
-          performers: {
-            value: performerIds,
-            modifier: "INCLUDES"
-          }
-        }
-      };
+    if (["performer-selection", "performer-detail", "performer-filter"].indexOf(launchContext?.source) >= 0) {
+      return relatedSceneVariables(settings, launchContext, "performer");
     }
-    if (launchContext?.source === "studio-selection" || launchContext?.source === "studio-detail" || launchContext?.source === "studio-filter") {
-      const studioIds = launchContext.source === "studio-selection" ? launchContext.selectedIds : launchContext.source === "studio-detail" ? [launchContext.studioId] : await getStudioIds(launchContext);
-      if (studioIds.length === 0) return null;
-      return {
-        filter: {
-          page: 1,
-          per_page: -1,
-          sort: getSceneSort(settings)
-        },
-        scene_filter: {
-          studios: {
-            value: studioIds,
-            modifier: "INCLUDES",
-            depth: 0
-          }
-        }
-      };
+    if (["studio-selection", "studio-detail", "studio-filter"].indexOf(launchContext?.source) >= 0) {
+      return relatedSceneVariables(settings, launchContext, "studio");
     }
     return {
       filter: {
@@ -1266,41 +1237,22 @@
     />`;
   };
   PluginApi.register.route(ROUTE_PATH, MultiscreenRoute);
-  PluginApi.patch.before("SceneMarkerList", function(props) {
-    if (window.location.pathname === MARKERS_ROUTE_PATH && props.filter && props.selectedIds instanceof Set) {
-      const context = {
-        filter: props.filter,
-        selectedIds: props.selectedIds
-      };
-      updateListContext("marker-list", context, (nextContext) => {
-        latestMarkerListContext = nextContext;
-      });
-    }
-    return [props];
+  function captureList(component, path, key, store) {
+    PluginApi.patch.before(component, function (props) {
+      if (window.location.pathname === path && props.filter && props.selectedIds instanceof Set) {
+        updateListContext(key, { filter: props.filter, selectedIds: props.selectedIds }, store);
+      }
+      return [props];
+    });
+  }
+  captureList("SceneMarkerList", MARKERS_ROUTE_PATH, "marker-list", function (context) {
+    latestMarkerListContext = context;
   });
-  PluginApi.patch.before("SceneList", function(props) {
-    if (window.location.pathname === SCENES_ROUTE_PATH && props.filter && props.selectedIds instanceof Set) {
-      const context = {
-        filter: props.filter,
-        selectedIds: props.selectedIds
-      };
-      updateListContext("scene-list", context, (nextContext) => {
-        latestSceneListContext = nextContext;
-      });
-    }
-    return [props];
+  captureList("SceneList", SCENES_ROUTE_PATH, "scene-list", function (context) {
+    latestSceneListContext = context;
   });
-  PluginApi.patch.before("PerformerList", function(props) {
-    if (window.location.pathname === PERFORMERS_ROUTE_PATH && props.filter && props.selectedIds instanceof Set) {
-      const context = {
-        filter: props.filter,
-        selectedIds: props.selectedIds
-      };
-      updateListContext("performer-list", context, (nextContext) => {
-        latestPerformerListContext = nextContext;
-      });
-    }
-    return [props];
+  captureList("PerformerList", PERFORMERS_ROUTE_PATH, "performer-list", function (context) {
+    latestPerformerListContext = context;
   });
   PluginApi.patch.before("PerformerPage", function(props) {
     if (window.location.pathname.startsWith(`${PERFORMERS_ROUTE_PATH}/`) && props.performer?.id) {
@@ -1310,17 +1262,8 @@
     }
     return [props];
   });
-  PluginApi.patch.before("StudioList", function(props) {
-    if (window.location.pathname === STUDIOS_ROUTE_PATH && props.filter && props.selectedIds instanceof Set) {
-      const context = {
-        filter: props.filter,
-        selectedIds: props.selectedIds
-      };
-      updateListContext("studio-list", context, (nextContext) => {
-        latestStudioListContext = nextContext;
-      });
-    }
-    return [props];
+  captureList("StudioList", STUDIOS_ROUTE_PATH, "studio-list", function (context) {
+    latestStudioListContext = context;
   });
   PluginApi.patch.before("StudioPage", function(props) {
     if (window.location.pathname.startsWith(`${STUDIOS_ROUTE_PATH}/`) && props.studio?.id) {

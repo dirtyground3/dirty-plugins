@@ -4,39 +4,15 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
-const { events } = require("./ui_harness");
+const { events, createHooks } = require("./ui_harness");
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 
 function createSession() {
   const window = events({setTimeout: () => 1, clearTimeout() {}});
   const document = events({activeElement: null});
-  const slots = [], effects = [], calls = [], paths = [];
-  let cursor = 0, nextId = 0;
-  const hooks = {
-    useState(initial) {
-      const index = cursor++;
-      if (!(index in slots)) slots[index] = typeof initial === "function" ? initial() : initial;
-      return [slots[index], value => { slots[index] = typeof value === "function" ? value(slots[index]) : value; }];
-    },
-    useRef(initial) {
-      const index = cursor++;
-      if (!(index in slots)) slots[index] = {current: initial};
-      return slots[index];
-    },
-    useCallback(callback, keys) {
-      const index = cursor++, old = slots[index];
-      if (!old || keys.some((key, i) => key !== old.keys[i])) slots[index] = {keys, callback};
-      return slots[index].callback;
-    },
-    useMemo(factory, keys) { return hooks.useCallback(factory, keys)(); },
-    useEffect(effect, keys) {
-      const index = cursor++, old = slots[index];
-      if (!old || !keys || keys.some((key, i) => key !== old.keys[i])) {
-        slots[index] = {keys};
-        effects.push(() => { if (old?.cleanup) old.cleanup(); slots[index].cleanup = effect(); });
-      }
-    },
-  };
+  const owner = {slots: [], effects: [], cursor: 0}, calls = [], paths = [];
+  let nextId = 0;
+  const hooks = createHooks(() => owner);
   const people = [{id: "left", name: "Left"}, {id: "right", name: "Right"}];
   const category = {id: "appearance", name: "Appearance"};
   const settings = {defaultCohort: "FEMALE", avoidRepeatWindow: 10};
@@ -59,12 +35,12 @@ function createSession() {
     runOperation: args => new Promise((resolve, reject) => { calls.push({args, resolve, reject}); }),
   });
   function render() {
-    cursor = 0;
+    owner.cursor = 0;
     const session = useSession({routeDetails: {categoryId: category.id}});
-    effects.splice(0).forEach(effect => effect());
+    owner.effects.splice(0).forEach(effect => effect());
     return session;
   }
-  return {window, document, calls, paths, render, unmount() { slots.forEach(slot => { if (slot?.cleanup) slot.cleanup(); }); }};
+  return {window, document, calls, paths, render, unmount() { owner.slots.forEach(slot => { if (slot?.cleanup) slot.cleanup(); }); }};
 }
 
 const result = rating => ({left: {id: "left", state: {rating}}, right: {id: "right", state: {rating}}});

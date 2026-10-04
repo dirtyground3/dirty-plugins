@@ -13,6 +13,7 @@ interface Window {
     createSaveController<T, R>(options: SaveControllerOptions<T, R>): SaveController<T, R>;
     completedJob(event: StashJobEvent | null | undefined): CompletedJob | null;
     createReplayTracker(capacity?: number): JobReplayTracker;
+    createJobHook(React: Pick<NativeReactHooks, "useRef" | "useEffect">): CompletedJobHook;
     registerSettingsPanel(pluginId: string, component: NativeComponent): void;
     registerSettingsAddon(pluginId: string, component: NativeComponent): void;
     unregisterSettingsPanel(pluginId: string, component: NativeComponent): void;

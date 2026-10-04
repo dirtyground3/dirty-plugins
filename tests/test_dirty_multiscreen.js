@@ -13,23 +13,7 @@ const routes = [];
 const patches = [];
 const storedValues = new Map();
 
-// Mirrors the shared hub implementations so normalization is tested against
-// the same coercion rules the browser receives.
-function clampInteger(value, fallback, min, max) {
-  const next = Number(value);
-  if (!Number.isFinite(next)) return fallback;
-  return Math.max(min, Math.min(max, Math.floor(next)));
-}
-
-function coerceBoolean(value, fallback) {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "true") return true;
-    if (normalized === "false") return false;
-  }
-  return fallback;
-}
+const values = require("./shared_runtime").loadFeature({}, "Values");
 
 const window = {
   PluginApi: {
@@ -57,7 +41,7 @@ const window = {
       }
       return Promise.resolve({});
     },
-    values: { clampInteger, coerceBoolean },
+    values,
     react: { html: htm.bind(noop), IconButton: noop, StateView: noop },
   },
   sessionStorage: {

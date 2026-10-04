@@ -121,13 +121,8 @@
       return parameters;
     }
 
-    function asObject(value) {
-      return DirtyPlugins.values.asObject(value);
-    }
-
-    function parseMaybeJson(value) {
-      return DirtyPlugins.values.parseMaybeJson(value);
-    }
+    var asObject = DirtyPlugins.values.asObject;
+    var parseMaybeJson = DirtyPlugins.values.parseMaybeJson;
 
     function number(value, fallback, minimum, maximum) {
       var result = Number(value);

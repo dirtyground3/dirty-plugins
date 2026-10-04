@@ -26,6 +26,7 @@ const window = {
     },
   },
 };
+require("./shared_runtime").installJobHelpers(window);
 vm.runInNewContext(source, { window, console: { error: noop } });
 const a = window.__dirtyTidyPlugin.algorithms;
 // Values cross the vm realm boundary, so compare plain JSON copies.

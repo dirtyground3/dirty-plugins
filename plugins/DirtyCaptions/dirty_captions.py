@@ -1,7 +1,6 @@
 """Stash JSON protocol entry point for DirtyCaptions."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import shutil
 import sys
@@ -17,7 +16,6 @@ from dirty_captions_media import CaptionError, read_captions
 import dirty_captions_index as caption_index
 
 
-from dirty_plugins_protocol import StashReporter
 import dirty_plugins_protocol as protocol
 
 

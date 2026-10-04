@@ -79,3 +79,22 @@ def configure_standard_streams(*, errors=None) -> None:
                 reconfigure(**options)
             except (OSError, ValueError):
                 pass
+
+
+def run_logged_backend(name, run, read, emit, fail, reporter, clock, *, requested_mode=None, exit_code=None):
+    """Keep timing and protocol handling shared; callers retain dispatch and envelopes."""
+    started = clock()
+    context = ": mode=unknown" if requested_mode else ""
+    try:
+        payload = read()
+        if requested_mode:
+            context = f": mode={requested_mode(payload)}"
+        reporter.info(f"{name} backend started{context}")
+        output = run(payload, reporter)
+        reporter.info(f"{name} backend finished{context} in {int((clock() - started) * 1000)}ms")
+        emit(output)
+        return exit_code(output) if exit_code else 0
+    except Exception as exc:
+        reporter.error(f"{name} failed{context} after {int((clock() - started) * 1000)}ms: {exc}")
+        fail(exc)
+        return 1

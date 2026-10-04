@@ -984,25 +984,10 @@ def _requested_mode(payload: Any) -> str:
 
 def main() -> int:
     configure_standard_streams()
-    reporter = StashReporter()
-    started = time.monotonic()
-    mode = "unknown"
-    try:
-        payload = read_payload()
-        mode = _requested_mode(payload)
-        reporter.info(f"DirtyRank backend started: mode={mode}")
-        output = run(payload, reporter)
-        reporter.info(
-            f"DirtyRank backend finished: mode={mode} in {int((time.monotonic() - started) * 1000)}ms"
-        )
-        emit_output(output)
-        return 0
-    except Exception as exc:
-        reporter.error(
-            f"DirtyRank failed: mode={mode} after {int((time.monotonic() - started) * 1000)}ms: {exc}"
-        )
-        emit_error(exc)
-        return 1
+    return protocol.run_logged_backend(
+        "DirtyRank", run, read_payload, emit_output, emit_error, StashReporter(), time.monotonic,
+        requested_mode=_requested_mode,
+    )
 
 
 if __name__ == "__main__":

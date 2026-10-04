@@ -10,9 +10,6 @@ import os
 import re
 import sys
 import time
-import urllib.error
-import urllib.request
-import unicodedata
 import uuid
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -61,10 +58,8 @@ STRATEGY_SETTING_KEYS = (
 
 def _load_shared_storage():
     plugin_root = Path(__file__).resolve().parent.parent
-    for path in (
-        plugin_root / "dirtyPlugins" / "dirty_plugins_storage.py",
-        plugin_root / "DirtyPlugins" / "dirty_plugins_storage.py",
-    ):
+    for folder in ("dirtyPlugins", "DirtyPlugins"):
+        path = plugin_root / folder / "dirty_plugins_storage.py"
         if path.is_file():
             sys.path.insert(0, str(path.parent))
             return __import__("dirty_plugins_storage")
@@ -810,25 +805,10 @@ def exit_code_for(output: Any) -> int:
 
 def main() -> int:
     configure_standard_streams()
-    reporter = StashReporter()
-    started = time.monotonic()
-    mode = "unknown"
-    try:
-        payload = read_payload()
-        mode = _requested_mode(payload)
-        reporter.info(f"DirtyTidy backend started: mode={mode}")
-        output = run(payload, reporter)
-        reporter.info(
-            f"DirtyTidy backend finished: mode={mode} in {int((time.monotonic() - started) * 1000)}ms"
-        )
-        emit_output(output)
-        return exit_code_for(output)
-    except Exception as exc:
-        reporter.error(
-            f"DirtyTidy failed: mode={mode} after {int((time.monotonic() - started) * 1000)}ms: {exc}"
-        )
-        emit_error(exc)
-        return 1
+    return protocol.run_logged_backend(
+        "DirtyTidy", run, read_payload, emit_output, emit_error, StashReporter(), time.monotonic,
+        requested_mode=_requested_mode, exit_code=exit_code_for,
+    )
 
 
 if __name__ == "__main__":

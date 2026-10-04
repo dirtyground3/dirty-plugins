@@ -1,7 +1,6 @@
 """Read-only source filesystem capacity for DirtyStats; standard library only."""
 
 import ctypes
-import json
 import os
 import shutil
 import sys

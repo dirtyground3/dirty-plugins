@@ -57,6 +57,6 @@ interface CompactorMediaFile {
 }
 interface CompactorAutomationDependencies extends Pick<NativeReactHooks, "useRef" | "useEffect"> {
   api: {GQL?: {useJobsSubscribeSubscription?: () => {data?: {jobsSubscribe?: StashJobEvent}}}};
-  hub: Pick<Window["DirtyPlugins"], "completedJob" | "createReplayTracker" | "ui">;
+  hub: Pick<Window["DirtyPlugins"], "createJobHook" | "ui">;
   operation(mode: string, args: {jobId: string; startTime: string}): Promise<unknown>;
 }

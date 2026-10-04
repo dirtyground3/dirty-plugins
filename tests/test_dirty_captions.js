@@ -34,6 +34,7 @@ const window = events({
 class Observer { observe() {} disconnect() {} }
 const context = vm.createContext({ window, Blob, Intl, MutationObserver: Observer, console });
 const source = sourceFor("DirtyCaptions");
+require("./shared_runtime").installJobHelpers(window);
 vm.runInContext(source, context);
 vm.runInContext(source, context);
 assert.equal(patches.length, 3, "asset reload must not stack patches");

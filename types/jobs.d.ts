@@ -4,3 +4,5 @@ interface StashJobEvent {
 }
 interface CompletedJob { kind: "scan" | "generate"; jobId: string; startTime: string; key: string; }
 interface JobReplayTracker { claim(key: string): boolean; release(key: string): void; }
+type JobCompletionHandler = (job: CompletedJob) => Promise<unknown>;
+type CompletedJobHook = (event: StashJobEvent | null | undefined, handle: JobCompletionHandler, onError: (error: Error) => void, kind?: CompletedJob["kind"]) => void;

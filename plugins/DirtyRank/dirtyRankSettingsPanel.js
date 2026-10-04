@@ -148,6 +148,14 @@
       <//>`;
     }
 
+    function presentationToggles(definitions, draft, changed) {
+      return definitions.map(function (definition) {
+        var key = definition[0];
+        return html`<${Toggle} key=${key} checked=${draft[key]} label=${definition[1]}
+          onChange=${function (value) { var update = {}; update[key] = value; changed(update); }} />`;
+      });
+    }
+
     /** @param {RankSettingsSectionProps} props */
     function PresentationSettings(props) {
       var draft = props.draft;
@@ -158,16 +166,10 @@
         description="Choose which DirtyRank pages appear in Stash's utility navigation. Hidden pages remain available through direct links."
       >
         <div className="dirty-rank-settings-row">
-          <${Toggle}
-            checked=${draft.showBattlesInMenu}
-            label="Show Battles in the Stash header"
-            onChange=${function (value) { changed({ showBattlesInMenu: value }); }}
-          />
-          <${Toggle}
-            checked=${draft.showLeaderboardsInMenu}
-            label="Show Leaderboards in the Stash header"
-            onChange=${function (value) { changed({ showLeaderboardsInMenu: value }); }}
-          />
+          ${presentationToggles([
+            ["showBattlesInMenu", "Show Battles in the Stash header"],
+            ["showLeaderboardsInMenu", "Show Leaderboards in the Stash header"]
+          ], draft, changed)}
         </div>
       <//>
       <${Section}
@@ -221,33 +223,15 @@
         description="Control what is revealed on performer cards. These choices do not change the rating pools."
       >
         <div className="dirty-rank-settings-row">
-          <${Toggle}
-            checked=${draft.showRatingsBeforeVote}
-            label="Show ratings and ranks before voting"
-            onChange=${function (value) { changed({ showRatingsBeforeVote: value }); }}
-          />
-          <${Toggle}
-            checked=${draft.hidePerformerImages}
-            label="Hide performer images in battles"
-            onChange=${function (value) { changed({ hidePerformerImages: value }); }}
-          />
-          <${Toggle}
-            checked=${draft.hideBattleStandings}
-            label="Hide standings during battles"
-            onChange=${function (value) { changed({ hideBattleStandings: value }); }}
-          />
-          <${Toggle}
-            checked=${draft.autoPlayTopScenes}
-            label=${html`<span
+          ${presentationToggles([
+            ["showRatingsBeforeVote", "Show ratings and ranks before voting"],
+            ["hidePerformerImages", "Hide performer images in battles"],
+            ["hideBattleStandings", "Hide standings during battles"],
+            ["autoPlayTopScenes", html`<span
               title="Automatic previews play each performer's highest-rated full scene, muted, from a random point between 30% and 70%. Photos remain clickable for voting unless hidden above."
-            >Automatically play top scenes</span>`}
-            onChange=${function (value) { changed({ autoPlayTopScenes: value }); }}
-          />
-          <${Toggle}
-            checked=${draft.includePerformersWithoutImages}
-            label="Include performers without profile images"
-            onChange=${function (value) { changed({ includePerformersWithoutImages: value }); }}
-          />
+            >Automatically play top scenes</span>`],
+            ["includePerformersWithoutImages", "Include performers without profile images"]
+          ], draft, changed)}
         </div>
       <//>
       <${Section}
@@ -542,53 +526,13 @@
             Presets save automatically and apply to future battles. Existing ratings and history are kept; starting values apply to unrated performers. Battle weight drives faster refinement; lower tau limits volatility changes. Recent-pair avoidance and calibration are soft matchmaking preferences. DirtyRank does not inflate uncertainty during inactivity.
           </p>
           <div className="dirty-rank-settings-grid">
-            <${Field}
-              id="dirty-rank-evidence-weight"
-              label="Evidence per battle"
-              help="How strongly one comparison reduces uncertainty. 1.0 is standard Glicko-2; 2.0 treats a consistent subjective choice as twice the rating evidence while still recording one battle."
-            >
-              <input
-                className="form-control"
-                id="dirty-rank-evidence-weight"
-                min=${1}
-                max=${3}
-                onChange=${function (event) { changed({ evidenceWeight: Number(event.target.value) }); }}
-                step=${0.1}
-                type="number"
-                value=${draft.evidenceWeight}
-              />
-            <//>
-            <${Field}
-              id="dirty-rank-repeat-window"
-              label="Recent pairs to avoid"
-              help="Prefer different pairings within this many recent battles. A small pool may still repeat a pair."
-            >
-              <input
-                className="form-control"
-                id="dirty-rank-repeat-window"
-                min=${0}
-                max=${100}
-                onChange=${function (event) { changed({ avoidRepeatWindow: Number(event.target.value) }); }}
-                type="number"
-                value=${draft.avoidRepeatWindow}
-              />
-            <//>
-            <${Field}
-              id="dirty-rank-calibration"
-              label="Calibration matches (%)"
-              help="Chance of favouring broader rating gaps. Lower values focus on the matchups expected to reduce uncertainty most."
-            >
-              <input
-                className="form-control"
-                id="dirty-rank-calibration"
-                min=${0}
-                max=${100}
-                onChange=${function (event) { changed({ calibrationPercent: Number(event.target.value) }); }}
-                type="number"
-                value=${draft.calibrationPercent}
-              />
-            <//>
             ${[
+              { key: "evidenceWeight", id: "dirty-rank-evidence-weight", label: "Evidence per battle", min: 1, max: 3, step: 0.1,
+                help: "How strongly one comparison reduces uncertainty. 1.0 is standard Glicko-2; 2.0 treats a consistent subjective choice as twice the rating evidence while still recording one battle." },
+              { key: "avoidRepeatWindow", id: "dirty-rank-repeat-window", label: "Recent pairs to avoid", min: 0, max: 100,
+                help: "Prefer different pairings within this many recent battles. A small pool may still repeat a pair." },
+              { key: "calibrationPercent", id: "dirty-rank-calibration", label: "Calibration matches (%)", min: 0, max: 100,
+                help: "Chance of favouring broader rating gaps. Lower values focus on the matchups expected to reduce uncertainty most." },
               { key: "initialRating", label: "Initial rating", min: -100000, max: 100000, step: 1 },
               { key: "initialDeviation", label: "Initial deviation", min: 30, max: 1000, step: 1 },
               { key: "initialVolatility", label: "Initial volatility", min: 0.0001, max: 1, step: 0.001 },
@@ -596,14 +540,16 @@
               { key: "deviationFloor", label: "Deviation floor", min: 1, max: 1000, step: 1 },
               { key: "provisionalDeviation", label: "Provisional threshold", min: 1, max: 1000, step: 1 },
             ].map(function (definition) {
+              var id = definition.id || "dirty-rank-" + definition.key;
               return html`<${Field}
-                id=${"dirty-rank-" + definition.key}
+                id=${id}
                 key=${definition.key}
                 label=${definition.label}
+                help=${definition.help}
               >
                 <input
                   className="form-control"
-                  id=${"dirty-rank-" + definition.key}
+                  id=${id}
                   min=${definition.min}
                   max=${definition.max}
                   step=${definition.step}

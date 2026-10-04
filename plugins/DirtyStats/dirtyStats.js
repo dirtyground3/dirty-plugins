@@ -438,6 +438,24 @@
     link.click();
     link.remove();
   }
+  function refreshButton(loading, refresh) {
+    return html`<button className="btn btn-secondary dirty-ui-button" disabled=${loading} onClick=${refresh}>Refresh</button>`;
+  }
+  function pageToolbar(summary, loading, refresh) {
+    return html`<div className="dirty-stats-toolbar">
+      <span className="dirty-stats-summary" role="status">${summary}</span>
+      ${refreshButton(loading, refresh)}
+    </div>`;
+  }
+  function exportButton(chartRef, filename, disabled) {
+    return html`<button className="btn btn-secondary dirty-ui-button dirty-stats-export" disabled=${disabled}
+      onClick=${function () {
+        if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), filename);
+      }}>Export PNG</button>`;
+  }
+  function chartImage(node, className, label) {
+    return html`<div ref=${node} className=${className} role="img" aria-label=${label} />`;
+  }
   var STATISTIC_ROUTES = {}, STATISTIC_LABELS = {};
   var STATISTIC_ORDER = registry.statisticOrder;
   STATISTIC_ORDER.forEach(function (key) {
@@ -720,9 +738,7 @@
   }
   function StatsPage(props) {
     var chartTheme = useChartTheme();
-    var dataState = React.useState([]), performers = dataState[0], setPerformers = dataState[1];
-    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var pageData = dataLoader.usePageData(), performers = pageData.rows, loading = pageData.loading, error = pageData.error;
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var countryState = React.useState(""), selectedCountry = countryState[0], setSelectedCountry = countryState[1];
     var queryKey = JSON.stringify(performerVariables(props.filter, 1));
@@ -734,17 +750,10 @@
     var chartNode = React.useRef(null), chartRef = React.useRef(null);
     var stats = React.useMemo(function () { return aggregate(performers, countries); }, [performers]);
     React.useEffect(function () { setSelectedCountry(""); }, [criteriaKey]);
-    dataLoader.usePageLoad({
+    pageData.useLoad({
       query: "query DirtyStatsPerformers($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id country}}}",
       variables: function (page) { return performerVariables(props.filter, page); },
-      collection: function (response) {
-        var batch = response.findPerformers;
-        return { count: batch.count, rows: batch.performers };
-      },
-      failureLabel: "The performer list changed while loading. Refresh to try again.",
-      setLoading: setLoading,
-      setError: setError,
-      publish: function (result) { setPerformers(result); }
+      entity: "performers"
     }, [refresh, queryKey]);
     chartLifecycle.useChart(function () {
       if (loading || error || !chartNode.current) return;
@@ -774,11 +783,7 @@
       <div className="dirty-stats-toolbar">
         <span className="dirty-stats-summary" role="status">${loading ? "Loading performers..." : stats.total + " performers \u00b7 " + stats.rows.length + " countries \u00b7 " + stats.missing + " missing or unrecognized country"}</span>
         <div className="dirty-stats-actions">
-          <button
-            className="btn btn-secondary dirty-ui-button"
-            disabled=${loading}
-            onClick=${function () { setRefresh(refresh + 1); }}
-          >Refresh</button>
+          ${refreshButton(loading, function () { setRefresh(refresh + 1); })}
         </div>
       </div>
       ${error ? html`<${StatsState}
@@ -806,18 +811,9 @@
                />
               ${" Show numbers"}
             </label>
-            <button
-              className="btn btn-secondary dirty-ui-button dirty-stats-export"
-              disabled=${Boolean(chartError)}
-              onClick=${function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), "DirtyStats-performer-origin.png"); }}
-            >Export PNG</button>
+            ${exportButton(chartRef, "DirtyStats-performer-origin.png", Boolean(chartError))}
           </div>
-          <div
-            ref=${chartNode}
-            className="dirty-stats-chart"
-            role="img"
-            aria-label="Eckert IV world map of performer counts. Hover a country for its count."
-           />
+          ${chartImage(chartNode, "dirty-stats-chart", "Eckert IV world map of performer counts. Hover a country for its count.")}
         </section>
         <p>Click a country to filter performers. Hover for counts; scroll to zoom and drag to pan.</p>
         <${PerformerCards}
@@ -958,9 +954,7 @@
   }
   function ConstellationPage(props) {
     var chartTheme = useChartTheme();
-    var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
-    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var pageData = dataLoader.usePageData(), scenes = pageData.rows, loading = pageData.loading, error = pageData.error;
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
     var maxState = useStatsSetting("constellationMaxPerformers"), maxPerformers = maxState[0], setMaxPerformers = maxState[1];
@@ -971,17 +965,10 @@
     var stats = React.useMemo(function () { return aggregateConstellation(scenes, maxPerformers, minShared); }, [scenes, maxPerformers, minShared]);
     var matching = React.useMemo(function () { return constellationScenes(scenes, selected); }, [scenes, selected]);
     React.useEffect(function () { setSelected(null); }, [queryKey, maxPerformers, minShared]);
-    dataLoader.usePageLoad({
+    pageData.useLoad({
       query: "query DirtyStatsConstellation($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id performers{id name gender}}}}",
       variables: function (page) { return sceneVariables(props.filter, page); },
-      collection: function (response) {
-        var batch = response.findScenes;
-        return { count: batch.count, rows: batch.scenes };
-      },
-      failureLabel: "The scene list changed while loading. Refresh to try again.",
-      setLoading: setLoading,
-      setError: setError,
-      publish: function (result) { setScenes(result); }
+      entity: "scenes"
     }, [queryKey, refresh]);
     chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !stats.nodes.length) return;
@@ -1013,14 +1000,7 @@
     }, [selected, stats, chartTheme]);
     var selectionTitle = !selected ? "Scenes" : selected.type === "pair" ? "Scenes shared by " + selected.label : "Scenes with " + selected.label;
     return html`<section className="dirty-stats-content">
-      <div className="dirty-stats-toolbar">
-        <span className="dirty-stats-summary" role="status">${loading ? "Building constellation..." : stats.totalScenes + " matching scenes · " + stats.totalPerformers + " performers · " + stats.nodes.length + " shown · " + stats.links.length + " connections"}</span>
-        <button
-          className="btn btn-secondary dirty-ui-button"
-          disabled=${loading}
-          onClick=${function () { setRefresh(refresh + 1); }}
-        >Refresh</button>
-      </div>
+      ${pageToolbar(loading ? "Building constellation..." : stats.totalScenes + " matching scenes · " + stats.totalPerformers + " performers · " + stats.nodes.length + " shown · " + stats.links.length + " connections", loading, function () { setRefresh(refresh + 1); })}
       ${error ? html`<${StatsState}
   detail=${error}
   role="alert"
@@ -1048,18 +1028,9 @@
             className="btn btn-secondary dirty-ui-button"
             onClick=${function () { setSelected(null); }}
           >Show all scenes</button>` : null}
-          <button
-            className="btn btn-secondary dirty-ui-button dirty-stats-export"
-            disabled=${Boolean(chartError)}
-            onClick=${function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), "DirtyStats-cast-constellation.png"); }}
-          >Export PNG</button>
+          ${exportButton(chartRef, "DirtyStats-cast-constellation.png", Boolean(chartError))}
         </div>
-        <div
-          ref=${node}
-          className="dirty-stats-constellation-chart"
-          role="img"
-          aria-label="Network of performers connected by matching scenes. Larger performers appear in more scenes; thicker lines represent more shared scenes."
-         />
+        ${chartImage(node, "dirty-stats-constellation-chart", "Network of performers connected by matching scenes. Larger performers appear in more scenes; thicker lines represent more shared scenes.")}
       </section>` : null}
       ${chartError ? html`<${StatsState}
   detail=${chartError}
@@ -1080,9 +1051,7 @@
   }
   function GrowthPage(props) {
     var chartTheme = useChartTheme();
-    var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
-    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var pageData = dataLoader.usePageData(), scenes = pageData.rows, loading = pageData.loading, error = pageData.error;
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
     var node = React.useRef(null), chartRef = React.useRef(null), periodZoomRef = React.useRef(null);
@@ -1120,17 +1089,10 @@
     var selectedScenes = React.useMemo(function () { return scenesInPeriod(scenes, dateBasis, period); }, [scenes, dateBasis, period]);
     var stats = React.useMemo(function () { return aggregateGrowth(scenes, null, dateBasis, grouping); }, [scenes, dateBasis, grouping]);
     var forecast = React.useMemo(function () { return forecastGrowth(aggregateGrowth(scenes, null, dateBasis), capacity && capacity.total, null, period); }, [scenes, dateBasis, capacity, period]);
-    dataLoader.usePageLoad({
+    pageData.useLoad({
       query: "query DirtyStatsGrowth($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id created_at date files{id size mod_time}}}}",
       variables: function (page) { return sceneVariables(props.filter, page); },
-      collection: function (response) {
-        var batch = response.findScenes;
-        return { count: batch.count, rows: batch.scenes };
-      },
-      failureLabel: "The scene list changed while loading. Refresh to try again.",
-      setLoading: setLoading,
-      setError: setError,
-      publish: function (result) { setScenes(result); }
+      entity: "scenes"
     }, [queryKey, refresh]);
     chartLifecycle.useChart(function () {
       if (loading || error || !node.current) return;
@@ -1177,14 +1139,7 @@
       periodZoomRef.current = null;
     }, [period, anchor, stats, loading, error, capacity, showCapacity, showForecast, forecast, chartTheme]);
     return html`<section className="dirty-stats-content">
-      <div className="dirty-stats-toolbar">
-        <span className="dirty-stats-summary" role="status">${loading ? "Loading scenes..." : stats.included + " scenes \u00b7 " + formatBytes(stats.bytes) + (stats.excluded ? " \u00b7 " + stats.excluded + " excluded" : "")}</span>
-        <button
-          className="btn btn-secondary dirty-ui-button"
-          disabled=${loading}
-          onClick=${function () { setRefresh(refresh + 1); }}
-        >Refresh</button>
-      </div>
+      ${pageToolbar(loading ? "Loading scenes..." : stats.included + " scenes \u00b7 " + formatBytes(stats.bytes) + (stats.excluded ? " \u00b7 " + stats.excluded + " excluded" : ""), loading, function () { setRefresh(refresh + 1); })}
       ${error ? html`<${StatsState}
         detail=${error + " Use Refresh to retry."}
         role="alert"
@@ -1246,18 +1201,9 @@
             onClick=${function () { rememberPeriodZoom(); setPeriod(null); setAnchor(null); }}
           >Clear period</button>` : null}
           ${!loading && !error && (period || anchor != null) ? html`<span className="dirty-stats-period-status" role="status">${period ? new Date(period[0]).toISOString().slice(0, 10) + " to " + new Date(period[1]).toISOString().slice(0, 10) + " (UTC) \u00b7 " + formatBytes(periodGrowth(stats.points, period)) + " added \u00b7 " + selectedScenes.length + " scenes" : "Start: " + new Date(anchor).toISOString().slice(0, 10) + " (UTC). Click the end date to complete the period."}</span>` : null}
-          <button
-            className="btn btn-secondary dirty-ui-button dirty-stats-export"
-            disabled=${loading || Boolean(error) || Boolean(chartError)}
-            onClick=${function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), "DirtyStats-content-growth-" + dateBasis + ".png"); }}
-          >Export PNG</button>
+          ${exportButton(chartRef, "DirtyStats-content-growth-" + dateBasis + ".png", loading || Boolean(error) || Boolean(chartError))}
         </div>
-        ${!loading && !error ? html`<div
-          ref=${node}
-          className="dirty-stats-growth-chart"
-          role="img"
-          aria-label=${"Cumulative scene file size over time, grouped by " + dateLabel + " in UTC."}
-         />` : null}
+        ${!loading && !error ? html`${chartImage(node, "dirty-stats-growth-chart", "Cumulative scene file size over time, grouped by " + dateLabel + " in UTC.")}` : null}
       </section>
       ${chartError ? html`<${StatsState}
         detail=${chartError}
@@ -1270,9 +1216,7 @@
   }
   function AgePage(props) {
     var chartTheme = useChartTheme();
-    var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
-    var loadingState = React.useState(true), sceneLoading = loadingState[0], setLoading = loadingState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var pageData = dataLoader.usePageData(), scenes = pageData.rows, sceneLoading = pageData.loading, error = pageData.error;
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
     var node = React.useRef(null), chartRef = React.useRef(null);
@@ -1305,17 +1249,10 @@
     React.useEffect(function () { setSelectedAge(null); }, [queryKey, performerKey]);
     var selectedPerformers = React.useMemo(function () { return performersAtAge(matchingScenes, selectedAge); }, [matchingScenes, selectedAge]);
     var stats = React.useMemo(function () { return aggregateAges(matchingScenes); }, [matchingScenes]);
-    dataLoader.usePageLoad({
+    pageData.useLoad({
       query: "query DirtyStatsAges($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id date performers{id birthdate}}}}",
       variables: function (page) { return sceneVariables(props.filter, page); },
-      collection: function (response) {
-        var batch = response.findScenes;
-        return { count: batch.count, rows: batch.scenes };
-      },
-      failureLabel: "The scene list changed while loading. Refresh to try again.",
-      setLoading: setLoading,
-      setError: setError,
-      publish: function (result) { setScenes(result); }
+      entity: "scenes"
     }, [queryKey, refresh]);
     chartLifecycle.useChart(function () {
       if (loading || error || !node.current) return;
@@ -1336,14 +1273,7 @@
       if (chartRef.current) chartRef.current.setOption({ series: [{ data: stats.rows.map(function (row) { return { value: row.count, itemStyle: { color: selectedAge === row.age ? themeColor("accent") : themeColor("primary") } }; }) }] });
     }, [selectedAge, stats, loading, error, chartTheme]);
     return html`<section className="dirty-stats-content">
-      <div className="dirty-stats-toolbar">
-        <span className="dirty-stats-summary" role="status">${loading ? "Loading scene ages..." : stats.performers + " distinct performers across " + stats.scenes + " matching scenes"}</span>
-        <button
-          className="btn btn-secondary dirty-ui-button"
-          disabled=${loading}
-          onClick=${function () { setRefresh(refresh + 1); }}
-        >Refresh</button>
-      </div>
+      ${pageToolbar(loading ? "Loading scene ages..." : stats.performers + " distinct performers across " + stats.scenes + " matching scenes", loading, function () { setRefresh(refresh + 1); })}
       ${matchingError ? html`<${StatsState}
         detail=${"Performer filters: " + matchingError}
         role="alert"
@@ -1359,18 +1289,9 @@
         aria-label="Performer age histogram"
       >
         <div className="dirty-stats-map-controls">
-          <button
-            className="btn btn-secondary dirty-ui-button dirty-stats-export"
-            disabled=${loading || Boolean(error) || Boolean(chartError)}
-            onClick=${function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), "DirtyStats-age-at-scene.png"); }}
-          >Export PNG</button>
+          ${exportButton(chartRef, "DirtyStats-age-at-scene.png", loading || Boolean(error) || Boolean(chartError))}
         </div>
-        ${!loading && !error ? html`<div
-          ref=${node}
-          className="dirty-stats-growth-chart dirty-stats-age-chart"
-          role="img"
-          aria-label="Histogram of age in completed years at scene date versus distinct performer count."
-         />` : null}
+        ${!loading && !error ? html`${chartImage(node, "dirty-stats-growth-chart dirty-stats-age-chart", "Histogram of age in completed years at scene date versus distinct performer count.")}` : null}
       </section>
       ${chartError ? html`<${StatsState}
         detail=${chartError}
@@ -1661,9 +1582,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
       })}</div>`;
   }
   function BirthdayPage(props) {
-    var dataState = React.useState([]), performers = dataState[0], setPerformers = dataState[1];
-    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var pageData = dataLoader.usePageData(), performers = pageData.rows, loading = pageData.loading, error = pageData.error;
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
     var nowState = React.useState(function () { return new Date(); }), now = nowState[0];
@@ -1675,35 +1594,23 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
       return stats.entries.slice().sort(function (a, b) { return a.daysUntil - b.daysUntil || a.name.localeCompare(b.name); });
     }, [stats]);
     React.useEffect(function () { setSelected(null); }, [queryKey]);
-    dataLoader.usePageLoad({
+    pageData.useLoad({
       query: "query DirtyStatsBirthdays($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name birthdate death_date image_path}}}",
       variables: function (page) { return performerVariables(props.filter, page); },
-      collection: function (response) {
-        var batch = response.findPerformers;
-        return { count: batch.count, rows: batch.performers };
-      },
-      failureLabel: "The performer list changed while loading. Refresh to try again.",
-      setLoading: setLoading,
-      setError: setError,
-      publish: function (result) { setPerformers(result);
-          if (defaultSelectionQuery.current !== queryKey) {
-            setSelected(birthdayDefaultSelection(aggregateBirthdays(result, now), now));
-            defaultSelectionQuery.current = queryKey;
-          } }
+      entity: "performers",
+      onLoaded: function (result) {
+        if (defaultSelectionQuery.current !== queryKey) {
+          setSelected(birthdayDefaultSelection(aggregateBirthdays(result, now), now));
+          defaultSelectionQuery.current = queryKey;
+        }
+      }
     }, [queryKey, refresh]);
     var nowMonth = now.getUTCMonth() + 1, nowDay = now.getUTCDate(), year = now.getUTCFullYear();
     var cardPerformers = React.useMemo(function () { return selected ? birthdayEntriesFor(stats.entries, selected.month, selected.day, selected.today) : stats.entries; }, [stats, selected]);
     function choose(month, day) { setSelected(function (current) { return current && current.month === month && current.day === day ? null : { month: month, day: day }; }); }
     var monthCounts = React.useMemo(function () { return birthdayMonthCounts(stats.entries); }, [stats]);
     return html`<section className="dirty-stats-content">
-      <div className="dirty-stats-toolbar">
-        <span className="dirty-stats-summary" role="status">${loading ? "Loading performers..." : stats.valid + " birthdays \u00b7 " + stats.upcoming + " in the next 30 days" + (stats.missing ? " \u00b7 " + stats.missing + " missing birthdate" : "")}</span>
-        <button
-          className="btn btn-secondary dirty-ui-button"
-          disabled=${loading}
-          onClick=${function () { setRefresh(refresh + 1); }}
-        >Refresh</button>
-      </div>
+      ${pageToolbar(loading ? "Loading performers..." : stats.valid + " birthdays \u00b7 " + stats.upcoming + " in the next 30 days" + (stats.missing ? " \u00b7 " + stats.missing + " missing birthdate" : ""), loading, function () { setRefresh(refresh + 1); })}
       ${error ? html`<${StatsState}
         detail=${error + " Use Refresh to retry."}
         role="alert"
@@ -1773,26 +1680,18 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var chartTheme = useChartTheme();
     var performerMode = Boolean(props.performerMode), entity = performerMode ? "performers" : "scenes", title = performerMode ? "Performer ratings" : "Scene ratings";
     var variables = performerMode ? performerVariables : sceneVariables;
-    var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
-    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var pageData = dataLoader.usePageData(), scenes = pageData.rows, loading = pageData.loading, error = pageData.error, setError = pageData.setError;
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
     var roundingState = useStatsSetting(performerMode ? "performerRatingRounding" : "sceneRatingRounding"), rounding = roundingState[0], setRounding = roundingState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
     var node = React.useRef(null), chartRef = React.useRef(null);
     var queryKey = JSON.stringify(variables(props.filter, 1));
-    dataLoader.usePageLoad({
+    pageData.useLoad({
       query: performerMode ? "query DirtyStatsPerformerRatings($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id rating100}}}" : "query DirtyStatsRatings($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100}}}",
       variables: function (page) { return variables(props.filter, page); },
-      collection: function (response) {
-        var batch = performerMode ? response.findPerformers : response.findScenes;
-        return { count: batch.count, rows: batch[entity] };
-      },
+      entity: entity,
       failureLabel: "The " + entity + " list changed while loading. Refresh to try again.",
-      onStart: function () { setSelected(null); },
-      setLoading: setLoading,
-      setError: setError,
-      publish: function (result) { setScenes(result); }
+      onStart: function () { setSelected(null); }
     }, [queryKey, refresh, performerMode]);
     var stats = React.useMemo(function () { return aggregateRatings(scenes, rounding); }, [scenes, rounding]);
     var matching = React.useMemo(function () { return selected == null ? scenes : scenes.filter(function (scene) { return sceneRating(scene, rounding) === selected; }); }, [scenes, selected, rounding]);
@@ -1812,14 +1711,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     }, [stats, loading, error, chartTheme]);
     React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: stats.rows.map(function (row) { return Object.assign({}, row, { selected: row.name === selected }); }) }] }); }, [selected, stats, loading, error, chartTheme]);
     return html`<section className="dirty-stats-content">
-      <div className="dirty-stats-toolbar">
-        <span className="dirty-stats-summary" role="status">${loading ? "Loading " + entity + "..." : stats.total + " matching " + entity}</span>
-        <button
-          className="btn btn-secondary dirty-ui-button"
-          disabled=${loading}
-          onClick=${function () { setRefresh(refresh + 1); }}
-        >Refresh</button>
-      </div>
+      ${pageToolbar(loading ? "Loading " + entity + "..." : stats.total + " matching " + entity, loading, function () { setRefresh(refresh + 1); })}
       ${error ? html`<${StatsState}
         detail=${error}
         role="alert"
@@ -1840,17 +1732,9 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
               onChange=${function (event) { setRounding(Number(event.target.value)); setSelected(null); }}
             >${STATS_SETTING_SPECS.sceneRatingRounding.options.map(function (value) { return html`<option key=${String(value)} value=${value}>${value === 0 ? "Exact" : value}</option>`; })}</select>
           </label>
-          <button
-            className="btn btn-secondary dirty-ui-button dirty-stats-export"
-            onClick=${function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), performerMode ? "DirtyStats-performer-ratings.png" : "DirtyStats-scene-ratings.png"); }}
-          >Export PNG</button>
+          ${exportButton(chartRef, performerMode ? "DirtyStats-performer-ratings.png" : "DirtyStats-scene-ratings.png")}
         </div>
-        <div
-          ref=${node}
-          className="dirty-stats-growth-chart"
-          role="img"
-          aria-label=${"Pie chart of distinct " + entity + " by rating out of ten, including unrated " + entity + "."}
-         />
+        ${chartImage(node, "dirty-stats-growth-chart", "Pie chart of distinct " + entity + " by rating out of ten, including unrated " + entity + ".")}
       </section>` : null}
       ${!loading && !error ? html`<${React.Fragment}>
         ${selected != null ? html`<p role="status">${selected === "Unrated" ? "Unrated " + entity : title + ": " + selected + "/10"}</p>` : null}
@@ -1990,9 +1874,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
   }
   function PerformerScatterPage(props) {
     var chartTheme = useChartTheme();
-    var dataState = React.useState([]), performers = dataState[0], setPerformers = dataState[1];
-    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var pageData = dataLoader.usePageData(), performers = pageData.rows, loading = pageData.loading, error = pageData.error;
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
     var minState = useStatsSetting("scatterMinRating"), minRating = minState[0], setMinRating = minState[1];
@@ -2002,17 +1884,10 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var queryKey = JSON.stringify(performerVariables(props.filter, 1));
     var stats = React.useMemo(function () { return aggregateScatter(performers, minRating, maxScenes); }, [performers, minRating, maxScenes]);
     React.useEffect(function () { setSelected(null); }, [queryKey, minRating, maxScenes]);
-    dataLoader.usePageLoad({
+    pageData.useLoad({
       query: "query DirtyStatsPerformerScatter($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name rating100 scene_count}}}",
       variables: function (page) { return performerVariables(props.filter, page); },
-      collection: function (response) {
-        var batch = response.findPerformers;
-        return { count: batch.count, rows: batch.performers };
-      },
-      failureLabel: "The performer list changed while loading. Refresh to try again.",
-      setLoading: setLoading,
-      setError: setError,
-      publish: function (result) { setPerformers(result); }
+      entity: "performers"
     }, [queryKey, refresh]);
     chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !stats.points.length) return;
@@ -2050,14 +1925,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: scatterSeriesData(stats, selected) }] }); }, [selected, stats, loading, error, chartTheme]);
     var matching = React.useMemo(function () { return selected == null ? stats.points : stats.points.filter(function (point) { return point.id === selected; }); }, [stats, selected]);
     return html`<section className="dirty-stats-content">
-      <div className="dirty-stats-toolbar">
-        <span className="dirty-stats-summary" role="status">${loading ? "Loading performers..." : stats.points.length + " rated performers \u00b7 " + stats.highlights + " high rating, few scenes"}</span>
-        <button
-          className="btn btn-secondary dirty-ui-button"
-          disabled=${loading}
-          onClick=${function () { setRefresh(refresh + 1); }}
-        >Refresh</button>
-      </div>
+      ${pageToolbar(loading ? "Loading performers..." : stats.points.length + " rated performers \u00b7 " + stats.highlights + " high rating, few scenes", loading, function () { setRefresh(refresh + 1); })}
       ${error ? html`<${StatsState}
         detail=${error + " Use Refresh to retry."}
         role="alert"
@@ -2088,18 +1956,9 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
               onChange=${function (event) { setMaxScenes(Number(event.target.value)); }}
             >${STATS_SETTING_SPECS.scatterMaxScenes.options.map(function (value) { return html`<option key=${value} value=${value}>${value ? value : "Any"}</option>`; })}</select>
           </label>
-          <button
-            className="btn btn-secondary dirty-ui-button dirty-stats-export"
-            disabled=${loading || Boolean(error) || Boolean(chartError)}
-            onClick=${function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), "DirtyStats-rating-vs-scenes.png"); }}
-          >Export PNG</button>
+          ${exportButton(chartRef, "DirtyStats-rating-vs-scenes.png", loading || Boolean(error) || Boolean(chartError))}
         </div>
-        <div
-          ref=${node}
-          className="dirty-stats-growth-chart"
-          role="img"
-          aria-label="Scatter plot of performer rating out of ten versus number of scenes. Highlighted points have a high rating and few scenes."
-         />
+        ${chartImage(node, "dirty-stats-growth-chart", "Scatter plot of performer rating out of ten versus number of scenes. Highlighted points have a high rating and few scenes.")}
       </section>` : null}
       ${chartError ? html`<${StatsState}
         detail=${chartError}
@@ -2121,9 +1980,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
   }
   function CountRatingPage(props) {
     var chartTheme = useChartTheme();
-    var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
-    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var pageData = dataLoader.usePageData(), scenes = pageData.rows, loading = pageData.loading, error = pageData.error;
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
     var metricState = useStatsSetting("countRatingMetric"), metric = metricState[0], setMetric = metricState[1];
@@ -2132,17 +1989,10 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
     var stats = React.useMemo(function () { return aggregateCountRating(scenes, metric); }, [scenes, metric]);
     React.useEffect(function () { setSelected(null); }, [queryKey, metric]);
-    dataLoader.usePageLoad({
+    pageData.useLoad({
       query: "query DirtyStatsCountRating($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title rating100 play_count o_counter}}}",
       variables: function (page) { return sceneVariables(props.filter, page); },
-      collection: function (response) {
-        var batch = response.findScenes;
-        return { count: batch.count, rows: batch.scenes };
-      },
-      failureLabel: "The scene list changed while loading. Refresh to try again.",
-      setLoading: setLoading,
-      setError: setError,
-      publish: function (result) { setScenes(result); }
+      entity: "scenes"
     }, [queryKey, refresh]);
     chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !stats.points.length) return;
@@ -2162,14 +2012,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: countRatingSeriesData(stats, selected) }] }); }, [selected, stats, metric, loading, error, chartTheme]);
     var matching = React.useMemo(function () { return selected == null ? scenes : scenes.filter(function (scene) { return String(scene.id) === selected; }); }, [scenes, selected]);
     return html`<section className="dirty-stats-content">
-      <div className="dirty-stats-toolbar">
-        <span className="dirty-stats-summary" role="status">${loading ? "Loading scenes..." : stats.points.length + " rated scenes"}</span>
-        <button
-          className="btn btn-secondary dirty-ui-button"
-          disabled=${loading}
-          onClick=${function () { setRefresh(refresh + 1); }}
-        >Refresh</button>
-      </div>
+      ${pageToolbar(loading ? "Loading scenes..." : stats.points.length + " rated scenes", loading, function () { setRefresh(refresh + 1); })}
       ${error ? html`<${StatsState}
         detail=${error + " Use Refresh to retry."}
         role="alert"
@@ -2192,18 +2035,9 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
               onChange=${function (event) { setMetric(event.target.value); }}
             >${STATS_SETTING_SPECS.countRatingMetric.options.map(function (value) { return html`<option key=${value} value=${value}>${countRatingLabel(value)}</option>`; })}</select>
           </label>
-          <button
-            className="btn btn-secondary dirty-ui-button dirty-stats-export"
-            disabled=${loading || Boolean(error) || Boolean(chartError)}
-            onClick=${function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), "DirtyStats-" + metric + "-vs-scene-rating.png"); }}
-          >Export PNG</button>
+          ${exportButton(chartRef, "DirtyStats-" + metric + "-vs-scene-rating.png", loading || Boolean(error) || Boolean(chartError))}
         </div>
-        <div
-          ref=${node}
-          className="dirty-stats-growth-chart"
-          role="img"
-          aria-label=${"Scatter plot of scene rating out of ten versus scene " + countRatingLabel(metric).toLowerCase() + "."}
-         />
+        ${chartImage(node, "dirty-stats-growth-chart", "Scatter plot of scene rating out of ten versus scene " + countRatingLabel(metric).toLowerCase() + ".")}
       </section>` : null}
       ${chartError ? html`<${StatsState}
         detail=${chartError}
@@ -2225,9 +2059,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
   }
   function RepeatOffenderPage(props) {
     var chartTheme = useChartTheme();
-    var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
-    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var pageData = dataLoader.usePageData(), scenes = pageData.rows, loading = pageData.loading, error = pageData.error;
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
@@ -2235,17 +2067,10 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
     var stats = React.useMemo(function () { return aggregateRepeatOffenders(scenes); }, [scenes]);
     React.useEffect(function () { setSelected(null); }, [queryKey]);
-    dataLoader.usePageLoad({
+    pageData.useLoad({
       query: "query DirtyStatsRepeatOffenders($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title play_count}}}",
       variables: function (page) { return sceneVariables(props.filter, page); },
-      collection: function (response) {
-        var batch = response.findScenes;
-        return { count: batch.count, rows: batch.scenes };
-      },
-      failureLabel: "The scene list changed while loading. Refresh to try again.",
-      setLoading: setLoading,
-      setError: setError,
-      publish: function (result) { setScenes(result); }
+      entity: "scenes"
     }, [queryKey, refresh]);
     chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !stats.totalViews) return;
@@ -2274,14 +2099,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var matching = React.useMemo(function () { return selected == null ? scenes : scenes.filter(function (scene) { return String(scene.id) === selected; }); }, [scenes, selected]);
     var topShare = Math.round(stats.topShare * 10) / 10;
     return html`<section className="dirty-stats-content">
-      <div className="dirty-stats-toolbar">
-        <span className="dirty-stats-summary" role="status">${loading ? "Loading scenes..." : stats.totalViews ? "Top 5% (" + stats.topCount + " scene" + (stats.topCount === 1 ? "" : "s") + ") account for " + topShare.toFixed(1) + "% of " + stats.totalViews + " recorded views" : stats.totalScenes + " scenes · no recorded views"}</span>
-        <button
-          className="btn btn-secondary dirty-ui-button"
-          disabled=${loading}
-          onClick=${function () { setRefresh(refresh + 1); }}
-        >Refresh</button>
-      </div>
+      ${pageToolbar(loading ? "Loading scenes..." : stats.totalViews ? "Top 5% (" + stats.topCount + " scene" + (stats.topCount === 1 ? "" : "s") + ") account for " + topShare.toFixed(1) + "% of " + stats.totalViews + " recorded views" : stats.totalScenes + " scenes · no recorded views", loading, function () { setRefresh(refresh + 1); })}
       ${error ? html`<${StatsState}
         detail=${error + " Use Refresh to retry."}
         role="alert"
@@ -2296,18 +2114,9 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
             className="btn btn-secondary dirty-ui-button"
             onClick=${function () { setSelected(null); }}
           >Show all scenes</button>` : null}
-          <button
-            className="btn btn-secondary dirty-ui-button dirty-stats-export"
-            disabled=${Boolean(chartError)}
-            onClick=${function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), "DirtyStats-repeat-offender-curve.png"); }}
-          >Export PNG</button>
+          ${exportButton(chartRef, "DirtyStats-repeat-offender-curve.png", Boolean(chartError))}
         </div>
-        <div
-          ref=${node}
-          className="dirty-stats-growth-chart"
-          role="img"
-          aria-label="Curve showing the cumulative share of recorded views as scenes are added from most viewed to least viewed."
-         />
+        ${chartImage(node, "dirty-stats-growth-chart", "Curve showing the cumulative share of recorded views as scenes are added from most viewed to least viewed.")}
       </section>` : null}
       ${chartError ? html`<${StatsState}
         detail=${chartError}
@@ -2333,9 +2142,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
   }
   function QualityEfficiencyPage(props) {
     var chartTheme = useChartTheme();
-    var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
-    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var pageData = dataLoader.usePageData(), scenes = pageData.rows, loading = pageData.loading, error = pageData.error;
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
@@ -2343,17 +2150,10 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
     var stats = React.useMemo(function () { return aggregateQualityEfficiency(scenes); }, [scenes]);
     React.useEffect(function () { setSelected(null); }, [queryKey]);
-    dataLoader.usePageLoad({
+    pageData.useLoad({
       query: "query DirtyStatsQualityEfficiency($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title rating100 files{id size duration}}}}",
       variables: function (page) { return sceneVariables(props.filter, page); },
-      collection: function (response) {
-        var batch = response.findScenes;
-        return { count: batch.count, rows: batch.scenes };
-      },
-      failureLabel: "The scene list changed while loading. Refresh to try again.",
-      setLoading: setLoading,
-      setError: setError,
-      publish: function (result) { setScenes(result); }
+      entity: "scenes"
     }, [queryKey, refresh]);
     chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !stats.points.length) return;
@@ -2378,14 +2178,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
       return scenes.filter(function (scene) { return eligible.has(String(scene.id)) && (selected == null || String(scene.id) === selected); });
     }, [scenes, selected, stats]);
     return html`<section className="dirty-stats-content">
-      <div className="dirty-stats-toolbar">
-        <span className="dirty-stats-summary" role="status">${loading ? "Calculating efficiency..." : stats.points.length + " comparable scenes"}</span>
-        <button
-          className="btn btn-secondary dirty-ui-button"
-          disabled=${loading}
-          onClick=${function () { setRefresh(refresh + 1); }}
-        >Refresh</button>
-      </div>
+      ${pageToolbar(loading ? "Calculating efficiency..." : stats.points.length + " comparable scenes", loading, function () { setRefresh(refresh + 1); })}
       ${error ? html`<${StatsState}
         detail=${error + " Use Refresh to retry."}
         role="alert"
@@ -2400,18 +2193,9 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
             className="btn btn-secondary dirty-ui-button"
             onClick=${function () { setSelected(null); }}
           >Show all scenes</button>` : null}
-          <button
-            className="btn btn-secondary dirty-ui-button dirty-stats-export"
-            disabled=${loading || Boolean(error) || Boolean(chartError)}
-            onClick=${function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), "DirtyStats-quality-efficiency.png"); }}
-          >Export PNG</button>
+          ${exportButton(chartRef, "DirtyStats-quality-efficiency.png", loading || Boolean(error) || Boolean(chartError))}
         </div>
-        <div
-          ref=${node}
-          className="dirty-stats-growth-chart"
-          role="img"
-          aria-label="Bubble plot of scene storage efficiency versus rating. Bubble area represents total file size."
-         />
+        ${chartImage(node, "dirty-stats-growth-chart", "Bubble plot of scene storage efficiency versus rating. Bubble area represents total file size.")}
       </section>` : null}
       ${chartError ? html`<${StatsState}
         detail=${chartError}
@@ -2436,9 +2220,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
   }
   function StudioValuePage(props) {
     var chartTheme = useChartTheme();
-    var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
-    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var pageData = dataLoader.usePageData(), scenes = pageData.rows, loading = pageData.loading, error = pageData.error;
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
     var minState = useStatsSetting("studioMinScenes"), minScenes = minState[0], setMinScenes = minState[1];
@@ -2453,17 +2235,10 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var selectedStudio = React.useMemo(function () { return selected == null ? null : stats.points.find(function (point) { return point.id === selected; }); }, [stats, selected]);
     var matching = React.useMemo(function () { return selected == null ? scenes : scenes.filter(function (scene) { return scene.studio && String(scene.studio.id) === selected; }); }, [scenes, selected]);
     React.useEffect(function () { setSelected(null); }, [queryKey, minScenes]);
-    dataLoader.usePageLoad({
+    pageData.useLoad({
       query: "query DirtyStatsStudios($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100 studio{id name image_path} files{id size}}}}",
       variables: function (page) { return sceneVariables(props.filter, page); },
-      collection: function (response) {
-        var batch = response.findScenes;
-        return { count: batch.count, rows: batch.scenes };
-      },
-      failureLabel: "The scene list changed while loading. Refresh to try again.",
-      setLoading: setLoading,
-      setError: setError,
-      publish: function (result) { setScenes(result); }
+      entity: "scenes"
     }, [queryKey, refresh]);
     React.useEffect(function () {
       if (loading || error || docsCapture || !points.length) return;
@@ -2493,14 +2268,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: studioSeriesData(points, maxBytes, selected) }] }); }, [selected, points, maxBytes, loading, error, logoVersion, chartTheme]);
     var unratedStudios = stats.points.filter(function (point) { return point.rating == null; }).length;
     return html`<section className="dirty-stats-content">
-      <div className="dirty-stats-toolbar">
-        <span className="dirty-stats-summary" role="status">${loading ? "Loading scenes..." : points.length + " studios \u00b7 " + stats.total + " matching scenes \u00b7 " + formatBytes(stats.totalBytes)}</span>
-        <button
-          className="btn btn-secondary dirty-ui-button"
-          disabled=${loading}
-          onClick=${function () { setRefresh(refresh + 1); }}
-        >Refresh</button>
-      </div>
+      ${pageToolbar(loading ? "Loading scenes..." : points.length + " studios \u00b7 " + stats.total + " matching scenes \u00b7 " + formatBytes(stats.totalBytes), loading, function () { setRefresh(refresh + 1); })}
       ${error ? html`<${StatsState}
         detail=${error + " Use Refresh to retry."}
         role="alert"
@@ -2523,18 +2291,9 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
               onChange=${function (event) { setMinScenes(Number(event.target.value)); }}
             >${STATS_SETTING_SPECS.studioMinScenes.options.map(function (value) { return html`<option key=${value} value=${value}>${value === 1 ? "All" : value}</option>`; })}</select>
           </label>
-          <button
-            className="btn btn-secondary dirty-ui-button dirty-stats-export"
-            disabled=${loading || Boolean(error) || Boolean(chartError)}
-            onClick=${function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), "DirtyStats-studio-value.png"); }}
-          >Export PNG</button>
+          ${exportButton(chartRef, "DirtyStats-studio-value.png", loading || Boolean(error) || Boolean(chartError))}
         </div>
-        <div
-          ref=${node}
-          className="dirty-stats-growth-chart"
-          role="img"
-          aria-label="Scatter plot of studio scene count versus average scene rating. Bubble size represents total file size."
-         />
+        ${chartImage(node, "dirty-stats-growth-chart", "Scatter plot of studio scene count versus average scene rating. Bubble size represents total file size.")}
       </section>` : null}
       ${chartError ? html`<${StatsState}
         detail=${chartError}
@@ -2556,9 +2315,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
   }
   function TagDnaPage(props) {
     var chartTheme = useChartTheme();
-    var dataState = React.useState([]), scenes = dataState[0], setScenes = dataState[1];
-    var loadingState = React.useState(true), loading = loadingState[0], setLoading = loadingState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
+    var pageData = dataLoader.usePageData(), scenes = pageData.rows, loading = pageData.loading, error = pageData.error;
     var chartErrorState = React.useState(""), chartError = chartErrorState[0], setChartError = chartErrorState[1];
     var selectionState = React.useState(null), selected = selectionState[0], setSelected = selectionState[1];
     var metricState = useStatsSetting("tagDnaColorMetric"), metric = metricState[0], setMetric = metricState[1];
@@ -2572,17 +2329,10 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var matching = React.useMemo(function () { return tagDnaScenes(scenes, selected); }, [scenes, selected]);
     React.useEffect(function () { setSelected(null); }, [queryKey]);
     React.useEffect(function () { if (selected != null && !data.some(function (item) { return item.id === selected; })) setSelected(null); }, [selected, data]);
-    dataLoader.usePageLoad({
+    pageData.useLoad({
       query: "query DirtyStatsTagDna($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100 play_count tags{id name}}}}",
       variables: function (page) { return sceneVariables(props.filter, page); },
-      collection: function (response) {
-        var batch = response.findScenes;
-        return { count: batch.count, rows: batch.scenes };
-      },
-      failureLabel: "The scene list changed while loading. Refresh to try again.",
-      setLoading: setLoading,
-      setError: setError,
-      publish: function (result) { setScenes(result); }
+      entity: "scenes"
     }, [queryKey, refresh]);
     chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !data.length) return;
@@ -2600,14 +2350,7 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
       };
     }, [data, metric, loading, error, chartTheme]);
     return html`<section className="dirty-stats-content">
-      <div className="dirty-stats-toolbar">
-        <span className="dirty-stats-summary" role="status">${loading ? "Loading scene tags..." : stats.tags + " tags · " + stats.taggedScenes + " tagged scenes · " + stats.untaggedScenes + " untagged"}</span>
-        <button
-          className="btn btn-secondary dirty-ui-button"
-          disabled=${loading}
-          onClick=${function () { setRefresh(refresh + 1); }}
-        >Refresh</button>
-      </div>
+      ${pageToolbar(loading ? "Loading scene tags..." : stats.tags + " tags · " + stats.taggedScenes + " tagged scenes · " + stats.untaggedScenes + " untagged", loading, function () { setRefresh(refresh + 1); })}
       ${error ? html`<${StatsState}
         detail=${error + " Use Refresh to retry."}
         role="alert"
@@ -2643,18 +2386,9 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
             <i aria-hidden=${true} />
             <span>Higher</span>
           </span>
-          <button
-            className="btn btn-secondary dirty-ui-button dirty-stats-export"
-            disabled=${loading || Boolean(error) || Boolean(chartError)}
-            onClick=${function () { if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), "DirtyStats-tag-dna.png"); }}
-          >Export PNG</button>
+          ${exportButton(chartRef, "DirtyStats-tag-dna.png", loading || Boolean(error) || Boolean(chartError))}
         </div>
-        <div
-          ref=${node}
-          className="dirty-stats-growth-chart dirty-stats-tag-chart"
-          role="img"
-          aria-label=${"Treemap of tags sized by distinct scene count and colored by " + tagDnaMetricLabel(metric).toLowerCase() + "."}
-         />
+        ${chartImage(node, "dirty-stats-growth-chart dirty-stats-tag-chart", "Treemap of tags sized by distinct scene count and colored by " + tagDnaMetricLabel(metric).toLowerCase() + ".")}
       </section>` : null}
       ${chartError ? html`<${StatsState}
         detail=${chartError}

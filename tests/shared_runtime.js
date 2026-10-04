@@ -4,26 +4,26 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 /** Supply actual pure hub features to tests that stub the surrounding runtime. */
+function loadFeature(window, feature) {
+  const filename = path.join(__dirname, "../plugins/DirtyPlugins/dirtyPlugins" + feature + ".js");
+  vm.runInNewContext(fs.readFileSync(filename, "utf8"), { window }, { filename });
+  return window["__dirtyPlugins" + feature];
+}
+
 function installJobHelpers(window) {
   if (!window.DirtyPlugins) window.DirtyPlugins = {};
-  const filename = path.join(__dirname, "../plugins/DirtyPlugins/dirtyPluginsJobs.js");
-  vm.runInNewContext(fs.readFileSync(filename, "utf8"), { window }, { filename });
-  Object.assign(window.DirtyPlugins, window.__dirtyPluginsJobs);
+  Object.assign(window.DirtyPlugins, loadFeature(window, "Jobs"));
 }
 
 function installMetadata(window) {
-  const filename = path.join(__dirname, "../plugins/DirtyPlugins/dirtyPluginsMetadata.js");
-  vm.runInNewContext(fs.readFileSync(filename, "utf8"), { window }, { filename });
   if (!window.DirtyPlugins) window.DirtyPlugins = {};
-  window.DirtyPlugins.settingsMetadata = window.__dirtyPluginsMetadata;
+  window.DirtyPlugins.settingsMetadata = loadFeature(window, "Metadata");
 }
 
 function installSaveController(window) {
   installMetadata(window);
   installJobHelpers(window);
-  const filename = path.join(__dirname, "../plugins/DirtyPlugins/dirtyPluginsSave.js");
-  vm.runInNewContext(fs.readFileSync(filename, "utf8"), { window }, { filename });
-  window.DirtyPlugins.createSaveController = window.__dirtyPluginsSave.createSaveController;
+  window.DirtyPlugins.createSaveController = loadFeature(window, "Save").createSaveController;
 }
 
-module.exports = { installSaveController, installJobHelpers, installMetadata };
+module.exports = { installSaveController, installJobHelpers, installMetadata, loadFeature };

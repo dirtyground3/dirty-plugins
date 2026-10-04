@@ -8,15 +8,11 @@ marker, or image IDs; source paths are always resolved from Stash's GraphQL API.
 
 from __future__ import annotations
 
-import json
 import os
-import re
 import shutil
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 import uuid
 from pathlib import Path
 from typing import Any, Iterable
@@ -39,10 +35,8 @@ PROGRESS_INTERVAL_SECONDS = 0.5
 
 def _load_shared_storage():
     plugin_root = Path(__file__).resolve().parent.parent
-    for path in (
-        plugin_root / "dirtyPlugins" / "dirty_plugins_storage.py",
-        plugin_root / "DirtyPlugins" / "dirty_plugins_storage.py",
-    ):
+    for folder in ("dirtyPlugins", "DirtyPlugins"):
+        path = plugin_root / folder / "dirty_plugins_storage.py"
         if path.is_file():
             sys.path.insert(0, str(path.parent))
             return __import__("dirty_plugins_storage")
@@ -861,23 +855,9 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
 
 def main() -> int:
     protocol.configure_standard_streams()
-    reporter = StashReporter()
-    started = time.monotonic()
-    try:
-        payload = read_payload()
-        reporter.info("DirtyFileExtractor backend started")
-        output = run(payload, reporter)
-        reporter.info(
-            f"DirtyFileExtractor backend finished in {int((time.monotonic() - started) * 1000)}ms"
-        )
-        emit_output(output)
-        return 0
-    except Exception as exc:  # Stash must always receive a valid protocol response.
-        reporter.error(
-            f"DirtyFileExtractor failed after {int((time.monotonic() - started) * 1000)}ms: {exc}"
-        )
-        emit_error(exc)
-        return 1
+    return protocol.run_logged_backend(
+        "DirtyFileExtractor", run, read_payload, emit_output, emit_error, StashReporter(), time.monotonic,
+    )
 
 
 if __name__ == "__main__":

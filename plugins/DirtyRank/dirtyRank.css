@@ -64,7 +64,8 @@
   min-width: 0;
 }
 
-.dirty-rank-category-picker {
+.dirty-rank-category-picker,
+.dirty-rank-category-genders {
   border: 0;
   margin: 0;
   min-width: 0;
@@ -1452,12 +1453,6 @@
   transform: scale(1.025);
 }
 
-.dirty-rank-podium-placeholder {
-  color: var(--dirty-ui-muted);
-  font-size: 3rem;
-  height: 100%;
-}
-
 .dirty-rank-podium-copy {
   align-items: center;
   display: grid;
@@ -1743,6 +1738,7 @@
   transform: scale(1.025);
 }
 
+.dirty-rank-podium-placeholder,
 .dirty-rank-gallery-placeholder {
   color: var(--dirty-ui-muted);
   font-size: 3rem;
@@ -1978,13 +1974,6 @@
 
 .dirty-rank-settings-status {
   margin-right: auto;
-}
-
-.dirty-rank-category-genders {
-  border: 0;
-  margin: 0;
-  min-width: 0;
-  padding: 0;
 }
 
 .dirty-rank-category-genders legend {

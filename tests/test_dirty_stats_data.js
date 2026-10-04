@@ -2,6 +2,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
+const { createHooks } = require("./ui_harness");
 const context = { window: {}, AbortController };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStatsData.js", "utf8"), context);
@@ -41,6 +42,47 @@ async function main() {
   assert.deepEqual(Array.from(published[0]), ["new"]);
   assert.equal(status.at(-1), false);
   cleanup();
+  const owner = {slots: [], effects: [], cursor: 0}, requests = [], loaded = [];
+  const entityLoader = createLoader({React: createHooks(() => owner), graphql: (_query, variables, options) =>
+    new Promise((resolve, reject) => requests.push({variables, signal: options.signal, resolve, reject})) });
+  function render(entity, key, extra = {}) {
+    owner.cursor = 0;
+    const page = entityLoader.usePageData();
+    page.useLoad({query: "entity", variables: request.variables, entity, onLoaded: rows => loaded.push(rows), ...extra}, [entity, key]);
+    owner.effects.splice(0).forEach(effect => effect());
+    return page;
+  }
+  assert.equal(render("scenes", "first").loading, true);
+  requests[0].resolve({findScenes: {count: 1, scenes: ["scene"]}});
+  await tick();
+  let page = render("scenes", "first");
+  assert.deepEqual(Array.from(page.rows), ["scene"]);
+  assert.equal(page.loading, false);
+  assert.equal(loaded.length, 1, "custom publication runs once after rows are stored");
+  assert.deepEqual(requests[0].variables, {page: 1, per_page: 500});
+  page.setError("chart unavailable");
+  assert.equal(render("scenes", "first").error, "chart unavailable", "ratings can publish chart errors through the shared state");
+  render("scenes", "stale");
+  render("performers", "current");
+  assert.equal(requests[1].signal.aborted, true, "changing the entity/filter cancels the old request");
+  requests[1].resolve({findScenes: {count: 1, scenes: ["stale"]}});
+  requests[2].resolve({findPerformers: {count: 1, performers: ["performer"]}});
+  await tick();
+  page = render("performers", "current");
+  assert.deepEqual(Array.from(page.rows), ["performer"]);
+  assert.equal(page.error, "");
+  assert.equal(loaded.length, 2, "the stale request cannot run a custom publication callback");
+  render("performers", "empty");
+  requests[3].resolve({findPerformers: {count: 1, performers: []}});
+  await tick();
+  page = render("performers", "empty");
+  assert.equal(page.error, "The performer list changed while loading. Refresh to try again.");
+  assert.equal(page.loading, false);
+  render("scenes", "custom", {failureLabel: "custom failure"});
+  requests[4].resolve({findScenes: {count: 1, scenes: []}});
+  await tick();
+  assert.equal(render("scenes", "custom").error, "custom failure", "caller-specific failure wording is preserved");
+  owner.slots.forEach(slot => { if (slot?.cleanup) slot.cleanup(); });
   console.log("Stats pagination, bounded requests and stale-response protection passed");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

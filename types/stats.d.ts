@@ -25,8 +25,14 @@ interface StatsPageEffect<T> extends StatsPageOptions<T> {
   onError?(): void;
 }
 interface StatsDataDependencies {
-  React: { useEffect(effect: () => void | (() => void), keys: unknown[]): void };
+  React: Pick<NativeReactHooks, "useEffect" | "useState">;
   graphql: StatsPageRequest<unknown>["graphql"];
+}
+interface StatsEntityLoad extends Omit<StatsPageOptions<any>, "collection" | "failureLabel"> {
+  entity: "performers" | "scenes";
+  failureLabel?: string;
+  onStart?(): void;
+  onLoaded?(rows: any[]): void;
 }
 // ECharts is a bundled native boundary. Domain builders remain Stats-local.
 interface StatsChartDescriptor {
