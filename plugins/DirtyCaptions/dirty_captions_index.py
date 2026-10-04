@@ -396,100 +396,118 @@ def after_scan(client, args):
     return schedule(client)
 
 
+class WorkerContext:
+    """Resources shared by pending hooks and a full traversal, for one lease."""
+    def __init__(self, client, token: str):
+        self.client = client
+        self.token = token
+        self.counts = {"checked": 0, "probed": 0, "skipped": 0, "errors": 0}
+        self.probe_tool = None
+        self.force_files: set[str] = set()
+        self.file_records: dict[str, dict] = {}
+        self.scene_records: dict[str, dict] = {}
+
+    def tool(self):
+        if self.probe_tool is None:
+            self.probe_tool = tool_path(self.client)
+        return self.probe_tool
+
+    def account_outcome(self, scene, outcome):
+        self.counts["checked"] += 1
+        self.counts["probed"] += outcome["probed"]
+        self.counts["errors"] += int(outcome["error"])
+        update_state(self.token, **self.counts)
+        for file in scene.get("files", []):
+            self.file_records[str(file["id"])] = read_record(FILES, file["id"])
+        self.scene_records[str(scene["id"])] = read_record(SCENES, scene["id"])
+
+    def refresh_records(self):
+        self.file_records = {key: json.loads(value) for key, value in storage.list_metadata(FILES).items()}
+        self.scene_records = {key: json.loads(value) for key, value in storage.list_metadata(SCENES).items()}
+
+
+def process_pending_batch(context: WorkerContext, force=False):
+    for scene_id, revision in list(storage.list_metadata(PENDING).items())[:100]:
+        if not active(context.token):
+            break
+        scene = context.client.call(SCENE_QUERY, {"id": scene_id}).get("findScene")
+        if scene:
+            outcome = inspect_scene(context.client, scene, context.tool, force, context.token, context.force_files)
+            if outcome is None:
+                break
+            context.account_outcome(scene, outcome)
+        else:
+            storage.delete_metadata(SCENES, scene_id)
+        # Only remove the revision we read; a hook may have queued a newer one.
+        storage.delete_metadata(PENDING, scene_id, expected=revision)
+
+
+def traverse_full_scan(context: WorkerContext, force: bool):
+    token = context.token
+    update_state(token, full=False, force=False, scanning=True, forceRun=bool(force))
+    cursor = 0
+    process_pending_batch(context, force)
+    context.refresh_records()
+    while active(token):
+        result = context.client.call("query($filter:FindFilterType!,$scene:SceneFilterType!){findScenes(filter:$filter,scene_filter:$scene){count scenes{id custom_fields files{" + FILE_FIELDS + "}}}}", {
+            "filter": {"per_page": 100, "page": 1, "sort": "id", "direction": "ASC"},
+            "scene": {"id": {"value": cursor, "modifier": "GREATER_THAN"}},
+        })["findScenes"]
+        scenes = result["scenes"]
+        if not scenes:
+            break
+        if not cursor:
+            update_state(token, total=result["count"])
+        for scene in scenes:
+            if not active(token):
+                break
+            pending = storage.get_metadata(PENDING, str(scene["id"]))
+            cursor = max(cursor, int(scene["id"]))
+            if not force and pending is None and not needs_scene(scene, context.file_records, context.scene_records):
+                context.counts["skipped"] += 1
+                continue
+            outcome = inspect_scene(context.client, scene, context.tool, force, token, context.force_files)
+            if outcome is None:
+                break
+            context.account_outcome(scene, outcome)
+            if pending is not None:
+                storage.delete_metadata(PENDING, scene["id"], expected=pending)
+            if context.counts["checked"] % 5 == 0:
+                process_pending_batch(context, force)
+        if len(scenes) < 100:
+            break
+        update_state(token, **context.counts)
+    if active(token):
+        update_state(token, scanning=False, lastFullScan=time.time(), **context.counts)
+
+
+def complete_worker_lease(token):
+    """Release atomically so a concurrent hook can claim the next worker."""
+    def finish(current):
+        if current.get("token") == token and not current.get("full"):
+            current.update(token=None, expires=0, status="Finished", finished=time.time())
+        return current
+    return storage.update_json_metadata(NAMESPACE, "state", finish)
+
+
 def worker(client, token):
     if not active(token):
         if token and read_record(NAMESPACE, "state").get("token") == token:
             update_state(token, token=None, expires=0, status="Cancelled", finished=time.time())
         return status()
-    state = update_state(token, status="Running", started=time.time(), finished=None)
-    counts = {"checked": 0, "probed": 0, "skipped": 0, "errors": 0}
-    probe_tool = None
-    force_files = set()
-    def tool():
-        nonlocal probe_tool
-        if probe_tool is None:
-            probe_tool = tool_path(client)
-        return probe_tool
-    file_records, scene_records = {}, {}
-    def remember(scene):
-        for file in scene.get("files", []):
-            file_records[str(file["id"])] = read_record(FILES, file["id"])
-        scene_records[str(scene["id"])] = read_record(SCENES, scene["id"])
-    def drain_pending(force=False):
-        for scene_id, revision in list(storage.list_metadata(PENDING).items())[:100]:
-            if not active(token):
-                break
-            scene = client.call(SCENE_QUERY, {"id": scene_id}).get("findScene")
-            if scene:
-                outcome = inspect_scene(client, scene, tool, force, token, force_files)
-                if outcome is None:
-                    break
-                counts["checked"] += 1
-                counts["probed"] += outcome["probed"]
-                counts["errors"] += int(outcome["error"])
-                update_state(token, **counts)
-                remember(scene)
-            else:
-                storage.delete_metadata(SCENES, scene_id)
-            storage.delete_metadata(PENDING, scene_id, expected=revision)
+    update_state(token, status="Running", started=time.time(), finished=None)
+    context = WorkerContext(client, token)
     try:
         while active(token):
             state = read_record(NAMESPACE, "state")
             if state.get("full"):
-                force = state.get("force", False)
-                update_state(token, full=False, force=False, scanning=True, forceRun=bool(force))
-                cursor = 0
-                drain_pending(force)
-                file_records = {key: json.loads(value) for key, value in storage.list_metadata(FILES).items()}
-                scene_records = {key: json.loads(value) for key, value in storage.list_metadata(SCENES).items()}
-                while active(token):
-                    result = client.call("query($filter:FindFilterType!,$scene:SceneFilterType!){findScenes(filter:$filter,scene_filter:$scene){count scenes{id custom_fields files{" + FILE_FIELDS + "}}}}", {
-                        "filter": {"per_page": 100, "page": 1, "sort": "id", "direction": "ASC"},
-                        "scene": {"id": {"value": cursor, "modifier": "GREATER_THAN"}},
-                    })["findScenes"]
-                    scenes = result["scenes"]
-                    if not scenes:
-                        break
-                    if not cursor:
-                        update_state(token, total=result["count"])
-                    for scene in scenes:
-                        if not active(token):
-                            break
-                        pending = storage.get_metadata(PENDING, str(scene["id"]))
-                        cursor = max(cursor, int(scene["id"]))
-                        if not force and pending is None and not needs_scene(scene, file_records, scene_records):
-                            counts["skipped"] += 1
-                            continue
-                        outcome = inspect_scene(client, scene, tool, force, token, force_files)
-                        if outcome is None:
-                            break
-                        counts["checked"] += 1
-                        counts["probed"] += outcome["probed"]
-                        counts["errors"] += int(outcome["error"])
-                        update_state(token, **counts)
-                        remember(scene)
-                        if pending is not None:
-                            storage.delete_metadata(PENDING, scene["id"], expected=pending)
-                        if counts["checked"] % 5 == 0:
-                            drain_pending(force)
-                    if len(scenes) < 100:
-                        break
-                    update_state(token, **counts)
-                if active(token):
-                    update_state(token, scanning=False, lastFullScan=time.time(), **counts)
+                traverse_full_scan(context, state.get("force", False))
                 continue
-            pending = storage.list_metadata(PENDING)
-            if not pending:
-                # Finish atomically; a concurrent hook can claim the next worker.
-                def finish(current):
-                    if current.get("token") == token and not current.get("full"):
-                        current.update(token=None, expires=0, status="Finished", finished=time.time())
-                    return current
-                completed = storage.update_json_metadata(NAMESPACE, "state", finish)
-                if completed.get("token") != token:
+            if not storage.list_metadata(PENDING):
+                if complete_worker_lease(token).get("token") != token:
                     break
                 continue
-            drain_pending()
+            process_pending_batch(context)
     except Exception:
         update_state(token, token=None, expires=0, status="Interrupted", full=True, scanning=False)
         raise

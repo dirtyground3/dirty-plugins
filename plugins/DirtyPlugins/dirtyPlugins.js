@@ -42,18 +42,7 @@
       "dryRun",
       "maxCopySpeedMBps",
     ],
-    multiscreen: [
-      "totalScreens",
-      "rows",
-      "columns",
-      "randomize",
-      "splitScenes",
-      "startMuted",
-      "randomStart",
-      "loopScenes",
-      "markerDuration",
-      "pauseWhenHidden",
-    ],
+    multiscreen: window.__dirtyPluginsMetadata.multiscreen.order,
   };
   var PLUGIN_DEFAULTS = {
     dirtyCaptions: {
@@ -73,18 +62,7 @@
       dryRun: false,
       maxCopySpeedMBps: 20,
     },
-    multiscreen: {
-      totalScreens: 4,
-      rows: 2,
-      columns: 2,
-      randomize: true,
-      splitScenes: false,
-      startMuted: true,
-      randomStart: true,
-      loopScenes: true,
-      markerDuration: 30,
-      pauseWhenHidden: true,
-    },
+    multiscreen: window.__dirtyPluginsMetadata.multiscreen.defaults,
   };
   var FIELD_OPTIONS = {
     extractScenes: {
@@ -110,840 +88,93 @@
     extractScenes: {
       maxCopySpeedMBps: { min: 0 },
     },
-    multiscreen: {
-      totalScreens: { min: 1, max: 36, step: 1 },
-      rows: { min: 1, max: 12, step: 1 },
-      columns: { min: 1, max: 12, step: 1 },
-      markerDuration: { min: 1, max: 600, step: 1 },
-    },
+    multiscreen: window.__dirtyPluginsMetadata.multiscreen.limits,
   };
 
   var hubApi = window.DirtyPlugins || {};
+  hubApi.settingsMetadata = window.__dirtyPluginsMetadata;
   var fieldActions = hubApi.fieldActions || Object.create(null);
   var settingsPanels = hubApi.settingsPanels || Object.create(null);
   var pluginRevisionCache = Object.create(null);
   hubApi.fieldActions = fieldActions;
   hubApi.settingsPanels = settingsPanels;
 
-  // --- Plugin debug logging ------------------------------------------------
-  // Every Dirty plugin records its lifecycle and the PluginApi patches it runs
-  // on ordinary Stash pages. Entries are kept in window.__dirtyPluginsDebugLog
-  // and optionally mirrored to the console as [DirtyPlugins][<scope>] … lines.
-  // Run dirtyPluginsDumpDebugLogs() in the console to dump the full table.
-  // Console logging is off by default. Enable it with
-  // window.__dirtyPluginsDebug = true or localStorage dirtyPluginsDebug = "1".
-  // Note: Stash's Troubleshooting mode disables all plugin JS, so these logs
-  // only appear when plugins are enabled.
-  var DEBUG_LOG_KEY = "__dirtyPluginsDebugLog";
-  var DEBUG_MAX_ENTRIES = 5000;
-  var debugLogStore = window[DEBUG_LOG_KEY];
-  if (!debugLogStore) {
-    debugLogStore = [];
-    window[DEBUG_LOG_KEY] = debugLogStore;
-  }
-  var debugThrottleState = Object.create(null);
-  var debugStartTime = (window.performance && window.performance.now)
-    ? window.performance.now()
-    : Date.now();
-
-  function debugNow() {
-    return (window.performance && window.performance.now)
-      ? window.performance.now()
-      : Date.now();
-  }
-
-  function debugElapsed() {
-    return Math.round(debugNow() - debugStartTime);
-  }
-
-  function debugEnabled() {
-    try {
-      if (window.__dirtyPluginsDebug === false) return false;
-      if (window.__dirtyPluginsDebug === true) return true;
-      if (window.localStorage) return window.localStorage.getItem("dirtyPluginsDebug") === "1";
-    } catch (_error) {}
-    return false;
-  }
-
-  function debugLog(scope, message, data) {
-    var entry = {
-      elapsedMs: debugElapsed(),
-      scope: scope,
-      message: message,
-      path: (window.location && window.location.pathname) || "",
-      data: data === undefined ? null : data,
-    };
-    try {
-      debugLogStore.push(entry);
-      if (debugLogStore.length > DEBUG_MAX_ENTRIES) {
-        debugLogStore.splice(0, debugLogStore.length - DEBUG_MAX_ENTRIES);
-      }
-    } catch (_error) {}
-    if (!debugEnabled()) return entry;
-    var prefix = "[DirtyPlugins][" + scope + "] " + message +
-      " (t+" + entry.elapsedMs + "ms)";
-    try {
-      if (data === undefined) console.log(prefix);
-      else console.log(prefix, data);
-    } catch (_error) {}
-    return entry;
-  }
-
-  function debugLogThrottled(scope, message, data, intervalMs) {
-    var key = scope + "|" + message;
-    var now = debugNow();
-    var last = debugThrottleState[key];
-    if (last !== undefined && now - last < (intervalMs || 500)) return null;
-    debugThrottleState[key] = now;
-    return debugLog(scope, message, data);
-  }
-
-  function debugDescribe(value) {
-    if (value === null) return "null";
-    if (value === undefined) return "undefined";
-    var type = typeof value;
-    if (type === "string") {
-      return value.length > 120 ? value.slice(0, 117) + "..." : value;
-    }
-    if (type === "number" || type === "boolean") return String(value);
-    if (type === "function") return "function " + (value.name || "anonymous");
-    if (Array.isArray(value)) return "Array(" + value.length + ")";
-    if (value instanceof Set) return "Set(" + value.size + ")";
-    if (value instanceof Map) return "Map(" + value.size + ")";
-    if (typeof Element !== "undefined" && value instanceof Element) {
-      return "<" + value.tagName.toLowerCase() +
-        (value.id ? "#" + value.id : "") + ">";
-    }
-    if (type === "object") {
-      var keys = Object.keys(value);
-      return "Object{" + keys.slice(0, 8).join(",") +
-        (keys.length > 8 ? ",..." : "") + "}";
-    }
-    return type;
-  }
-
-  function debugGraphqlOperationName(query) {
-    if (typeof query !== "string") return "unknown";
-    var match = query.match(/\b(?:query|mutation)\s+([A-Za-z0-9_]+)/);
-    if (match) return match[1];
-    var normalized = query.replace(/\s+/g, " ").trim();
-    return normalized.slice(0, 60) || "anonymous";
-  }
-
-  function debugCurrentPluginId() {
-    return window.__dirtyCurrentPluginId || "unknown";
-  }
-
-  function debugWrapPatchHandler(pluginId, kind, component, handler) {
-    if (typeof handler !== "function" || handler.__dirtyDebugWrapped) return handler;
-    function wrappedHandler() {
-      var scope = pluginId + ":patch." + kind + ":" + component;
-      var path = (window.location && window.location.pathname) || "";
-      var args = Array.prototype.slice.call(arguments);
-      debugLogThrottled(scope, "enter", {
-        path: path,
-        argumentCount: args.length,
-        firstArgument: debugDescribe(args[0]),
-      }, 500);
-      var started = debugNow();
-      var result;
-      try {
-        result = handler.apply(this, arguments);
-      } catch (error) {
-        debugLog(scope, "THREW", {
-          elapsedMs: Math.round(debugNow() - started),
-          error: String((error && error.message) || error),
-          stack: error && error.stack,
-        });
-        throw error;
-      }
-      if (result && typeof result.then === "function") {
-        debugLog(scope, "returned a promise (Stash does not await patches)", {
-          elapsedMs: Math.round(debugNow() - started),
-        });
-        return result.then(function (value) {
-          debugLogThrottled(scope, "promise resolved", {
-            elapsedMs: Math.round(debugNow() - started),
-          }, 500);
-          return value;
-        }, function (error) {
-          debugLog(scope, "promise REJECTED", {
-            elapsedMs: Math.round(debugNow() - started),
-            error: String((error && error.message) || error),
-            stack: error && error.stack,
-          });
-          throw error;
-        });
-      }
-      var elapsed = Math.round(debugNow() - started);
-      debugLogThrottled(scope, "exit", {
-        elapsedMs: elapsed,
-        result: debugDescribe(result),
-      }, elapsed > 100 ? 0 : 500);
-      return result;
-    }
-    wrappedHandler.__dirtyDebugWrapped = true;
-    return wrappedHandler;
-  }
-
-  function debugInstallPluginApiInstrumentation() {
-    if (!PluginApi || PluginApi.__dirtyDebugInstrumented) return;
-    try {
-      if (PluginApi.patch) {
-        ["before", "after", "instead"].forEach(function (kind) {
-          var original = PluginApi.patch[kind];
-          if (typeof original !== "function") return;
-          PluginApi.patch[kind] = function (component, handler) {
-            var pluginId = debugCurrentPluginId();
-            debugLog(pluginId, "register patch." + kind + " " + component);
-            return original.call(
-              PluginApi.patch,
-              component,
-              debugWrapPatchHandler(pluginId, kind, component, handler)
-            );
-          };
-        });
-      }
-      if (PluginApi.register && typeof PluginApi.register.route === "function") {
-        var originalRoute = PluginApi.register.route;
-        PluginApi.register.route = function (path, component) {
-          debugLog(debugCurrentPluginId(), "register route " + path);
-          return originalRoute.call(PluginApi.register, path, component);
-        };
-      }
-      PluginApi.__dirtyDebugInstrumented = true;
-      debugLog("dirtyPlugins", "PluginApi debug instrumentation installed");
-    } catch (error) {
-      debugLog("dirtyPlugins", "could not install PluginApi instrumentation", {
-        error: String((error && error.message) || error),
-        stack: error && error.stack,
-      });
-    }
-  }
-
-  window.addEventListener("error", function (event) {
-    debugLog("window", "uncaught error", {
-      message: event.message,
-      source: event.filename,
-      line: event.lineno,
-      column: event.colno,
-      error: event.error && String(event.error.stack || event.error.message),
-    });
+  var debugModule = window.__dirtyPluginsDebug.createDebug({
+    PluginApi: PluginApi,
+    hubApi: hubApi
   });
-  window.addEventListener("unhandledrejection", function (event) {
-    var reason = event.reason;
-    debugLog("window", "unhandled promise rejection", {
-      reason: reason && String(reason.stack || reason.message || reason),
-    });
+  var debugGraphqlOperationName = debugModule.debugGraphqlOperationName;
+  var debugNow = debugModule.debugNow;
+  var debugLogThrottled = debugModule.debugLogThrottled;
+  var debugDescribe = debugModule.debugDescribe;
+  var debugLog = debugModule.debugLog;
+  var debugElapsed = debugModule.debugElapsed;
+
+  var transportModule = window.__dirtyPluginsTransport.createTransport({
+    pluginRevisionCache: pluginRevisionCache,
+    hubApi: hubApi,
+    fieldActions: fieldActions,
+    FIELD_ACTIONS_CHANGED_EVENT: FIELD_ACTIONS_CHANGED_EVENT,
+    CONFIGURATION_CHANGED_EVENT: CONFIGURATION_CHANGED_EVENT,
+    settingsPanels: settingsPanels,
+    SETTINGS_PANELS_CHANGED_EVENT: SETTINGS_PANELS_CHANGED_EVENT,
+    pluginResult: pluginResult,
+    asObject: asObject,
+    applyVisualTheme: function (value) { return applyVisualTheme(value); },
+    debugGraphqlOperationName: debugGraphqlOperationName,
+    debugNow: debugNow,
+    debugLogThrottled: debugLogThrottled,
+    debugDescribe: debugDescribe,
+    debugLog: debugLog
   });
+  var rememberPluginRevision = transportModule.rememberPluginRevision;
+  var loggedGraphql = transportModule.loggedGraphql;
+  var runPluginOperation = transportModule.runPluginOperation;
+  var getPluginSettings = transportModule.getPluginSettings;
+  var configurePlugin = transportModule.configurePlugin;
+  var runSharedOperation = transportModule.runSharedOperation;
+  var graphql = transportModule.graphql;
+  var settingsAddons = transportModule.settingsAddons;
 
-  hubApi.debugLog = debugLog;
-  hubApi.debugLogThrottled = debugLogThrottled;
-  hubApi.debugEnabled = debugEnabled;
-  hubApi.debugElapsed = debugElapsed;
-  hubApi.debugDescribe = debugDescribe;
-  hubApi.dumpDebugLogs = function () {
-    try {
-      if (console.table) console.table(window[DEBUG_LOG_KEY]);
-      else console.log(window[DEBUG_LOG_KEY]);
-    } catch (_error) {}
-    return window[DEBUG_LOG_KEY];
-  };
-  window.dirtyPluginsDumpDebugLogs = hubApi.dumpDebugLogs;
-  debugInstallPluginApiInstrumentation();
-  debugLog("dirtyPlugins", "hub script started", {
-    script: document.currentScript && document.currentScript.src,
-    readyState: document.readyState,
+  var reactModule = window.__dirtyPluginsReact.createReact({
+    useEffect: useEffect,
+    useRef: useRef,
+    html: html,
+    PluginApi: PluginApi,
+    FontAwesomeIcon: FontAwesomeIcon,
+    React: React,
+    Link: Link,
+    hubApi: hubApi
   });
-  if (debugEnabled()) {
-    try {
-      console.info(
-        "[DirtyPlugins] Debug logging is active. Lines are prefixed " +
-        "[DirtyPlugins]. Run dirtyPluginsDumpDebugLogs() to dump the collected " +
-        "log. Stash's Troubleshooting mode disables all plugins, so logs only " +
-        "appear when plugins are enabled."
-      );
-    } catch (_error) {}
-  }
-
-  function rememberPluginRevision(pluginId, revision) {
-    var value = Number(revision);
-    if (Number.isFinite(value)) pluginRevisionCache[pluginId] = value;
-  }
-
-  function cachedPluginRevision(pluginId) {
-    return Object.prototype.hasOwnProperty.call(pluginRevisionCache, pluginId)
-      ? pluginRevisionCache[pluginId]
-      : undefined;
-  }
-  hubApi.registerFieldAction = function (pluginId, settingName, action) {
-    if (!fieldActions[pluginId]) fieldActions[pluginId] = Object.create(null);
-    if (fieldActions[pluginId][settingName] === action) return;
-    fieldActions[pluginId][settingName] = action;
-    window.dispatchEvent(new CustomEvent(FIELD_ACTIONS_CHANGED_EVENT));
-  };
-  hubApi.unregisterFieldAction = function (pluginId, settingName, action) {
-    if (!fieldActions[pluginId] || fieldActions[pluginId][settingName] !== action) return;
-    delete fieldActions[pluginId][settingName];
-    window.dispatchEvent(new CustomEvent(FIELD_ACTIONS_CHANGED_EVENT));
-  };
-  hubApi.notifyConfigurationChanged = function (pluginId, options) {
-    window.dispatchEvent(new CustomEvent(CONFIGURATION_CHANGED_EVENT, {
-      detail: {
-        pluginId: pluginId,
-        preserveSettingsPage: Boolean(options && options.preserveSettingsPage),
-      },
-    }));
-  };
-  hubApi.registerSettingsPanel = function (pluginId, component) {
-    if (settingsPanels[pluginId] === component) return;
-    settingsPanels[pluginId] = component;
-    window.dispatchEvent(new CustomEvent(SETTINGS_PANELS_CHANGED_EVENT));
-  };
-  var settingsAddons = Object.create(null);
-  hubApi.registerSettingsAddon = function (pluginId, component) {
-    if (settingsAddons[pluginId] === component) return;
-    settingsAddons[pluginId] = component;
-    window.dispatchEvent(new CustomEvent(SETTINGS_PANELS_CHANGED_EVENT));
-  };
-  hubApi.unregisterSettingsAddon = function (pluginId, component) {
-    if (settingsAddons[pluginId] !== component) return;
-    delete settingsAddons[pluginId];
-    window.dispatchEvent(new CustomEvent(SETTINGS_PANELS_CHANGED_EVENT));
-  };
-  hubApi.unregisterSettingsPanel = function (pluginId, component) {
-    if (settingsPanels[pluginId] !== component) return;
-    delete settingsPanels[pluginId];
-    window.dispatchEvent(new CustomEvent(SETTINGS_PANELS_CHANGED_EVENT));
-  };
-  window.DirtyPlugins = hubApi;
-
-  function graphql(query, variables, options) {
-    return fetch("/graphql", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      signal: options && options.signal,
-      body: JSON.stringify({ query: query, variables: variables || {} }),
-    })
-      .then(function (response) {
-        if (!response.ok) throw new Error("Stash returned HTTP " + response.status);
-        return response.json();
-      })
-      .then(function (result) {
-        if (result.errors && result.errors.length) {
-          throw new Error(result.errors.map(function (error) {
-            return error.message;
-          }).join("; "));
-        }
-        if (!result.data) throw new Error("GraphQL response did not include data.");
-        return result.data;
-      });
-  }
-
-  function runPluginOperation(pluginId, args) {
-    return graphql(
-      "mutation DirtyPluginsOperation($pluginId:ID!,$args:Map!){" +
-        "runPluginOperation(plugin_id:$pluginId,args:$args)}",
-      { pluginId: pluginId, args: args }
-    ).then(function (data) { return pluginResult(data.runPluginOperation); });
-  }
-
-  function runSharedOperation(args) {
-    return runPluginOperation("dirtyPlugins", args);
-  }
-
-  function getPluginSettings(pluginId) {
-    return runSharedOperation({ mode: "getSettings", pluginId: pluginId }).then(function (result) {
-      rememberPluginRevision(pluginId, result && result.revision);
-      return asObject(result && result.settings);
-    });
-  }
-
-  function configurePlugin(pluginId, input, expectedRevision) {
-    var args = { mode: "setSettings", pluginId: pluginId, settings: asObject(input) };
-    // Guard the read-modify-write cycle so a stale tab cannot overwrite a
-    // newer value written by another session. Callers that merged a specific
-    // read pass its revision; otherwise the latest read is used.
-    var revisionToken = expectedRevision === undefined
-      ? cachedPluginRevision(pluginId)
-      : expectedRevision;
-    if (revisionToken !== undefined && revisionToken !== null) {
-      args.expectedRevision = revisionToken;
-    }
-    return runSharedOperation(args).then(function (result) {
-      rememberPluginRevision(pluginId, result && result.revision);
-      if (pluginId === "dirtyPlugins") applyVisualTheme(input && input.visualTheme);
-      return result;
-    });
-  }
-
-  var toastContainer = null;
-
-  function ensureToastContainer() {
-    if (toastContainer && toastContainer.isConnected) return toastContainer;
-    toastContainer = document.createElement("div");
-    toastContainer.className = "dirty-ui-toast-container";
-    toastContainer.setAttribute("aria-live", "polite");
-    toastContainer.setAttribute("aria-atomic", "false");
-    document.body.appendChild(toastContainer);
-    return toastContainer;
-  }
-
-  function notify(message, options) {
-    var settings = typeof options === "string" ? { tone: options } : (options || {});
-    var tone = settings.tone || "success";
-    var container = ensureToastContainer();
-    var toast = document.createElement("div");
-    toast.className = "dirty-ui-toast dirty-ui-tone-" + tone;
-    toast.setAttribute("role", tone === "error" ? "alert" : "status");
-    toast.textContent = message;
-    container.appendChild(toast);
-    window.setTimeout(function () {
-      if (toast.parentNode) toast.parentNode.removeChild(toast);
-      if (container.childElementCount === 0 && container.parentNode) {
-        container.parentNode.removeChild(container);
-        if (toastContainer === container) toastContainer = null;
-      }
-    }, settings.duration || (tone === "error" ? 8000 : 5000));
-    return toast;
-  }
-
-  function trapDialogTab(event, dialog) {
-    if (event.key !== "Tab" || !dialog) return;
-    var items = Array.prototype.slice.call(dialog.querySelectorAll('button, input, select, textarea, a[href], [tabindex="0"]'))
-      .filter(function (item) { return !item.disabled && item.getClientRects().length; });
-    if (!items.length) { event.preventDefault(); dialog.focus(); return; }
-    var first = items[0], last = items[items.length - 1];
-    if (!dialog.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
-    else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-  }
-
-  var bodyScrollLocks = 0;
-  function lockBodyScroll() {
-    if (!document.body || !document.body.classList) return function () {};
-    bodyScrollLocks += 1;
-    document.body.classList.add("dirty-ui-modal-open");
-    var released = false;
-    return function () {
-      if (released) return;
-      released = true;
-      bodyScrollLocks = Math.max(0, bodyScrollLocks - 1);
-      if (!bodyScrollLocks) document.body.classList.remove("dirty-ui-modal-open");
-    };
-  }
-
-  var activeDialogs = [];
-  function manageDialog(options) {
-    var dialog = options && options.dialog;
-    if (!dialog) return function () {};
-    var opener = options.opener || document.activeElement;
-    var unlockScroll = lockBodyScroll();
-    var entry = { dialog: dialog };
-    var released = false;
-    activeDialogs.push(entry);
-
-    function nativePopupIsActive() {
-      if (!options.allowNativePopup || !document.querySelectorAll) return false;
-      return Array.prototype.some.call(document.querySelectorAll('.modal.show, .dropdown-menu.show, [role="dialog"][aria-modal="true"]'), function (popup) {
-        return popup !== dialog &&
-          (popup.classList && popup.classList.contains("show") ||
-            !dialog.contains(popup) && popup.contains(document.activeElement));
-      });
-    }
-    function onKeydown(event) {
-      if (activeDialogs[activeDialogs.length - 1] !== entry || nativePopupIsActive()) return;
-      if (event.key === "Escape") {
-        if (options.onClose) { event.preventDefault(); options.onClose(); }
-      } else {
-        trapDialogTab(event, dialog);
-      }
-    }
-
-    if (document.addEventListener) document.addEventListener("keydown", onKeydown, true);
-    var initial = options.initialFocus;
-    if (typeof initial === "function") initial = initial();
-    if (!initial && dialog.querySelector) initial = dialog.querySelector('button, input, select, textarea, a[href], [tabindex="0"]');
-    if (initial && typeof initial.focus === "function") initial.focus();
-    else if (typeof dialog.focus === "function") dialog.focus();
-    return function () {
-      if (released) return;
-      released = true;
-      if (document.removeEventListener) document.removeEventListener("keydown", onKeydown, true);
-      var index = activeDialogs.indexOf(entry);
-      if (index !== -1) activeDialogs.splice(index, 1);
-      unlockScroll();
-      if (opener && opener.isConnected !== false && typeof opener.focus === "function") opener.focus();
-    };
-  }
-
-  var pageTitleOwners = [];
-
-  function usePageTitle(pluginName, viewTitle) {
-    useEffect(function () {
-      var previousTitle = document.title;
-      var title = (viewTitle ? viewTitle + " - " : "") + pluginName;
-      var owner = { title: title, previousTitle: previousTitle };
-      pageTitleOwners.push(owner);
-      function updateTitle() {
-        // Overlapping routes must not fight in a MutationObserver microtask
-        // loop. Only the most recently mounted title effect may write.
-        if (pageTitleOwners[pageTitleOwners.length - 1] === owner && document.title !== title) document.title = title;
-      }
-      updateTitle();
-      // Native Stash lists can update their Helmet title after loading. Keep
-      // the plugin page's title until its route unmounts.
-      var observer = null;
-      if (window.MutationObserver && document.head) {
-        observer = new window.MutationObserver(updateTitle);
-        observer.observe(document.head, { childList: true, subtree: true, characterData: true });
-      }
-      return function () {
-        if (observer) observer.disconnect();
-        var index = pageTitleOwners.indexOf(owner);
-        if (index === -1) return;
-        var wasActive = index === pageTitleOwners.length - 1;
-        pageTitleOwners.splice(index, 1);
-        // Preserve the original title when an older route unmounts first.
-        if (pageTitleOwners[index]) pageTitleOwners[index].previousTitle = owner.previousTitle;
-        if (wasActive && document.title === title) {
-          var activeOwner = pageTitleOwners[pageTitleOwners.length - 1];
-          document.title = activeOwner ? activeOwner.title : owner.previousTitle;
-        }
-      };
-    }, [pluginName, viewTitle]);
-  }
-
-  function Dialog(props) {
-    var dialog = useRef(null);
-    useEffect(function () {
-      if (props.open === false) return;
-      return manageDialog({
-        dialog: dialog.current,
-        initialFocus: props.initialFocusRef && props.initialFocusRef.current,
-        opener: props.openerRef && props.openerRef.current,
-        onClose: props.onClose,
-        allowNativePopup: props.allowNativePopup,
-      });
-    }, [props.open]);
-    function closeFromBackdrop(event) {
-      if (event.target === event.currentTarget && props.onClose) props.onClose();
-    }
-    var content = html`<div
-      className=${props.backdropClassName || "dirty-ui-backdrop"}
-      style=${props.open === false ? { display: "none" } : undefined}
-      onMouseDown=${closeFromBackdrop}
-    >
-      ${props.backdrop}
-      <section
-        ref=${dialog}
-        id=${props.id}
-        className=${props.className || "dirty-ui-dialog"}
-        role="dialog"
-        aria-modal=${true}
-        aria-label=${props.ariaLabel}
-        aria-labelledby=${props.labelledBy}
-        tabIndex=${-1}
-      >${props.children}</section>
-    </div>`;
-    return PluginApi.ReactDOM && PluginApi.ReactDOM.createPortal
-      ? PluginApi.ReactDOM.createPortal(content, document.body)
-      : content;
-  }
-
-  function Glyph(props) {
-    if (FontAwesomeIcon && props.icon) {
-      return html`<${FontAwesomeIcon} icon=${props.icon} />`;
-    }
-    return html`<span aria-hidden="true">${props.fallback}</span>`;
-  }
-
-  function IconButton(props) {
-    var className = "dirty-ui-icon-button" +
-      (props.compact ? " dirty-ui-icon-button-compact" : "") +
-      (props.tone === "danger" ? " dirty-ui-icon-button-danger" : "") +
-      (props.tone === "primary" ? " dirty-ui-icon-button-primary" : "") +
-      (props.className ? " " + props.className : "");
-    return html`<button
-      type="button"
-      className=${className}
-      aria-label=${props.ariaLabel}
-      title=${props.ariaLabel}
-      disabled=${Boolean(props.disabled || props.busy)}
-      aria-busy=${props.busy ? "true" : undefined}
-      aria-pressed=${props.pressed == null ? undefined : Boolean(props.pressed)}
-      ref=${props.buttonRef}
-      onClick=${props.onClick}
-    ><${Glyph} icon=${props.icon} fallback=${props.fallback} /></button>`;
-  }
-
-  function StateView(props) {
-    var className = "dirty-ui-state" +
-      (props.className ? " " + props.className : "");
-    return html`
-      <div className=${className} role=${props.role} aria-live=${props.ariaLive}>
-        <div className="dirty-ui-state-panel">
-          <div className="dirty-ui-state-title">${props.title}</div>
-          ${props.detail && html`<div className="dirty-ui-state-detail">${props.detail}</div>`}
-          ${props.actions && html`<div className="dirty-ui-state-actions">${props.actions}</div>`}
-        </div>
-      </div>`;
-  }
-
-  function SettingsCard(props) {
-    var plugin = props.plugin || {};
-    var className = "card dirty-ui-panel dirty-plugins-card" +
-      (props.className ? " " + props.className : "");
-    var bodyClassName = "card-body" +
-      (props.bodyClassName ? " " + props.bodyClassName : "");
-    return html`
-      <section className=${className}>
-        <div className="card-header dirty-plugins-card-header">
-          <div>
-            <h2>${plugin.name}</h2>
-            ${plugin.description && html`<p>${plugin.description}</p>`}
-          </div>
-          <div className="dirty-plugins-plugin-meta">
-            ${plugin.version && html`<span>${"v" + plugin.version}</span>`}
-            ${plugin.enabled === false && html`<span className="badge badge-secondary">Disabled</span>`}
-          </div>
-        </div>
-        <div className=${bodyClassName}>${props.children}</div>
-        ${props.footer}
-      </section>`;
-  }
-
-  function SettingsSection(props) {
-    var className = "dirty-ui-settings-section" +
-      (props.className ? " " + props.className : "");
-    return html`
-      <section className=${className}>
-        <div className="dirty-ui-settings-section-heading">
-          <h3>${props.title}</h3>
-          ${props.description && html`<p>${props.description}</p>`}
-        </div>
-        ${props.children}
-      </section>`;
-  }
-
-  function SettingsToggle(props) {
-    return html`
-      <label className=${"dirty-ui-settings-toggle" + (props.className ? " " + props.className : "")}>
-        <input
-          checked=${Boolean(props.checked)}
-          disabled=${Boolean(props.disabled)}
-          onChange=${function (event) { props.onChange(event.target.checked); }}
-          type="checkbox"
-        />
-        <span>${props.label}</span>
-      </label>`;
-  }
-
-  function Button(props) {
-    var tone = /^(primary|secondary|danger|light|dark|quiet)$/.test(props.tone || "")
-      ? props.tone : "secondary";
-    var className = "btn " + (tone === "quiet" ? "dirty-ui-control-quiet" : "btn-" + tone) +
-      " dirty-ui-button dirty-ui-control" +
-      (props.compact ? " dirty-ui-control-compact" : "") +
-      (props.className ? " " + props.className : "");
-    return html`<button
-      type=${props.type || "button"}
-      className=${className}
-      disabled=${Boolean(props.disabled || props.busy)}
-      aria-label=${props.ariaLabel}
-      aria-busy=${props.busy ? "true" : undefined}
-      aria-pressed=${props.pressed == null ? undefined : Boolean(props.pressed)}
-      ref=${props.buttonRef}
-      onClick=${props.onClick}
-      title=${props.title}
-    >${props.children}</button>`;
-  }
-
-  function Field(props) {
-    var descriptionId = props.id + "-help";
-    var errorId = props.id + "-error";
-    var control = props.children;
-    if (React.isValidElement(control)) {
-      var existing = control.props["aria-describedby"];
-      var describedBy = [existing, props.help && descriptionId, props.error && errorId]
-        .filter(Boolean).join(" ") || undefined;
-      control = React.cloneElement(control, {
-        id: props.id,
-        "aria-describedby": describedBy,
-        "aria-invalid": props.error ? "true" : control.props["aria-invalid"],
-      });
-    }
-    return html`
-      <div className=${"dirty-ui-field" + (props.className ? " " + props.className : "")} id=${props.containerId}>
-        <label htmlFor=${props.id}>${props.label}</label>
-        ${props.action ? html`<div className="dirty-ui-field-control">${control}${props.action}</div>` : control}
-        ${props.help && html`<p className="dirty-ui-field-help" id=${descriptionId}>${props.help}</p>`}
-        ${props.error && html`<p className="dirty-ui-field-error" id=${errorId}>${props.error}</p>`}
-      </div>`;
-  }
-
-  function SaveStatus(props) {
-    if (!props.message) return null;
-    var state = props.state || "saved";
-    return html`<span
-      className=${"dirty-ui-save-status" + (props.className ? " " + props.className : "")}
-      data-state=${state}
-      role=${state === "error" ? "alert" : "status"}
-      aria-live=${state === "error" ? "assertive" : "polite"}
-    >${props.message}</span>`;
-  }
-
-  function Pagination(props) {
-    if (props.totalPages <= 1) return null;
-    return html`
-      <nav
-        aria-label=${props.ariaLabel || "Pages"}
-        className=${"dirty-ui-pagination" + (props.className ? " " + props.className : "")}
-      >
-        <${Button}
-          compact=${true}
-          disabled=${props.page <= 1}
-          onClick=${function () { props.onPageChange(props.page - 1); }}
-        >Previous<//>
-        <span className="dirty-ui-pagination-summary">
-          ${props.summary || "Page " + props.page + " of " + props.totalPages}
-        </span>
-        <${Button}
-          compact=${true}
-          disabled=${props.page >= props.totalPages}
-          onClick=${function () { props.onPageChange(props.page + 1); }}
-        >Next<//>
-      </nav>`;
-  }
-
-  function Badge(props) {
-    return html`<span
-      className=${"dirty-ui-badge" + (props.className ? " " + props.className : "")}
-      title=${props.title}
-    >${props.children}</span>`;
-  }
-
-  function Metric(props) {
-    return html`
-      <div className=${"dirty-ui-metric" + (props.className ? " " + props.className : "")}>
-        <span className="dirty-ui-metric-label">${props.label}</span>
-        <strong className="dirty-ui-metric-value">${props.value}</strong>
-        ${props.detail && html`<span className="dirty-ui-metric-detail">${props.detail}</span>`}
-      </div>`;
-  }
-
-  function NavAction(props) {
-    var LinkComponent = props.as || Link;
-    return html`<${LinkComponent}
-      to=${hubApi.captureUrl ? hubApi.captureUrl(props.to) : props.to}
-      exact=${props.exact}
-      title=${props.label}
-      aria-label=${props.label}
-      className=${"nav-utility dirty-ui-nav-action" + (props.className ? " " + props.className : "")}
-      onClick=${props.onClick}
-    >${props.icon}<//>`;
-  }
-
-  function StatisticSelector(props) {
-    var bootstrap = PluginApi.libraries.Bootstrap;
-    var Dropdown = bootstrap.Dropdown;
-    var options = props.options || [];
-    var selected = options.find(function (option) { return option.value === props.value; });
-    function select(value) {
-      if (value && value !== props.value && props.onSelect) props.onSelect(value);
-    }
-    return html`
-      <${Dropdown}
-        as=${bootstrap.ButtonGroup}
-        className=${"sort-by-select dirty-ui-statistic-selector" + (props.className ? " " + props.className : "")}
-        onSelect=${select}
-      >
-        <${bootstrap.InputGroup.Prepend}>
-          <${Dropdown.Toggle} variant="secondary" id=${props.id} aria-label=${props.ariaLabel || "Statistic"}>
-            ${selected ? selected.label : props.value}
-          <//>
-        <//>
-        <${Dropdown.Menu} className="bg-secondary text-white">
-          ${options.map(function (option) {
-            return html`<${Dropdown.Item}
-              key=${option.value}
-              className="bg-secondary text-white"
-              eventKey=${option.value}
-              active=${props.value === option.value}
-            >${option.label}<//>`;
-          })}
-        <//>
-      <//>`;
-  }
-
-  // Overflow menu for secondary row actions. Items are {label, onSelect,
-  // disabled, tone}, links {label, href, download}, or group {header}s;
-  // falsy entries are skipped so callers can inline guards.
-  function ActionMenu(props) {
-    var bootstrap = PluginApi.libraries.Bootstrap;
-    var Dropdown = bootstrap.Dropdown;
-    var solidIcons = PluginApi.libraries.FontAwesomeSolid || {};
-    var items = (props.items || []).filter(Boolean);
-    function select(key) {
-      var item = items[Number(key)];
-      if (item && !item.disabled && item.onSelect) item.onSelect();
-    }
-    return html`
-      <${Dropdown}
-        className=${"dirty-ui-action-menu" + (props.label ? " dirty-ui-action-menu-labelled" : "") + (props.className ? " " + props.className : "")}
-        onSelect=${select}
-      >
-        <${Dropdown.Toggle}
-          variant="secondary"
-          id=${props.id}
-          className="dirty-ui-action-menu-toggle"
-          aria-label=${props.ariaLabel || "More actions"}
-          title=${props.ariaLabel || "More actions"}
-        >${props.label || html`<${Glyph} icon=${solidIcons.faEllipsisV || solidIcons.faEllipsisVertical} fallback="⋮" />`}<//>
-        <${Dropdown.Menu} alignRight=${true}>
-          ${items.map(function (item, index) {
-            if (item.header) return html`<${Dropdown.Header} key=${"header-" + index}>${item.header}<//>`;
-            return html`<${Dropdown.Item}
-              key=${item.key || index}
-              eventKey=${String(index)}
-              disabled=${Boolean(item.disabled)}
-              href=${item.href}
-              download=${item.download ? "" : undefined}
-              target=${item.href ? "_blank" : undefined}
-              rel=${item.href ? "noreferrer" : undefined}
-              className=${item.tone === "danger" ? "dirty-ui-action-menu-danger" : undefined}
-            >${item.label}<//>`;
-          })}
-        <//>
-      <//>`;
-  }
-
-  function loggedGraphql(query, variables, options) {
-    var operationName = debugGraphqlOperationName(query);
-    var started = debugNow();
-    debugLogThrottled("graphql", "request " + operationName, {
-      path: (window.location && window.location.pathname) || "",
-      variables: debugDescribe(variables),
-    }, 250);
-    return graphql(query, variables, options).then(function (data) {
-      debugLogThrottled("graphql", "response " + operationName, {
-        elapsedMs: Math.round(debugNow() - started),
-      }, 250);
-      return data;
-    }, function (error) {
-      debugLog("graphql", "FAILED " + operationName, {
-        elapsedMs: Math.round(debugNow() - started),
-        error: String((error && error.message) || error),
-      });
-      throw error;
-    });
-  }
+  var notify = reactModule.notify;
+  var trapDialogTab = reactModule.trapDialogTab;
+  var lockBodyScroll = reactModule.lockBodyScroll;
+  var manageDialog = reactModule.manageDialog;
+  var ActionMenu = reactModule.ActionMenu;
+  var Badge = reactModule.Badge;
+  var Button = reactModule.Button;
+  var Dialog = reactModule.Dialog;
+  var Field = reactModule.Field;
+  var Glyph = reactModule.Glyph;
+  var IconButton = reactModule.IconButton;
+  var Metric = reactModule.Metric;
+  var NavAction = reactModule.NavAction;
+  var Pagination = reactModule.Pagination;
+  var SaveStatus = reactModule.SaveStatus;
+  var SettingsCard = reactModule.SettingsCard;
+  var SettingsSection = reactModule.SettingsSection;
+  var SettingsToggle = reactModule.SettingsToggle;
+  var StateView = reactModule.StateView;
+  var StatisticSelector = reactModule.StatisticSelector;
+  var usePageTitle = reactModule.usePageTitle;
 
   hubApi.graphql = loggedGraphql;
   hubApi.runPluginOperation = runPluginOperation;
   hubApi.getPluginSettings = getPluginSettings;
   hubApi.configurePlugin = configurePlugin;
+  hubApi.createSaveController = window.__dirtyPluginsSave.createSaveController;
+  hubApi.completedJob = window.__dirtyPluginsJobs.completedJob;
+  hubApi.createReplayTracker = window.__dirtyPluginsJobs.createReplayTracker;
   hubApi.runSharedOperation = runSharedOperation;
   hubApi.isInternalScan = function (jobId, startTime) {
     return runSharedOperation({ mode: "isInternalScan", jobId: String(jobId), startTime: startTime })
@@ -956,56 +187,15 @@
     parseMaybeJson: parseMaybeJson,
   };
   hubApi.ui = { notify: notify, trapDialogTab: trapDialogTab, lockBodyScroll: lockBodyScroll, manageDialog: manageDialog };
-  hubApi.theme = hubApi.theme || {};
-  hubApi.theme.defaultKey = DEFAULT_VISUAL_THEME;
-  var visualThemeKeys = ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"];
-  var visualThemeListeners = [];
-  var visualThemeKey = DEFAULT_VISUAL_THEME;
-  function normalizedVisualTheme(value) {
-    return visualThemeKeys.indexOf(value) >= 0 ? value : DEFAULT_VISUAL_THEME;
-  }
-  function applyVisualTheme(value) {
-    var key = normalizedVisualTheme(value);
-    if (document.documentElement && document.documentElement.classList) {
-      visualThemeKeys.forEach(function (candidate) {
-        document.documentElement.classList.remove("dirty-ui-theme-" + candidate);
-      });
-      document.documentElement.classList.add("dirty-ui-theme-" + key);
-    }
-    if (visualThemeKey === key) return key;
-    visualThemeKey = key;
-    hubApi.theme.currentKey = key;
-    visualThemeListeners.slice().forEach(function (listener) { listener(key); });
-    return key;
-  }
-  hubApi.theme.currentKey = visualThemeKey;
-  hubApi.theme.normalizeKey = normalizedVisualTheme;
-  hubApi.theme.subscribe = function (listener) {
-    visualThemeListeners.push(listener);
-    return function () {
-      var index = visualThemeListeners.indexOf(listener);
-      if (index >= 0) visualThemeListeners.splice(index, 1);
-    };
-  };
-  hubApi.theme.load = function () {
-    return Promise.all([getPluginSettings("dirtyPlugins"), getPluginSettings("dirtyStats")]).then(function (settings) {
-      var suite = asObject(settings[0]);
-      var legacy = asObject(settings[1]);
-      return applyVisualTheme(suite.visualTheme || legacy.visualTheme);
-    }).catch(function (error) {
-      console.warn("DirtyPlugins could not load the suite theme", error);
-      return applyVisualTheme(DEFAULT_VISUAL_THEME);
-    });
-  };
-  if (typeof fetch === "function" && document.documentElement) {
-    hubApi.theme.ready = hubApi.theme.load();
-  } else {
-    hubApi.theme.ready = Promise.resolve(visualThemeKey);
-  }
-  hubApi.theme.readRole = function (root, propertyName) {
-    if (!root || !propertyName || typeof window.getComputedStyle !== "function") return "";
-    return window.getComputedStyle(root).getPropertyValue(propertyName).trim();
-  };
+  var themeModule = window.__dirtyPluginsTheme.createTheme({
+    hubApi: hubApi,
+    DEFAULT_VISUAL_THEME: DEFAULT_VISUAL_THEME,
+    getPluginSettings: getPluginSettings,
+    asObject: asObject
+  });
+  var applyVisualTheme = themeModule.applyVisualTheme;
+  var normalizedVisualTheme = themeModule.normalizedVisualTheme;
+
   hubApi.react = {
     html: html,
     ActionMenu: ActionMenu,
@@ -1026,94 +216,17 @@
     StatisticSelector: StatisticSelector,
     usePageTitle: usePageTitle,
   };
-  var nativeComponentLoads = {};
-  var nativeBundleLoads = {};
-  var filterModule = window.__dirtyPluginsSceneFilter;
-  if (!filterModule) return;
-  var filters = filterModule.createSceneFilter({ hubApi: hubApi, PluginApi: PluginApi, Dialog: Dialog, StateView: StateView, Button: Button, html: html, useEffect: useEffect, useState: useState, useRef: useRef });
-  var serializeSceneFilter = filters.serialize, SharedSceneFilterCapture = filters.Capture, SceneFilterEditor = filters.Editor;
-  hubApi.react.SceneFilterEditor = SceneFilterEditor;
-  hubApi.serializeSceneFilter = serializeSceneFilter;
-  PluginApi.patch.instead("SceneList", function () {
-    var args = Array.prototype.slice.call(arguments), next = args.pop(), props = args[0];
-    var owner = props && props.extraCriteria && props.extraCriteria.dirtySharedFilter;
-    // Stash 0.31's scene list does not forward extraCriteria to SceneList.
-    // The editor is the only native scene list on suite plugin routes.
-    if (!owner && filters.activeOwner() && window.location.pathname.indexOf("/plugins/") === 0) owner = filters.activeOwner();
-    if (!owner || !props.filter) return next.apply(null, args);
-    return html`<${SharedSceneFilterCapture} owner=${owner} filter=${props.filter} />`;
+  var nativeModule = window.__dirtyPluginsNative.createNative({
+    hubApi: hubApi,
+    PluginApi: PluginApi,
+    Dialog: Dialog,
+    StateView: StateView,
+    Button: Button,
+    html: html,
+    useEffect: useEffect,
+    useState: useState,
+    useRef: useRef
   });
-  hubApi.native = {
-    loadComponent: function (name) {
-      if (PluginApi.components && PluginApi.components[name]) {
-        return Promise.resolve(PluginApi.components[name]);
-      }
-      if (!PluginApi.utils || !PluginApi.utils.loadComponents ||
-          !PluginApi.loadableComponents || !PluginApi.loadableComponents[name]) {
-        return Promise.reject(new Error("Stash does not expose " + name + "."));
-      }
-      if (!nativeComponentLoads[name]) {
-        nativeComponentLoads[name] = Promise.resolve().then(function () {
-          return PluginApi.utils.loadComponents([PluginApi.loadableComponents[name]]);
-        }).then(function () {
-          if (!PluginApi.components || !PluginApi.components[name]) {
-            throw new Error("Stash did not register " + name + ".");
-          }
-          return PluginApi.components[name];
-        }).catch(function (error) {
-          delete nativeComponentLoads[name];
-          throw error;
-        });
-      }
-      return nativeComponentLoads[name];
-    },
-    ensureComponents: function (loadableName, requiredNames) {
-      var names = requiredNames || [loadableName];
-      function available() { return names.every(function (name) { return PluginApi.components && PluginApi.components[name]; }); }
-      if (available()) return Promise.resolve(names.map(function (name) { return PluginApi.components[name]; }));
-      if (!PluginApi.utils || !PluginApi.utils.loadComponents || !PluginApi.loadableComponents || !PluginApi.loadableComponents[loadableName]) {
-        return Promise.reject(new Error("Stash does not expose " + loadableName + "."));
-      }
-      if (!nativeBundleLoads[loadableName]) {
-        nativeBundleLoads[loadableName] = Promise.resolve().then(function () {
-          return PluginApi.utils.loadComponents([PluginApi.loadableComponents[loadableName]]);
-        }).catch(function (error) {
-          delete nativeBundleLoads[loadableName];
-          throw error;
-        });
-      }
-      return nativeBundleLoads[loadableName].then(function () {
-        if (!available()) throw new Error("Stash did not register " + names.join(", ") + ".");
-        return names.map(function (name) { return PluginApi.components[name]; });
-      });
-    },
-  };
-  var captureInThisPage = false;
-  hubApi.captureEnabled = function (search) {
-    try {
-      var currentSearch = window.location && window.location.search || "";
-      var query = new URLSearchParams(search == null ? currentSearch : search);
-      var currentLocation = search == null || search === currentSearch;
-      if (query.get("docsCapture") === "0" || query.get("censorMedia") === "0") {
-        if (currentLocation) captureInThisPage = false;
-        return false;
-      }
-      if (query.get("docsCapture") === "1" || query.get("censorMedia") === "1") {
-        if (currentLocation) captureInThisPage = true;
-        return true;
-      }
-      return currentLocation && captureInThisPage;
-    } catch (_error) {
-      return false;
-    }
-  };
-  hubApi.captureUrl = function (to, search) {
-    if (typeof to !== "string" || !hubApi.captureEnabled(search == null ? undefined : search)) return to;
-    if (/[?&](docsCapture|censorMedia)=1(?:&|#|$)/.test(to)) return to;
-    if (/[?&]docsCapture=/.test(to)) return to.replace(/([?&]docsCapture=)[^&#]*/, function (_match, prefix) { return prefix + "1"; });
-    var hash = to.indexOf("#"), beforeHash = hash < 0 ? to : to.slice(0, hash), afterHash = hash < 0 ? "" : to.slice(hash);
-    return beforeHash + (beforeHash.indexOf("?") < 0 ? "?" : "&") + "docsCapture=1" + afterHash;
-  };
 
   function loadSettingsSnapshot() {
     return Promise.all([graphql(
@@ -1434,9 +547,9 @@
     var setActionRevision = actionRevisionState[1];
     var settingsPanelRevisionState = useState(0);
     var setSettingsPanelRevision = settingsPanelRevisionState[1];
-    var autoSaveTimersRef = useRef({});
-    var saveChainsRef = useRef({});
-    var saveRevisionsRef = useRef({});
+    var saveControllersRef = useRef({});
+    var snapshotRef = useRef(snapshot);
+    snapshotRef.current = snapshot;
     var activePluginState = useState(requestedPluginId);
     var activePluginId = activePluginState[0];
     var setActivePluginId = activePluginState[1];
@@ -1541,99 +654,57 @@
 
     useEffect(function () {
       return function () {
-        Object.keys(autoSaveTimersRef.current).forEach(function (pluginId) {
-          window.clearTimeout(autoSaveTimersRef.current[pluginId]);
-        });
+        Object.keys(saveControllersRef.current).forEach(function (id) { saveControllersRef.current[id].dispose(); });
       };
     }, []);
+
+    function pluginInput(plugin, draft, snapshotValue) {
+      var input = Object.assign({}, asObject(snapshotValue.configuration[plugin.id]));
+      (plugin.settings || []).forEach(function (setting) { input[setting.name] = serializeFieldValue(setting, draft[setting.name]); });
+      return input;
+    }
+
+    function saveController(plugin) {
+      if (!saveControllersRef.current[plugin.id]) saveControllersRef.current[plugin.id] = hubApi.createSaveController({
+        delay: 350,
+        validate: function (draft) {
+          try { pluginInput(plugin, draft, snapshotRef.current); return ""; }
+          catch (error) { return error.message; }
+        },
+        save: function (draft) {
+          var current = snapshotRef.current;
+          var input = pluginInput(plugin, draft, current);
+          var expected = current.pluginRevisions && current.pluginRevisions[plugin.id];
+          return configurePlugin(plugin.id, input, expected).then(function (result) { return { input: input, revision: result.revision }; });
+        },
+        onSaved: function (draft, result, current) {
+          var nextSnapshot = Object.assign({}, snapshotRef.current, {
+            configuration: Object.assign({}, snapshotRef.current.configuration),
+            pluginRevisions: Object.assign({}, snapshotRef.current.pluginRevisions),
+          });
+          nextSnapshot.configuration[plugin.id] = result.input;
+          nextSnapshot.pluginRevisions[plugin.id] = result.revision;
+          snapshotRef.current = nextSnapshot;
+          setSnapshot(nextSnapshot);
+          setSavedDrafts(function (saved) { var next = Object.assign({}, saved); next[plugin.id] = Object.assign({}, draft); return next; });
+          if (current) hubApi.notifyConfigurationChanged(plugin.id, { preserveSettingsPage: true });
+        },
+        onStatus: function (status) {
+          var message = status.state === "pending" ? "Waiting to save automatically…"
+            : status.state === "saving" ? "Saving automatically…"
+            : status.state === "saved" ? "Saved automatically." : status.message;
+          setStatuses(function (current) { var next = Object.assign({}, current); next[plugin.id] = { error: status.state === "error" || status.state === "invalid", message: message }; return next; });
+        },
+      });
+      return saveControllersRef.current[plugin.id];
+    }
 
     function updateField(pluginId, settingName, value) {
       var plugin = snapshot && snapshot.plugins.find(function (item) { return item.id === pluginId; });
       var nextPluginDraft = Object.assign({}, drafts[pluginId] || {});
       nextPluginDraft[settingName] = value;
-      setDrafts(function (current) {
-        var next = Object.assign({}, current);
-        next[pluginId] = nextPluginDraft;
-        return next;
-      });
-      setStatuses(function (current) {
-        var next = Object.assign({}, current);
-        delete next[pluginId];
-        return next;
-      });
-      if (!plugin) return;
-      var revision = (saveRevisionsRef.current[pluginId] || 0) + 1;
-      saveRevisionsRef.current[pluginId] = revision;
-      window.clearTimeout(autoSaveTimersRef.current[pluginId]);
-      autoSaveTimersRef.current[pluginId] = window.setTimeout(function () {
-        savePlugin(plugin, nextPluginDraft, revision);
-      }, 350);
-    }
-
-    function savePlugin(plugin, pluginDraft, revision) {
-      var rawSettings = asObject(snapshot.configuration[plugin.id]);
-      var input = Object.assign({}, rawSettings);
-      try {
-        (plugin.settings || []).forEach(function (setting) {
-          input[setting.name] = serializeFieldValue(
-            setting,
-            pluginDraft && pluginDraft[setting.name]
-          );
-        });
-      } catch (validationError) {
-        setStatuses(function (current) {
-          var next = Object.assign({}, current);
-          next[plugin.id] = { error: true, message: validationError.message };
-          return next;
-        });
-        return;
-      }
-      setStatuses(function (current) {
-        var next = Object.assign({}, current);
-        next[plugin.id] = { error: false, message: "Saving automatically…" };
-        return next;
-      });
-
-      var previousSave = saveChainsRef.current[plugin.id] || Promise.resolve();
-      var currentSave = previousSave.catch(function () {}).then(function () {
-        // Use the revision of the snapshot this input was merged from so a
-        // concurrent writer is never silently overwritten.
-        var expectedRevision = snapshot.pluginRevisions
-          ? snapshot.pluginRevisions[plugin.id]
-          : undefined;
-        return configurePlugin(plugin.id, input, expectedRevision);
-      });
-      saveChainsRef.current[plugin.id] = currentSave;
-      currentSave
-        .then(function () {
-          snapshot.configuration[plugin.id] = input;
-          if (snapshot.pluginRevisions) {
-            snapshot.pluginRevisions[plugin.id] = cachedPluginRevision(plugin.id);
-          }
-          if (saveRevisionsRef.current[plugin.id] !== revision) return;
-          setSavedDrafts(function (current) {
-            var next = Object.assign({}, current);
-            next[plugin.id] = Object.assign({}, pluginDraft || {});
-            return next;
-          });
-          setStatuses(function (current) {
-            var next = Object.assign({}, current);
-            next[plugin.id] = { error: false, message: "Saved automatically." };
-            return next;
-          });
-          hubApi.notifyConfigurationChanged(plugin.id, { preserveSettingsPage: true });
-        })
-        .catch(function (saveError) {
-          if (saveRevisionsRef.current[plugin.id] !== revision) return;
-          setStatuses(function (current) {
-            var next = Object.assign({}, current);
-            next[plugin.id] = {
-              error: true,
-              message: saveError.message || String(saveError),
-            };
-            return next;
-          });
-        });
+      setDrafts(function (current) { var next = Object.assign({}, current); next[pluginId] = nextPluginDraft; return next; });
+      if (plugin) saveController(plugin).schedule(nextPluginDraft);
     }
 
     function selectPlugin(pluginId) {

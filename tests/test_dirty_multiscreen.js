@@ -8,7 +8,7 @@ const { sourceFor } = require("./load_plugin_scripts");
 
 const noop = () => {};
 const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
-const element = (type, props, ...children) => ({ type, props: props || {}, children });
+const { element } = require("./ui_harness");
 const routes = [];
 const patches = [];
 const storedValues = new Map();
@@ -91,6 +91,7 @@ class FakeMutationObserver {
   }
 }
 
+require("./shared_runtime").installMetadata(window);
 const context = vm.createContext({ window, console, MutationObserver: FakeMutationObserver });
 const source = sourceFor("DirtyMultiscreen");
 vm.runInContext(source, context);

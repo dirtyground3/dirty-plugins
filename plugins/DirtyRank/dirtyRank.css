@@ -647,7 +647,8 @@
   position: relative;
 }
 
-.dirty-rank-image {
+.dirty-rank-image,
+.dirty-rank-gallery-image {
   height: 100%;
   object-fit: cover;
   object-position: center top;
@@ -1731,16 +1732,6 @@
 .dirty-rank-gallery-image-link:hover,
 .dirty-rank-gallery-image-link:focus-visible {
   text-decoration: none;
-}
-
-.dirty-rank-gallery-image {
-  height: 100%;
-  object-fit: cover;
-  object-position: center top;
-  opacity: 0;
-  transform: scale(1.015);
-  transition: opacity 180ms ease, transform 250ms cubic-bezier(0.22, 1, 0.36, 1);
-  width: 100%;
 }
 
 .dirty-rank-gallery-image-ready {

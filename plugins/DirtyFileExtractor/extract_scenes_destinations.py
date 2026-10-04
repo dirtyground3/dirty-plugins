@@ -52,25 +52,18 @@ def resolve_destination(
     except OSError:
         pass
 
-    occupied = requested.exists() or destination_key(requested) in (planned or set())
-    if not occupied:
-        return requested, "copy"
-    if policy == "skip":
-        return requested, "skip"
-    if policy == "overwrite":
-        return requested, "overwrite"
-    return renamed_destination(requested, planned), "rename"
+    return _collision_destination(requested, policy, planned, "copy")
 
 
-def resolve_generated_destination(
-    requested: Path,
-    policy: str,
-    planned: set[str] | None = None,
-) -> tuple[Path, str]:
-    """Resolve a collision for generated media without a local source path."""
+def resolve_generated_destination(requested: Path, policy: str, planned: set[str] | None = None) -> tuple[Path, str]:
+    """Resolve generated media without a same-file check."""
+    return _collision_destination(requested, policy, planned, "extract")
+
+
+def _collision_destination(requested: Path, policy: str, planned, available_action: str) -> tuple[Path, str]:
     occupied = requested.exists() or destination_key(requested) in (planned or set())
     if not occupied:
-        return requested, "extract"
+        return requested, available_action
     if policy == "skip":
         return requested, "skip"
     if policy == "overwrite":

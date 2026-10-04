@@ -29,6 +29,8 @@ from extract_scenes_destinations import (
 
 
 
+from extract_scenes_plan import ExtractionOptions, ExtractionPlan, PlannedOperation, ExtractionProgress
+
 PLUGIN_ID = "extractScenes"
 VALID_COLLISION_POLICIES = {"rename", "skip", "overwrite"}
 COPY_CHUNK_SIZE = 4 * 1024 * 1024
@@ -48,81 +50,23 @@ def _load_shared_storage():
 
 
 shared_storage = _load_shared_storage()
+from dirty_plugins_client import StashClient as BaseClient
+from dirty_plugins_protocol import Reporter, StashReporter
+import dirty_plugins_protocol as protocol
 
 
 class PluginError(RuntimeError):
     """An error that should be reported cleanly to Stash."""
 
 
-class Reporter:
-    """No-op reporter used by library callers and unit tests."""
-
-    def info(self, _message: str) -> None:
-        pass
-
-    def error(self, _message: str) -> None:
-        pass
-
-    def progress(self, _value: float) -> None:
-        pass
 
 
-class StashReporter(Reporter):
-    """Write Stash's encoded log and task-progress protocol to stderr."""
-
-    @staticmethod
-    def _write(level: str, message: Any) -> None:
-        for line in str(message).splitlines() or [""]:
-            print(f"\x01{level}\x02{line}", file=sys.stderr, flush=True)
-
-    def info(self, message: str) -> None:
-        self._write("i", message)
-
-    def error(self, message: str) -> None:
-        self._write("e", message)
-
-    def progress(self, value: float) -> None:
-        self._write("p", str(min(max(float(value), 0.0), 1.0)))
 
 
-class StashClient:
-    def __init__(self, server_connection: dict[str, Any]):
-        scheme = server_connection.get("Scheme") or "http"
-        host = server_connection.get("Host") or "127.0.0.1"
-        if host in {"", "0.0.0.0", "::", None}:
-            host = "127.0.0.1"
-        port = int(server_connection.get("Port") or 9999)
+class StashClient(BaseClient):
+    def __init__(self, server_connection):
+        super().__init__(server_connection, timeout=60, error_type=PluginError)
 
-        if ":" in host and not host.startswith("["):
-            host = f"[{host}]"
-        self.url = f"{scheme}://{host}:{port}/graphql"
-        self.headers = {"Content-Type": "application/json"}
-
-        cookie = server_connection.get("SessionCookie") or {}
-        if cookie.get("Name") and cookie.get("Value"):
-            self.headers["Cookie"] = f'{cookie["Name"]}={cookie["Value"]}'
-
-        api_key = server_connection.get("ApiKey")
-        if api_key:
-            self.headers["ApiKey"] = str(api_key)
-
-    def call(self, query: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
-        body = json.dumps(
-            {"query": query, "variables": variables or {}},
-            ensure_ascii=False,
-        ).encode("utf-8")
-        request = urllib.request.Request(self.url, data=body, headers=self.headers)
-        try:
-            with urllib.request.urlopen(request, timeout=60) as response:
-                result = json.load(response)
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            raise PluginError(f"Could not contact Stash GraphQL: {exc}") from exc
-
-        errors = result.get("errors") or []
-        if errors:
-            messages = "; ".join(str(error.get("message", error)) for error in errors)
-            raise PluginError(f"Stash GraphQL returned an error: {messages}")
-        return result.get("data") or {}
 
     def scene(self, scene_id: str) -> dict[str, Any] | None:
         query = """
@@ -214,25 +158,16 @@ class StashClient:
         )
 
 
-def read_payload(stream: Any = sys.stdin) -> dict[str, Any]:
-    raw = stream.read()
-    if not raw.strip():
-        raise PluginError("Stash did not provide plugin input")
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise PluginError(f"Invalid plugin input: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise PluginError("Plugin input must be a JSON object")
-    return payload
+def read_payload(stream=None):
+    return protocol.read_payload(stream, error_type=PluginError)
 
 
-def emit_output(output: Any, stream: Any = sys.stdout) -> None:
-    json.dump({"output": output}, stream, ensure_ascii=False)
+def emit_output(output, stream=None):
+    protocol.emit_output(output, stream, ensure_ascii=False)
 
 
-def emit_error(error: Any, stream: Any = sys.stdout) -> None:
-    json.dump({"error": str(error)}, stream, ensure_ascii=False)
+def emit_error(error, stream=None):
+    protocol.emit_error(error, stream, ensure_ascii=False)
 
 
 def as_bool(value: Any, default: bool = False) -> bool:
@@ -519,15 +454,7 @@ def resolve_selected_items(
     return items, missing
 
 
-def _copy_resolved_items(
-    items: Iterable[dict[str, Any]],
-    requested_counts: dict[str, int],
-    settings: dict[str, Any],
-    reporter: Reporter | None = None,
-    initial_missing: Iterable[dict[str, str]] = (),
-    marker_clip_extractor: Any | None = None,
-) -> dict[str, Any]:
-    reporter = reporter or Reporter()
+def _normalize_extraction_settings(settings: dict[str, Any]) -> ExtractionOptions:
     destination_value = str(settings.get("destinationFolder") or "").strip()
     if not destination_value:
         raise PluginError(
@@ -550,158 +477,161 @@ def _copy_resolved_items(
     max_copy_speed_mib = as_nonnegative_float(
         settings.get("maxCopySpeedMBps"), 20.0
     )
-    max_copy_speed_bytes = max_copy_speed_mib * 1024 * 1024
-    if not dry_run:
-        destination_root.mkdir(parents=True, exist_ok=True)
+    return ExtractionOptions(destination_root, policy, create_item_folders, dry_run, max_copy_speed_mib)
 
-    copied: list[dict[str, str]] = []
+
+def _plan_extraction_items(items, options: ExtractionOptions, initial_missing=()) -> ExtractionPlan:
+    destination_root = options.destination_root
+    create_item_folders = options.create_item_folders
+    dry_run = options.dry_run
+    policy = options.policy
+    pending: list[PlannedOperation] = []
     skipped: list[dict[str, str]] = []
     missing: list[dict[str, str]] = list(initial_missing)
-    failed: list[dict[str, str]] = []
-    pending: list[dict[str, Any]] = []
     seen_sources: set[str] = set()
     planned_destinations: set[str] = set()
+    folders = [destination_root]
     resolved_items = list(items)
-    total_requested = sum(requested_counts.values())
-
-    reporter.info(
-        f"Preparing {total_requested} selected item"
-        f"{'s' if total_requested != 1 else ''}"
-    )
-    reporter.progress(0.0)
-
+    plan = ExtractionPlan(pending, skipped, missing, planned_destinations, folders)
     for item in resolved_items:
-        kind = str(item.get("kind") or "item")
-        item_id = str(item.get("id") or "")
-        item_destination = destination_root
-        if create_item_folders:
-            folder_name = sanitize_folder_name(
-                item.get("title"),
-                str(item.get("folder_id") or item_id),
-                str(item.get("folder_kind") or kind),
-            )
-            item_destination = destination_root / folder_name
-            if not dry_run:
-                item_destination.mkdir(parents=True, exist_ok=True)
+        _plan_extraction_item(item, options, plan, seen_sources)
+    return plan
 
-        files = item.get("files") or []
-        if not files:
-            missing.append(
-                {f"{kind}_id": item_id, "reason": f"{kind} has no files"}
-            )
-            continue
 
-        if kind == "marker":
-            try:
-                start_seconds = float(item.get("seconds"))
-                end_seconds = float(item.get("end_seconds"))
-            except (TypeError, ValueError):
-                missing.append(
-                    {"marker_id": item_id, "reason": "marker has no valid end time"}
-                )
-                continue
-            if start_seconds < 0 or end_seconds <= start_seconds:
-                missing.append(
-                    {"marker_id": item_id, "reason": "marker interval is invalid"}
-                )
-                continue
-            source_info = files[0]
-            source = Path(str(source_info.get("path") or ""))
-            if not source.is_file():
-                missing.append(
-                    {
-                        "marker_id": item_id,
-                        "source": str(source),
-                        "reason": "source file not found",
-                    }
-                )
-                continue
-            basename = marker_clip_basename(
-                str(source_info.get("basename") or source.name),
-                item.get("marker_title"),
-                item_id,
-            )
-            requested_destination = item_destination / basename
-            final_destination, action = resolve_generated_destination(
-                requested_destination, policy, planned_destinations
-            )
-            if action == "skip":
-                skipped.append(
-                    {
-                        "marker_id": item_id,
-                        "source": str(source),
-                        "reason": action,
-                    }
-                )
-                continue
-            planned_destinations.add(destination_key(final_destination))
-            pending.append(
-                {
-                    "kind": "marker",
-                    "marker_id": item_id,
-                    "source_path": source,
-                    "seconds": start_seconds,
-                    "end_seconds": end_seconds,
-                    "destination_path": final_destination,
-                    "action": "dry-run" if dry_run else action,
-                    "size": 0,
-                }
-            )
-            continue
-
-        for file_info in files:
-            source = Path(str(file_info.get("path") or ""))
-            source_key = os.path.normcase(os.path.abspath(str(source)))
-            if source_key in seen_sources:
-                skipped.append({"source": str(source), "reason": "duplicate selection"})
-                continue
-            seen_sources.add(source_key)
-
-            if not source.is_file():
-                missing.append({"source": str(source), "reason": "source file not found"})
-                continue
-
-            basename = str(file_info.get("basename") or source.name)
-            requested_destination = item_destination / basename
-            final_destination, action = resolve_destination(
-                source, requested_destination, policy, planned_destinations
-            )
-
-            if action in {"skip", "same-file"}:
-                skipped.append({"source": str(source), "reason": action})
-                continue
-
-            planned_destinations.add(destination_key(final_destination))
-            pending.append(
-                {
-                    "kind": kind,
-                    "source_path": source,
-                    "destination_path": final_destination,
-                    "action": "dry-run" if dry_run else action,
-                    "size": source.stat().st_size,
-                }
-            )
-
-    total_bytes = sum(int(item["size"]) for item in pending)
-    marker_clip_count = sum(1 for item in pending if item["kind"] == "marker")
-    size_description = format_bytes(total_bytes)
-    if marker_clip_count:
-        size_description += (
-            f" plus {marker_clip_count} marker clip"
-            f"{'s' if marker_clip_count != 1 else ''}"
+def _plan_extraction_item(item, options: ExtractionOptions, plan: ExtractionPlan, seen_sources: set[str]) -> None:
+    destination_root = options.destination_root
+    create_item_folders = options.create_item_folders
+    dry_run = options.dry_run
+    policy = options.policy
+    pending, skipped, missing = plan.operations, plan.skipped, plan.missing
+    planned_destinations, folders = plan.destinations, plan.folders
+    kind = str(item.get("kind") or "item")
+    item_id = str(item.get("id") or "")
+    item_destination = destination_root
+    if create_item_folders:
+        folder_name = sanitize_folder_name(
+            item.get("title"),
+            str(item.get("folder_id") or item_id),
+            str(item.get("folder_kind") or kind),
         )
-    reporter.info(
-        f"Resolved {len(pending)} file{'s' if len(pending) != 1 else ''} "
-        f"({size_description}) for destination {destination_root}"
-    )
-    if max_copy_speed_mib > 0:
-        reporter.info(f"Copy speed limited to {max_copy_speed_mib:g} MiB/s")
-    else:
-        reporter.info("Copy speed is unlimited")
+        item_destination = destination_root / folder_name
+        folders.append(item_destination)
 
-    completed_bytes = 0
-    last_progress_time = 0.0
-    use_byte_progress = marker_clip_count == 0
+    files = item.get("files") or []
+    if not files:
+        missing.append(
+            {f"{kind}_id": item_id, "reason": f"{kind} has no files"}
+        )
+        return
+
+    if kind == "marker":
+        try:
+            start_seconds = float(item.get("seconds"))
+            end_seconds = float(item.get("end_seconds"))
+        except (TypeError, ValueError):
+            missing.append(
+                {"marker_id": item_id, "reason": "marker has no valid end time"}
+            )
+            return
+        if start_seconds < 0 or end_seconds <= start_seconds:
+            missing.append(
+                {"marker_id": item_id, "reason": "marker interval is invalid"}
+            )
+            return
+        source_info = files[0]
+        source = Path(str(source_info.get("path") or ""))
+        if not source.is_file():
+            missing.append(
+                {
+                    "marker_id": item_id,
+                    "source": str(source),
+                    "reason": "source file not found",
+                }
+            )
+            return
+        basename = marker_clip_basename(
+            str(source_info.get("basename") or source.name),
+            item.get("marker_title"),
+            item_id,
+        )
+        requested_destination = item_destination / basename
+        final_destination, action = resolve_generated_destination(
+            requested_destination, policy, planned_destinations
+        )
+        if action == "skip":
+            skipped.append(
+                {
+                    "marker_id": item_id,
+                    "source": str(source),
+                    "reason": action,
+                }
+            )
+            return
+        planned_destinations.add(destination_key(final_destination))
+        pending.append(
+            {
+                "kind": "marker",
+                "marker_id": item_id,
+                "source_path": source,
+                "seconds": start_seconds,
+                "end_seconds": end_seconds,
+                "destination_path": final_destination,
+                "action": "dry-run" if dry_run else action,
+                "size": 0,
+            }
+        )
+        return
+
+    for file_info in files:
+        source = Path(str(file_info.get("path") or ""))
+        source_key = os.path.normcase(os.path.abspath(str(source)))
+        if source_key in seen_sources:
+            skipped.append({"source": str(source), "reason": "duplicate selection"})
+            continue
+        seen_sources.add(source_key)
+
+        if not source.is_file():
+            missing.append({"source": str(source), "reason": "source file not found"})
+            continue
+
+        basename = str(file_info.get("basename") or source.name)
+        requested_destination = item_destination / basename
+        final_destination, action = resolve_destination(
+            source, requested_destination, policy, planned_destinations
+        )
+
+        if action in {"skip", "same-file"}:
+            skipped.append({"source": str(source), "reason": action})
+            continue
+
+        planned_destinations.add(destination_key(final_destination))
+        pending.append(
+            {
+                "kind": kind,
+                "source_path": source,
+                "destination_path": final_destination,
+                "action": "dry-run" if dry_run else action,
+                "size": source.stat().st_size,
+            }
+        )
+
+
+
+
+
+def _execute_extraction_plan(plan: ExtractionPlan, options: ExtractionOptions, reporter, marker_clip_extractor):
+    pending = plan.operations
+    planned_destinations = plan.destinations
+    skipped = plan.skipped
+    policy = options.policy
+    dry_run = options.dry_run
+    max_copy_speed_bytes = options.max_copy_speed_bytes
+    copied: list[dict[str, str]] = []
+    failed: list[dict[str, str]] = []
+    if not dry_run:
+        for folder in plan.folders:
+            folder.mkdir(parents=True, exist_ok=True)
+    progress = ExtractionProgress(pending, reporter, PROGRESS_INTERVAL_SECONDS)
     for index, item in enumerate(pending, start=1):
         source = item["source_path"]
         final_destination = item["destination_path"]
@@ -750,27 +680,9 @@ def _copy_resolved_items(
             try:
                 if item["kind"] == "marker" and marker_clip_extractor is None:
                     raise PluginError("Marker clip extraction is unavailable")
-                file_copied = 0
-
-                def on_chunk(chunk_size: int) -> None:
-                    nonlocal file_copied, last_progress_time
-                    file_copied += chunk_size
-                    now = time.monotonic()
-                    if (
-                        use_byte_progress
-                        and now - last_progress_time >= PROGRESS_INTERVAL_SECONDS
-                    ):
-                        denominator = total_bytes or max(len(pending), 1)
-                        numerator = completed_bytes + file_copied
-                        reporter.progress(numerator / denominator)
-                        last_progress_time = now
-
+                on_chunk = progress.copy_callback()
                 if item["kind"] == "marker":
-                    def on_marker_progress(value: float) -> None:
-                        reporter.progress(
-                            ((index - 1) + min(max(float(value), 0.0), 1.0))
-                            / max(len(pending), 1)
-                        )
+                    on_marker_progress = progress.marker_callback(index)
 
                     marker_clip_extractor(
                         source,
@@ -809,11 +721,7 @@ def _copy_resolved_items(
                 )
                 continue
 
-        completed_bytes += file_size
-        if use_byte_progress and total_bytes:
-            reporter.progress(completed_bytes / total_bytes)
-        elif pending:
-            reporter.progress(index / len(pending))
+        progress.complete(index, file_size)
         reporter.info(f"[{index}/{len(pending)}] Finished {final_destination}")
         copied.append(
             {
@@ -824,15 +732,13 @@ def _copy_resolved_items(
             }
         )
 
-    reporter.progress(1.0)
-    reporter.info(
-        f"DirtyFileExtractor finished: {len(copied)} copied, {len(skipped)} skipped, "
-        f"{len(missing)} missing, {len(failed)} failed"
-    )
+    return copied, failed
 
+
+def _extraction_result(options, requested_counts, copied, skipped, missing, failed):
     return {
-        "destination": str(destination_root),
-        "dry_run": dry_run,
+        "destination": str(options.destination_root),
+        "dry_run": options.dry_run,
         "scenes_requested": requested_counts.get("scene", 0),
         "markers_requested": requested_counts.get("marker", 0),
         "images_requested": requested_counts.get("image", 0),
@@ -848,6 +754,50 @@ def _copy_resolved_items(
         "missing": missing,
         "failed": failed,
     }
+
+
+
+def _copy_resolved_items(
+    items: Iterable[dict[str, Any]],
+    requested_counts: dict[str, int],
+    settings: dict[str, Any],
+    reporter: Reporter | None = None,
+    initial_missing: Iterable[dict[str, str]] = (),
+    marker_clip_extractor: Any | None = None,
+) -> dict[str, Any]:
+    reporter = reporter or Reporter()
+    options = _normalize_extraction_settings(settings)
+    total_requested = sum(requested_counts.values())
+    reporter.info(f"Preparing {total_requested} selected item{'s' if total_requested != 1 else ''}")
+    reporter.progress(0.0)
+    plan = _plan_extraction_items(items, options, initial_missing)
+    pending = plan.operations
+    destination_root = options.destination_root
+    max_copy_speed_mib = options.max_copy_speed_mib
+    total_bytes = sum(int(item["size"]) for item in pending)
+    marker_clip_count = sum(1 for item in pending if item["kind"] == "marker")
+    size_description = format_bytes(total_bytes)
+    if marker_clip_count:
+        size_description += (
+            f" plus {marker_clip_count} marker clip"
+            f"{'s' if marker_clip_count != 1 else ''}"
+        )
+    reporter.info(
+        f"Resolved {len(pending)} file{'s' if len(pending) != 1 else ''} "
+        f"({size_description}) for destination {destination_root}"
+    )
+    if max_copy_speed_mib > 0:
+        reporter.info(f"Copy speed limited to {max_copy_speed_mib:g} MiB/s")
+    else:
+        reporter.info("Copy speed is unlimited")
+
+    copied, failed = _execute_extraction_plan(plan, options, reporter, marker_clip_extractor)
+    reporter.progress(1.0)
+    reporter.info(
+        f"DirtyFileExtractor finished: {len(copied)} copied, {len(plan.skipped)} skipped, "
+        f"{len(plan.missing)} missing, {len(failed)} failed"
+    )
+    return _extraction_result(options, requested_counts, copied, plan.skipped, plan.missing, failed)
 
 
 def copy_scenes(
@@ -910,6 +860,7 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
 
 
 def main() -> int:
+    protocol.configure_standard_streams()
     reporter = StashReporter()
     started = time.monotonic()
     try:

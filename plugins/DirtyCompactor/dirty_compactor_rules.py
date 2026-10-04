@@ -8,13 +8,22 @@ from pathlib import Path
 
 ENCODERS = {"h264": {"cpu": "libx264", "nvenc": "h264_nvenc", "qsv": "h264_qsv", "amf": "h264_amf"},
             "hevc": {"cpu": "libx265", "nvenc": "hevc_nvenc", "qsv": "hevc_qsv", "amf": "hevc_amf"}}
-# Video Mbps for a 1080p, 30 fps output. Other outputs scale by pixel count
-# (sub-linearly) and frame rate, so one preset suits a mixed library.
+# Typical video Mbps of each constant-quality preset for a 1080p, 30 fps
+# output. Presets encode by quality, not bitrate; these figures only estimate
+# savings and skip files that are already this small. Other outputs scale by
+# pixel count (sub-linearly) and frame rate.
 QUALITY_MBPS_1080P = {"h264": {"high": 8, "balanced": 5, "small": 3},
                       "hevc": {"high": 5, "balanced": 3, "small": 1.8}}
+# "visual" searches a constant-quality value per file for a VMAF target.
 # "source" keeps each file's video bitrate: a codec/container conversion that
 # is not required to shrink the file.
-QUALITIES = ("high", "balanced", "small", "custom", "source")
+QUALITIES = ("high", "balanced", "small", "visual", "custom", "source")
+VMAF_TARGETS = (90, 93, 95, 97)
+
+
+def visual_preset(vmaf):
+    """The constant-quality preset whose typical bitrate matches a VMAF target."""
+    return "high" if int(vmaf) >= 96 else "balanced" if int(vmaf) >= 94 else "small"
 
 
 class PluginError(RuntimeError):
@@ -23,6 +32,10 @@ class PluginError(RuntimeError):
 
 class Cancelled(PluginError):
     pass
+
+
+class Skipped(PluginError):
+    """A run decided not to change this file; the original is untouched."""
 
 
 def digest(value):
@@ -35,6 +48,42 @@ def file_hash(path):
         for block in iter(lambda: source.read(4 * 1024 * 1024), b""):
             result.update(block)
     return result.hexdigest()
+
+
+def quick_hash(path, chunk=1024 * 1024):
+    """Fast fingerprint: size plus the first and last MiB.
+
+    Used with identity() (size, mtime, device, inode) to notice a file that
+    changed between Preview and a run without reading multi-gigabyte files.
+    The full SHA-256 is taken when a run starts and guards replacement.
+    """
+    result = hashlib.sha256()
+    with open(path, "rb") as source:
+        size = source.seek(0, 2)
+        result.update(str(size).encode())
+        source.seek(0)
+        result.update(source.read(chunk))
+        if size > chunk:
+            source.seek(max(chunk, size - chunk))
+            result.update(source.read(chunk))
+    return result.hexdigest()
+
+
+def container_video_bitrate(streams, format_rate):
+    """Video bitrate as container bitrate minus audio, or 0 when unknown.
+
+    Avoids reading every packet of files whose video stream reports no usable
+    bitrate (for example WMV). Needs every audio stream's bitrate.
+    """
+    try:
+        total = float(format_rate or 0)
+        audio = [s for s in streams if s.get("codec_type") == "audio"]
+        if not total or any(not s.get("bit_rate") for s in audio):
+            return 0
+        rate = total - sum(float(s["bit_rate"]) for s in audio)
+    except (TypeError, ValueError):
+        return 0
+    return rate if rate >= 10_000 else 0
 
 
 def identity(path):
@@ -75,6 +124,12 @@ def validate_settings(value):
                 raise PluginError("Invalid format policy")
             if rule.get("quality", "custom") not in QUALITIES:
                 raise PluginError("Invalid quality preset")
+            if rule.get("quality") == "visual" and rule.get("vmaf") not in VMAF_TARGETS:
+                raise PluginError("Choose a visual quality target")
+            if rule["action"] == "resize" and rule.get("quality") == "source":
+                # Size is roughly bitrate × duration: a smaller picture at the
+                # same bitrate saves nothing.
+                raise PluginError("Same bitrate works with Reencode only; choose a quality for Resize")
             try:
                 rate = float(rule.get("mbps", 0)) if rule.get("quality", "custom") == "custom" else 1
                 sizes = [float(rule.get(key, 0)) for key in ("width", "height")] if rule["action"] == "resize" else [2, 2]
@@ -107,6 +162,8 @@ def target_mbps(rule, width, height, fps=None, source_bitrate=None):
         if not source_bitrate:
             raise PluginError("Video bitrate is unknown; cannot keep the source bitrate")
         return round(source_bitrate / 1e6, 3)
+    if quality == "visual":
+        quality = visual_preset(rule["vmaf"])
     pixels = max(1, width * height) / (1920 * 1080)
     motion = max(1, min(float(fps or 30), 120) / 30) ** 0.5
     return round(max(0.2, QUALITY_MBPS_1080P[rule["codec"]][quality] * pixels ** 0.75 * motion), 2)

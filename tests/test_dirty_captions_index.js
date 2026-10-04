@@ -12,6 +12,7 @@ const React = { createElement: element, cloneElement: (node, props, ...children)
   isValidElement: node => !!node?.type, useEffect: fn => effects.push(fn), useRef: value => ({ current: value }) };
 const window = { setInterval: fn => { timers.set(++id, fn); return id; }, clearInterval: key => timers.delete(key),
   addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
+require("./shared_runtime").installJobHelpers(window);
 const context = vm.createContext({ window, console });
 const source = fs.readFileSync(path.join(__dirname, "../plugins/DirtyCaptions/dirtyCaptionsIndex.js"), "utf8");
 vm.runInContext(source, context);
@@ -191,7 +192,7 @@ assert.equal(api.installNativeFilters(performerFilter, intl), false);
 performerFilter.criteria = [criterion("custom_fields", [personal])];
 assert.equal(performerFilter.makeFilter().custom_fields[0], personal);
 const ui = api.createIndexUi({ api: { React, libraries: { Intl: { useIntl: () => intl } } },
-  hub: { react: { html: htm.bind(element), SettingsSection: "section", Button: "button" },
+  hub: { ...window.__dirtyPluginsJobs, react: { html: htm.bind(element), SettingsSection: "section", Button: "button" },
     runPluginOperation: (_pluginId, args) => { calls.push(args); return Promise.resolve({ status: "Finished" }); } } });
 const nativeOps = element("native-operations", {});
 const nativeToolbar = element("native-toolbar", { filter: original, setFilter() { throw new Error("Equivalent URLs do not update native filter state"); },
@@ -233,7 +234,7 @@ function browser() {
   };
   const monitor = api.createIndexUi({
     api: { React: hooks, GQL: { useJobsSubscribeSubscription: () => ({ data: { jobsSubscribe: event } }) } },
-    hub: { react: {}, runPluginOperation: async (_plugin, args) => {
+    hub: { ...window.__dirtyPluginsJobs, react: {}, runPluginOperation: async (_plugin, args) => {
       calls.push(args);
       if (fail && args.mode === "indexAfterScan") throw new Error("queue unavailable");
       return {};

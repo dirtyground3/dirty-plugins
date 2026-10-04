@@ -1,0 +1,61 @@
+// @ts-check
+(function () {
+  "use strict";
+  var INSTANCE_KEY = "__dirtyStatsCharts";
+  if (window[INSTANCE_KEY]) return;
+
+  /**
+   * Native ECharts events belong to the chart and are released by dispose().
+   * The adapter owns browser listeners, observers and the export reference.
+   * @param {StatsChartDescriptor} descriptor
+   * @param {StatsChartDependencies} dependencies
+   */
+  function mountChart(descriptor, dependencies) {
+    var chart = null, observer = null, disposed = false;
+    function resize() {
+      if (!chart || chart.isDisposed()) return;
+      chart.resize();
+      if (descriptor.resize) descriptor.resize(chart);
+    }
+    function cleanup() {
+      if (disposed) return;
+      disposed = true;
+      if (observer) observer.disconnect();
+      dependencies.events.removeEventListener("resize", resize);
+      try {
+        if (chart && descriptor.beforeDispose) descriptor.beforeDispose(chart);
+      } finally {
+        if (chart) chart.dispose();
+        if (descriptor.chartRef) descriptor.chartRef.current = null;
+      }
+    }
+    try {
+      if (descriptor.beforeInit) descriptor.beforeInit();
+      chart = dependencies.init(descriptor.node, { renderer: "canvas" });
+      if (descriptor.chartRef) descriptor.chartRef.current = chart;
+      descriptor.configure(chart);
+      if (dependencies.Observer) {
+        observer = new dependencies.Observer(resize);
+        observer.observe(descriptor.node);
+      }
+      dependencies.events.addEventListener("resize", resize);
+    } catch (error) {
+      cleanup();
+      descriptor.onError(error);
+    }
+    return cleanup;
+  }
+
+  /** @param {StatsChartDependencies & {React: StatsDataDependencies['React']}} dependencies */
+  function createLifecycle(dependencies) {
+    /** @param {() => StatsChartDescriptor | undefined} describe @param {unknown[]} keys */
+    function useChart(describe, keys) {
+      dependencies.React.useEffect(function () {
+        var descriptor = describe();
+        if (descriptor) return mountChart(descriptor, dependencies);
+      }, keys);
+    }
+    return { useChart: useChart };
+  }
+  window[INSTANCE_KEY] = { mountChart: mountChart, createLifecycle: createLifecycle };
+})();

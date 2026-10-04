@@ -4,7 +4,9 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -97,11 +99,72 @@ class CompactorRulesTests(unittest.TestCase):
         self.assertEqual(compactor.target_mbps(rule(quality="source"), 1920, 1080, 30, 7_500_000), 7.5)
         with self.assertRaises(compactor.PluginError):
             compactor.target_mbps(rule(quality="source"), 1920, 1080, 30, 0)
-        compactor.validate_settings({"rules": [rule(quality="source", mbps="ignored")]})
+        compactor.validate_settings({"rules": [rule(action="reencode", quality="source", mbps="ignored")]})
+        with self.assertRaisesRegex(compactor.PluginError, "Reencode only"):
+            compactor.validate_settings({"rules": [rule(action="resize", quality="source")]})
         with self.assertRaises(compactor.PluginError):
             compactor.validate_settings({"rules": [rule(quality="ultra")]})
         with self.assertRaises(compactor.PluginError):
             compactor.validate_settings({"rules": [rule(quality="custom", mbps="bad")]})
+
+    def test_constant_quality_arguments_per_encoder(self):
+        q = compactor.quality
+        self.assertEqual(q.quality_args("libx265", 24, 8e6), ["-crf:v:0", "24", "-maxrate:v:0", "8000000", "-bufsize:v:0", "16000000"])
+        self.assertEqual(q.quality_args("h264_nvenc", 22), ["-rc:v:0", "vbr", "-cq:v:0", "22", "-b:v:0", "0"])
+        self.assertEqual(q.quality_args("hevc_qsv", 24, 8e6), ["-global_quality:v:0", "24"], "ICQ ignores the VBV cap")
+        self.assertEqual(q.quality_args("hevc_amf", 24), ["-rc:v:0", "cqp", "-qp_i:v:0", "24", "-qp_p:v:0", "24"])
+        self.assertEqual(q.sample_windows(2), [(0.0, 2)])
+        self.assertEqual(q.sample_windows(100), [(18.0, 4.0), (48.0, 4.0), (78.0, 4.0)])
+
+    def test_quality_search_interpolates_toward_the_target(self):
+        step = compactor.quality.next_value
+        self.assertEqual(step({24: 97.0}, 95, (16, 36)), 26, "passing: move up by the typical slope")
+        self.assertEqual(step({24: 92.0}, 95, (16, 36)), 21, "failing: move down")
+        self.assertEqual(step({24: 97.0, 30: 91.0}, 95, (16, 36)), 26, "interpolate between measurements")
+        self.assertIsNone(step({24: 95.5, 25: 94.0}, 95, (16, 36)), "adjacent pass and fail: done")
+        self.assertIsNone(step({16: 90.0}, 95, (16, 36)), "cannot go below the range")
+        self.assertIsNone(step({36: 96.0}, 95, (16, 36)), "top of the range passes")
+
+    def test_hardware_detection_uses_a_frame_nvenc_accepts(self):
+        commands = []
+        with patch.object(compactor.subprocess, "run", side_effect=lambda command, **_: commands.append(command) or
+                          type("Result", (), {"returncode": 0})()):
+            self.assertTrue(compactor.encoder_usable("ffmpeg", "hevc", "nvenc"))
+        size = next(arg for arg in commands[0] if arg.startswith("color=size="))
+        width, height = (int(part) for part in size.split("=")[2].split(":")[0].split("x"))
+        self.assertGreaterEqual(width * height, 256 * 200, "128x128 is below NVENC's minimum frame size")
+
+    def test_visual_quality_needs_a_known_target(self):
+        compactor.validate_settings({"rules": [rule(action="reencode", quality="visual", vmaf=95)]})
+        for target in (None, 80, "95"):
+            with self.assertRaisesRegex(compactor.PluginError, "visual quality target"):
+                compactor.validate_settings({"rules": [rule(action="reencode", quality="visual", vmaf=target)]})
+        self.assertEqual(compactor.target_mbps(rule(quality="visual", vmaf=97), 1920, 1080),
+                         compactor.target_mbps(rule(quality="high"), 1920, 1080), "estimates follow the nearest preset")
+
+    def test_quick_fingerprint_reads_only_the_ends_of_a_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "video.bin"
+            data = bytearray(os.urandom(3 * 1024 * 1024))
+            path.write_bytes(data)
+            original = compactor.quick_hash(path)
+            self.assertEqual(compactor.quick_hash(path), original)
+            for offset in (0, len(data) - 1):
+                changed = bytearray(data)
+                changed[offset] ^= 0xFF
+                path.write_bytes(changed)
+                self.assertNotEqual(compactor.quick_hash(path), original, "start and end are covered")
+            path.write_bytes(data + b"x")
+            self.assertNotEqual(compactor.quick_hash(path), original, "size is covered")
+            small = Path(folder) / "small.bin"
+            small.write_bytes(b"abc")
+            self.assertEqual(len(compactor.quick_hash(small)), 64)
+
+    def test_video_bitrate_from_container_minus_audio(self):
+        streams = [{"codec_type": "video", "bit_rate": "1"}, {"codec_type": "audio", "bit_rate": "192000"}, {"codec_type": "subtitle"}]
+        self.assertEqual(compactor.container_video_bitrate(streams, "12143072"), 12143072 - 192000)
+        self.assertEqual(compactor.container_video_bitrate([{"codec_type": "audio"}], "12000000"), 0, "unknown audio bitrate")
+        self.assertEqual(compactor.container_video_bitrate(streams, None), 0)
 
     def test_implausible_stream_bitrates_fall_back_to_packet_measurement(self):
         self.assertEqual(compactor.plausible_bitrate("1", "12143072"), 0, "WMV/VC-1 reports 1 bit/s")
@@ -366,6 +429,183 @@ class CompactorPipelineTests(unittest.TestCase):
         self.assertEqual(run["status"], "awaitingReview")
         self.assertEqual(op["outputMedia"]["codec"], "hevc")
         self.assertEqual(self.source.read_bytes(), self.original)
+
+    def test_quality_presets_encode_with_constant_quality_capped_at_the_source(self):
+        self.set_rules([rule(action="reencode", quality="balanced")])
+        commands = []
+        process = compactor.run_process
+        def invoke(command, *args):
+            commands.append(command)
+            return process(command, *args)
+        with patch.object(compactor, "run_process", side_effect=invoke):
+            run = self.start()
+        op = run["operations"][0]
+        self.assertEqual(op["crf"], 22)
+        encode = next(command for command in commands if "-c:v:0" in command)
+        self.assertEqual(encode[encode.index("-crf:v:0") + 1], "22")
+        self.assertEqual(int(encode[encode.index("-maxrate:v:0") + 1]), int(op["media"]["bitrate"]))
+        self.assertNotIn("-b:v:0", encode)
+        self.assertEqual(run["status"], "awaitingReview")
+        self.assertLess(op["outputSize"], op["identity"]["size"])
+
+    def test_latest_preview_reopens_until_used_discarded_or_stale(self):
+        latest = lambda: compactor.dispatch(self.client, {"mode": "latestPreview"})
+        self.assertIsNone(latest())
+        preview = self.preview()
+        self.assertEqual(latest(), {"id": preview["id"]})
+        compactor.dispatch(self.client, {"mode": "discardPreview", "id": preview["id"]})
+        self.assertIsNone(latest(), "discarded")
+        preview = self.preview()
+        self.set_rules([rule(mbps=.3)])
+        self.assertIsNone(latest(), "rules changed since")
+        self.set_rules([rule()])
+        preview = self.preview()
+        compactor.start_run(self.client, compactor.get("preview", preview["id"]), {"reviewOutputs": True})
+        self.assertIsNone(latest(), "already run")
+
+    def test_orphaned_preview_is_reported_as_failed(self):
+        preview = {"id": "orphan", "status": "planning", "settings": compactor.settings(), "automatic": False}
+        compactor.save("preview", preview)
+        live = {"jobQueue": [{"id": "1", "status": "RUNNING", "description": "Running plugin task: DirtyCompactor: calculate preview"}]}
+        with patch.object(self.client, "call", return_value=live):
+            self.assertTrue(compactor.tasks_active(self.client), "Stash prefixes task descriptions")
+            self.assertEqual(compactor.dispatch(self.client, {"mode": "getPreview", "id": "orphan"})["status"], "planning")
+        record = compactor.dispatch(self.client, {"mode": "getPreview", "id": "orphan"})
+        self.assertEqual(record["status"], "failed")
+        self.assertIn("stopped before finishing", record["error"])
+
+    def test_preview_eta_follows_the_pace_so_far(self):
+        self.assertEqual(compactor.eta({"progress": 0.25, "started": 1000}, now=1600), 1800, "10 min for 25% leaves 30 min")
+        self.assertEqual(compactor.eta({"progress": 0.0125, "started": 1000}, now=1060), 4740, "one visual-quality test in")
+        self.assertIsNone(compactor.eta({"progress": 0.001, "started": 1000}, now=1600), "too early to tell")
+        self.assertIsNone(compactor.eta({"progress": 0.5, "started": 1000}, now=1020), "too soon")
+        self.assertIsNone(compactor.eta({"progress": 0.5}, now=1600), "progress from an older version")
+        compactor.report("eta-test", "Checking files", 0.1)
+        started = compactor.storage.compactor_get("progress", "eta-test")["started"]
+        compactor.report("eta-test", "Checking files", 0.2)
+        self.assertEqual(compactor.storage.compactor_get("progress", "eta-test")["started"], started, "start time is kept")
+
+    def test_cancel_stops_a_running_quality_sample_immediately(self):
+        started = time.monotonic()
+        checks = []
+
+        def stop():
+            checks.append(1)
+            if len(checks) >= 2:
+                raise compactor.Cancelled("cancel test")
+        command = [sys.executable, "-c", "import time; time.sleep(30)"]
+        with self.assertRaises(compactor.Cancelled):
+            compactor.quality._run(command, stop)
+        self.assertLess(time.monotonic() - started, 10, "the sample process is killed, not waited for")
+
+    def test_preview_can_be_cancelled(self):
+        preview = {"id": "cancel-me", "status": "queued", "settings": compactor.settings(), "automatic": False}
+        compactor.save("preview", preview)
+        compactor.dispatch(self.client, {"mode": "cancelPreview", "id": "cancel-me"})
+        compactor.dispatch(self.client, {"mode": "plan", "id": "cancel-me"})
+        self.assertEqual(compactor.get("preview", "cancel-me")["status"], "cancelled")
+
+    def test_preview_reports_progress_per_rule(self):
+        stages = []
+        with patch.object(compactor, "report", side_effect=lambda _id, stage, progress: stages.append((stage, progress))):
+            self.preview()
+        self.assertEqual(stages[-1], ("Checking files · scene 1 of 1", 0.0), "progress counts completed scenes")
+        self.set_rules([rule(), dict(rule(), id="rule-2", name="Second")])
+        stages.clear()
+        with patch.object(compactor, "report", side_effect=lambda _id, stage, progress: stages.append((stage, progress))):
+            self.preview()
+        self.assertEqual(stages[-1], ("Checking files · Rule 2 of 2 · scene 1 of 1", 0.5), "one overall percentage across rules")
+
+    def test_outputs_that_could_not_shrink_are_skipped_next_time(self):
+        self.set_rules([rule(action="reencode", quality="balanced")])
+        first = self.preview()["operations"][0]
+        compactor.storage.compactor_put("completed", compactor.digest([first["fileId"], first["rule"]["id"]]),
+                                        {"hash": "", "quickHash": first["quickHash"], "actionKey": first["actionKey"], "notSmaller": True})
+        op = self.preview()["operations"][0]
+        self.assertEqual((op["status"], op["reason"]), ("unchanged", "Would not get smaller with these settings"))
+
+    def test_preview_uses_quick_fingerprints_and_runs_take_the_full_hash(self):
+        self.set_rules([rule(action="reencode", quality="balanced")])
+        with patch.object(compactor, "file_hash", side_effect=AssertionError("Preview must not read whole files")):
+            op = self.preview()["operations"][0]
+        self.assertEqual(op["quickHash"], compactor.quick_hash(self.source))
+        self.assertNotIn("sourceHash", op)
+        run = self.start()
+        self.assertEqual(run["operations"][0]["sourceHash"], compactor.file_hash(self.source), "full hash taken when the run starts")
+
+    def test_source_changed_between_preview_and_run_is_not_replaced(self):
+        self.set_rules([rule(action="reencode", quality="balanced")])
+        preview = self.preview()
+        # Same size, same modification time, different content at the start.
+        info = self.source.stat()
+        data = bytearray(self.source.read_bytes())
+        data[100] ^= 0xFF
+        self.source.write_bytes(data)
+        os.utime(self.source, ns=(info.st_atime_ns, info.st_mtime_ns))
+        self.assertEqual(compactor.identity(self.source), preview["operations"][0]["identity"], "identity alone would miss this")
+        result = compactor.start_run(self.client, preview, {"reviewOutputs": True})
+        run = compactor.worker(self.client, result["id"])
+        op = run["operations"][0]
+        self.assertEqual(op["status"], "failed")
+        self.assertIn("Original changed since preview", op["reason"])
+        self.assertEqual(self.source.read_bytes(), bytes(data), "the changed file is left alone")
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and "libvmaf" in subprocess.run([shutil.which("ffmpeg") or "ffmpeg", "-hide_banner", "-filters"],
+                         capture_output=True, text=True).stdout, "FFmpeg with libvmaf required")
+    def test_visual_quality_is_measured_during_the_run(self):
+        self.set_rules([rule(action="reencode", quality="visual", vmaf=93)])
+        with patch.object(compactor.quality, "search", side_effect=AssertionError("Preview must not measure")):
+            planned = self.preview()["operations"][0]
+        self.assertEqual(planned["status"], "ready")
+        self.assertNotIn("crf", planned)
+        run = self.start()
+        op = run["operations"][0]
+        self.assertIn(op["crf"], range(compactor.quality.CRF_RANGE["h264"][0], compactor.quality.CRF_RANGE["h264"][1] + 1))
+        self.assertGreaterEqual(op["vmaf"], 93)
+        self.assertEqual(run["status"], "awaitingReview")
+        self.assertFalse(list((self.folder / "private").glob("quality-*")), "sample clips are removed")
+        # A stricter target never picks a higher (lower quality) value.
+        media = op["media"]
+        stricter = compactor.quality.search(shutil.which("ffmpeg"), self.source, media, op["dimensions"], "h264", "libx264", 97,
+                                            self.folder / "private" / "strict")
+        self.assertLessEqual(stricter["crf"], op["crf"])
+
+    def test_measured_quality_is_reused_by_later_previews(self):
+        self.set_rules([rule(action="reencode", quality="visual", vmaf=95)])
+        choice = {"crf": 23, "vmaf": 95.4, "mbps": 0.4, "reached": True}
+        with patch.object(compactor, "pick_encoder", return_value="cpu"), \
+                patch.object(compactor.quality, "search", return_value=choice) as search:
+            run = self.start()
+            self.assertEqual(run["operations"][0]["crf"], 23)
+            later = self.preview()["operations"][0]
+        self.assertEqual(search.call_count, 1, "measured once, during the run")
+        self.assertEqual((later["crf"], later["vmaf"]), (23, 95.4), "the next preview shows the measurement")
+
+    def test_run_skips_files_that_would_not_shrink_at_the_visual_target(self):
+        self.set_rules([rule(action="reencode", quality="visual", vmaf=97)])
+        choice = {"crf": 16, "vmaf": 97.2, "mbps": 1000, "reached": True}
+        with patch.object(compactor, "pick_encoder", return_value="cpu"), \
+                patch.object(compactor.quality, "search", return_value=choice):
+            run = self.start()
+            op = run["operations"][0]
+            self.assertEqual((op["status"], op["reason"]), ("unchanged", "Would not get smaller at this visual quality"))
+            self.assertEqual(run["status"], "completed")
+            self.assertEqual(self.source.read_bytes(), self.original)
+            skipped = self.preview()["operations"][0]
+        self.assertEqual((skipped["status"], skipped["reason"]), ("unchanged", "Would not get smaller at this visual quality"))
+
+    def test_target_above_original_keeps_the_original_bitrate(self):
+        self.set_rules([rule(action="reencode", codec="hevc", quality="custom", mbps=1000)])
+        op = self.preview()["operations"][0]
+        self.assertEqual(op["status"], "ready", "a codec change still runs")
+        self.assertTrue(op["convert"])
+        self.assertAlmostEqual(op["mbps"] * 1e6, op["media"]["bitrate"], delta=1000)
+        run = self.start()
+        self.assertEqual(run["status"], "awaitingReview", "conversions at the original bitrate need not shrink")
+        for changes in ({"action": "reencode", "codec": "h264"}, {"action": "resize"}):
+            self.set_rules([rule(quality="custom", mbps=1000, **changes)])
+            op = self.preview()["operations"][0]
+            self.assertEqual((op["status"], op["reason"]), ("unchanged", "Already at or below target bitrate"))
 
     def test_same_as_source_skips_files_already_in_the_target_codec(self):
         self.set_rules([rule(action="reencode", quality="source", codec="h264")])

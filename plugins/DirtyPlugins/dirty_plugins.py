@@ -15,26 +15,14 @@ import dirty_plugins_storage as storage
 MANAGED_PLUGIN_IDS = {"dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor", "dirtyCaptions"}
 
 
+from dirty_plugins_protocol import StashReporter
+import dirty_plugins_protocol as protocol
+
+
 class PluginError(RuntimeError):
     pass
 
 
-class StashReporter:
-    """Write Stash's encoded log protocol to stderr.
-
-    Stash logs these as ``[Plugin / DirtyPlugins]`` at the requested level.
-    """
-
-    @staticmethod
-    def _write(level: str, message: Any) -> None:
-        for line in str(message).splitlines() or [""]:
-            print(f"\x01{level}\x02{line}", file=sys.stderr, flush=True)
-
-    def info(self, message: str) -> None:
-        self._write("i", message)
-
-    def error(self, message: str) -> None:
-        self._write("e", message)
 
 
 def _elapsed_ms(started: float) -> int:
@@ -92,25 +80,26 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
+    protocol.configure_standard_streams()
     reporter = StashReporter()
     started = time.monotonic()
     mode = "unknown"
     try:
-        payload = json.load(sys.stdin)
+        payload = protocol.read_payload()
         mode = _requested_mode(payload)
         reporter.info(f"DirtyPlugins backend started: mode={mode}")
         output = run(payload)
         reporter.info(
             f"DirtyPlugins backend finished: mode={mode} in {_elapsed_ms(started)}ms"
         )
-        json.dump({"output": json.dumps(output, ensure_ascii=False)}, sys.stdout, ensure_ascii=False)
+        protocol.emit_output(output, nested=True, ensure_ascii=False)
         sys.stdout.write("\n")
         return 0
     except Exception as exc:
         reporter.error(
             f"DirtyPlugins backend failed: mode={mode} after {_elapsed_ms(started)}ms: {exc}"
         )
-        json.dump({"error": str(exc)}, sys.stdout, ensure_ascii=False)
+        protocol.emit_error(exc, ensure_ascii=False)
         sys.stdout.write("\n")
         return 1
 

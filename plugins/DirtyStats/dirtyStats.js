@@ -27,20 +27,38 @@
   debugLog("dirtyStats", "script started", { script: debugScriptSrc });
   var React = api.React;
   var html = hub.react.html;
-  var route = "/plugins/dirty-stats";
-  var dashboardRoute = route + "/dashboard";
-  var growthRoute = route + "/scenes";
-  var ageRoute = route + "/ages";
-  var ratingRoute = route + "/ratings";
-  var performerRatingRoute = route + "/performer-ratings";
-  var performerScatterRoute = route + "/performer-scatter";
-  var countRatingRoute = route + "/count-rating";
-  var repeatOffenderRoute = route + "/repeat-offenders";
-  var qualityEfficiencyRoute = route + "/quality-efficiency";
-  var constellationRoute = route + "/constellation";
-  var studioRoute = route + "/studios";
-  var tagDnaRoute = route + "/tags";
-  var birthdayRoute = route + "/birthdays";
+  var chartLifecycle = window.__dirtyStatsCharts.createLifecycle({
+    React: React, init: initStatsChart, events: window,
+    Observer: typeof ResizeObserver === "function" ? ResizeObserver : undefined
+  });
+  var chartOptions = window.__dirtyStatsChartOptions.createBuilders({
+    themeColor: themeColor,
+    formatBytes: formatBytes,
+    constellationLayout: constellationLayout,
+    scatterSeriesData: scatterSeriesData,
+    scatterGuideLines: scatterGuideLines,
+    countRatingLabel: countRatingLabel,
+    countRatingSeriesData: countRatingSeriesData,
+    repeatOffenderSeriesData: repeatOffenderSeriesData,
+    qualityEfficiencySeriesData: qualityEfficiencySeriesData,
+    studioSeriesData: studioSeriesData
+  });
+  var dataLoader = window.__dirtyStatsData.createLoader({ React: React, graphql: hub.graphql });
+  var registry = window.__dirtyStatsRegistry;
+  var route = registry.route;
+  var dashboardRoute = registry.entries.dashboard.route;
+  var growthRoute = registry.entries.growth.route;
+  var ageRoute = registry.entries.ages.route;
+  var ratingRoute = registry.entries.ratings.route;
+  var performerRatingRoute = registry.entries.performerRatings.route;
+  var performerScatterRoute = registry.entries.performerScatter.route;
+  var countRatingRoute = registry.entries.countRating.route;
+  var repeatOffenderRoute = registry.entries.repeatOffenders.route;
+  var qualityEfficiencyRoute = registry.entries.qualityEfficiency.route;
+  var constellationRoute = registry.entries.constellation.route;
+  var studioRoute = registry.entries.studios.route;
+  var tagDnaRoute = registry.entries.tags.route;
+  var birthdayRoute = registry.entries.birthdays.route;
   var agePerformerFilter = null;
   var performerFilterEvent = "dirty-stats:performer-filter";
   var PLUGIN_ID = "dirtyStats";
@@ -85,8 +103,7 @@
   };
   var statsSettingsListeners = new Set();
   var statsSettingsRevision = 0;
-  var statsSettingsSaveTimer = null;
-  var statsSettingsSaveChain = Promise.resolve();
+  var statsSettingsSaveController = null;
   var statsSettingsDirtyNames = new Set();
   var statsSettingsExtras = {};
   var statsSettingsEditRevision = 0;
@@ -217,38 +234,37 @@
 
   function scheduleStatsSettingsSave() {
     if (typeof hub.configurePlugin !== "function") return;
-    if (statsSettingsSaveTimer !== null) window.clearTimeout(statsSettingsSaveTimer);
-    statsSettingsSaveTimer = window.setTimeout(function () {
-      statsSettingsSaveTimer = null;
-      var dirtyNames = Array.from(statsSettingsDirtyNames);
-      statsSettingsDirtyNames.clear();
-      if (!dirtyNames.length) return;
-      var snapshot = Object.assign({}, statsSettingsExtras, statsSettings);
-      var saveRevision = statsSettingsEditRevision;
-      statsSettingsSaveChain = statsSettingsSaveChain.catch(function () {}).then(function () {
-        setStatsSettingsSaveStatus("saving", "Saving settings…");
-        return hub.configurePlugin(PLUGIN_ID, snapshot);
-      }).catch(function () {
-        // Another Stash tab may have saved this plugin after our last read.
-        // Refresh its revision and merge only the keys changed in this tab.
-        return hub.getPluginSettings(PLUGIN_ID).then(function (latest) {
-          var merged = Object.assign({}, latest || {});
-          dirtyNames.forEach(function (name) { merged[name] = snapshot[name]; });
-          delete merged.ratingRounding;
-          return hub.configurePlugin(PLUGIN_ID, merged);
+    if (!statsSettingsSaveController) statsSettingsSaveController = hub.createSaveController({
+      delay: 400,
+      save: function (request) {
+        request.names.forEach(function (name) {
+          var current = Object.prototype.hasOwnProperty.call(statsSettings, name) ? statsSettings[name] : statsSettingsExtras[name];
+          if (current === request.snapshot[name]) statsSettingsDirtyNames.delete(name);
         });
-      }).then(function () {
-        if (saveRevision === statsSettingsEditRevision && !statsSettingsDirtyNames.size) setStatsSettingsSaveStatus("saved", "Settings saved.");
-        else setStatsSettingsSaveStatus("pending", "Unsaved settings.");
-      }).catch(function (error) {
-        dirtyNames.forEach(function (name) { statsSettingsDirtyNames.add(name); });
-        setStatsSettingsSaveStatus("error", "Could not save settings. Retry or reload this page.");
+        return hub.configurePlugin(PLUGIN_ID, request.snapshot).catch(function () {
+          // Reload and merge only this tab's changed keys on a revision conflict.
+          return hub.getPluginSettings(PLUGIN_ID).then(function (latest) {
+            var merged = Object.assign({}, latest || {});
+            request.names.forEach(function (name) { merged[name] = request.snapshot[name]; });
+            delete merged.ratingRounding;
+            return hub.configurePlugin(PLUGIN_ID, merged);
+          });
+        });
+      },
+      onError: function (error, request) {
+        request.names.forEach(function (name) { statsSettingsDirtyNames.add(name); });
         console.warn("DirtyStats could not save its settings", error);
-        if (hub.ui && typeof hub.ui.notify === "function") {
-          hub.ui.notify("DirtyStats settings could not be saved. Retry or reload this page.", { tone: "error" });
-        }
-      });
-    }, 400);
+        if (hub.ui && hub.ui.notify) hub.ui.notify("DirtyStats settings could not be saved. Retry or reload this page.", { tone: "error" });
+      },
+      onStatus: function (value) {
+        var message = value.state === "pending" ? "Unsaved settings."
+          : value.state === "saving" ? "Saving settings…"
+          : value.state === "saved" ? "Settings saved."
+          : "Could not save settings. Retry or reload this page.";
+        setStatsSettingsSaveStatus(value.state, message);
+      },
+    });
+    statsSettingsSaveController.schedule({ names: Array.from(statsSettingsDirtyNames), snapshot: Object.assign({}, statsSettingsExtras, statsSettings) });
   }
 
   function setStatsSetting(name, value) {
@@ -422,39 +438,12 @@
     link.click();
     link.remove();
   }
-  var STATISTIC_ROUTES = {
-    dashboard: dashboardRoute,
-    origin: route,
-    growth: growthRoute,
-    ages: ageRoute,
-    ratings: ratingRoute,
-    performerRatings: performerRatingRoute,
-    performerScatter: performerScatterRoute,
-    countRating: countRatingRoute,
-    repeatOffenders: repeatOffenderRoute,
-    qualityEfficiency: qualityEfficiencyRoute,
-    studios: studioRoute,
-    tags: tagDnaRoute,
-    constellation: constellationRoute,
-    birthdays: birthdayRoute
-  };
-  var STATISTIC_LABELS = {
-    dashboard: "Dashboard",
-    origin: "Performer origin",
-    growth: "Content growth",
-    ages: "Age at scene",
-    ratings: "Scene ratings",
-    performerRatings: "Performer ratings",
-    performerScatter: "Rating vs scenes",
-    countRating: "Count vs rating",
-    repeatOffenders: "Repeat-offender curve",
-    qualityEfficiency: "Quality efficiency",
-    studios: "Studio value map",
-    tags: "Tag DNA",
-    constellation: "Cast constellation",
-    birthdays: "Performer birthdays"
-  };
-  var STATISTIC_ORDER = ["dashboard", "origin", "growth", "ages", "ratings", "performerRatings", "performerScatter", "countRating", "repeatOffenders", "qualityEfficiency", "studios", "tags", "constellation", "birthdays"];
+  var STATISTIC_ROUTES = {}, STATISTIC_LABELS = {};
+  var STATISTIC_ORDER = registry.statisticOrder;
+  STATISTIC_ORDER.forEach(function (key) {
+    STATISTIC_ROUTES[key] = registry.entries[key].route;
+    STATISTIC_LABELS[key] = registry.entries[key].label;
+  });
   function StatisticSelector(props) {
     var history = api.libraries.ReactRouterDOM.useHistory();
     return html`<${hub.react.StatisticSelector}
@@ -745,38 +734,34 @@
     var chartNode = React.useRef(null), chartRef = React.useRef(null);
     var stats = React.useMemo(function () { return aggregate(performers, countries); }, [performers]);
     React.useEffect(function () { setSelectedCountry(""); }, [criteriaKey]);
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setLoading(true); setError("");
-      // Bounded pages avoid a single very large GraphQL response on big libraries.
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var data = await hub.graphql("query DirtyStatsPerformers($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id country}}}", performerVariables(props.filter, page), { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = data.findPerformers;
-          total = batch.count;
-          if (!batch.performers.length && result.length < total) throw new Error("The performer list changed while loading. Refresh to try again.");
-          result = result.concat(batch.performers); page++;
-        } while (result.length < total);
-        if (!controller.signal.aborted) { setPerformers(result); setLoading(false); }
-      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
-      return function () { controller.abort(); };
+    dataLoader.usePageLoad({
+      query: "query DirtyStatsPerformers($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id country}}}",
+      variables: function (page) { return performerVariables(props.filter, page); },
+      collection: function (response) {
+        var batch = response.findPerformers;
+        return { count: batch.count, rows: batch.performers };
+      },
+      failureLabel: "The performer list changed while loading. Refresh to try again.",
+      setLoading: setLoading,
+      setError: setError,
+      publish: function (result) { setPerformers(result); }
     }, [refresh, queryKey]);
-    React.useEffect(function () {
+    chartLifecycle.useChart(function () {
       if (loading || error || !chartNode.current) return;
       if (!charts || !world) { setChartError("The bundled chart or map data could not be loaded. Reload the Stash page."); return; }
-      var chart, observer;
-      function resize() { if (chart && !chart.isDisposed()) { chart.resize(); chart.setOption({ series: [mapLayout(chartNode.current, true)] }); } }
-      try {
+      return {
+        node: chartNode.current,
+        chartRef: chartRef,
+        beforeInit: function () {
         charts.registerMap("dirtyStatsWorld", world);
-        chart = initStatsChart(chartNode.current, { renderer: "canvas" });
+        },
+        configure: function (chart) {
         chart.on("click", function (event) { if (event.componentType === "series" && event.name) setSelectedCountry(function (current) { return current === event.name ? "" : event.name; }); });
-        chartRef.current = chart; setChartError("");
-        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(chartNode.current); }
-        window.addEventListener("resize", resize);
-      } catch (err) { setChartError(err.message); }
-      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+        setChartError("");
+      },
+        resize: function (chart) { chart.setOption({ series: [mapLayout(chartNode.current, true)] }); },
+        onError: function (err) { setChartError(err.message); }
+      };
     }, [loading, error, chartTheme]);
     React.useEffect(function () {
       var chart = chartRef.current;
@@ -986,48 +971,36 @@
     var stats = React.useMemo(function () { return aggregateConstellation(scenes, maxPerformers, minShared); }, [scenes, maxPerformers, minShared]);
     var matching = React.useMemo(function () { return constellationScenes(scenes, selected); }, [scenes, selected]);
     React.useEffect(function () { setSelected(null); }, [queryKey, maxPerformers, minShared]);
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setLoading(true); setError("");
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var data = await hub.graphql("query DirtyStatsConstellation($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id performers{id name gender}}}}", sceneVariables(props.filter, page), { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = data.findScenes; total = batch.count;
-          if (!batch.scenes.length && result.length < total) throw new Error("The scene list changed while loading. Refresh to try again.");
-          result = result.concat(batch.scenes); page++;
-        } while (result.length < total);
-        if (!controller.signal.aborted) { setScenes(result); setLoading(false); }
-      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
-      return function () { controller.abort(); };
+    dataLoader.usePageLoad({
+      query: "query DirtyStatsConstellation($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id performers{id name gender}}}}",
+      variables: function (page) { return sceneVariables(props.filter, page); },
+      collection: function (response) {
+        var batch = response.findScenes;
+        return { count: batch.count, rows: batch.scenes };
+      },
+      failureLabel: "The scene list changed while loading. Refresh to try again.",
+      setLoading: setLoading,
+      setError: setError,
+      publish: function (result) { setScenes(result); }
     }, [queryKey, refresh]);
-    React.useEffect(function () {
+    chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !stats.nodes.length) return;
-      var chart, observer;
-      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
-      try {
+      return {
+        node: node.current,
+        chartRef: chartRef,
+        beforeInit: function () {
         if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
-        chart = initStatsChart(node.current, { renderer: "canvas" }); chartRef.current = chart;
-        var largest = Math.max.apply(null, stats.nodes.map(function (item) { return item.value; }));
-        var layout = constellationLayout(stats.nodes.length);
-        var categoryMap = new Map();
-        stats.nodes.forEach(function (item) { if (!categoryMap.has(item.gender)) categoryMap.set(item.gender, { name: item.genderLabel, itemStyle: { color: item.genderColor } }); });
-        var categories = Array.from(categoryMap.values()), categoryIndexes = new Map(Array.from(categoryMap.keys()).map(function (key, index) { return [key, index]; }));
-        chart.setOption({ backgroundColor: themeColor("background"), legend: { type: "scroll", top: 8, left: 10, right: 10, selectedMode: false, data: categories.map(function (category) { return category.name; }), textStyle: { color: themeColor("text"), fontSize: 10 }, itemWidth: 11, itemHeight: 11, pageTextStyle: { color: themeColor("text") } }, tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) {
-          if (p.dataType === "edge") return p.data.sourceName + " + " + p.data.targetName + "\n" + p.data.value + " shared scene" + (p.data.value === 1 ? "" : "s");
-          return p.data.name + "\n" + p.data.genderLabel + "\n" + p.data.value + " matching scene" + (p.data.value === 1 ? "" : "s") + "\n" + p.data.collaborators + " displayed collaborator" + (p.data.collaborators === 1 ? "" : "s");
-        } }, series: [{ type: "graph", layout: "force", top: 40, left: 12, right: 12, bottom: 12, zoom: layout.zoom, roam: true, draggable: true, selectedMode: "single", categories: categories, data: stats.nodes.map(function (item, index) { return Object.assign({}, item, { category: categoryIndexes.get(item.gender), symbolSize: layout.symbolMin + layout.symbolRange * Math.sqrt(item.value / largest), itemStyle: { borderColor: "#d8fffb", borderWidth: 1 }, label: { show: index < layout.labelLimit } }); }), links: stats.links.map(function (link) { return Object.assign({}, link, { lineStyle: { width: 1 + Math.log(link.value) / Math.log(2), opacity: layout.edgeOpacity + Math.min(.42, link.value / 22), color: themeColor("secondary"), curveness: .06 } }); }), force: { initLayout: "circular", repulsion: layout.repulsion, gravity: layout.gravity, edgeLength: layout.edgeLength, friction: .6, layoutAnimation: true }, label: { position: "right", color: themeColor("text"), fontSize: 11, formatter: "{b}" }, emphasis: { focus: "adjacency", label: { show: true }, itemStyle: { borderColor: "#fff", borderWidth: 2 }, lineStyle: { opacity: .9, color: themeColor("accent") } } }] });
+        },
+        configure: function (chart) {         chart.setOption(chartOptions.constellationOption(stats));
         chart.on("click", function (event) {
           if (event.componentType !== "series") return;
           var choice = event.dataType === "edge" ? { type: "pair", ids: [event.data.source, event.data.target], label: event.data.sourceName + " + " + event.data.targetName, key: "pair:" + event.data.id } : { type: "performer", ids: [event.data.id], label: event.data.name, key: "performer:" + event.data.id };
           setSelected(function (current) { return current && current.key === choice.key ? null : choice; });
         });
         setChartError("");
-        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
-        window.addEventListener("resize", resize);
-      } catch (err) { setChartError(err.message); }
-      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+      },
+        onError: function (err) { setChartError(err.message); }
+      };
     }, [stats, loading, error, chartTheme]);
     React.useEffect(function () {
       var chart = chartRef.current;
@@ -1147,36 +1120,27 @@
     var selectedScenes = React.useMemo(function () { return scenesInPeriod(scenes, dateBasis, period); }, [scenes, dateBasis, period]);
     var stats = React.useMemo(function () { return aggregateGrowth(scenes, null, dateBasis, grouping); }, [scenes, dateBasis, grouping]);
     var forecast = React.useMemo(function () { return forecastGrowth(aggregateGrowth(scenes, null, dateBasis), capacity && capacity.total, null, period); }, [scenes, dateBasis, capacity, period]);
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setLoading(true); setError("");
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var data = await hub.graphql("query DirtyStatsGrowth($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id created_at date files{id size mod_time}}}}", sceneVariables(props.filter, page), { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = data.findScenes;
-          total = batch.count;
-          if (!batch.scenes.length && result.length < total) throw new Error("The scene list changed while loading. Refresh to try again.");
-          result = result.concat(batch.scenes); page++;
-        } while (result.length < total);
-        if (!controller.signal.aborted) { setScenes(result); setLoading(false); }
-      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
-      return function () { controller.abort(); };
+    dataLoader.usePageLoad({
+      query: "query DirtyStatsGrowth($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id created_at date files{id size mod_time}}}}",
+      variables: function (page) { return sceneVariables(props.filter, page); },
+      collection: function (response) {
+        var batch = response.findScenes;
+        return { count: batch.count, rows: batch.scenes };
+      },
+      failureLabel: "The scene list changed while loading. Refresh to try again.",
+      setLoading: setLoading,
+      setError: setError,
+      publish: function (result) { setScenes(result); }
     }, [queryKey, refresh]);
-    React.useEffect(function () {
+    chartLifecycle.useChart(function () {
       if (loading || error || !node.current) return;
-      var chart, observer;
-      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
-      try {
+      return {
+        node: node.current,
+        chartRef: chartRef,
+        beforeInit: function () {
         if (!charts) throw new Error("The bundled chart library could not be loaded. Reload the Stash page.");
-        chart = initStatsChart(node.current, { renderer: "canvas" }); chartRef.current = chart;
-        chart.setOption({ backgroundColor: themeColor("background"), useUTC: true, grid: { left: 12, right: 20, top: 22, bottom: 60, containLabel: true },
-          tooltip: { trigger: "axis", renderMode: "richText", formatter: function (items) { return items.map(function (item) { var point = item.value; return new Date(point[0]).toISOString().slice(0, item.seriesName === "Forecast" ? 10 : grouping === "year" ? 4 : grouping === "month" ? 7 : 10) + " (UTC)\n" + formatBytes(point[1]) + (item.seriesName === "Forecast" ? " forecast" : " cumulative"); }).join("\n"); } },
-          xAxis: { type: "time", axisLabel: { color: themeColor("muted"), hideOverlap: true }, axisLine: { lineStyle: { color: themeColor("border") } } },
-          yAxis: { type: "value", min: 0, axisLabel: { color: themeColor("muted"), formatter: formatBytes }, splitLine: { lineStyle: { color: themeColor("grid") } } },
-          dataZoom: [{ type: "inside" }, { type: "slider", bottom: 8, height: 18, borderColor: themeColor("secondary"), textStyle: { color: themeColor("muted") } }],
-          series: [{ name: "Cumulative size", type: "line", step: "end", showSymbol: stats.included === 1, lineStyle: { color: themeColor("primary"), width: 2 }, itemStyle: { color: themeColor("primary") }, areaStyle: { color: themeColor("primary"), opacity: .15 }, data: stats.points }] });
+        },
+        configure: function (chart) { chart.setOption(chartOptions.growthOption(stats, grouping));
         var pointerDown = null, zr = chart.getZr();
         zr.on("mousedown", function (event) { pointerDown = [event.offsetX, event.offsetY]; });
         zr.on("click", function (event) {
@@ -1189,16 +1153,12 @@
           selectionRef.current(day);
         });
         setChartError("");
-        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
-        window.addEventListener("resize", resize);
-      } catch (err) { setChartError(err.message); }
-      return function () {
-        var zoom = chart && chart.getOption ? growthDataZoomRange(chart.getOption()) : null;
-        if (zoom) periodZoomRef.current = zoom;
-        if (observer) observer.disconnect();
-        window.removeEventListener("resize", resize);
-        if (chart) chart.dispose();
-        chartRef.current = null;
+      },
+        beforeDispose: function (chart) {
+          var zoom = chart.getOption ? growthDataZoomRange(chart.getOption()) : null;
+          if (zoom) periodZoomRef.current = zoom;
+        },
+        onError: function (err) { setChartError(err.message); }
       };
     }, [stats, loading, error, chartTheme]);
     React.useEffect(function () {
@@ -1323,66 +1283,54 @@
     var matchingErrorState = React.useState(""), matchingError = matchingErrorState[0], setMatchingError = matchingErrorState[1];
     var performerKey = JSON.stringify(performerModel ? performerVariables(performerModel, 1) : null);
     var loading = sceneLoading || matchingLoading;
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setMatchingError("");
-      if (!performerModel) { setMatchingIds(null); setMatchingLoading(false); return; }
-      setMatchingLoading(true);
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var variables = performerVariables(performerModel, page);
-          variables.filter.sort = "id"; variables.filter.direction = "ASC";
-          var data = await hub.graphql("query DirtyStatsAgePerformers($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id}}}", variables, { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = data.findPerformers; total = batch.count;
-          if (!batch.performers.length && result.length < total) throw new Error("The performer list changed while loading. Try Refresh.");
-          result = result.concat(batch.performers.map(function (performer) { return performer.id; })); page++;
-        } while (result.length < total);
-        if (!controller.signal.aborted) { setMatchingIds(result); setMatchingLoading(false); }
-      })().catch(function (err) { if (!controller.signal.aborted) { setMatchingIds([]); setMatchingError(err.message); setMatchingLoading(false); } });
-      return function () { controller.abort(); };
+    dataLoader.usePageLoad({
+      query: "query DirtyStatsAgePerformers($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id}}}",
+      variables: function (page) { var variables = performerVariables(performerModel, page);
+        variables.filter.sort = "id"; variables.filter.direction = "ASC";
+        return variables; },
+      collection: function (response) {
+        var batch = response.findPerformers;
+        return { count: batch.count, rows: batch.performers.map(function (performer) { return performer.id; }) };
+      },
+      failureLabel: "The performer list changed while loading. Try Refresh.",
+      enabled: Boolean(performerModel),
+      onDisabled: function () { setMatchingIds(null); },
+      onError: function () { setMatchingIds([]); },
+      setLoading: setMatchingLoading,
+      setError: setMatchingError,
+      publish: function (result) { setMatchingIds(result); }
     }, [performerKey, refresh]);
     var matchingScenes = React.useMemo(function () { return filterAgeScenes(scenes, matchingIds); }, [scenes, matchingIds]);
     var ageState = React.useState(null), selectedAge = ageState[0], setSelectedAge = ageState[1];
     React.useEffect(function () { setSelectedAge(null); }, [queryKey, performerKey]);
     var selectedPerformers = React.useMemo(function () { return performersAtAge(matchingScenes, selectedAge); }, [matchingScenes, selectedAge]);
     var stats = React.useMemo(function () { return aggregateAges(matchingScenes); }, [matchingScenes]);
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setLoading(true); setError("");
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var data = await hub.graphql("query DirtyStatsAges($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id date performers{id birthdate}}}}", sceneVariables(props.filter, page), { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = data.findScenes; total = batch.count;
-          if (!batch.scenes.length && result.length < total) throw new Error("The scene list changed while loading. Refresh to try again.");
-          result = result.concat(batch.scenes); page++;
-        } while (result.length < total);
-        if (!controller.signal.aborted) { setScenes(result); setLoading(false); }
-      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
-      return function () { controller.abort(); };
+    dataLoader.usePageLoad({
+      query: "query DirtyStatsAges($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id date performers{id birthdate}}}}",
+      variables: function (page) { return sceneVariables(props.filter, page); },
+      collection: function (response) {
+        var batch = response.findScenes;
+        return { count: batch.count, rows: batch.scenes };
+      },
+      failureLabel: "The scene list changed while loading. Refresh to try again.",
+      setLoading: setLoading,
+      setError: setError,
+      publish: function (result) { setScenes(result); }
     }, [queryKey, refresh]);
-    React.useEffect(function () {
+    chartLifecycle.useChart(function () {
       if (loading || error || !node.current) return;
-      var chart, observer;
-      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
-      try {
+      return {
+        node: node.current,
+        chartRef: chartRef,
+        beforeInit: function () {
         if (!charts) throw new Error("The bundled chart library could not be loaded. Reload the Stash page.");
-        chart = initStatsChart(node.current, { renderer: "canvas" }); chartRef.current = chart;
-        chart.on("click", function (event) { if (event.componentType === "series" && Number.isFinite(Number(event.name))) setSelectedAge(Number(event.name)); });
-        chart.setOption({ backgroundColor: themeColor("background"), grid: { left: 48, right: 20, top: 22, bottom: 55, containLabel: true },
-          tooltip: { trigger: "axis", renderMode: "richText", axisPointer: { type: "shadow" }, formatter: function (items) { return "Age " + items[0].name + " years\n" + items[0].value + " distinct performers"; } },
-          xAxis: { type: "category", name: "Age (years)", nameLocation: "middle", nameGap: 28, nameTextStyle: { color: themeColor("muted") }, data: stats.rows.map(function (row) { return String(row.age); }), axisLabel: { color: themeColor("muted"), hideOverlap: true }, axisLine: { lineStyle: { color: themeColor("border") } } },
-          yAxis: { type: "value", name: "Distinct performers", nameLocation: "middle", nameGap: 35, min: 0, minInterval: 1, nameTextStyle: { color: themeColor("muted") }, axisLabel: { color: themeColor("muted") }, splitLine: { lineStyle: { color: themeColor("grid") } } },
-          dataZoom: [{ type: "inside" }],
-          series: [{ name: "Distinct performers", type: "bar", barCategoryGap: "5%", itemStyle: { color: themeColor("primary") }, data: stats.rows.map(function (row) { return row.count; }) }] });
+        },
+        configure: function (chart) { chart.on("click", function (event) { if (event.componentType === "series" && Number.isFinite(Number(event.name))) setSelectedAge(Number(event.name)); });
+        chart.setOption(chartOptions.ageOption(stats));
         setChartError("");
-        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
-        window.addEventListener("resize", resize);
-      } catch (err) { setChartError(err.message); }
-      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+      },
+        onError: function (err) { setChartError(err.message); }
+      };
     }, [stats, loading, error, chartTheme]);
     React.useEffect(function () {
       if (chartRef.current) chartRef.current.setOption({ series: [{ data: stats.rows.map(function (row) { return { value: row.count, itemStyle: { color: selectedAge === row.age ? themeColor("accent") : themeColor("primary") } }; }) }] });
@@ -1727,28 +1675,21 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
       return stats.entries.slice().sort(function (a, b) { return a.daysUntil - b.daysUntil || a.name.localeCompare(b.name); });
     }, [stats]);
     React.useEffect(function () { setSelected(null); }, [queryKey]);
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setLoading(true); setError("");
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var data = await hub.graphql("query DirtyStatsBirthdays($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name birthdate death_date image_path}}}", performerVariables(props.filter, page), { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = data.findPerformers; total = batch.count;
-          if (!batch.performers.length && result.length < total) throw new Error("The performer list changed while loading. Refresh to try again.");
-          result = result.concat(batch.performers); page++;
-        } while (result.length < total);
-        if (!controller.signal.aborted) {
-          setPerformers(result);
+    dataLoader.usePageLoad({
+      query: "query DirtyStatsBirthdays($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name birthdate death_date image_path}}}",
+      variables: function (page) { return performerVariables(props.filter, page); },
+      collection: function (response) {
+        var batch = response.findPerformers;
+        return { count: batch.count, rows: batch.performers };
+      },
+      failureLabel: "The performer list changed while loading. Refresh to try again.",
+      setLoading: setLoading,
+      setError: setError,
+      publish: function (result) { setPerformers(result);
           if (defaultSelectionQuery.current !== queryKey) {
             setSelected(birthdayDefaultSelection(aggregateBirthdays(result, now), now));
             defaultSelectionQuery.current = queryKey;
-          }
-          setLoading(false);
-        }
-      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
-      return function () { controller.abort(); };
+          } }
     }, [queryKey, refresh]);
     var nowMonth = now.getUTCMonth() + 1, nowDay = now.getUTCDate(), year = now.getUTCFullYear();
     var cardPerformers = React.useMemo(function () { return selected ? birthdayEntriesFor(stats.entries, selected.month, selected.day, selected.today) : stats.entries; }, [stats, selected]);
@@ -1840,40 +1781,34 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var refreshState = React.useState(0), refresh = refreshState[0], setRefresh = refreshState[1];
     var node = React.useRef(null), chartRef = React.useRef(null);
     var queryKey = JSON.stringify(variables(props.filter, 1));
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setLoading(true); setError(""); setSelected(null);
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var data = await hub.graphql(performerMode ? "query DirtyStatsPerformerRatings($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id rating100}}}" : "query DirtyStatsRatings($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100}}}", variables(props.filter, page), { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = performerMode ? data.findPerformers : data.findScenes;
-          total = batch.count;
-          if (!batch[entity].length && result.length < total) throw new Error("The " + entity + " list changed while loading. Refresh to try again.");
-          result = result.concat(batch[entity]); page++;
-        } while (result.length < total);
-        setScenes(result); setLoading(false);
-      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
-      return function () { controller.abort(); };
+    dataLoader.usePageLoad({
+      query: performerMode ? "query DirtyStatsPerformerRatings($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id rating100}}}" : "query DirtyStatsRatings($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100}}}",
+      variables: function (page) { return variables(props.filter, page); },
+      collection: function (response) {
+        var batch = performerMode ? response.findPerformers : response.findScenes;
+        return { count: batch.count, rows: batch[entity] };
+      },
+      failureLabel: "The " + entity + " list changed while loading. Refresh to try again.",
+      onStart: function () { setSelected(null); },
+      setLoading: setLoading,
+      setError: setError,
+      publish: function (result) { setScenes(result); }
     }, [queryKey, refresh, performerMode]);
     var stats = React.useMemo(function () { return aggregateRatings(scenes, rounding); }, [scenes, rounding]);
     var matching = React.useMemo(function () { return selected == null ? scenes : scenes.filter(function (scene) { return sceneRating(scene, rounding) === selected; }); }, [scenes, selected, rounding]);
-    React.useEffect(function () {
+    chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !stats.total) return;
-      var chart, observer;
-      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
-      try {
+      return {
+        node: node.current,
+        chartRef: chartRef,
+        beforeInit: function () {
         if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
-        chart = initStatsChart(node.current, { renderer: "canvas" }); chartRef.current = chart;
-        chart.setOption({ backgroundColor: themeColor("background"), tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return (p.name === "Unrated" ? p.name : "Rating " + p.name + "/10") + "\n" + p.value + " " + entity + " (" + p.percent + "%)"; } },
-          legend: { type: "scroll", bottom: 8, textStyle: { color: themeColor("text"), fontSize: 11 }, itemWidth: 12, itemHeight: 12, pageTextStyle: { color: themeColor("text") } },
-          series: [{ type: "pie", radius: [0, "72%"], center: ["50%", "46%"], selectedMode: "single", label: { show: false }, labelLine: { show: false }, itemStyle: { borderColor: themeColor("background"), borderWidth: 2 }, data: stats.rows }] });
+        },
+        configure: function (chart) { chart.setOption(chartOptions.ratingOption(stats, entity));
         chart.on("click", function (event) { if (event.componentType === "series") setSelected(function (current) { return current === event.name ? null : event.name; }); });
-        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
-        window.addEventListener("resize", resize);
-      } catch (err) { setError(err.message); }
-      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+      },
+        onError: function (err) { setError(err.message); }
+      };
     }, [stats, loading, error, chartTheme]);
     React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: stats.rows.map(function (row) { return Object.assign({}, row, { selected: row.name === selected }); }) }] }); }, [selected, stats, loading, error, chartTheme]);
     return html`<section className="dirty-stats-content">
@@ -2067,30 +2002,27 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var queryKey = JSON.stringify(performerVariables(props.filter, 1));
     var stats = React.useMemo(function () { return aggregateScatter(performers, minRating, maxScenes); }, [performers, minRating, maxScenes]);
     React.useEffect(function () { setSelected(null); }, [queryKey, minRating, maxScenes]);
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setLoading(true); setError("");
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var data = await hub.graphql("query DirtyStatsPerformerScatter($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name rating100 scene_count}}}", performerVariables(props.filter, page), { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = data.findPerformers; total = batch.count;
-          if (!batch.performers.length && result.length < total) throw new Error("The performer list changed while loading. Refresh to try again.");
-          result = result.concat(batch.performers); page++;
-        } while (result.length < total);
-        if (!controller.signal.aborted) { setPerformers(result); setLoading(false); }
-      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
-      return function () { controller.abort(); };
+    dataLoader.usePageLoad({
+      query: "query DirtyStatsPerformerScatter($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name rating100 scene_count}}}",
+      variables: function (page) { return performerVariables(props.filter, page); },
+      collection: function (response) {
+        var batch = response.findPerformers;
+        return { count: batch.count, rows: batch.performers };
+      },
+      failureLabel: "The performer list changed while loading. Refresh to try again.",
+      setLoading: setLoading,
+      setError: setError,
+      publish: function (result) { setPerformers(result); }
     }, [queryKey, refresh]);
-    React.useEffect(function () {
+    chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !stats.points.length) return;
-      var chart, observer;
-      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
-      try {
+      return {
+        node: node.current,
+        chartRef: chartRef,
+        beforeInit: function () {
         if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
-        chart = initStatsChart(node.current, { renderer: "canvas" }); chartRef.current = chart;
-        chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
+        },
+        configure: function (chart) { chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
         chart.getZr().on("click", function (event) {
           var pixel = [event.offsetX, event.offsetY];
           if (!stats.points.length || !chart.containPixel({ gridIndex: 0 }, pixel)) return;
@@ -2109,19 +2041,11 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
             setMaxScenes(nearestScatterOption(STATS_SETTING_SPECS.scatterMaxScenes.options, value[1]));
           }
         });
-        chart.setOption({ backgroundColor: themeColor("background"), grid: { left: 12, right: 24, top: 22, bottom: 60, containLabel: true },
-          tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.data.name + "\nRating " + p.value[0] + "/10\n" + p.value[1] + " scene" + (p.value[1] === 1 ? "" : "s"); } },
-          xAxis: { type: "value", name: "Rating (out of 10)", nameLocation: "middle", nameGap: 28, min: 0, max: 10, nameTextStyle: { color: themeColor("muted") }, axisLabel: { color: themeColor("muted") }, axisLine: { lineStyle: { color: themeColor("border") } }, splitLine: { lineStyle: { color: themeColor("grid") } } },
-          yAxis: { type: "value", name: "Scenes", nameLocation: "middle", nameGap: 45, min: 0, minInterval: 1, max: function (value) { return maxScenes > 0 ? Math.max(value.max, maxScenes) : value.max; }, nameTextStyle: { color: themeColor("muted") }, axisLabel: { color: themeColor("muted") }, splitLine: { lineStyle: { color: themeColor("grid") } } },
-          series: [{ type: "scatter", symbolSize: 9, progressive: 4000, data: scatterSeriesData(stats, selected),
-            markLine: { silent: true, symbol: "none", label: { color: themeColor("text"), fontSize: 10 }, lineStyle: { color: themeColor("accent"), type: "dashed" }, data: scatterGuideLines(minRating, maxScenes).filter(function (guide) { return guide.active; }).map(function (guide) {
-              return guide.axis === "x" ? { xAxis: guide.value, label: { formatter: "Rating " + guide.value + "+" } } : { yAxis: guide.value, label: { formatter: guide.value + " scenes" } };
-            }) } }] });
+        chart.setOption(chartOptions.scatterOption(stats, selected, maxScenes, minRating));
         setChartError("");
-        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
-        window.addEventListener("resize", resize);
-      } catch (err) { setChartError(err.message); }
-      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+      },
+        onError: function (err) { setChartError(err.message); }
+      };
     }, [stats, loading, error, chartTheme]);
     React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: scatterSeriesData(stats, selected) }] }); }, [selected, stats, loading, error, chartTheme]);
     var matching = React.useMemo(function () { return selected == null ? stats.points : stats.points.filter(function (point) { return point.id === selected; }); }, [stats, selected]);
@@ -2208,40 +2132,32 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
     var stats = React.useMemo(function () { return aggregateCountRating(scenes, metric); }, [scenes, metric]);
     React.useEffect(function () { setSelected(null); }, [queryKey, metric]);
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setLoading(true); setError("");
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var data = await hub.graphql("query DirtyStatsCountRating($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title rating100 play_count o_counter}}}", sceneVariables(props.filter, page), { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = data.findScenes; total = batch.count;
-          if (!batch.scenes.length && result.length < total) throw new Error("The scene list changed while loading. Refresh to try again.");
-          result = result.concat(batch.scenes); page++;
-        } while (result.length < total);
-        if (!controller.signal.aborted) { setScenes(result); setLoading(false); }
-      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
-      return function () { controller.abort(); };
+    dataLoader.usePageLoad({
+      query: "query DirtyStatsCountRating($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title rating100 play_count o_counter}}}",
+      variables: function (page) { return sceneVariables(props.filter, page); },
+      collection: function (response) {
+        var batch = response.findScenes;
+        return { count: batch.count, rows: batch.scenes };
+      },
+      failureLabel: "The scene list changed while loading. Refresh to try again.",
+      setLoading: setLoading,
+      setError: setError,
+      publish: function (result) { setScenes(result); }
     }, [queryKey, refresh]);
-    React.useEffect(function () {
+    chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !stats.points.length) return;
-      var chart, observer;
-      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
-      try {
+      return {
+        node: node.current,
+        chartRef: chartRef,
+        beforeInit: function () {
         if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
-        chart = initStatsChart(node.current, { renderer: "canvas" }); chartRef.current = chart;
-        chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
-        chart.setOption({ backgroundColor: themeColor("background"), grid: { left: 12, right: 24, top: 22, bottom: 60, containLabel: true },
-          tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.data.title + "\nScene rating " + p.value[0] + "/10\n" + p.value[1] + " " + countRatingLabel(metric).toLowerCase(); } },
-          xAxis: { type: "value", name: "Scene rating (out of 10)", nameLocation: "middle", nameGap: 28, min: 0, max: 10, nameTextStyle: { color: themeColor("muted") }, axisLabel: { color: themeColor("muted") }, axisLine: { lineStyle: { color: themeColor("border") } }, splitLine: { lineStyle: { color: themeColor("grid") } } },
-          yAxis: { type: "value", name: countRatingLabel(metric), nameLocation: "middle", nameGap: 45, min: 0, minInterval: 1, nameTextStyle: { color: themeColor("muted") }, axisLabel: { color: themeColor("muted") }, splitLine: { lineStyle: { color: themeColor("grid") } } },
-          series: [{ type: "scatter", symbolSize: 9, progressive: 4000, data: countRatingSeriesData(stats, selected), emphasis: { itemStyle: { borderColor: "#fff", borderWidth: 2 } } }] });
+        },
+        configure: function (chart) { chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
+        chart.setOption(chartOptions.countRatingOption(stats, metric, selected));
         setChartError("");
-        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
-        window.addEventListener("resize", resize);
-      } catch (err) { setChartError(err.message); }
-      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+      },
+        onError: function (err) { setChartError(err.message); }
+      };
     }, [stats, metric, loading, error, chartTheme]);
     React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: countRatingSeriesData(stats, selected) }] }); }, [selected, stats, metric, loading, error, chartTheme]);
     var matching = React.useMemo(function () { return selected == null ? scenes : scenes.filter(function (scene) { return String(scene.id) === selected; }); }, [scenes, selected]);
@@ -2319,30 +2235,27 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
     var stats = React.useMemo(function () { return aggregateRepeatOffenders(scenes); }, [scenes]);
     React.useEffect(function () { setSelected(null); }, [queryKey]);
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setLoading(true); setError("");
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var data = await hub.graphql("query DirtyStatsRepeatOffenders($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title play_count}}}", sceneVariables(props.filter, page), { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = data.findScenes; total = batch.count;
-          if (!batch.scenes.length && result.length < total) throw new Error("The scene list changed while loading. Refresh to try again.");
-          result = result.concat(batch.scenes); page++;
-        } while (result.length < total);
-        if (!controller.signal.aborted) { setScenes(result); setLoading(false); }
-      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
-      return function () { controller.abort(); };
+    dataLoader.usePageLoad({
+      query: "query DirtyStatsRepeatOffenders($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title play_count}}}",
+      variables: function (page) { return sceneVariables(props.filter, page); },
+      collection: function (response) {
+        var batch = response.findScenes;
+        return { count: batch.count, rows: batch.scenes };
+      },
+      failureLabel: "The scene list changed while loading. Refresh to try again.",
+      setLoading: setLoading,
+      setError: setError,
+      publish: function (result) { setScenes(result); }
     }, [queryKey, refresh]);
-    React.useEffect(function () {
+    chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !stats.totalViews) return;
-      var chart, observer;
-      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
-      try {
+      return {
+        node: node.current,
+        chartRef: chartRef,
+        beforeInit: function () {
         if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
-        chart = initStatsChart(node.current, { renderer: "canvas" }); chartRef.current = chart;
-        chart.getZr().on("click", function (event) {
+        },
+        configure: function (chart) { chart.getZr().on("click", function (event) {
           var pixel = [event.offsetX, event.offsetY];
           if (!chart.containPixel({ gridIndex: 0 }, pixel)) return;
           var value = chart.convertFromPixel({ gridIndex: 0 }, pixel);
@@ -2351,17 +2264,11 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
           if (!rowPixel || Math.abs(rowPixel[0] - pixel[0]) > 12 || Math.abs(rowPixel[1] - pixel[1]) > 12) return;
           setSelected(function (current) { return current === row.id ? null : row.id; });
         });
-        chart.setOption({ backgroundColor: themeColor("background"), grid: { left: 18, right: 28, top: 24, bottom: 68, containLabel: true },
-          tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { if (!p.data || !p.data.id) return p.seriesName; return p.data.title + "\nRank " + p.data.rank + " of " + stats.totalScenes + "\n" + p.data.views + " recorded view" + (p.data.views === 1 ? "" : "s") + "\nTop " + p.value[0].toFixed(1) + "% account for " + p.value[1].toFixed(1) + "% of views"; } },
-          xAxis: { type: "value", name: "Scenes, ranked by views (%)", nameLocation: "middle", nameGap: 32, min: 0, max: 100, nameTextStyle: { color: themeColor("muted") }, axisLabel: { color: themeColor("muted"), formatter: "{value}%" }, axisLine: { lineStyle: { color: themeColor("border") } }, splitLine: { lineStyle: { color: themeColor("grid") } } },
-          yAxis: { type: "value", name: "Cumulative share of views", nameLocation: "middle", nameGap: 48, min: 0, max: 100, nameTextStyle: { color: themeColor("muted") }, axisLabel: { color: themeColor("muted"), formatter: "{value}%" }, splitLine: { lineStyle: { color: themeColor("grid") } } },
-          dataZoom: [{ type: "inside", xAxisIndex: 0 }, { type: "slider", xAxisIndex: 0, bottom: 8, height: 18 }],
-          series: [{ name: "Cumulative views", type: "line", showSymbol: stats.totalScenes <= 200, symbolSize: 5, sampling: "lttb", lineStyle: { color: themeColor("primary"), width: 3 }, itemStyle: { color: themeColor("primary") }, areaStyle: { color: themeColor("primary"), opacity: .16 }, data: repeatOffenderSeriesData(stats, selected), markArea: { silent: true, label: { show: true, color: themeColor("text"), formatter: "Top 5%" }, itemStyle: { color: themeColor("accent"), opacity: .10 }, data: [[{ xAxis: 0 }, { xAxis: 5 }]] } }, { name: "Equal distribution", type: "line", showSymbol: false, silent: true, lineStyle: { color: themeColor("border"), type: "dashed", width: 1 }, data: [[0, 0], [100, 100]] }] });
+        chart.setOption(chartOptions.repeatOffenderOption(stats, selected));
         setChartError("");
-        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
-        window.addEventListener("resize", resize);
-      } catch (err) { setChartError(err.message); }
-      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+      },
+        onError: function (err) { setChartError(err.message); }
+      };
     }, [stats, loading, error, chartTheme]);
     React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: repeatOffenderSeriesData(stats, selected) }] }); }, [selected, stats, loading, error, chartTheme]);
     var matching = React.useMemo(function () { return selected == null ? scenes : scenes.filter(function (scene) { return String(scene.id) === selected; }); }, [scenes, selected]);
@@ -2436,43 +2343,35 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var queryKey = JSON.stringify(sceneVariables(props.filter, 1));
     var stats = React.useMemo(function () { return aggregateQualityEfficiency(scenes); }, [scenes]);
     React.useEffect(function () { setSelected(null); }, [queryKey]);
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setLoading(true); setError("");
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var response = await hub.graphql("query DirtyStatsQualityEfficiency($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title rating100 files{id size duration}}}}", sceneVariables(props.filter, page), { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = response.findScenes; total = batch.count;
-          if (!batch.scenes.length && result.length < total) throw new Error("The scene list changed while loading. Refresh to try again.");
-          result = result.concat(batch.scenes); page++;
-        } while (result.length < total);
-        if (!controller.signal.aborted) { setScenes(result); setLoading(false); }
-      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
-      return function () { controller.abort(); };
+    dataLoader.usePageLoad({
+      query: "query DirtyStatsQualityEfficiency($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title rating100 files{id size duration}}}}",
+      variables: function (page) { return sceneVariables(props.filter, page); },
+      collection: function (response) {
+        var batch = response.findScenes;
+        return { count: batch.count, rows: batch.scenes };
+      },
+      failureLabel: "The scene list changed while loading. Refresh to try again.",
+      setLoading: setLoading,
+      setError: setError,
+      publish: function (result) { setScenes(result); }
     }, [queryKey, refresh]);
-    React.useEffect(function () {
+    chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !stats.points.length) return;
-      var chart, observer;
-      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
       function tooltip(p) {
         return p.data.title + "\nRating " + p.value[1].toFixed(1) + "/10\n" + p.value[0].toFixed(1) + " min/GiB\n" + Math.round(p.data.duration / 60) + " min in " + formatBytes(p.data.bytes);
       }
-      try {
+      return {
+        node: node.current,
+        chartRef: chartRef,
+        beforeInit: function () {
         if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
-        chart = initStatsChart(node.current, { renderer: "canvas" }); chartRef.current = chart;
-        chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
-        chart.setOption({ backgroundColor: themeColor("background"), grid: { left: 12, right: 24, top: 22, bottom: 60, containLabel: true },
-          tooltip: { trigger: "item", renderMode: "richText", formatter: tooltip },
-          xAxis: { type: "value", name: "Storage efficiency (playable minutes per GiB)", nameLocation: "middle", nameGap: 32, min: 0, nameTextStyle: { color: themeColor("muted") }, axisLabel: { color: themeColor("muted") }, axisLine: { lineStyle: { color: themeColor("border") } }, splitLine: { lineStyle: { color: themeColor("grid") } } },
-          yAxis: { type: "value", name: "Scene rating (out of 10)", nameLocation: "middle", nameGap: 45, min: 0, max: 10, nameTextStyle: { color: themeColor("muted") }, axisLabel: { color: themeColor("muted") }, splitLine: { lineStyle: { color: themeColor("grid") } } },
-          series: [{ name: "Scenes", type: "scatter", progressive: 4000, data: qualityEfficiencySeriesData(stats) }] });
+        },
+        configure: function (chart) { chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
+        chart.setOption(chartOptions.qualityEfficiencyOption(stats, tooltip));
         setChartError("");
-        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
-        window.addEventListener("resize", resize);
-      } catch (err) { setChartError(err.message); }
-      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+      },
+        onError: function (err) { setChartError(err.message); }
+      };
     }, [stats, loading, error, chartTheme]);
     var matching = React.useMemo(function () {
       var eligible = new Set(stats.points.map(function (point) { return point.id; }));
@@ -2554,21 +2453,17 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var selectedStudio = React.useMemo(function () { return selected == null ? null : stats.points.find(function (point) { return point.id === selected; }); }, [stats, selected]);
     var matching = React.useMemo(function () { return selected == null ? scenes : scenes.filter(function (scene) { return scene.studio && String(scene.studio.id) === selected; }); }, [scenes, selected]);
     React.useEffect(function () { setSelected(null); }, [queryKey, minScenes]);
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setLoading(true); setError("");
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var data = await hub.graphql("query DirtyStatsStudios($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100 studio{id name image_path} files{id size}}}}", sceneVariables(props.filter, page), { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = data.findScenes; total = batch.count;
-          if (!batch.scenes.length && result.length < total) throw new Error("The scene list changed while loading. Refresh to try again.");
-          result = result.concat(batch.scenes); page++;
-        } while (result.length < total);
-        if (!controller.signal.aborted) { setScenes(result); setLoading(false); }
-      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
-      return function () { controller.abort(); };
+    dataLoader.usePageLoad({
+      query: "query DirtyStatsStudios($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100 studio{id name image_path} files{id size}}}}",
+      variables: function (page) { return sceneVariables(props.filter, page); },
+      collection: function (response) {
+        var batch = response.findScenes;
+        return { count: batch.count, rows: batch.scenes };
+      },
+      failureLabel: "The scene list changed while loading. Refresh to try again.",
+      setLoading: setLoading,
+      setError: setError,
+      publish: function (result) { setScenes(result); }
     }, [queryKey, refresh]);
     React.useEffect(function () {
       if (loading || error || docsCapture || !points.length) return;
@@ -2580,24 +2475,20 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
       });
       return function () { active = false; };
     }, [points, loading, error, docsCapture]);
-    React.useEffect(function () {
+    chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !points.length) return;
-      var chart, observer;
-      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
-      try {
+      return {
+        node: node.current,
+        chartRef: chartRef,
+        beforeInit: function () {
         if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
-        chart = initStatsChart(node.current, { renderer: "canvas" }); chartRef.current = chart;
-        chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
-        chart.setOption({ backgroundColor: themeColor("background"), grid: { left: 12, right: 24, top: 22, bottom: 60, containLabel: true },
-          tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) { return p.data.name + "\n" + p.value[0] + " scene" + (p.value[0] === 1 ? "" : "s") + "\nAverage rating " + p.value[1].toFixed(1) + "/10\n" + formatBytes(p.data.bytes) + (p.data.unrated ? "\n" + p.data.unrated + " unrated" : ""); } },
-          xAxis: { type: "value", name: "Scenes", nameLocation: "middle", nameGap: 28, min: 0, minInterval: 1, nameTextStyle: { color: themeColor("muted") }, axisLabel: { color: themeColor("muted") }, axisLine: { lineStyle: { color: themeColor("border") } }, splitLine: { lineStyle: { color: themeColor("grid") } } },
-          yAxis: { type: "value", name: "Average rating (out of 10)", nameLocation: "middle", nameGap: 45, min: 0, max: 10, nameTextStyle: { color: themeColor("muted") }, axisLabel: { color: themeColor("muted") }, splitLine: { lineStyle: { color: themeColor("grid") } } },
-          series: [{ type: "scatter", data: studioSeriesData(points, maxBytes, selected), emphasis: { itemStyle: { borderColor: "#fff", borderWidth: 2 } } }] });
+        },
+        configure: function (chart) { chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
+        chart.setOption(chartOptions.studioOption(points, maxBytes, selected));
         setChartError("");
-        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
-        window.addEventListener("resize", resize);
-      } catch (err) { setChartError(err.message); }
-      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+      },
+        onError: function (err) { setChartError(err.message); }
+      };
     }, [points, maxBytes, loading, error, logoVersion, chartTheme]);
     React.useEffect(function () { if (chartRef.current) chartRef.current.setOption({ series: [{ data: studioSeriesData(points, maxBytes, selected) }] }); }, [selected, points, maxBytes, loading, error, logoVersion, chartTheme]);
     var unratedStudios = stats.points.filter(function (point) { return point.rating == null; }).length;
@@ -2681,39 +2572,32 @@ var BIRTHDAY_MONTHS = ["January", "February", "March", "April", "May", "June", "
     var matching = React.useMemo(function () { return tagDnaScenes(scenes, selected); }, [scenes, selected]);
     React.useEffect(function () { setSelected(null); }, [queryKey]);
     React.useEffect(function () { if (selected != null && !data.some(function (item) { return item.id === selected; })) setSelected(null); }, [selected, data]);
-    React.useEffect(function () {
-      var controller = new AbortController();
-      setLoading(true); setError("");
-      (async function () {
-        var result = [], page = 1, total;
-        do {
-          var response = await hub.graphql("query DirtyStatsTagDna($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100 play_count tags{id name}}}}", sceneVariables(props.filter, page), { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          var batch = response.findScenes; total = batch.count;
-          if (!batch.scenes.length && result.length < total) throw new Error("The scene list changed while loading. Refresh to try again.");
-          result = result.concat(batch.scenes); page++;
-        } while (result.length < total);
-        if (!controller.signal.aborted) { setScenes(result); setLoading(false); }
-      })().catch(function (err) { if (!controller.signal.aborted) { setError(err.message); setLoading(false); } });
-      return function () { controller.abort(); };
+    dataLoader.usePageLoad({
+      query: "query DirtyStatsTagDna($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100 play_count tags{id name}}}}",
+      variables: function (page) { return sceneVariables(props.filter, page); },
+      collection: function (response) {
+        var batch = response.findScenes;
+        return { count: batch.count, rows: batch.scenes };
+      },
+      failureLabel: "The scene list changed while loading. Refresh to try again.",
+      setLoading: setLoading,
+      setError: setError,
+      publish: function (result) { setScenes(result); }
     }, [queryKey, refresh]);
-    React.useEffect(function () {
+    chartLifecycle.useChart(function () {
       if (loading || error || !node.current || !data.length) return;
-      var chart, observer;
-      function resize() { if (chart && !chart.isDisposed()) chart.resize(); }
-      try {
+      return {
+        node: node.current,
+        chartRef: chartRef,
+        beforeInit: function () {
         if (!charts) throw new Error("The bundled chart library could not be loaded. Reload Stash.");
-        chart = initStatsChart(node.current, { renderer: "canvas" }); chartRef.current = chart;
-        chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
-        chart.setOption({ backgroundColor: themeColor("background"), tooltip: { trigger: "item", renderMode: "richText", formatter: function (p) {
-          var line = metric === "play_count" ? "Views per scene " + p.data.playsPerScene.toFixed(1) + "\n" + p.data.plays + " total views" : p.data.rating == null ? "No rated scenes" : "Average rating " + p.data.rating.toFixed(1) + "/10\n" + p.data.rated + " rated" + (p.data.unrated ? ", " + p.data.unrated + " unrated" : "");
-          return p.data.name + "\n" + p.data.value + " scene" + (p.data.value === 1 ? "" : "s") + "\n" + line;
-        } }, series: [{ type: "treemap", roam: true, nodeClick: false, breadcrumb: { show: false }, top: 4, right: 4, bottom: 4, left: 4, squareRatio: 1.1, visualMin: 0, label: { show: true, color: "#fff", textBorderColor: "rgba(0,0,0,.5)", textBorderWidth: 2, overflow: "truncate", formatter: function (p) { return p.name + "\n" + p.value; } }, emphasis: { label: { show: true }, itemStyle: { borderColor: "#fff", borderWidth: 3 } }, data: data }] }, true);
+        },
+        configure: function (chart) { chart.on("click", function (event) { if (event.componentType === "series" && event.data && event.data.id) setSelected(function (current) { return current === event.data.id ? null : event.data.id; }); });
+        chart.setOption(chartOptions.tagDnaOption(data, metric), true);
         setChartError("");
-        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
-        window.addEventListener("resize", resize);
-      } catch (err) { setChartError(err.message); }
-      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); chartRef.current = null; };
+      },
+        onError: function (err) { setChartError(err.message); }
+      };
     }, [data, metric, loading, error, chartTheme]);
     return html`<section className="dirty-stats-content">
       <div className="dirty-stats-toolbar">
@@ -2944,7 +2828,102 @@ return html`<main
   });
   if (hub.theme && hub.theme.subscribe) hub.theme.subscribe(syncSuiteTheme);
   var statsSettingsReady = loadStatsSettings();
-  window[INSTANCE_KEY] = { route: route, algorithms: { constellationLayout: constellationLayout, constellationGender: constellationGender, aggregateConstellation: aggregateConstellation, constellationScenes: constellationScenes, aggregateRatings: aggregateRatings, sceneRating: sceneRating, roundRating: roundRating, forecastGrowth: forecastGrowth, filterAgeScenes: filterAgeScenes, performersAtAge: performersAtAge, ageAtScene: ageAtScene, aggregateAges: aggregateAges, birthdayInYear: birthdayInYear, daysUntilBirthday: daysUntilBirthday, aggregateBirthdays: aggregateBirthdays, performerImageSource: performerImageSource, birthdayEntriesFor: birthdayEntriesFor, birthdayDefaultSelection: birthdayDefaultSelection, birthdayAgeText: birthdayAgeText, birthdayMonthCounts: birthdayMonthCounts, birthdayDayLabel: birthdayDayLabel, scenesInPeriod: scenesInPeriod, periodGrowth: periodGrowth, growthDataZoomRange: growthDataZoomRange, orderedCards: orderedCards, docsCaptureEnabled: docsCaptureEnabled, sceneVariables: sceneVariables, aggregateGrowth: aggregateGrowth, formatBytes: formatBytes, normalize: normalize, countryIndex: countryIndex, countryName: countryName, performerVariables: performerVariables, aggregate: aggregate, countryPerformers: countryPerformers, eckertIV: eckertIV, mapLayout: mapLayout, originMapOption: originMapOption, aggregateScatter: aggregateScatter, scatterSeriesData: scatterSeriesData, nearestScatterOption: nearestScatterOption, scatterGuideForClick: scatterGuideForClick, scatterGuideLines: scatterGuideLines, countRatingLabel: countRatingLabel, countRatingSeriesData: countRatingSeriesData, aggregateCountRating: aggregateCountRating, aggregateRepeatOffenders: aggregateRepeatOffenders, repeatOffenderSeriesData: repeatOffenderSeriesData, repeatOffenderRowAtShare: repeatOffenderRowAtShare, aggregateQualityEfficiency: aggregateQualityEfficiency, qualityEfficiencySeriesData: qualityEfficiencySeriesData, qualityEfficiencySymbolSize: qualityEfficiencySymbolSize, aggregateStudios: aggregateStudios, aggregateTagDna: aggregateTagDna, tagDnaMetricValue: tagDnaMetricValue, tagDnaMetricLabel: tagDnaMetricLabel, tagDnaColor: tagDnaColor, tagDnaSeriesData: tagDnaSeriesData, tagDnaScenes: tagDnaScenes, serializeDashboardFilter: serializeDashboardFilter, statsTheme: statsTheme, themeColor: themeColor, themePalette: themePalette, statsThemeClass: statsThemeClass, initStatsChart: initStatsChart, statsSettings: statsSettings, parseStatsSetting: parseStatsSetting, statsSettingsFromStorage: statsSettingsFromStorage, setStatsSetting: setStatsSetting, loadStatsSettings: loadStatsSettings } };
+  window[INSTANCE_KEY] = {
+    route: route,
+    algorithms: {
+      // Constellation
+      constellationLayout: constellationLayout,
+      constellationGender: constellationGender,
+      aggregateConstellation: aggregateConstellation,
+      constellationScenes: constellationScenes,
+
+      // Ratings
+      aggregateRatings: aggregateRatings,
+      sceneRating: sceneRating,
+      roundRating: roundRating,
+
+      // Ages and birthdays
+      filterAgeScenes: filterAgeScenes,
+      performersAtAge: performersAtAge,
+      ageAtScene: ageAtScene,
+      aggregateAges: aggregateAges,
+      birthdayInYear: birthdayInYear,
+      daysUntilBirthday: daysUntilBirthday,
+      aggregateBirthdays: aggregateBirthdays,
+      performerImageSource: performerImageSource,
+      birthdayEntriesFor: birthdayEntriesFor,
+      birthdayDefaultSelection: birthdayDefaultSelection,
+      birthdayAgeText: birthdayAgeText,
+      birthdayMonthCounts: birthdayMonthCounts,
+      birthdayDayLabel: birthdayDayLabel,
+
+      // Growth
+      forecastGrowth: forecastGrowth,
+      scenesInPeriod: scenesInPeriod,
+      periodGrowth: periodGrowth,
+      growthDataZoomRange: growthDataZoomRange,
+      aggregateGrowth: aggregateGrowth,
+      formatBytes: formatBytes,
+
+      // Countries and map
+      normalize: normalize,
+      countryIndex: countryIndex,
+      countryName: countryName,
+      performerVariables: performerVariables,
+      aggregate: aggregate,
+      countryPerformers: countryPerformers,
+      eckertIV: eckertIV,
+      mapLayout: mapLayout,
+      originMapOption: originMapOption,
+
+      // Performer scatter
+      aggregateScatter: aggregateScatter,
+      scatterSeriesData: scatterSeriesData,
+      nearestScatterOption: nearestScatterOption,
+      scatterGuideForClick: scatterGuideForClick,
+      scatterGuideLines: scatterGuideLines,
+
+      // Scene counters
+      countRatingLabel: countRatingLabel,
+      countRatingSeriesData: countRatingSeriesData,
+      aggregateCountRating: aggregateCountRating,
+      aggregateRepeatOffenders: aggregateRepeatOffenders,
+      repeatOffenderSeriesData: repeatOffenderSeriesData,
+      repeatOffenderRowAtShare: repeatOffenderRowAtShare,
+
+      // Storage efficiency
+      aggregateQualityEfficiency: aggregateQualityEfficiency,
+      qualityEfficiencySeriesData: qualityEfficiencySeriesData,
+      qualityEfficiencySymbolSize: qualityEfficiencySymbolSize,
+
+      // Studios and tags
+      aggregateStudios: aggregateStudios,
+      aggregateTagDna: aggregateTagDna,
+      tagDnaMetricValue: tagDnaMetricValue,
+      tagDnaMetricLabel: tagDnaMetricLabel,
+      tagDnaColor: tagDnaColor,
+      tagDnaSeriesData: tagDnaSeriesData,
+      tagDnaScenes: tagDnaScenes,
+
+      // Filters and cards
+      orderedCards: orderedCards,
+      docsCaptureEnabled: docsCaptureEnabled,
+      sceneVariables: sceneVariables,
+      serializeDashboardFilter: serializeDashboardFilter,
+
+      // Theme and settings
+      statsTheme: statsTheme,
+      themeColor: themeColor,
+      themePalette: themePalette,
+      statsThemeClass: statsThemeClass,
+      initStatsChart: initStatsChart,
+      statsSettings: statsSettings,
+      parseStatsSetting: parseStatsSetting,
+      statsSettingsFromStorage: statsSettingsFromStorage,
+      setStatsSetting: setStatsSetting,
+      loadStatsSettings: loadStatsSettings,
+    }
+  };
   window.__dirtyStatsPlugin.dashboardRoute = dashboardRoute;
   window.__dirtyStatsPlugin.algorithms.nativeFilterQuery = nativeFilterQuery;
   window.__dirtyStatsPlugin.algorithms.statisticFilterSearch = statisticFilterSearch;

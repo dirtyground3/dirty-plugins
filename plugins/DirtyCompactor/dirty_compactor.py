@@ -23,8 +23,12 @@ import dirty_plugins_storage as storage
 from dirty_plugins_client import StashClient as BaseClient, contain_child_process
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dirty_compactor_rules import (
-    ENCODERS, PluginError, Cancelled, digest, file_hash, identity, validate_settings, dimensions, target_mbps,
+    ENCODERS, PluginError, Cancelled, Skipped, digest, file_hash, identity, validate_settings, dimensions, target_mbps,
+    quick_hash, container_video_bitrate,
 )
+import dirty_compactor_quality as quality
+
+from dirty_compactor_workflow import Run, OperationJournal, transition_run
 
 PLUGIN_ID = "dirtyCompactor"
 ROOT = Path(__file__).resolve().parent
@@ -32,6 +36,10 @@ PREVIEWS = ROOT / "runtime" / "previews"
 PRIVATE = ROOT / "runtime" / "private"
 TERMINAL = {"completed", "cancelled", "failed"}
 FIELDS = "id title files{id path size width height duration video_codec bit_rate}"
+from dirty_plugins_protocol import StashReporter
+import dirty_plugins_protocol as protocol
+
+
 def settings():
     return validate_settings(storage.get_plugin_settings(PLUGIN_ID))
 
@@ -101,6 +109,8 @@ def probe(executable, path):
     # Unknown bitrates must not masquerade as a reliable reduction estimate.
     rate = plausible_bitrate(v.get("bit_rate") or v.get("tags", {}).get("BPS") or v.get("tags", {}).get("BPS-eng"),
                              data.get("format", {}).get("bit_rate"))
+    if not rate:
+        rate = container_video_bitrate(streams, data.get("format", {}).get("bit_rate"))
     if not rate:
         # Matroska often omits stream bitrate. Sum compressed packet bytes,
         # not container bitrate (which includes audio and attachments).
@@ -179,7 +189,9 @@ def get(kind, record_id):
 
 
 def report(run_id, stage, progress=0):
-    storage.compactor_put("progress", run_id, {"id": run_id, "stage": stage, "progress": progress, "heartbeat": time.time(), "pid": os.getpid()})
+    previous = storage.compactor_get("progress", run_id) or {}
+    storage.compactor_put("progress", run_id, {"id": run_id, "stage": stage, "progress": progress, "heartbeat": time.time(),
+                                               "pid": os.getpid(), "started": previous.get("started") or time.time()})
     print("\x01p\x02" + str(max(0, min(1, progress))), file=sys.stderr, flush=True)
 
 
@@ -234,13 +246,24 @@ def run_process(command, run_id, stage, duration=1):
 
 
 def encoder_usable(ffmpeg, codec, kind):
-    command = [ffmpeg, "-hide_banner", "-v", "error", "-f", "lavfi", "-i", "color=size=128x128:rate=25",
-               "-t", "0.2", "-c:v", ENCODERS[codec][kind], "-b:v", "500000", "-f", "null", "-"]
+    # NVENC rejects frames below its minimum size (128x128 fails on RTX 40
+    # cards), which silently sent every "Auto" encode to the CPU.
+    command = [ffmpeg, "-hide_banner", "-v", "error", "-f", "lavfi", "-i", "color=size=320x240:rate=25",
+               "-t", "0.2", "-pix_fmt", "yuv420p", "-c:v", ENCODERS[codec][kind], "-b:v", "500000", "-f", "null", "-"]
     try:
         result = subprocess.run(command, capture_output=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         return result.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
+
+
+def pick_encoder(ffmpeg, codec, preference):
+    """First usable encoder kind for a rule's preference, CPU last."""
+    kinds = ["nvenc", "qsv", "amf", "cpu"] if preference == "auto" else [preference] + (["cpu"] if preference != "cpu" else [])
+    selected = next((kind for kind in kinds if encoder_usable(ffmpeg, codec, kind)), None)
+    if selected is None:
+        raise PluginError("No usable encoder for the selected codec")
+    return selected
 
 
 def capabilities(client):
@@ -260,12 +283,19 @@ def build_preview(client, preview):
             owners.setdefault(str(file["id"]), set()).add(str(scene["id"]))
     won = set()
     operations = []
-    ffprobe = None
-    for rule in snapshot["rules"]:
-        if not rule.get("enabled"):
-            continue
-        for scene in client.scenes(rule["condition"]):
+    ffprobe = ffmpeg = None
+    kinds = {}
+    enabled = [rule for rule in snapshot["rules"] if rule.get("enabled")]
+    for rule_number, rule in enumerate(enabled, 1):
+        scenes = list(client.scenes(rule["condition"]))
+        for scene_number, scene in enumerate(scenes, 1):
             check_cancel(preview["id"])
+            stage = ("Rule %d of %d · " % (rule_number, len(enabled)) if len(enabled) > 1 else "") + \
+                "scene %d of %d" % (scene_number, len(scenes))
+            def overall(within=0.0):
+                # One 0-100% across every rule, so Stash's ETA stays meaningful.
+                return (rule_number - 1 + (scene_number - 1 + within) / max(1, len(scenes))) / max(1, len(enabled))
+            report(preview["id"], "Checking files · " + stage, overall())
             sid = str(scene["id"])
             if sid in won:
                 continue
@@ -283,9 +313,10 @@ def build_preview(client, preview):
                     else:
                         if files:
                             op["identity"] = identity(op["source"])
-                            op["sourceHash"] = file_hash(op["source"])
+                            # The full SHA-256 is taken when a run starts (revalidate).
+                            op["quickHash"] = quick_hash(op["source"])
                         if rule["action"] == "delete":
-                            op["deleteFiles"] = [{"id": str(f["id"]), "path": f["path"], "identity": identity(f["path"]), "hash": file_hash(f["path"])} for f in files]
+                            op["deleteFiles"] = [{"id": str(f["id"]), "path": f["path"], "identity": identity(f["path"]), "quickHash": quick_hash(f["path"])} for f in files]
                             op["savings"] = sum(f["identity"]["size"] for f in op["deleteFiles"])
                         else:
                             ffprobe = ffprobe or client.tool("ffprobe")
@@ -293,6 +324,8 @@ def build_preview(client, preview):
                             op["media"] = media
                             op["dimensions"] = list(dimensions(media["width"], media["height"], rule))
                             op["mbps"] = target_mbps(rule, op["dimensions"][0], op["dimensions"][1], media.get("fps"), media["bitrate"])
+                            if rule.get("quality") in quality.CRF["h264"]:
+                                op["crf"] = quality.CRF[rule["codec"]][rule["quality"]]
                             suffix, muxer = container_for(op["source"], rule, media)
                             op.update(destination=str(Path(op["source"]).with_suffix(suffix)), muxer=muxer)
                             if op["destination"] != op["source"] and Path(op["destination"]).exists():
@@ -300,26 +333,92 @@ def build_preview(client, preview):
                             completed = storage.compactor_get("completed", digest([op["fileId"], rule["id"]]))
                             action_key = digest({k: v for k, v in rule.items() if k not in ("name", "mode", "enabled", "condition")})
                             op["actionKey"] = action_key
-                            if completed and completed.get("hash") == op["sourceHash"] and completed.get("actionKey") == action_key:
-                                op.update(status="unchanged", reason="This output was already processed with these settings")
+                            if completed and completed.get("actionKey") == action_key and same_file(completed, op):
+                                op.update(status="unchanged", reason="Would not get smaller with these settings" if completed.get("notSmaller")
+                                          else "This output was already processed with these settings")
                             elif rule["action"] == "resize" and op["dimensions"] == [media["width"], media["height"]]:
                                 op.update(status="unchanged", reason="Already within the requested resolution")
+                            elif rule.get("quality") == "visual":
+                                # Quality is measured during the run, right before encoding.
+                                # Preview uses typical figures, or an earlier run's measurement.
+                                ffmpeg = ffmpeg or client.tool("ffmpeg")
+                                kinds.setdefault(rule["id"], pick_encoder(ffmpeg, rule["codec"], rule["encoder"]))
+                                choice = storage.compactor_get("qualitySearch", search_key(op, rule, ENCODERS[rule["codec"]][kinds[rule["id"]]]))
+                                if choice:
+                                    op.update(crf=choice["crf"], vmaf=choice["vmaf"], mbps=choice["mbps"])
+                                    skip = visual_skip_reason(choice, media, rule)
+                                    if skip:
+                                        op.update(status="unchanged", reason=skip)
                             elif rule.get("quality") == "source" and rule["action"] == "reencode" and media["codec"] == rule["codec"]:
                                 op.update(status="unchanged", reason="Already uses " + {"h264": "H.264", "hevc": "H.265"}[rule["codec"]])
-                            elif rule.get("quality") != "source" and rule["action"] == "reencode" and media["bitrate"] and media["bitrate"] <= op["mbps"] * 1e6:
-                                op.update(status="unchanged", reason="Already at or below target bitrate")
+                            elif rule.get("quality") != "source" and media["bitrate"] and media["bitrate"] <= op["mbps"] * 1e6:
+                                # Never raise a file's bitrate. A codec change still runs at
+                                # the original rate; anything else could not save space.
+                                if rule["action"] == "reencode" and media["codec"] != rule["codec"]:
+                                    op.update(mbps=round(media["bitrate"] / 1e6, 3), convert=True)
+                                else:
+                                    op.update(status="unchanged", reason="Already at or below target bitrate")
                             elif rule["action"] == "reencode" and not media["bitrate"]:
                                 raise PluginError("Video bitrate is unknown; cannot prove a bitrate reduction")
                             estimated = op["mbps"] * 1e6 * media["duration"] / 8
                             other = sum(float(s.get("bit_rate") or 0) for s in media["streams"] if s["codec_type"] != "video") * media["duration"] / 8
                             op["savings"] = max(0, op["identity"]["size"] - int((estimated + other) * 1.02))
+                except Cancelled:
+                    raise
                 except (OSError, ValueError, PluginError) as error:
                     op.update(status="blocked", reason=str(error))
                 operations.append(op)
-                report(preview["id"], "Planning", len(won) / max(1, len(library)))
     preview.update(status="ready", operations=operations)
     save("preview", preview)
     return preview
+
+
+def search_key(op, rule, encoder):
+    """Identifies a quality measurement: same file, output size, encoder, and target."""
+    return digest([quality.SEARCH_VERSION, op["quickHash"], op["identity"]["size"], op["dimensions"], encoder,
+                   rule["vmaf"], quality.CRF_RANGE[rule["codec"]], quality.SAMPLE_SECONDS, quality.SAMPLE_POINTS])
+
+
+def visual_skip_reason(choice, media, rule):
+    if not choice["reached"]:
+        return "Cannot reach VMAF %d in the quality search range" % rule["vmaf"]
+    if media["bitrate"] and choice["mbps"] * 1e6 >= media["bitrate"] * 0.95:
+        return "Would not get smaller at this visual quality"
+    return None
+
+
+def measure_quality(ffmpeg, run, op, encoder):
+    """Find the constant-quality value for a "Match visual quality" file.
+
+    Reuses an earlier measurement of the same file and settings. Raises
+    Skipped when the file would not get meaningfully smaller at the target.
+    """
+    rule, media, key = op["rule"], op["media"], search_key(op, op["rule"], encoder)
+    choice = storage.compactor_get("qualitySearch", key)
+    if not choice:
+        tests = [0]
+
+        def step():
+            check_cancel(run["id"])
+            tests[0] += 1
+            report(run["id"], "Measuring quality · test %d" % tests[0], min(0.95, (tests[0] - 1) / quality.SEARCH_STEPS))
+        choice = quality.search(ffmpeg, op["source"], media, op["dimensions"], rule["codec"], encoder, rule["vmaf"],
+                                PRIVATE / ("quality-" + op["id"]), step, lambda: check_cancel(run["id"]))
+        # Same file and settings give the same answer; later previews and runs reuse it.
+        storage.compactor_put("qualitySearch", key, {k: choice[k] for k in ("crf", "vmaf", "mbps", "reached")})
+    op.update(crf=choice["crf"], vmaf=choice["vmaf"], mbps=choice["mbps"])
+    save("run", run)
+    reason = visual_skip_reason(choice, media, rule)
+    if reason:
+        raise Skipped(reason)
+
+
+def same_file(completed, op):
+    """Whether a remembered outcome belongs to this exact source file."""
+    if completed.get("quickHash"):
+        return completed["quickHash"] == op["quickHash"]
+    # Records from before quick fingerprints hold only the full hash.
+    return bool(completed.get("hash")) and completed["hash"] == file_hash(op["source"])
 
 
 def revalidate(client, run, op):
@@ -329,8 +428,18 @@ def revalidate(client, run, op):
     if not scene or sorted(str(f["id"]) for f in scene["files"]) != op["sceneFiles"]:
         raise PluginError("Scene files changed since preview")
     current = next((f for f in scene["files"] if str(f["id"]) == op["fileId"]), None)
-    if op["sceneFiles"] and (not current or current["path"] != op["source"] or identity(op["source"]) != op["identity"] or file_hash(op["source"]) != op["sourceHash"]):
-        raise PluginError("Original changed since preview; it has been retained")
+    if op["sceneFiles"]:
+        changed = (not current or current["path"] != op["source"] or identity(op["source"]) != op["identity"]
+                   or (op.get("quickHash") and quick_hash(op["source"]) != op["quickHash"]))
+        if not changed and op.get("sourceHash"):
+            changed = file_hash(op["source"]) != op["sourceHash"]
+        if changed:
+            raise PluginError("Original changed since preview; it has been retained")
+        if not op.get("sourceHash"):
+            # First check in a run: fingerprint the whole original now, before
+            # anything is encoded or replaced; replacement and recovery use it.
+            op["sourceHash"] = file_hash(op["source"])
+            save("run", run)
     for rule in run["settings"]["rules"]:
         if rule.get("enabled") and next(iter(client.scenes(rule["condition"], [op["sceneId"]])), None):
             if rule["id"] != op["rule"]["id"]:
@@ -352,8 +461,12 @@ def op_mbps(op):
 def command_for(ffmpeg, op, output, encoder):
     rule, media = op["rule"], op["media"]
     command = [ffmpeg, "-hide_banner", "-v", "error", "-nostdin", "-n", "-noautorotate", "-i", op["source"],
-               "-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-c", "copy", "-c:v:0", encoder,
-               "-b:v:0", str(int(op_mbps(op) * 1e6))]
+               "-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-c", "copy", "-c:v:0", encoder]
+    if op.get("crf") is not None:
+        # Constant quality, capped at the source bitrate so it never grows.
+        command += quality.quality_args(encoder, op["crf"], media.get("bitrate") or None)
+    else:
+        command += ["-b:v:0", str(int(op_mbps(op) * 1e6))]
     if op["dimensions"] != [media["width"], media["height"]]:
         command += ["-filter:v:0", "scale={}:{}".format(*op["dimensions"])]
     if encoder.startswith("lib"):
@@ -369,16 +482,15 @@ def encode(client, run, op):
     suffix = Path(op["destination"]).suffix
     PRIVATE.mkdir(parents=True, exist_ok=True)
     output = PRIVATE / (op["id"] + suffix) if run["reviewOutputs"] else Path(op["source"]).with_name(".dirty-compactor-" + op["id"] + ".tmp")
+    codec, preference = op["rule"]["codec"], op["rule"]["encoder"]
+    selected = pick_encoder(ffmpeg, codec, preference)
+    if op["rule"].get("quality") == "visual" and op.get("crf") is None:
+        measure_quality(ffmpeg, run, op, ENCODERS[codec][selected])
     needed = max(op["identity"]["size"], int(op_mbps(op) * 1e6 * op["media"]["duration"] / 8 * 1.2))
     if shutil.disk_usage(output.parent).free < needed + 64 * 1024 * 1024:
         raise PluginError("Insufficient temporary disk space")
     op.update(output=str(output), status="encoding")
     save("run", run)
-    codec, preference = op["rule"]["codec"], op["rule"]["encoder"]
-    kinds = ["nvenc", "qsv", "amf", "cpu"] if preference == "auto" else [preference] + (["cpu"] if preference != "cpu" else [])
-    selected = next((kind for kind in kinds if encoder_usable(ffmpeg, codec, kind)), None)
-    if selected is None:
-        raise PluginError("No usable encoder for the selected codec")
     op["encoder"] = ENCODERS[codec][selected]
     op["fallback"] = preference not in ("cpu", "auto") and selected == "cpu"
     try:
@@ -401,9 +513,14 @@ def encode(client, run, op):
         return [(s["codec_type"], s.get("codec_name") if s["codec_type"] != "video" else "video") for s in media["streams"]]
     if streams(result) != streams(original) or len(result["chapters"]) != len(original["chapters"]):
         raise PluginError("Output stream/chapters preservation failed validation")
-    # A "Same as source" conversion keeps the bitrate, so it may not shrink.
-    converting = op["rule"].get("quality") == "source"
+    # Conversions at the original bitrate ("Same bitrate", or a target above
+    # the original) are not required to shrink.
+    converting = op["rule"].get("quality") == "source" or op.get("convert")
     if not converting and output.stat().st_size >= op["identity"]["size"]:
+        # Constant-quality sizes are only known after encoding; remember the
+        # outcome so later previews skip this file with the same settings.
+        storage.compactor_put("completed", digest([op["fileId"], op["rule"]["id"]]),
+                              {"hash": op["sourceHash"], "quickHash": op.get("quickHash"), "actionKey": op["actionKey"], "notSmaller": True})
         raise PluginError("Output is not smaller; original retained")
     if not converting and op["rule"]["action"] == "reencode" and (not result["bitrate"] or result["bitrate"] >= original["bitrate"]):
         raise PluginError("Could not validate a lower video bitrate")
@@ -432,7 +549,7 @@ def cleanup_output(op):
         path.unlink(missing_ok=True)
 
 
-def commit(client, run, op):
+def commit(client, run: Run, op: OperationJournal):
     revalidate(client, run, op)
     check_cancel(run["id"])
     output = Path(op["output"])
@@ -461,29 +578,25 @@ def commit(client, run, op):
     os.replace(destination, backup)
     os.replace(staged, destination)
     op["status"] = "reconciling"
-    run["status"] = "reconciling"
-    save("run", run)
+    transition_run(run, "reconciling", save)
     op["scanJob"] = str(client.scan(destination))
     save("run", run)
     client.queue(PLUGIN_ID, {"mode": "finalize", "id": run["id"]}, "DirtyCompactor: reconcile replacement")
 
 
 def complete_run(client, run, status="completed"):
-    run["status"] = status
-    save("run", run)
+    transition_run(run, status, save)
     pending = storage.compactor_get("control", "pending")
     if pending and pending.get("trigger") and not settings()["automationPaused"]:
         storage.compactor_put("control", "pending", {"trigger": None})
         client.queue(PLUGIN_ID, {"mode": "pendingAutomatic", "trigger": pending["trigger"]}, "DirtyCompactor: pending automatic evaluation")
 
 
-def worker(client, run_id, accept=False):
+def worker(client, run_id, accept=False) -> Run:
     run = get("run", run_id)
     expected = "acceptQueued" if accept else "queued"
-    if run["status"] != expected:
-        return run
-    run["status"] = "running"
-    save("run", run)  # compare-and-swap: only one worker can enter
+    if not transition_run(run, "running", save, expected=expected):
+        return run  # compare-and-swap: only one worker can enter
     try:
         for op in run["operations"]:
             if op["status"] not in ("ready", "awaitingReview"):
@@ -495,7 +608,8 @@ def worker(client, run_id, accept=False):
                 revalidate(client, run, op)
                 if op["rule"]["action"] == "delete":
                     for f in op["deleteFiles"]:
-                        if identity(f["path"]) != f["identity"] or file_hash(f["path"]) != f["hash"]:
+                        if identity(f["path"]) != f["identity"] or (quick_hash(f["path"]) != f["quickHash"] if "quickHash" in f
+                                                                     else file_hash(f["path"]) != f["hash"]):
                             raise PluginError("Scene files changed before deletion")
                     op["status"] = "deleting"
                     save("run", run)
@@ -508,22 +622,22 @@ def worker(client, run_id, accept=False):
                     encode(client, run, op)
                     if run["reviewOutputs"]:
                         op["status"] = "awaitingReview"
-                        run["status"] = "awaitingReview"
-                        save("run", run)
+                        transition_run(run, "awaitingReview", save)
                         return run
                 commit(client, run, op)
                 return run
             except Cancelled:
                 raise
+            except Skipped as skipped:
+                op.update(status="unchanged", reason=str(skipped))
+                save("run", run)
             except Exception as error:
                 op["reason"] = str(error)
                 if op["status"] in ("installing", "reconciling", "deleting"):
-                    run["status"] = "recovery"
-                    save("run", run)
+                    transition_run(run, "recovery", save)
                     return run
                 if op["status"] == "awaitingReview":
-                    run["status"] = "awaitingReview"
-                    save("run", run)
+                    transition_run(run, "awaitingReview", save)
                     return run
                 cleanup_output(op)
                 if op.get("staged"):
@@ -544,10 +658,8 @@ def worker(client, run_id, accept=False):
 
 def finalize(client, run_id):
     run = get("run", run_id)
-    if run["status"] != "reconciling":
+    if not transition_run(run, "finalizing", save, expected="reconciling"):
         return run
-    run["status"] = "finalizing"
-    save("run", run)
     op = next(o for o in run["operations"] if o["status"] in ("reconciling", "restoring"))
     try:
         scene = client.scene(op["sceneId"])
@@ -561,11 +673,11 @@ def finalize(client, run_id):
             raise PluginError("Stash resolution is not reconciled yet")
         if not restoring:
             Path(op["backup"]).unlink(missing_ok=True)
-            storage.compactor_put("completed", digest([op["fileId"], op["rule"]["id"]]), {"hash": op["outputHash"], "actionKey": op["actionKey"]})
+            storage.compactor_put("completed", digest([op["fileId"], op["rule"]["id"]]),
+                                  {"hash": op["outputHash"], "quickHash": quick_hash(target), "actionKey": op["actionKey"]})
         cleanup_output(op)
         op.update(status="restored" if restoring else "completed", actualSavings=0 if restoring else op["identity"]["size"] - op["outputSize"])
-        run["status"] = "queued"
-        save("run", run)
+        transition_run(run, "queued", save)
         client.queue(PLUGIN_ID, {"mode": "worker", "id": run_id}, "DirtyCompactor: next file")
     except Exception as error:
         run["status"] = "recovery"
@@ -581,7 +693,8 @@ def output_review(run):
     return {"operationId": op["id"], "url": "/plugin/dirtyCompactor/assets/previews/" + Path(op["output"]).name,
             "originalSize": op["identity"]["size"], "outputSize": op["outputSize"], "original": op["media"],
             "output": op["outputMedia"], "encoder": op["encoder"], "fallback": op.get("fallback"),
-            "destination": op["destination"], "reason": op.get("reason"), "title": op["title"]}
+            "destination": op["destination"], "reason": op.get("reason"), "title": op["title"],
+            "crf": op.get("crf"), "vmaf": op.get("vmaf")}
 
 
 def skip_reasons(operations):
@@ -595,6 +708,20 @@ def skip_reasons(operations):
     return sorted(([reason, count] for reason, count in counts.items()), key=lambda item: (-item[1], item[0]))
 
 
+def eta(progress, now=None):
+    """Seconds left in a preview from its pace so far, once there is enough to go on.
+
+    Preview progress is one 0-1 fraction for the whole plan. Run progress
+    restarts for every file, so runs do not get an overall estimate.
+    """
+    fraction, started = progress.get("progress") or 0, progress.get("started")
+    elapsed = (now or time.time()) - (started or 0)
+    # Half a percent and half a minute: rough at first, but it tightens as it goes.
+    if not started or fraction < 0.005 or elapsed < 30:
+        return None
+    return round(elapsed * (1 - fraction) / fraction)
+
+
 def public_record(record, page=1):
     result = {k: v for k, v in record.items() if k not in ("operations", "settings", "_revision")}
     operations = record.get("operations", [])
@@ -606,10 +733,14 @@ def public_record(record, page=1):
                   actualSavings=sum(o.get("actualSavings", 0) for o in operations),
                   libraryBytesRemoved=sum(o.get("libraryBytesRemoved", 0) for o in operations),
                   skipReasons=skip_reasons(operations),
-                  operations=[{k: o.get(k) for k in ("id", "sceneId", "title", "fileId", "source", "destination", "status", "reason", "savings", "dimensions", "mbps", "identity", "media", "rule", "actualSavings")} for o in operations[(page - 1) * 25:page * 25]])
+                  operations=[{k: o.get(k) for k in ("id", "sceneId", "title", "fileId", "source", "destination", "status", "reason", "savings", "dimensions", "mbps", "crf", "vmaf", "convert", "identity", "media", "rule", "actualSavings")} for o in operations[(page - 1) * 25:page * 25]])
     if "reviewOutputs" in record:
         result["review"] = output_review(record)
     result["progress"] = storage.compactor_get("progress", record["id"]) if record["status"] in ("running", "planning", "reconciling", "finalizing") else None
+    if result["progress"] and "reviewOutputs" not in record:
+        result["progress"]["eta"] = eta(result["progress"])
+    if "reviewOutputs" not in record and record["status"] in ("queued", "planning"):
+        result["cancelRequested"] = bool(storage.compactor_get("cancel", record["id"]))
     return result
 
 
@@ -624,17 +755,28 @@ def start_run(client, preview, args, automatic=False, trigger=None):
     result = storage.compactor_claim_run(run, trigger)
     if result.get("duplicate") or result.get("coalesced"):
         return result
+    # A used preview is not offered again when the panel reopens.
+    preview["runId"] = run["id"]
+    save("preview", preview)
     try:
         client.queue(PLUGIN_ID, {"mode": "worker", "id": run["id"]}, "DirtyCompactor: apply rules")
     except Exception:
         stored = get("run", run["id"])
-        stored["status"] = "failed"
-        save("run", stored)
+        transition_run(stored, "failed", save)
         raise
     return result
 
 
-def recover(client, run, restore=False):
+def tasks_active(client):
+    """Whether any DirtyCompactor task is queued or running in Stash.
+
+    Stash prefixes task descriptions, e.g. "Running plugin task: DirtyCompactor: ...".
+    """
+    jobs = client.call("{jobQueue{id description status}}").get("jobQueue") or []
+    return any(j.get("status") in ("RUNNING", "READY") and "DirtyCompactor:" in str(j.get("description", "")) for j in jobs)
+
+
+def recover(client, run: Run, restore=False):
     if run["status"] not in ("recovery", "running", "finalizing", "reconciling", "queued", "acceptQueued", "discarding"):
         raise PluginError("This run does not need recovery")
     progress = storage.compactor_get("progress", run["id"])
@@ -642,34 +784,29 @@ def recover(client, run, restore=False):
         raise PluginError("Worker is still active")
     # A live Stash task remains authoritative even during long hashing/probing
     # phases which produce no FFmpeg progress events.
-    jobs = client.call("{jobQueue{id description status}}") .get("jobQueue") or []
-    if any(j.get("status") in ("RUNNING", "READY") and str(j.get("description", "")).startswith("DirtyCompactor:") for j in jobs):
+    if tasks_active(client):
         raise PluginError("DirtyCompactor tasks are still queued or running")
     if run["status"] == "acceptQueued":
-        run["status"] = "awaitingReview"
-        save("run", run)
+        transition_run(run, "awaitingReview", save)
         return
     if run["status"] == "discarding":
         for item in run["operations"]:
             if item["status"] == "awaitingReview":
                 cleanup_output(item)
                 item["status"] = "discarded"
-        run["status"] = "queued"
-        save("run", run)
+        transition_run(run, "queued", save)
         client.queue(PLUGIN_ID, {"mode": "worker", "id": run["id"]}, "DirtyCompactor: resume after discard")
         return
     op = next((o for o in run["operations"] if o["status"] in ("installing", "reconciling", "restoring", "staging", "encoding", "validated", "deleting")), None)
     if not op:
-        run["status"] = "queued"
-        save("run", run)
+        transition_run(run, "queued", save)
         client.queue(PLUGIN_ID, {"mode": "worker", "id": run["id"]}, "DirtyCompactor: resume")
         return
     if op["status"] == "deleting":
         if client.scene(op["sceneId"]):
             raise PluginError("Deletion outcome is uncertain; inspect the scene before retrying")
         op.update(status="completed", libraryBytesRemoved=op["savings"], actualSavings=0)
-        run["status"] = "queued"
-        save("run", run)
+        transition_run(run, "queued", save)
         client.queue(PLUGIN_ID, {"mode": "worker", "id": run["id"]}, "DirtyCompactor: resume")
         return
     backup = Path(op["backup"]) if op.get("backup") else None
@@ -701,8 +838,7 @@ def recover(client, run, restore=False):
         if op.get("staged"):
             Path(op["staged"]).unlink(missing_ok=True)
         op["status"] = "ready"
-        run["status"] = "queued"
-        save("run", run)
+        transition_run(run, "queued", save)
         client.queue(PLUGIN_ID, {"mode": "worker", "id": run["id"]}, "DirtyCompactor: retry interrupted encode")
         return
     else:
@@ -714,125 +850,234 @@ def recover(client, run, restore=False):
             raise PluginError("Replacement incomplete; restore original")
         op["status"] = "reconciling"
         scan_path = op["destination"]
-    run["status"] = "reconciling"
-    save("run", run)
+    transition_run(run, "reconciling", save)
     op["scanJob"] = str(client.scan(scan_path))
     save("run", run)
     client.queue(PLUGIN_ID, {"mode": "finalize", "id": run["id"]}, "DirtyCompactor: reconcile recovery")
 
 
-def dispatch(client, args):
-    mode = args.get("mode")
-    if mode == "capabilities":
-        return capabilities(client)
-    if mode == "preview":
-        preview = {"id": uuid.uuid4().hex, "status": "queued", "settings": settings(), "automatic": bool(args.get("automatic")), "created": time.time()}
-        save("preview", preview)
-        client.queue(PLUGIN_ID, {"mode": "plan", "id": preview["id"]}, "DirtyCompactor: calculate preview")
-        return {"id": preview["id"]}
-    if mode == "plan":
-        preview = get("preview", args["id"])
-        try:
-            preview["status"] = "planning"
-            save("preview", preview)
-            build_preview(client, preview)
-        except Exception as error:
-            preview.update(status="failed", error=str(error))
-            save("preview", preview)
-        return {"id": preview["id"]}
-    if mode == "getPreview":
-        return public_record(get("preview", args["id"]), args.get("page", 1))
-    if mode == "startRun":
-        return start_run(client, get("preview", args["id"]), args)
-    if mode in ("startAutomaticRun", "pendingAutomatic"):
-        if settings()["automationPaused"] or not any(r.get("enabled") and r["mode"] == "automatic" for r in settings()["rules"]):
-            return {"paused": True}
-        if mode == "startAutomaticRun":
-            if storage.internal_scan_check(args.get("jobId"), args.get("startTime")):
-                return {"internal": True}
-            if not args.get("startTime") or not args.get("jobId"):
-                raise PluginError("Scan identity is required")
-            trigger = digest([str(args["jobId"]), args["startTime"]])
-            previous_trigger = storage.compactor_get("trigger", trigger)
-            if previous_trigger and previous_trigger.get("queued") is not False:
-                return {"duplicate": True}
-            # Queue planning, never do expensive probing in the browser request.
-            claim = storage.compactor_put("trigger", trigger, {"queued": True}, expected=previous_trigger["_revision"] if previous_trigger else -1)
-            try:
-                client.queue(PLUGIN_ID, {"mode": "pendingAutomatic", "trigger": trigger}, "DirtyCompactor: automatic evaluation")
-            except Exception:
-                storage.compactor_put("trigger", trigger, {"queued": False, "error": "Queue failed"})
-                raise
-            return claim
-        active = storage.compactor_get("control", "active")
-        if active:
-            current = get("run", active["id"])
-            if current["status"] not in TERMINAL:
-                storage.compactor_put("control", "pending", {"trigger": args["trigger"]})
-                return {"coalesced": True}
-        preview = {"id": uuid.uuid4().hex, "status": "planning", "settings": settings(), "automatic": True, "created": time.time()}
+def capabilities_handler(client, args):
+    return capabilities(client)
+
+
+def queue_preview(client, args):
+    preview = {
+        "id": uuid.uuid4().hex,
+        "status": "queued",
+        "settings": settings(),
+        "automatic": bool(args.get("automatic")),
+        "created": time.time(),
+    }
+    save("preview", preview)
+    client.queue(PLUGIN_ID, {"mode": "plan", "id": preview["id"]}, "DirtyCompactor: calculate preview")
+    return {"id": preview["id"]}
+
+
+def plan_preview(client, args):
+    preview = get("preview", args["id"])
+    try:
+        preview["status"] = "planning"
         save("preview", preview)
         build_preview(client, preview)
-        return start_run(client, preview, {}, automatic=True)
-    if mode in ("worker", "acceptWorker"):
-        return public_record(worker(client, args["id"], mode == "acceptWorker"))
-    if mode == "finalize":
-        return public_record(finalize(client, args["id"]))
-    if mode == "getRun":
-        return public_record(get("run", args["id"]), args.get("page", 1))
-    if mode == "listRuns":
-        return [{"id": r["id"], "status": r["status"], "created": r["created"], "automatic": r["automatic"],
-                 "actualSavings": sum(o.get("actualSavings", 0) for o in r["operations"])} for r in storage.compactor_list("run")]
-    if mode == "getOutputReview":
-        return output_review(get("run", args["id"]))
-    if mode in ("acceptOutput", "discardOutput"):
-        run = get("run", args["id"])
-        op = next((o for o in run["operations"] if o["id"] == args.get("operationId")), None)
-        if not op or op["status"] != "awaitingReview" or run["status"] != "awaitingReview":
-            return {"alreadyDecided": True}
-        run["status"] = "acceptQueued" if mode == "acceptOutput" else "discarding"
-        save("run", run)
-        if mode == "discardOutput":
-            try:
-                cleanup_output(op)
-                op["status"] = "discarded"
-                run["status"] = "queued"
-                save("run", run)
-            except Exception:
-                run["status"] = "awaitingReview"
-                save("run", run)
-                raise
+    except Cancelled:
+        preview = get("preview", args["id"])
+        preview["status"] = "cancelled"
+        save("preview", preview)
+    except Exception as error:
+        preview.update(status="failed", error=str(error))
+        save("preview", preview)
+    return {"id": preview["id"]}
+
+
+def latest_preview(client, args):
+    for preview in storage.compactor_list("preview", limit=20):
+        if preview.get("automatic"):
+            continue
+        if preview.get("runId") or preview.get("status") in ("discarded", "cancelled", "failed"):
+            return None
+        return {"id": preview["id"]} if digest(preview["settings"]["rules"]) == digest(settings()["rules"]) else None
+    return None
+
+
+def discard_preview(client, args):
+    preview = get("preview", args["id"])
+    if preview["status"] in ("queued", "planning"):
+        raise PluginError("Cancel the preview before discarding it")
+    preview["status"] = "discarded"
+    save("preview", preview)
+    return {"id": preview["id"]}
+
+
+def reconcile_stopped_preview(client, preview):
+    if preview["status"] in ("queued", "planning") and not tasks_active(client):
+        # Stash restarted or the task was stopped from its task queue.
+        preview.update(status="failed", error="The preview task stopped before finishing. Run Preview again.")
+        save("preview", preview)
+
+
+def get_preview(client, args):
+    preview = get("preview", args["id"])
+    reconcile_stopped_preview(client, preview)
+    return public_record(preview, args.get("page", 1))
+
+
+def start_run_handler(client, args):
+    return start_run(client, get("preview", args["id"]), args)
+
+
+def handle_automatic_trigger(client, args):
+    mode = args.get("mode")
+    if settings()["automationPaused"] or not any(r.get("enabled") and r["mode"] == "automatic" for r in settings()["rules"]):
+        return {"paused": True}
+    if mode == "startAutomaticRun":
+        if storage.internal_scan_check(args.get("jobId"), args.get("startTime")):
+            return {"internal": True}
+        if not args.get("startTime") or not args.get("jobId"):
+            raise PluginError("Scan identity is required")
+        trigger = digest([str(args["jobId"]), args["startTime"]])
+        previous_trigger = storage.compactor_get("trigger", trigger)
+        if previous_trigger and previous_trigger.get("queued") is not False:
+            return {"duplicate": True}
+        # Queue planning, never do expensive probing in the browser request.
+        claim = storage.compactor_put("trigger", trigger, {"queued": True}, expected=previous_trigger["_revision"] if previous_trigger else -1)
         try:
-            client.queue(PLUGIN_ID, {"mode": "acceptWorker" if mode == "acceptOutput" else "worker", "id": run["id"]}, "DirtyCompactor: " + ("accept output" if mode == "acceptOutput" else "next file"))
+            client.queue(PLUGIN_ID, {"mode": "pendingAutomatic", "trigger": trigger}, "DirtyCompactor: automatic evaluation")
         except Exception:
-            run["status"] = "awaitingReview" if mode == "acceptOutput" else "recovery"
-            save("run", run)
+            storage.compactor_put("trigger", trigger, {"queued": False, "error": "Queue failed"})
             raise
-        return {"id": run["id"]}
-    if mode == "cancelRun":
-        run = get("run", args["id"])
-        storage.compactor_put("cancel", run["id"], {"requested": True})
-        if run["status"] == "awaitingReview":
-            run["status"] = "queued"
-            save("run", run)
-            client.queue(PLUGIN_ID, {"mode": "worker", "id": run["id"]}, "DirtyCompactor: cancel")
-        return {"requested": True}
-    if mode in ("retryRecovery", "restoreOriginal"):
-        recover(client, get("run", args["id"]), mode == "restoreOriginal")
-        return {"id": args["id"]}
-    raise PluginError("Unknown operation")
+        return claim
+    active = storage.compactor_get("control", "active")
+    if active:
+        current = get("run", active["id"])
+        if current["status"] not in TERMINAL:
+            storage.compactor_put("control", "pending", {"trigger": args["trigger"]})
+            return {"coalesced": True}
+    preview = {
+        "id": uuid.uuid4().hex,
+        "status": "planning",
+        "settings": settings(),
+        "automatic": True,
+        "created": time.time(),
+    }
+    save("preview", preview)
+    build_preview(client, preview)
+    return start_run(client, preview, {}, automatic=True)
+
+
+def run_worker(client, args):
+    mode = args.get("mode")
+    return public_record(worker(client, args["id"], mode == "acceptWorker"))
+
+
+def finalize_handler(client, args):
+    return public_record(finalize(client, args["id"]))
+
+
+def get_run(client, args):
+    return public_record(get("run", args["id"]), args.get("page", 1))
+
+
+def list_runs(client, args):
+    return [
+        {
+            "id": run["id"],
+            "status": run["status"],
+            "created": run["created"],
+            "automatic": run["automatic"],
+            "actualSavings": sum(operation.get("actualSavings", 0) for operation in run["operations"]),
+        }
+        for run in storage.compactor_list("run")
+    ]
+
+
+def get_output_review(client, args):
+    return output_review(get("run", args["id"]))
+
+
+def decide_output(client, args):
+    mode = args.get("mode")
+    run = get("run", args["id"])
+    op = next((o for o in run["operations"] if o["id"] == args.get("operationId")), None)
+    if not op or op["status"] != "awaitingReview" or run["status"] != "awaitingReview":
+        return {"alreadyDecided": True}
+    transition_run(run, "acceptQueued" if mode == "acceptOutput" else "discarding", save)
+    if mode == "discardOutput":
+        try:
+            cleanup_output(op)
+            op["status"] = "discarded"
+            transition_run(run, "queued", save)
+        except Exception:
+            transition_run(run, "awaitingReview", save)
+            raise
+    try:
+        worker_mode = "acceptWorker" if mode == "acceptOutput" else "worker"
+        action = "accept output" if mode == "acceptOutput" else "next file"
+        client.queue(PLUGIN_ID, {"mode": worker_mode, "id": run["id"]}, "DirtyCompactor: " + action)
+    except Exception:
+        transition_run(run, "awaitingReview" if mode == "acceptOutput" else "recovery", save)
+        raise
+    return {"id": run["id"]}
+
+
+def cancel_preview(client, args):
+    storage.compactor_put("cancel", args["id"], {"requested": True})
+    return {"requested": True}
+
+
+def cancel_run(client, args):
+    run = get("run", args["id"])
+    storage.compactor_put("cancel", run["id"], {"requested": True})
+    if run["status"] == "awaitingReview":
+        transition_run(run, "queued", save)
+        client.queue(PLUGIN_ID, {"mode": "worker", "id": run["id"]}, "DirtyCompactor: cancel")
+    return {"requested": True}
+
+
+def recover_run(client, args):
+    mode = args.get("mode")
+    recover(client, get("run", args["id"]), mode == "restoreOriginal")
+    return {"id": args["id"]}
+
+
+HANDLERS = {
+    'capabilities': capabilities_handler,
+    'preview': queue_preview,
+    'plan': plan_preview,
+    'latestPreview': latest_preview,
+    'discardPreview': discard_preview,
+    'getPreview': get_preview,
+    'startRun': start_run_handler,
+    'startAutomaticRun': handle_automatic_trigger,
+    'pendingAutomatic': handle_automatic_trigger,
+    'worker': run_worker,
+    'acceptWorker': run_worker,
+    'finalize': finalize_handler,
+    'getRun': get_run,
+    'listRuns': list_runs,
+    'getOutputReview': get_output_review,
+    'acceptOutput': decide_output,
+    'discardOutput': decide_output,
+    'cancelPreview': cancel_preview,
+    'cancelRun': cancel_run,
+    'retryRecovery': recover_run,
+    'restoreOriginal': recover_run,
+}
+
+def dispatch(client, args):
+    handler = HANDLERS.get(args.get("mode"))
+    if handler is None:
+        raise PluginError("Unknown operation")
+    return handler(client, args)
 
 
 def main():
-    for stream in (sys.stdin, sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8")
+    protocol.configure_standard_streams()
     try:
-        payload = json.load(sys.stdin)
+        payload = protocol.read_payload()
         result = dispatch(Client(payload.get("server_connection") or {}), payload.get("args") or {})
-        json.dump({"output": result}, sys.stdout, ensure_ascii=True)
+        protocol.emit_output(result)
     except Exception as error:
-        json.dump({"error": str(error)}, sys.stdout, ensure_ascii=True)
+        protocol.emit_error(error)
         return 1
     return 0
 

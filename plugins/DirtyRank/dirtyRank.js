@@ -124,7 +124,7 @@
   ];
   var settingsModule = window.__dirtyRankSettings;
   if (!settingsModule) return;
-  var settingsApi = settingsModule.createSettings({ DirtyPlugins: DirtyPlugins, cohortLabel: cohortLabel, leaderboardTopCount: leaderboardTopCount, leaderboardPerformerCount: leaderboardPerformerCount });
+  var settingsApi = settingsModule.createSettings({ DirtyPlugins: DirtyPlugins, cohortLabel: cohortLabel, leaderboardTopCount: leaderboardTopCount, leaderboardPerformerCount: leaderboardPerformerCount, leaderboardPerformerCountError: leaderboardPerformerCountError });
   var CATEGORY_PREFERENCE_STORAGE_KEY = settingsApi.CATEGORY_PREFERENCE_STORAGE_KEY, CONFIGURATION_CHANGED_EVENT = settingsApi.CONFIGURATION_CHANGED_EVENT, COHORTS = settingsApi.COHORTS;
   var DEFAULT_CATEGORY_DEFINITIONS = settingsApi.DEFAULT_CATEGORY_DEFINITIONS, defaultCategoriesByCohort = settingsApi.defaultCategoriesByCohort, OVERALL_SCORE_STRATEGIES = settingsApi.OVERALL_SCORE_STRATEGIES;
   var OVERALL_SCORE_PARAMETERS = settingsApi.OVERALL_SCORE_PARAMETERS, overallScoreStrategy = settingsApi.overallScoreStrategy, overallScoreParameterError = settingsApi.overallScoreParameterError;
@@ -138,6 +138,8 @@
   var categoriesFor = settingsApi.categoriesFor, categoryPreferences = settingsApi.categoryPreferences, rememberCategory = settingsApi.rememberCategory;
   var preferredCategoryId = settingsApi.preferredCategoryId, parseEnabledCohorts = settingsApi.parseEnabledCohorts, settingsFromConfiguration = settingsApi.settingsFromConfiguration;
   var serializedSettings = settingsApi.serializedSettings, comparableSettings = settingsApi.comparableSettings;
+
+  var validateSettings = settingsApi.validateSettings;
 
   var overallSortSettings = DEFAULT_SETTINGS;
   var overallSortRevision = 0;
@@ -2144,459 +2146,65 @@
     return html`<${DirtyRankBattlePage} routeDetails=${routeDetails} routeTargetId=${routeTargetId} />`;
   }
 
+  var useBattleSession = window.__dirtyRankBattleSession.createBattleSession({
+    CONFIGURATION_CHANGED_EVENT: CONFIGURATION_CHANGED_EVENT,
+    DirtyPlugins: DirtyPlugins,
+    PLUGIN_ID: PLUGIN_ID,
+    Router: Router,
+    UNDO_HISTORY_LIMIT: UNDO_HISTORY_LIMIT,
+    battleCategoryPath: battleCategoryPath,
+    battleCohortFor: battleCohortFor,
+    battleId: battleId,
+    categoriesForPerformer: categoriesForPerformer,
+    categoryConfidence: categoryConfidence,
+    cohortLabel: cohortLabel,
+    documentationCapture: documentationCapture,
+    loadNativePerformerCard: loadNativePerformerCard,
+    loadRatingIndex: loadRatingIndex,
+    pairToken: pairToken,
+    poolFor: poolFor,
+    preferredCategoryId: preferredCategoryId,
+    queryPerformers: queryPerformers,
+    ratingDelta: ratingDelta,
+    rememberCategory: rememberCategory,
+    runOperation: runOperation,
+    selectGauntletPair: selectGauntletPair,
+    selectKingsPair: selectKingsPair,
+    selectKingsStartingPair: selectKingsStartingPair,
+    selectPair: selectPair,
+    settingsFromConfiguration: settingsFromConfiguration,
+    updatePerformerState: updatePerformerState,
+    useCallback: useCallback,
+    useEffect: useEffect,
+    useMemo: useMemo,
+    useRef: useRef,
+    useState: useState,
+    getRatingIndexRevision: function () { return ratingIndexRevision; },
+  });
+
   function DirtyRankBattlePage(props) {
-    var routeDetails = props.routeDetails;
-    var routeTargetId = props.routeTargetId;
-    var requestedCategoryId = routeDetails.categoryId;
-    var history = Router.useHistory();
-    var location = Router.useLocation();
-    var requestedCohort = new URLSearchParams(location.search).get("box") || new URLSearchParams(location.search).get("cohort") || "";
-    var gauntletTargetId = routeTargetId;
-    var gauntletMode = Boolean(gauntletTargetId);
-    var censorMedia = documentationCapture();
-    var kingsMode = !gauntletMode && routeDetails.kingsMode;
-    DirtyPlugins.react.usePageTitle("DirtyRank", gauntletMode ? "Gauntlet" : kingsMode ? "King of the Hill" : "Battles");
-    var settingsState = useState(null);
-    var settings = settingsState[0];
-    var setSettings = settingsState[1];
-    var performersState = useState([]);
-    var performers = performersState[0];
-    var setPerformers = performersState[1];
-    var cohort = settings ? battleCohortFor(settings, gauntletMode ? performers.find(function (performer) {
-      return String(performer.id) === gauntletTargetId;
-    }) : null, requestedCohort) : "";
-    var requestedContextRef = useRef({});
-    requestedContextRef.current = { cohort: requestedCohort, categoryId: requestedCategoryId };
-    var categoryState = useState("");
-    var categoryId = categoryState[0];
-    var setCategoryId = categoryState[1];
-    var pairState = useState(null);
-    var pairInfo = pairState[0];
-    var setPairInfo = pairState[1];
-    var loadingState = useState(true);
-    var loading = loadingState[0];
-    var setLoading = loadingState[1];
-    var errorState = useState("");
-    var error = errorState[0];
-    var setError = errorState[1];
-    var busyState = useState(false);
-    var busy = busyState[0];
-    var setBusy = busyState[1];
-    var feedbackState = useState(null);
-    var feedback = feedbackState[0];
-    var setFeedback = feedbackState[1];
-    var decisionState = useState(null);
-    var decision = decisionState[0];
-    var setDecision = decisionState[1];
-    var undoHistoryState = useState([]);
-    var undoHistory = undoHistoryState[0];
-    var setUndoHistory = undoHistoryState[1];
-    var sessionState = useState(0);
-    var sessionMatches = sessionState[0];
-    var setSessionMatches = sessionState[1];
-    var pendingState = useState(0);
-    var pendingVotes = pendingState[0];
-    var setPendingVotes = pendingState[1];
-    var recentPairs = useRef([]);
-    var busyRef = useRef(false);
-    var submittedPairRef = useRef("");
-    var pendingVotesRef = useRef(0);
-    var voteQueueRef = useRef(Promise.resolve());
-    var mountedRef = useRef(true);
-    var undoHistoryRef = useRef([]);
-    var defeatedKingsRef = useRef([]);
-    var operationStatusRef = useRef(new Map());
-    var preparedPairRef = useRef(null);
-    var preparedImagesRef = useRef([]);
-
-    var load = useCallback(function () {
-      setLoading(true);
-      setError("");
-      return Promise.all([DirtyPlugins.getPluginSettings(PLUGIN_ID), queryPerformers(true), loadRatingIndex(), loadNativePerformerCard()])
-        .then(function (values) {
-          var nextSettings = settingsFromConfiguration(values[0]);
-          var gauntletTarget = gauntletMode
-            ? values[1].find(function (performer) { return String(performer.id) === gauntletTargetId; })
-            : null;
-          if (gauntletMode && !gauntletTarget) throw new Error("The selected Gauntlet performer could not be found.");
-          var requestedContext = requestedContextRef.current;
-          var nextCohort = battleCohortFor(nextSettings, gauntletTarget, requestedContext.cohort);
-          if (!nextCohort) {
-            throw new Error("Enable a category that includes " + cohortLabel(gauntletTarget ? gauntletTarget.gender : nextSettings.defaultCohort) + " performers in DirtyRank settings.");
-          }
-          var enabled = categoriesForPerformer(nextSettings, nextCohort, gauntletTarget);
-          if (!enabled.length) throw new Error("Enable at least one DirtyRank category for the selected performer cohort.");
-          setSettings(nextSettings);
-          setPerformers(values[1]);
-          setCategoryId(function (current) {
-            if (enabled.some(function (item) { return item.id === requestedContext.categoryId; })) return requestedContext.categoryId;
-            return preferredCategoryId(nextSettings, nextCohort, current);
-          });
-          setPairInfo(null);
-          setDecision(null);
-          undoHistoryRef.current = [];
-          defeatedKingsRef.current = [];
-          setUndoHistory([]);
-        })
-        .catch(function (caught) { setError(caught.message || String(caught)); })
-        .finally(function () { setLoading(false); });
-    }, [gauntletMode, gauntletTargetId]);
-
-    useEffect(function () {
-      mountedRef.current = true;
-      void load();
-      function changed(event) {
-        if (!event.detail || event.detail.pluginId === PLUGIN_ID) void load();
-      }
-      window.addEventListener(CONFIGURATION_CHANGED_EVENT, changed);
-      return function () {
-        mountedRef.current = false;
-        window.removeEventListener(CONFIGURATION_CHANGED_EVENT, changed);
-      };
-    }, [load]);
-
-    var category = useMemo(function () {
-      if (!settings) return null;
-      var target = gauntletMode ? performers.find(function (performer) { return String(performer.id) === gauntletTargetId; }) : null;
-      var cohortCategories = categoriesForPerformer(settings, cohort, target);
-      return cohortCategories.find(function (item) { return item.id === (requestedCategoryId || categoryId); }) ||
-        cohortCategories[0] || null;
-    }, [categoryId, cohort, settings, requestedCategoryId, gauntletMode, gauntletTargetId, performers]);
-
-    useEffect(function () {
-      setPairInfo(null);
-      preparedPairRef.current = null;
-      preparedImagesRef.current = [];
-      recentPairs.current = [];
-      undoHistoryRef.current = [];
-      defeatedKingsRef.current = [];
-      setUndoHistory([]);
-      setFeedback(null);
-      setDecision(null);
-    }, [requestedCategoryId, requestedCohort, kingsMode]);
-
-    useEffect(function () {
-      if (loading || !settings || !category) return;
-      var targetPath = categoryPath(category.id, kingsMode, cohort);
-      rememberCategory(cohort, category.id);
-      if (location.pathname !== targetPath.split("?")[0] || requestedCohort !== (targetPath.indexOf("?") !== -1 ? cohort : "")) {
-        history.replace(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(targetPath) : targetPath);
-      }
-    }, [category, cohort, gauntletTargetId, history, kingsMode, loading, location.pathname, requestedCohort, settings]);
-
-    var gauntletTarget = useMemo(function () {
-      if (!gauntletMode) return null;
-      return performers.find(function (performer) { return String(performer.id) === gauntletTargetId; }) || null;
-    }, [gauntletMode, gauntletTargetId, performers]);
-
-    function categoryPath(nextCategoryId, nextKingsMode, nextCohort) {
-      var defaultCohort = battleCohortFor(settings, gauntletTarget, "");
-      return battleCategoryPath(nextCategoryId, nextKingsMode, gauntletTargetId, nextCohort === defaultCohort && nextCohort.indexOf("BOX-") !== 0 ? "" : nextCohort);
-    }
-
-    var refinementConfidence = useMemo(function () {
-      return !gauntletMode && settings && category ? categoryConfidence(
-        performers, category, cohort, Object.assign({}, settings, { confidenceGoal: "all" })
-      ) : null;
-    }, [category, cohort, gauntletMode, performers, settings, ratingIndexRevision]);
-
-    var selectModePair = useCallback(function (sourcePerformers, sourceCategory, sourceCohort, sourceSettings, sourceRecentPairs) {
-      if (kingsMode) return selectKingsStartingPair(sourcePerformers, sourceCategory, sourceCohort, sourceSettings);
-      var target = gauntletMode
-        ? sourcePerformers.find(function (performer) { return String(performer.id) === gauntletTargetId; })
-        : null;
-      return target
-        ? selectGauntletPair(sourcePerformers, target, sourceCategory, sourceCohort, sourceSettings, sourceRecentPairs)
-        : selectPair(sourcePerformers, sourceCategory, sourceCohort, sourceSettings, sourceRecentPairs);
-    }, [gauntletMode, gauntletTargetId, kingsMode]);
-
-    var pickNext = useCallback(function (sourcePerformers, sourceSettings, sourceCategory, sourceCohort) {
-      if (!sourceSettings || !sourceCategory) return;
-      var selected = selectModePair(
-        sourcePerformers,
-        sourceCategory,
-        sourceCohort,
-        sourceSettings,
-        recentPairs.current
-      );
-      selected.instanceId = battleId();
-      setPairInfo(selected);
-      setFeedback(null);
-    }, [selectModePair]);
-
-    function preparedPairKey(sourceCategory, sourceCohort) {
-      return sourceCohort + ":" + sourceCategory.id;
-    }
-
-    function preloadPairImages(selected) {
-      preparedImagesRef.current = [];
-      if (!selected || !selected.pair || settings.hidePerformerImages || typeof window.Image !== "function") return;
-      selected.pair.forEach(function (performer) {
-        if (!performer.image_path) return;
-        var image = new window.Image();
-        image.decoding = "async";
-        image.src = performer.image_path;
-        preparedImagesRef.current.push(image);
-      });
-    }
-
-    function showPreparedOrPickNext(outcome) {
-      if (kingsMode) {
-        if (outcome === "left" || outcome === "right") {
-          var winner = pairInfo.pair[outcome === "left" ? 0 : 1];
-          var selected = selectKingsPair(performers, winner, outcome, defeatedKingsRef.current.map(function (entry) {
-            return entry.performerId;
-          }), category, cohort, settings);
-          selected.instanceId = battleId();
-          setPairInfo(selected);
-          setFeedback(null);
-        } else {
-          pickNext(performers, settings, category, cohort);
-        }
-        return;
-      }
-      var prepared = preparedPairRef.current;
-      var contextKey = category ? preparedPairKey(category, cohort) : "";
-      if (prepared && pairInfo && prepared.sourceInstanceId === pairInfo.instanceId && prepared.contextKey === contextKey) {
-        preparedPairRef.current = null;
-        preparedImagesRef.current = [];
-        setPairInfo(prepared.pairInfo);
-        setFeedback(null);
-        return;
-      }
-      pickNext(performers, settings, category, cohort);
-    }
-
-    useEffect(function () {
-      if (!loading && !error && settings && category && !pairInfo && performers.length) {
-        pickNext(performers, settings, category, cohort);
-      }
-    }, [category, cohort, error, loading, pairInfo, performers, pickNext, settings]);
-
-    useEffect(function () {
-      preparedPairRef.current = null;
-      preparedImagesRef.current = [];
-      if (loading || error || kingsMode || !settings || !category || !pairInfo || !pairInfo.pair || performers.length < 2) return undefined;
-
-      var cancelled = false;
-      var idleHandle = null;
-      var timeoutHandle = null;
-      function prepareNextPair() {
-        if (cancelled) return;
-        var simulatedRecentPairs = recentPairs.current.concat([pairToken(pairInfo.pair[0], pairInfo.pair[1])]);
-        var selected = selectModePair(performers, category, cohort, settings, simulatedRecentPairs);
-        selected.instanceId = battleId();
-        if (cancelled) return;
-        preparedPairRef.current = {
-          contextKey: preparedPairKey(category, cohort),
-          pairInfo: selected,
-          sourceInstanceId: pairInfo.instanceId,
-        };
-        preloadPairImages(selected);
-      }
-
-      if (typeof window.requestIdleCallback === "function") {
-        idleHandle = window.requestIdleCallback(prepareNextPair, { timeout: 300 });
-      } else {
-        timeoutHandle = window.setTimeout(prepareNextPair, 0);
-      }
-      return function () {
-        cancelled = true;
-        if (idleHandle !== null && typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idleHandle);
-        if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
-      };
-    }, [category, cohort, error, kingsMode, loading, pairInfo, performers, selectModePair, settings]);
-
-    function replaceStates(result, source) {
-      return source.map(function (performer) {
-        if (result.left && performer.id === result.left.id) return updatePerformerState(performer, result.left.state);
-        if (result.right && performer.id === result.right.id) return updatePerformerState(performer, result.right.state);
-        return performer;
-      });
-    }
-
-    function submit(outcome) {
-      if (busyRef.current || !pairInfo || !pairInfo.pair || !category) return;
-      if (kingsMode && outcome === "draw") return;
-      if (submittedPairRef.current === pairInfo.instanceId) return;
-      var left = pairInfo.pair[0];
-      var right = pairInfo.pair[1];
-      var beforeLeft = poolFor(left, category.id, cohort, settings);
-      var beforeRight = poolFor(right, category.id, cohort, settings);
-      var id = battleId();
-      var queuedBattle = {
-        id: id,
-        categoryId: category.id,
-        category: category,
-        cohort: cohort,
-        left: left,
-        right: right,
-        outcome: outcome,
-        pairInfo: pairInfo,
-        beforeLeft: beforeLeft,
-        beforeRight: beforeRight,
-        settings: settings,
-      };
-      var historyEntry = {
-        id: queuedBattle.id,
-        categoryId: queuedBattle.categoryId,
-        cohort: queuedBattle.cohort,
-        leftId: queuedBattle.left.id,
-        rightId: queuedBattle.right.id,
-        pairInfo: queuedBattle.pairInfo,
-      };
-      var operationStatus = { recordFailed: false, undone: false };
-      var leftTone = outcome === "draw" ? "draw" : outcome === "left" ? "winner" : "loser";
-      var rightTone = outcome === "draw" ? "draw" : outcome === "right" ? "winner" : "loser";
-      submittedPairRef.current = pairInfo.instanceId;
-      setError("");
-      setDecision({
-        id: id,
-        left: { name: left.name, tone: leftTone },
-        right: { name: right.name, tone: rightTone },
-      });
-      recentPairs.current.push(pairToken(left, right));
-      recentPairs.current = recentPairs.current.slice(-Math.max(50, settings.avoidRepeatWindow));
-      var combinedUndoHistory = undoHistoryRef.current.concat([historyEntry]);
-      combinedUndoHistory.slice(0, Math.max(0, combinedUndoHistory.length - UNDO_HISTORY_LIMIT)).forEach(function (entry) {
-        operationStatusRef.current.delete(entry.id);
-      });
-      var nextUndoHistory = combinedUndoHistory.slice(-UNDO_HISTORY_LIMIT);
-      undoHistoryRef.current = nextUndoHistory;
-      setUndoHistory(nextUndoHistory);
-      operationStatusRef.current.set(queuedBattle.id, operationStatus);
-      setSessionMatches(function (value) { return value + 1; });
-      if (kingsMode) {
-        defeatedKingsRef.current.push({ battleId: id, performerId: String(outcome === "left" ? right.id : left.id) });
-      }
-      showPreparedOrPickNext(outcome);
-      setFeedback({ text: "Vote queued" });
-
-      pendingVotesRef.current += 1;
-      setPendingVotes(pendingVotesRef.current);
-      voteQueueRef.current = voteQueueRef.current.then(function () {
-        return runOperation({
-          mode: "record",
-          battleId: queuedBattle.id,
-          categoryId: queuedBattle.categoryId,
-          cohort: queuedBattle.cohort,
-          leftId: queuedBattle.left.id,
-          rightId: queuedBattle.right.id,
-          outcome: queuedBattle.outcome,
-        });
-      }).then(function (result) {
-        if (!mountedRef.current || operationStatus.undone) return;
-        var afterLeft = poolFor(updatePerformerState(queuedBattle.left, result.left.state), queuedBattle.categoryId, queuedBattle.cohort, queuedBattle.settings);
-        var afterRight = poolFor(updatePerformerState(queuedBattle.right, result.right.state), queuedBattle.categoryId, queuedBattle.cohort, queuedBattle.settings);
-        setPerformers(function (current) { return replaceStates(result, current); });
-        setFeedback({
-          text: queuedBattle.left.name + " " + ratingDelta(afterLeft.rating, queuedBattle.beforeLeft.rating) + " · " +
-            queuedBattle.right.name + " " + ratingDelta(afterRight.rating, queuedBattle.beforeRight.rating),
-        });
-      }).catch(function (caught) {
-        if (!mountedRef.current) return;
-        operationStatus.recordFailed = true;
-        if (!operationStatus.undone) {
-          undoHistoryRef.current = undoHistoryRef.current.filter(function (entry) { return entry.id !== queuedBattle.id; });
-          setUndoHistory(undoHistoryRef.current.slice());
-          setSessionMatches(function (value) { return Math.max(0, value - 1); });
-          setDecision(function (current) { return current && current.id === queuedBattle.id ? null : current; });
-        }
-        setError("A queued vote could not be saved: " + (caught.message || String(caught)));
-      }).finally(function () {
-        pendingVotesRef.current = Math.max(0, pendingVotesRef.current - 1);
-        if (mountedRef.current) setPendingVotes(pendingVotesRef.current);
-      });
-    }
-
-    function skip() {
-      if (kingsMode) return;
-      if (busyRef.current || !pairInfo || !pairInfo.pair || !category) return;
-      recentPairs.current.push(pairToken(pairInfo.pair[0], pairInfo.pair[1]));
-      recentPairs.current = recentPairs.current.slice(-Math.max(50, settings.avoidRepeatWindow));
-      setDecision(null);
-      showPreparedOrPickNext("skip");
-    }
-
-    function undo() {
-      var lastBattle = undoHistoryRef.current[undoHistoryRef.current.length - 1];
-      if (busyRef.current || !lastBattle) return;
-      var operationStatus = operationStatusRef.current.get(lastBattle.id) || { recordFailed: false, undone: false };
-      operationStatus.undone = true;
-      operationStatusRef.current.set(lastBattle.id, operationStatus);
-      undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
-      defeatedKingsRef.current = defeatedKingsRef.current.filter(function (entry) { return entry.battleId !== lastBattle.id; });
-      setUndoHistory(undoHistoryRef.current.slice());
-      setError("");
-      setPairInfo(Object.assign({}, lastBattle.pairInfo, { instanceId: battleId() }));
-      setDecision(null);
-      setFeedback({ text: "Undo queued" });
-      setSessionMatches(function (value) { return Math.max(0, value - 1); });
-
-      pendingVotesRef.current += 1;
-      setPendingVotes(pendingVotesRef.current);
-      voteQueueRef.current = voteQueueRef.current.then(function () {
-        if (operationStatus.recordFailed) return null;
-        return runOperation({
-          mode: "undo",
-          battleId: lastBattle.id,
-          categoryId: lastBattle.categoryId,
-          cohort: lastBattle.cohort,
-          leftId: lastBattle.leftId,
-          rightId: lastBattle.rightId,
-        });
-      }).then(function (result) {
-        operationStatusRef.current.delete(lastBattle.id);
-        if (!mountedRef.current || !result) return;
-        setPerformers(function (current) { return replaceStates(result, current); });
-        setFeedback({ text: "Battle undone." });
-      }).catch(function (caught) {
-        if (!mountedRef.current) return;
-        setError("A queued undo could not be saved: " + (caught.message || String(caught)) + ". Reload DirtyRank to reconcile the session.");
-      }).finally(function () {
-        pendingVotesRef.current = Math.max(0, pendingVotesRef.current - 1);
-        if (mountedRef.current) setPendingVotes(pendingVotesRef.current);
-      });
-    }
-
-    function restartKings() {
-      if (pendingVotesRef.current > 0 || busyRef.current) return;
-      defeatedKingsRef.current = [];
-      undoHistoryRef.current = [];
-      recentPairs.current = [];
-      setUndoHistory([]);
-      setPairInfo(null);
-      setDecision(null);
-      setFeedback(null);
-    }
-
-    useEffect(function () {
-      function onKeyDown(event) {
-        if (event.defaultPrevented || busy || !pairInfo || !pairInfo.pair) return;
-        var tagName = document.activeElement && document.activeElement.tagName;
-        if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return;
-        if (event.key === "ArrowLeft") { event.preventDefault(); submit("left"); }
-        if (event.key === "ArrowRight") { event.preventDefault(); submit("right"); }
-        if (!kingsMode && event.key === "ArrowUp") { event.preventDefault(); submit("draw"); }
-        if (event.key === "ArrowDown") { event.preventDefault(); undo(); }
-        if (!kingsMode && event.key.toLowerCase() === "t") { event.preventDefault(); submit("draw"); }
-        if (!kingsMode && event.key.toLowerCase() === "s") { event.preventDefault(); skip(); }
-      }
-      document.addEventListener("keydown", onKeyDown);
-      return function () { document.removeEventListener("keydown", onKeyDown); };
-    });
-
-    useEffect(function () {
-      if (pendingVotes <= 0) return undefined;
-      function preventPendingOperationExit(event) {
-        event.preventDefault();
-        event.returnValue = "";
-        return "";
-      }
-      window.addEventListener("beforeunload", preventPendingOperationExit);
-      return function () { window.removeEventListener("beforeunload", preventPendingOperationExit); };
-    }, [pendingVotes]);
-
+    var session = useBattleSession(props);
+    var loading = session.loading;
+    var error = session.error;
+    var settings = session.settings;
+    var category = session.category;
+    var gauntletMode = session.gauntletMode;
+    var kingsMode = session.kingsMode;
+    var censorMedia = session.censorMedia;
+    var pairInfo = session.pairInfo;
+    var performers = session.performers;
+    var cohort = session.cohort;
+    var pendingVotes = session.pendingVotes;
+    var feedback = session.feedback;
+    var decision = session.decision;
+    var undoHistory = session.undoHistory;
+    var refinementConfidence = session.refinementConfidence;
+    var gauntletTarget = session.gauntletTarget;
+    var load = session.load;
+    var submit = session.submit;
+    var skip = session.skip;
+    var undo = session.undo;
+    var restartKings = session.restartKings;
     if (loading) return html`<main className="dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide">
       <${StateView} title=${gauntletMode ? "Loading Gauntlet…" : "Loading DirtyRank…"} />
     </main>`;
@@ -2620,7 +2228,7 @@
     // Keep the same mounted card and player when this performer wins.
     var arenaLeftKey = arenaLeft && (gauntletMode ? "gauntlet:" + arenaLeft.id : kingsMode ? "kings:" + cohort + ":" + category.id + ":" + arenaLeft.id : pairInfo.instanceId + ":left");
     var reveal = settings.showRatingsBeforeVote;
-    var hillDefeated = kingsMode ? defeatedKingsRef.current.length : 0;
+    var hillDefeated = kingsMode ? session.defeatedCount : 0;
     var hillTotal = kingsMode && pairInfo ? Math.max(0, pairInfo.eligible - 1) : 0;
     var hideStandings = kingsMode || settings.hideBattleStandings;
     var availableCohorts = boxOptions(settings, true).filter(function (item) {
@@ -2645,7 +2253,7 @@
                 </div>`}
                 <fieldset
                   className="dirty-rank-category-picker"
-                  disabled=${busy || pendingVotes > 0}
+                  disabled=${pendingVotes > 0}
                 >
                   <${SharedStatisticSelector}
                     id="dirty-rank-category"
@@ -2654,20 +2262,7 @@
                     options=${categoriesForPerformer(settings, cohort, gauntletTarget).map(function (item) {
                       return { value: item.id, label: item.name };
                     })}
-                    onSelect=${function (nextCategoryId) {
-                      if (busy || pendingVotes > 0) return;
-                      var nextPath = categoryPath(nextCategoryId, kingsMode, cohort);
-                      history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(nextPath) : nextPath);
-                      setCategoryId(nextCategoryId);
-                      rememberCategory(cohort, nextCategoryId);
-                      setPairInfo(null);
-                      preparedPairRef.current = null;
-                      undoHistoryRef.current = [];
-                      defeatedKingsRef.current = [];
-                      setUndoHistory([]);
-                      setFeedback(null);
-                      setDecision(null);
-                    }}
+                    onSelect=${session.selectCategory}
                   />
                 </fieldset>
               </div>
@@ -2676,43 +2271,17 @@
               >
                 ${!gauntletMode && html`<${RankButton}
                   className="dirty-ui-control dirty-rank-options-link"
-                  disabled=${busy || pendingVotes > 0}
+                  disabled=${pendingVotes > 0}
                   id="dirty-rank-battle-mode"
-                  onClick=${function () {
-                    if (busy || pendingVotes > 0) return;
-                    var nextPath = categoryPath(category.id, !kingsMode, cohort);
-                    history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(nextPath) : nextPath);
-                    setPairInfo(null);
-                    preparedPairRef.current = null;
-                    undoHistoryRef.current = [];
-                    defeatedKingsRef.current = [];
-                    setUndoHistory([]);
-                    setFeedback(null);
-                    setDecision(null);
-                  }}
+                  onClick=${session.toggleBattleMode}
                 >${kingsMode ? "Standard battles" : "King of the hill"}<//>`}
                 ${availableCohorts.length > 1 && html`<div className="dirty-rank-control dirty-ui-field">
                   <label htmlFor="dirty-rank-battle-cohort">Gender box</label>
                   <select
                     className="form-control"
-                    disabled=${busy || pendingVotes > 0}
+                    disabled=${pendingVotes > 0}
                     id="dirty-rank-battle-cohort"
-                    onChange=${function (event) {
-                      var nextCohort = event.target.value;
-                      var nextCategories = categoriesForPerformer(settings, nextCohort, gauntletTarget);
-                      var preferredId = preferredCategoryId(settings, nextCohort, category.id);
-                      var nextCategoryId = nextCategories.some(function (item) { return item.id === preferredId; }) ? preferredId : nextCategories[0].id;
-                      setCategoryId(nextCategoryId);
-                      rememberCategory(nextCohort, nextCategoryId);
-                      var nextPath = categoryPath(nextCategoryId, kingsMode, nextCohort);
-                      history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(nextPath) : nextPath);
-                      setPairInfo(null);
-                      undoHistoryRef.current = [];
-                      defeatedKingsRef.current = [];
-                      setUndoHistory([]);
-                      setFeedback(null);
-                      setDecision(null);
-                    }}
+                    onChange=${function (event) { session.selectCohort(event.target.value); }}
                     value=${cohort}
                   >
                     ${availableCohorts.map(function (item) {
@@ -2793,7 +2362,7 @@
               >
                 ${arenaLeft && html`<${PerformerCard}
                   crowned=${Boolean(hillWinner)}
-                  disabled=${busy}
+                  disabled=${false}
                   key=${arenaLeftKey}
                   gauntletTarget=${gauntletMode}
                   hillMode=${kingsMode}
@@ -2809,7 +2378,7 @@
                 ${pair && html`<div className="dirty-rank-versus" aria-hidden="true" />`}
                 ${arenaRight && html`<${PerformerCard}
                   crowned=${Boolean(hillWinner)}
-                  disabled=${busy}
+                  disabled=${false}
                   key=${kingsMode ? "kings:" + cohort + ":" + category.id + ":" + arenaRight.id : pairInfo.instanceId + ":right"}
                   hillMode=${kingsMode}
                   hillOpening=${kingsMode && !pairInfo.incumbentId}
@@ -2826,9 +2395,9 @@
               ${pair && html`<div
                 className="dirty-rank-actions d-flex flex-wrap align-items-center justify-content-center"
               >
-                ${!kingsMode && html`<${RankButton} disabled=${busy} onClick=${function () { submit("draw"); }}>Tie<//>`}
-                ${!kingsMode && html`<${RankButton} disabled=${busy} onClick=${skip}>Skip<//>`}
-                <${RankButton} disabled=${busy || !undoHistory.length} onClick=${undo}>
+                ${!kingsMode && html`<${RankButton} disabled=${false} onClick=${function () { submit("draw"); }}>Tie<//>`}
+                ${!kingsMode && html`<${RankButton} disabled=${false} onClick=${skip}>Skip<//>`}
+                <${RankButton} disabled=${!undoHistory.length} onClick=${undo}>
                   ${"Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")}
                 <//>
                 <div className="dirty-rank-hint">
@@ -2841,10 +2410,10 @@
                 title="Hill cleared"
                 detail=${hillWinner.name + " has defeated every eligible challenger in this run."}
                 actions=${html`<${Fragment}>
-                  <${RankButton} disabled=${busy || !undoHistory.length} onClick=${undo}>
+                  <${RankButton} disabled=${!undoHistory.length} onClick=${undo}>
                     ${"Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")}
                   <//>
-                  <${RankButton} disabled=${busy || pendingVotes > 0} onClick=${restartKings}>Start a new run<//>
+                  <${RankButton} disabled=${pendingVotes > 0} onClick=${restartKings}>Start a new run<//>
                 <//>`}
               />`}
             <//>`}
@@ -2870,864 +2439,51 @@
     </div>`;
   }
 
-  function DirtyRankSettings(props) {
-    if (!SettingsCard || !Section || !Toggle) return null;
-    var currentParametersState = useState(function () { return ratingParameters(settingsFromConfiguration(props.configuration)); });
-    var currentParameters = currentParametersState[0];
-    var setCurrentParameters = currentParametersState[1];
-    var estimatePerformersState = useState(null);
-    var estimatePerformers = estimatePerformersState[0];
-    var setEstimatePerformers = estimatePerformersState[1];
-    var estimateErrorState = useState(false);
-    var estimateError = estimateErrorState[0];
-    var setEstimateError = estimateErrorState[1];
-    var draftState = useState(function () { return settingsFromConfiguration(props.configuration); });
-    var draft = draftState[0];
-    var setDraft = draftState[1];
-    var savedState = useState(function () { return settingsFromConfiguration(props.configuration); });
-    var saved = savedState[0];
-    var setSaved = savedState[1];
-    var editingCohortState = useState(function () {
-      return settingsFromConfiguration(props.configuration).defaultCohort;
-    });
-    var editingCohort = editingCohortState[0];
-    var setEditingCohort = editingCohortState[1];
-    var busyState = useState(false);
-    var busy = busyState[0];
-    var setBusy = busyState[1];
-    var savingState = useState(false);
-    var saving = savingState[0];
-    var setSaving = savingState[1];
-    var statusState = useState("");
-    var status = statusState[0];
-    var setStatus = statusState[1];
-    var errorState = useState("");
-    var error = errorState[0];
-    var setError = errorState[1];
-    var autoSaveTimerRef = useRef(null);
-    var saveQueueRef = useRef(Promise.resolve());
-    var saveRevisionRef = useRef(0);
-    var editRevisionRef = useRef(0);
-    var settingsRevisionRef = useRef(null);
-    var dirty = useMemo(function () {
-      return comparableSettings(draft) !== comparableSettings(saved);
-    }, [draft, saved]);
-    var presetEstimate = useMemo(function () {
-      if (!estimatePerformers) return null;
-      var category = { enabled: true };
-      var count = estimatePerformers.filter(function (performer) {
-        return categoryEligible(performer, category, draft, editingCohort);
-      }).length;
-      return freshCategoryBattleEstimate(count, draft);
-    }, [draft, editingCohort, estimatePerformers]);
-
-    useEffect(function () {
-      var cancelled = false;
-      queryPerformers().then(function (values) {
-        if (!cancelled) setEstimatePerformers(values);
-      }).catch(function () { if (!cancelled) setEstimateError(true); });
-      return function () { cancelled = true; };
-    }, []);
-
-    useEffect(function () {
-      var cancelled = false;
-      runOperation({ mode: "getSettings" }).then(function (result) {
-        if (cancelled) return;
-        settingsRevisionRef.current = result.revision;
-        var normalized = settingsFromConfiguration(result.settings);
-        setCurrentParameters(ratingParameters(normalized));
-        setDraft(normalized);
-        setSaved(normalized);
-        setEditingCohort(normalized.defaultCohort);
-      }).catch(function () {
-        // The settings supplied by the shared hub remain a valid fallback.
-      });
-      return function () { cancelled = true; };
-    }, []);
-    useEffect(function () {
-      if (props.onDirtyChange) props.onDirtyChange(PLUGIN_ID, dirty);
-    }, [dirty, props.onDirtyChange]);
-    useEffect(function () {
-      return function () {
-        window.clearTimeout(autoSaveTimerRef.current);
-        if (props.onDirtyChange) props.onDirtyChange(PLUGIN_ID, false);
-      };
-    }, [props.onDirtyChange]);
-    useEffect(function () {
-      if (!dirty) return undefined;
-      var revision = saveRevisionRef.current + 1;
-      saveRevisionRef.current = revision;
-      var validationError = validateSettings(draft);
-      if (validationError) {
-        setSaving(false);
-        setError(validationError);
-        setStatus("");
-        return undefined;
-      }
-
-      var settingsToSave = draft;
-      var editRevision = editRevisionRef.current;
-      setError("");
-      setStatus("Waiting to save automatically…");
-      window.clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = window.setTimeout(function () {
-        setSaving(true);
-        setStatus("Saving automatically…");
-        var currentSave = saveQueueRef.current.catch(function () {}).then(function () {
-          var ready = settingsRevisionRef.current === null
-            ? runOperation({ mode: "getSettings" }).then(function (result) { settingsRevisionRef.current = result.revision; })
-            : Promise.resolve();
-          return ready.then(function () {
-            return runOperation({
-              mode: "saveSettings",
-              settings: serializedSettings(settingsToSave),
-              expectedRevision: settingsRevisionRef.current,
-            });
-          }).then(function (result) {
-            settingsRevisionRef.current = result.revision;
-            return settingsFromConfiguration(result.settings);
-          });
-        });
-        saveQueueRef.current = currentSave;
-        currentSave.then(function (normalized) {
-          // Remember every completed write, even if Current restored the draft
-          // to its previous saved value while this request was in flight.
-          // That makes the restored values dirty again and queues their save.
-          setSaved(normalized);
-          if (saveRevisionRef.current !== revision || editRevisionRef.current !== editRevision) return;
-          setDraft(normalized);
-          setStatus("Saved automatically.");
-          DirtyPlugins.notifyConfigurationChanged(PLUGIN_ID, { preserveSettingsPage: true });
-        }).catch(function (caught) {
-          if (saveRevisionRef.current !== revision || editRevisionRef.current !== editRevision) return;
-          setError(caught.message || String(caught));
-          setStatus("");
-        }).finally(function () {
-          if (saveRevisionRef.current === revision) setSaving(false);
-        });
-      }, 350);
-      return function () { window.clearTimeout(autoSaveTimerRef.current); };
-    }, [dirty, draft]);
-
-    function changed(update) {
-      editRevisionRef.current += 1;
-      setDraft(function (current) { return Object.assign({}, current, update); });
-      setStatus("");
-      setError("");
-    }
-
-    function toggleCohort(cohort, enabled) {
-      if (!enabled && draft.enabledCohorts.length === 1 && draft.enabledCohorts[0] === cohort) return;
-      updateBox(cohort, { enabled: enabled });
-    }
-
-    function changeBoxes(transform) {
-      setDraft(function (current) {
-        var boxes = transform(current.genderBoxes);
-        var enabledCohorts = boxes.filter(function (box) { return box.enabled; }).map(function (box) { return box.id; });
-        var defaultCohort = enabledCohorts.indexOf(current.defaultCohort) !== -1
-          ? current.defaultCohort
-          : enabledCohorts[0];
-        return Object.assign({}, current, { genderBoxes: boxes, defaultCohort: defaultCohort, enabledCohorts: enabledCohorts });
-      });
-      setStatus("");
-      setError("");
-    }
-
-    function updateBox(id, update) {
-      changeBoxes(function (boxes) { return boxes.map(function (box) {
-        return box.id === id ? Object.assign({}, box, update) : box;
-      }); });
-    }
-
-    function addBox() {
-      var used = new Set(Object.keys(draft.categoriesByCohort).concat(draft.genderBoxes.map(function (box) { return box.id; })));
-      var index = 1;
-      while (used.has("BOX-" + index)) index += 1;
-      var id = "BOX-" + index;
-      var names = new Set(draft.genderBoxes.map(function (box) { return box.name.toLowerCase(); }));
-      var name = "Box " + index;
-      while (names.has(name.toLowerCase())) { index += 1; name = "Box " + index; }
-      setDraft(function (current) {
-        var categories = Object.assign({}, current.categoriesByCohort);
-        categories[id] = DEFAULT_CATEGORY_DEFINITIONS.map(function (category) { return Object.assign({}, category); });
-        return Object.assign({}, current, { categoriesByCohort: categories,
-          genderBoxes: current.genderBoxes.concat([{ id: id, name: name, genders: ["FEMALE"], enabled: true }]),
-          enabledCohorts: current.enabledCohorts.concat([id]) });
-      });
-      setEditingCohort(id);
-      setStatus("");
-      setError("");
-    }
-
-    function removeBox(id) {
-      var box = boxFor(draft, id);
-      if (draft.genderBoxes.length <= 1 || (box.enabled && draft.enabledCohorts.length === 1)) return;
-      if (editingCohort === id) setEditingCohort(draft.genderBoxes.find(function (other) { return other.id !== id; }).id);
-      // Keep category definitions as well as rating rows, and never reuse their IDs.
-      changeBoxes(function (boxes) { return boxes.filter(function (other) { return other.id !== id; }); });
-    }
-
-    function changeCategories(transform) {
-      setDraft(function (current) {
-        var nextByCohort = Object.assign({}, current.categoriesByCohort);
-        var currentCategories = (nextByCohort[editingCohort] || []).slice();
-        nextByCohort[editingCohort] = transform(currentCategories);
-        return Object.assign({}, current, { categoriesByCohort: nextByCohort });
-      });
-      setStatus("");
-      setError("");
-    }
-
-    function updateCategory(index, update) {
-      changeCategories(function (categories) { return categories.map(function (category, categoryIndex) {
-        return categoryIndex === index ? Object.assign({}, category, update) : category;
-      }); });
-    }
-
-    function moveCategory(index, direction) {
-      changeCategories(function (categories) {
-        var target = index + direction;
-        if (target < 0 || target >= categories.length) return categories;
-        var moved = categories.splice(index, 1)[0];
-        categories.splice(target, 0, moved);
-        return categories;
-      });
-    }
-
-    function addCategory() {
-      changeCategories(function (categories) {
-        var ids = new Set(["overall"].concat(categories.map(function (category) { return category.id; })));
-        return categories.concat([{
-          id: uniqueCategoryId("New category", ids),
-          name: "New category",
-          description: "",
-          enabled: true,
-          weight: 1,
-        }]);
-      });
-    }
-
-    function removeCategory(index) {
-      changeCategories(function (categories) {
-        if (categories.length <= 1) return categories;
-        return categories.filter(function (_item, itemIndex) { return itemIndex !== index; });
-      });
-    }
-
-    function validateSettings(settings) {
-      if (!settings.enabledCohorts.length) return "Enable at least one gender box.";
-      var boxNames = new Set();
-      for (var boxIndex = 0; boxIndex < settings.genderBoxes.length; boxIndex += 1) {
-        var box = settings.genderBoxes[boxIndex];
-        var boxName = String(box.name || "").trim().toLowerCase();
-        if (!boxName) return "Every gender box needs a name.";
-        if (boxNames.has(boxName)) return "Gender box names must be unique.";
-        if (!box.genders.length) return "Choose at least one gender for each box.";
-        boxNames.add(boxName);
-      }
-      for (var parameterIndex = 0; parameterIndex < OVERALL_SCORE_PARAMETERS.length; parameterIndex += 1) {
-        var definition = OVERALL_SCORE_PARAMETERS[parameterIndex];
-        if (overallScoreParameterError(settings[definition.key], definition)) {
-          return definition.label + ": " + overallScoreParameterError(settings[definition.key], definition);
-        }
-      }
-      var performerCountError = leaderboardPerformerCountError(settings);
-      if (performerCountError) return performerCountError;
-      if (settings.confidenceGoal === "top" &&
-          (!String(settings.confidenceTopN).trim() || !Number.isInteger(Number(settings.confidenceTopN)) ||
-            Number(settings.confidenceTopN) < 1 || Number(settings.confidenceTopN) > 1000)) {
-        return "Top performers to stabilize must be between 1 and 1000.";
-      }
-      for (var cohortIndex = 0; cohortIndex < settings.genderBoxes.length; cohortIndex += 1) {
-        var cohort = settings.genderBoxes[cohortIndex].id;
-        var names = new Set();
-        var cohortCategories = categoriesFor(settings, cohort);
-        if (settings.enabledCohorts.indexOf(cohort) !== -1 && !cohortCategories.some(function (category) { return category.enabled; })) {
-          return boxFor(settings, cohort).name + " needs at least one enabled category.";
-        }
-        for (var index = 0; index < cohortCategories.length; index += 1) {
-          var name = String(cohortCategories[index].name || "").trim();
-          if (!name) return "Every category needs a name.";
-          if (names.has(name.toLowerCase())) return "Category names must be unique within each performer cohort.";
-          if (!String(cohortCategories[index].weight).trim() ||
-              !Number.isFinite(Number(cohortCategories[index].weight)) ||
-              Number(cohortCategories[index].weight) < 0.01 || Number(cohortCategories[index].weight) > 1000) {
-            return "Every category needs a weight between 0.01 and 1000.";
-          }
-          names.add(name.toLowerCase());
-        }
-      }
-      return "";
-    }
-
-    function resetCategoryPool(cohort, category) {
-      if (busy) return;
-      if (dirty || saving) { setError("Wait for the automatic save before resetting a category."); return; }
-      var target = boxFor(draft, cohort).name + " / " + category.name;
-      if (!window.confirm("Reset all ratings and battle history for " + target + "? Other categories and gender boxes are kept. Use the General settings backup if you need to restore them later.")) return;
-      setBusy(true);
-      setError("");
-      setStatus("Resetting " + target + "…");
-      runOperation({
-        mode: "resetPool",
-        categoryId: category.id,
-        cohort: cohort,
-        confirm: "RESET",
-      }).then(function (result) {
-        return loadRatingIndex().then(function () {
-          setStatus("Reset " + target + ": " + result.reset + " rating(s); " + result.failed + " failed.");
-          DirtyPlugins.ui.notify("DirtyRank reset " + target + ": " + result.reset + " rating(s).");
-        });
-      }).catch(function (caught) { setError(caught.message || String(caught)); setStatus(""); })
-        .finally(function () { setBusy(false); });
-    }
-
-    var editingCategories = categoriesFor(draft, editingCohort);
-
-    function categoryNameError(category, index) {
-      var name = String(category.name || "").trim().toLowerCase();
-      if (!name) return "Enter a category name.";
-      if (editingCategories.some(function (other, otherIndex) {
-        return otherIndex !== index && String(other.name || "").trim().toLowerCase() === name;
-      })) return "Use a unique name for this performer sex.";
-      return "";
-    }
-
-    var visibleStatus = documentationCapture()
-      ? error ? "Operation failed; details hidden in documentation mode."
-        : status.indexOf("Backup created:") === 0 ? "Backup created; path hidden in documentation mode." : status
-      : error || status;
-
-    return html`<${SettingsCard}
-      className="dirty-rank-settings-card dirty-ui-pilot"
-      bodyClassName="dirty-rank-settings-body"
-      plugin=${props.plugin}
-      footer=${html`<div className="card-footer dirty-plugins-card-footer dirty-rank-settings-actions">
-        ${SharedSaveStatus ? html`<${SharedSaveStatus}
-          className="dirty-rank-settings-status"
-          message=${visibleStatus || (dirty ? "Waiting to save automatically…" : "")}
-          state=${error ? "error" : busy || saving ? "saving" : dirty ? "pending" : "saved"}
-        />` : html`<span
-          className=${"dirty-rank-settings-status" + (error ? " dirty-ui-text-error" : "")}
-          role=${error ? "alert" : "status"}
-        >${visibleStatus}</span>`}
-      </div>`}
-    >
-      <${Section}
-        title="Gender boxes"
-        description="Name each box and choose the genders that battle and rank together. Each box has its own categories and ratings. Rename or expand an existing box to keep its ratings; new boxes start unrated."
-      >
-        <div className="dirty-rank-category-list">
-          ${draft.genderBoxes.map(function (box) {
-            var nameError = !String(box.name || "").trim() ? "Enter a box name." : draft.genderBoxes.some(function (other) {
-              return other.id !== box.id && String(other.name || "").trim().toLowerCase() === String(box.name || "").trim().toLowerCase();
-            }) ? "Choose a unique box name." : "";
-            return html`<div
-              className="dirty-rank-category-editor dirty-rank-box-editor"
-              key=${box.id}
-              data-box-id=${box.id}
-            >
-              <${Field} id=${"dirty-rank-box-name-" + box.id} label="Box name" error=${nameError}>
-                <input
-                  className="form-control"
-                  id=${"dirty-rank-box-name-" + box.id}
-                  value=${box.name}
-                  maxLength=${80}
-                  type="text"
-                  onChange=${function (event) { updateBox(box.id, { name: event.target.value }); }}
-                />
-              <//>
-              <fieldset className="dirty-rank-category-genders">
-                <legend>Genders in this box</legend>
-                <div className="dirty-rank-cohort-options">
-                  ${COHORTS.map(function (item) {
-                    var checked = box.genders.indexOf(item[0]) !== -1;
-                    return html`<${Toggle}
-                      id=${"dirty-rank-box-gender-" + box.id + "-" + item[0]}
-                      key=${item[0]}
-                      label=${item[1]}
-                      checked=${checked}
-                      disabled=${checked && box.genders.length === 1}
-                      onChange=${function (value) {
-                        var genders = box.genders.filter(function (gender) { return gender !== item[0]; });
-                        if (value) genders.push(item[0]);
-                        if (genders.length) updateBox(box.id, { genders: parseEnabledCohorts(genders, box.genders) });
-                      }}
-                    />`;
-                  })}
-                </div>
-              </fieldset>
-              <div className="dirty-rank-data-tools d-flex flex-wrap align-items-center">
-                <${Toggle}
-                  checked=${box.enabled}
-                  label="Enable this box"
-                  disabled=${box.enabled && draft.enabledCohorts.length === 1}
-                  onChange=${function (value) { toggleCohort(box.id, value); }}
-                />
-                <${RankButton}
-                  onClick=${function () {
-                    setEditingCohort(box.id);
-                    var section = document.getElementById && document.getElementById("dirty-rank-category-cohort");
-                    if (section && section.scrollIntoView) section.scrollIntoView({ block: "center", behavior: "smooth" });
-                  }}
-                >Edit categories<//>
-                <${RankButton}
-                  disabled=${draft.genderBoxes.length <= 1 || (box.enabled && draft.enabledCohorts.length === 1)}
-                  onClick=${function () { removeBox(box.id); }}
-                  title="Remove this box from the options; its stored ratings are retained"
-                >Remove box<//>
-              </div>
-            </div>`;
-          })}
-        </div>
-        <${RankButton} disabled=${draft.genderBoxes.length >= 24} onClick=${addBox}>+ Add gender box<//>
-        ${draft.enabledCohorts.length > 1 && html`<div
-          className="dirty-rank-settings-grid dirty-rank-settings-grid-compact"
-          style=${{ marginTop: "0.9rem" }}
-        >
-          <${Field} id="dirty-rank-default-cohort" label="Default gender box">
-            <select
-              className="form-control"
-              id="dirty-rank-default-cohort"
-              onChange=${function (event) { changed({ defaultCohort: event.target.value }); }}
-              value=${draft.defaultCohort}
-            >${boxOptions(draft, true).map(function (item) { return html`<option key=${item[0]} value=${item[0]}>${item[1]}</option>`; })}</select>
-          <//>
-        </div>`}
-      <//>
-      <${Section}
-        title="Navigation"
-        description="Choose which DirtyRank pages appear in Stash's utility navigation. Hidden pages remain available through direct links."
-      >
-        <div className="dirty-rank-settings-row">
-          <${Toggle}
-            checked=${draft.showBattlesInMenu}
-            label="Show Battles in the Stash header"
-            onChange=${function (value) { changed({ showBattlesInMenu: value }); }}
-          />
-          <${Toggle}
-            checked=${draft.showLeaderboardsInMenu}
-            label="Show Leaderboards in the Stash header"
-            onChange=${function (value) { changed({ showLeaderboardsInMenu: value }); }}
-          />
-        </div>
-      <//>
-      <${Section}
-        title="Leaderboard presentation"
-        description="Choose the featured layout and standings view. Changes save automatically and apply to every leaderboard statistic."
-      >
-        <div className="dirty-rank-settings-grid dirty-rank-leaderboard-settings">
-          <${Field} id="dirty-rank-leaderboard-top-count" label="Featured performers">
-            <select
-              className="form-control"
-              id="dirty-rank-leaderboard-top-count"
-              onChange=${function (event) {
-                var topCount = leaderboardTopCount(event.target.value);
-                changed({ leaderboardTopCount: topCount, leaderboardPerformerCount: leaderboardPerformerCount(draft.leaderboardPerformerCount, topCount) });
-              }}
-              value=${draft.leaderboardTopCount}
-            >${LEADERBOARD_TOP_OPTIONS.map(function (option) { return html`<option key=${option.count} value=${option.count}>${option.name}</option>`; })}</select>
-          <//>
-          <${Field}
-            id="dirty-rank-leaderboard-performer-count"
-            label="Performers per page"
-            help=${"Includes the featured performers. Use a multiple of " + draft.leaderboardTopCount + "; changing the layout rounds the count up to a valid multiple."}
-            error=${leaderboardPerformerCountError(draft)}
-          >
-            <input
-              className="form-control"
-              id="dirty-rank-leaderboard-performer-count"
-              type="number"
-              min=${draft.leaderboardTopCount * 2}
-              max=${Math.floor(1000 / draft.leaderboardTopCount) * draft.leaderboardTopCount}
-              step=${draft.leaderboardTopCount}
-              value=${draft.leaderboardPerformerCount}
-              onChange=${function (event) { changed({ leaderboardPerformerCount: event.target.value }); }}
-            />
-          <//>
-          <${Field} id="dirty-rank-leaderboard-view" label="Standings view">
-            <select
-              className="form-control"
-              id="dirty-rank-leaderboard-view"
-              onChange=${function (event) { changed({ leaderboardView: event.target.value }); }}
-              value=${draft.leaderboardView}
-            >
-              <option value="gallery">Gallery</option>
-              <option value="table">Table</option>
-            </select>
-          <//>
-        </div>
-      <//>
-      <${Section}
-        title="Battle presentation"
-        description="Control what is revealed on performer cards. These choices do not change the rating pools."
-      >
-        <div className="dirty-rank-settings-row">
-          <${Toggle}
-            checked=${draft.showRatingsBeforeVote}
-            label="Show ratings and ranks before voting"
-            onChange=${function (value) { changed({ showRatingsBeforeVote: value }); }}
-          />
-          <${Toggle}
-            checked=${draft.hidePerformerImages}
-            label="Hide performer images in battles"
-            onChange=${function (value) { changed({ hidePerformerImages: value }); }}
-          />
-          <${Toggle}
-            checked=${draft.hideBattleStandings}
-            label="Hide standings during battles"
-            onChange=${function (value) { changed({ hideBattleStandings: value }); }}
-          />
-          <${Toggle}
-            checked=${draft.autoPlayTopScenes}
-            label=${html`<span
-              title="Automatic previews play each performer's highest-rated full scene, muted, from a random point between 30% and 70%. Photos remain clickable for voting unless hidden above."
-            >Automatically play top scenes</span>`}
-            onChange=${function (value) { changed({ autoPlayTopScenes: value }); }}
-          />
-          <${Toggle}
-            checked=${draft.includePerformersWithoutImages}
-            label="Include performers without profile images"
-            onChange=${function (value) { changed({ includePerformersWithoutImages: value }); }}
-          />
-        </div>
-      <//>
-      <${Section}
-        title="Confidence goal"
-        description="Choose what the information-gain matchmaker should stabilize. Every mode samples all eligible performers at least once; narrower goals stop refining ratings that no longer affect the result."
-      >
-        <div className="dirty-rank-settings-grid dirty-rank-settings-grid-compact">
-          <${Field} id="dirty-rank-confidence-goal" label="Optimize battles for">
-            <select
-              className="form-control"
-              id="dirty-rank-confidence-goal"
-              onChange=${function (event) { changed({ confidenceGoal: event.target.value }); }}
-              value=${draft.confidenceGoal}
-            >
-              <option value="ranking">Leaderboard order (recommended)</option>
-              <option value="top">Top performers</option>
-              <option value="all">Every performer rating</option>
-            </select>
-          <//>
-          ${draft.confidenceGoal === "top" && html`<${Field}
-            id="dirty-rank-confidence-top-n"
-            label="Top performers to stabilize"
-            error=${!String(draft.confidenceTopN).trim() || !Number.isInteger(Number(draft.confidenceTopN)) ||
-              Number(draft.confidenceTopN) < 1 || Number(draft.confidenceTopN) > 1000
-              ? "Enter a whole number from 1 to 1000." : ""}
-          >
-            <input
-              className="form-control"
-              id="dirty-rank-confidence-top-n"
-              max=${1000}
-              min=${1}
-              onChange=${function (event) { changed({ confidenceTopN: event.target.value }); }}
-              step=${1}
-              type="number"
-              value=${draft.confidenceTopN}
-            />
-          <//>`}
-        </div>
-      <//>
-      <${Section}
-        title="Overall scoring"
-        description="Experiment with how categories combine into the overall leaderboard and Stash performer sort. Changes save automatically and recalculate existing scores; category ratings and battle history are kept."
-      >
-        <${Field}
-          id="dirty-rank-overall-strategy"
-          label="Scoring strategy"
-          help=${overallScoreStrategy(draft.overallScoreStrategy).description}
-        >
-          <select
-            className="form-control"
-            id="dirty-rank-overall-strategy"
-            value=${draft.overallScoreStrategy}
-            onChange=${function (event) { changed({ overallScoreStrategy: event.target.value }); }}
-          >
-            ${OVERALL_SCORE_STRATEGIES.map(function (strategy) {
-              return html`<option key=${strategy.id} value=${strategy.id}>${strategy.name}</option>`;
-            })}
-          </select>
-        <//>
-        ${draft.overallScoreStrategy === "power" && html`<div className="dirty-rank-settings-grid">
-          ${OVERALL_SCORE_PARAMETERS.filter(function (definition) {
-            return definition.strategy === draft.overallScoreStrategy;
-          }).map(function (definition) {
-            var id = "dirty-rank-" + definition.key;
-            return html`<${Field}
-              key=${definition.key}
-              id=${id}
-              label=${definition.label}
-              help=${definition.help}
-              error=${overallScoreParameterError(draft[definition.key], definition)}
-            >
-              <input
-                className="form-control"
-                id=${id}
-                type="number"
-                min=${definition.min}
-                max=${definition.max}
-                step=${definition.step}
-                value=${draft[definition.key]}
-                onChange=${function (event) {
-                  var update = {};
-                  update[definition.key] = event.target.value;
-                  changed(update);
-                }}
-              />
-            <//>`;
-          })}
-        </div>`}
-      <//>
-      <${Section}
-        title="Rating categories"
-        description="Choose a gender box, then define its categories and their weights. Categories and ratings are independent between boxes."
-      >
-        ${draft.genderBoxes.length > 1 && html`<div className="dirty-rank-category-cohort">
-          <${Field} id="dirty-rank-category-cohort" label="Categories for gender box">
-            <select
-              className="form-control"
-              id="dirty-rank-category-cohort"
-              onChange=${function (event) { setEditingCohort(event.target.value); }}
-              value=${editingCohort}
-            >${boxOptions(draft, false).map(function (item) { return html`<option key=${item[0]} value=${item[0]}>${item[1]}</option>`; })}</select>
-          <//>
-        </div>`}
-        <div className="dirty-rank-category-list">
-          ${editingCategories.map(function (category, index) {
-            return html`<div className="dirty-rank-category-editor" key=${editingCohort + ":" + category.id}>
-              <div
-                className="dirty-rank-category-toolbar d-flex flex-wrap align-items-center justify-content-between"
-              >
-                <span className="dirty-rank-category-sex">${boxFor(draft, editingCohort).name}</span>
-                <div className="dirty-rank-data-tools d-flex flex-wrap align-items-center">
-                  <${RankButton}
-                    className="dirty-rank-category-reset"
-                    disabled=${busy || saving || dirty}
-                    tone="danger"
-                    title=${"Reset ratings for " + boxFor(draft, editingCohort).name + " / " + category.name}
-                    onClick=${function () { resetCategoryPool(editingCohort, category); }}
-                  >Reset ratings<//>
-                  ${SharedIconButton ? html`<${SharedIconButton}
-                    ariaLabel="Move category up"
-                    disabled=${index === 0}
-                    fallback="↑"
-                    onClick=${function () { moveCategory(index, -1); }}
-                  />` : html`<button
-                    aria-label="Move category up"
-                    className="dirty-ui-icon-button"
-                    disabled=${index === 0}
-                    onClick=${function () { moveCategory(index, -1); }}
-                    type="button"
-                  >↑</button>`}
-                  ${SharedIconButton ? html`<${SharedIconButton}
-                    ariaLabel="Move category down"
-                    disabled=${index === editingCategories.length - 1}
-                    fallback="↓"
-                    onClick=${function () { moveCategory(index, 1); }}
-                  />` : html`<button
-                    aria-label="Move category down"
-                    className="dirty-ui-icon-button"
-                    disabled=${index === editingCategories.length - 1}
-                    onClick=${function () { moveCategory(index, 1); }}
-                    type="button"
-                  >↓</button>`}
-                  ${SharedIconButton ? html`<${SharedIconButton}
-                    ariaLabel="Remove category"
-                    disabled=${editingCategories.length <= 1}
-                    fallback="×"
-                    onClick=${function () { removeCategory(index); }}
-                  />` : html`<button
-                    aria-label="Remove category"
-                    className="dirty-ui-icon-button"
-                    disabled=${editingCategories.length <= 1}
-                    onClick=${function () { removeCategory(index); }}
-                    type="button"
-                  >×</button>`}
-                </div>
-              </div>
-              <div className="dirty-rank-category-basics">
-                <${Field}
-                  id=${"dirty-rank-category-name-" + editingCohort + "-" + index}
-                  label="Name"
-                  error=${categoryNameError(category, index)}
-                >
-                  <input
-                    className="form-control"
-                    id=${"dirty-rank-category-name-" + editingCohort + "-" + index}
-                    maxLength=${80}
-                    onChange=${function (event) { updateCategory(index, { name: event.target.value }); }}
-                    type="text"
-                    value=${category.name}
-                  />
-                <//>
-                <${Field}
-                  id=${"dirty-rank-category-weight-" + editingCohort + "-" + index}
-                  label="Overall weight"
-                  error=${String(category.weight).trim() && Number(category.weight) >= 0.01 && Number(category.weight) <= 1000
-                    ? "" : "Enter a weight between 0.01 and 1000."}
-                >
-                  <input
-                    className="form-control"
-                    id=${"dirty-rank-category-weight-" + editingCohort + "-" + index}
-                    min=${0.01}
-                    max=${1000}
-                    step=${0.1}
-                    onChange=${function (event) { updateCategory(index, { weight: event.target.value }); }}
-                    type="number"
-                    value=${category.weight}
-                  />
-                <//>
-              </div>
-              <${Field}
-                id=${"dirty-rank-category-description-" + editingCohort + "-" + index}
-                label="Description"
-              >
-                <textarea
-                  className="form-control"
-                  id=${"dirty-rank-category-description-" + editingCohort + "-" + index}
-                  maxLength=${500}
-                  onChange=${function (event) { updateCategory(index, { description: event.target.value }); }}
-                  rows=${2}
-                  value=${category.description}
-                />
-              <//>
-              <${Toggle}
-                checked=${category.enabled}
-                label="Enable this category"
-                onChange=${function (value) { updateCategory(index, { enabled: value }); }}
-              />
-            </div>`;
-          })}
-          <${RankButton} onClick=${addCategory}>+ Add category<//>
-        </div>
-      <//>
-      <details className="dirty-rank-advanced">
-        <summary className="dirty-rank-advanced-summary">
-          <span>Advanced configuration</span>
-          <span className="dirty-rank-advanced-hint">Matchmaking and Glicko-2 parameters</span>
-        </summary>
-        <div className="dirty-rank-advanced-body">
-          <div className="dirty-rank-preset-row">
-            <div
-              className="dirty-rank-data-tools d-flex flex-wrap align-items-center"
-              role="group"
-              aria-label="Rating presets"
-            >
-              <${RankButton}
-                className="dirty-rank-preset-current"
-                disabled=${busy}
-                tone="primary"
-                title="Restore advanced values from when this settings page was opened"
-                onClick=${function () { changed(currentParameters); }}
-              >Current<//>
-              ${RATING_PRESETS.map(function (preset) {
-                var selected = ratingPresetFor(draft) === preset;
-                return html`<${RankButton}
-                  key=${preset.id}
-                  disabled=${busy}
-                  pressed=${selected}
-                  tone=${selected ? "primary" : "secondary"}
-                  onClick=${function () { changed(preset.settings); }}
-                >${preset.name}<//>`;
-              })}
-            </div>
-            <span
-              className="dirty-rank-preset-estimate"
-              role="status"
-              aria-live="polite"
-              title="Fresh category for the gender box selected under Rating categories. Assumes informative close matchups until every performer reaches Refined; each battle updates two performers. Actual totals depend on results and matchmaking. Parameters that do not change predicted uncertainty can leave the rounded total unchanged."
-            >
-              ${presetEstimate ? (presetEstimate.capped ? "≥" : "") + presetEstimate.battles.toLocaleString() + " battles expected to rank 1 category for " + presetEstimate.performers.toLocaleString() + " performers"
-                : estimateError ? "Battle estimate unavailable" : "Loading battle estimate…"}
-            </span>
-          </div>
-          <p className="dirty-rank-advanced-copy" aria-live="polite">
-            ${ratingPresetFor(draft)
-              ? ratingPresetFor(draft).description
-              : "Custom configuration. Choose a preset or adjust the values below."}
-          </p>
-          <p className="dirty-rank-advanced-copy">
-            Presets save automatically and apply to future battles. Existing ratings and history are kept; starting values apply to unrated performers. Battle weight drives faster refinement; lower tau limits volatility changes. Recent-pair avoidance and calibration are soft matchmaking preferences. DirtyRank does not inflate uncertainty during inactivity.
-          </p>
-          <div className="dirty-rank-settings-grid">
-            <${Field}
-              id="dirty-rank-evidence-weight"
-              label="Evidence per battle"
-              help="How strongly one comparison reduces uncertainty. 1.0 is standard Glicko-2; 2.0 treats a consistent subjective choice as twice the rating evidence while still recording one battle."
-            >
-              <input
-                className="form-control"
-                id="dirty-rank-evidence-weight"
-                min=${1}
-                max=${3}
-                onChange=${function (event) { changed({ evidenceWeight: Number(event.target.value) }); }}
-                step=${0.1}
-                type="number"
-                value=${draft.evidenceWeight}
-              />
-            <//>
-            <${Field}
-              id="dirty-rank-repeat-window"
-              label="Recent pairs to avoid"
-              help="Prefer different pairings within this many recent battles. A small pool may still repeat a pair."
-            >
-              <input
-                className="form-control"
-                id="dirty-rank-repeat-window"
-                min=${0}
-                max=${100}
-                onChange=${function (event) { changed({ avoidRepeatWindow: Number(event.target.value) }); }}
-                type="number"
-                value=${draft.avoidRepeatWindow}
-              />
-            <//>
-            <${Field}
-              id="dirty-rank-calibration"
-              label="Calibration matches (%)"
-              help="Chance of favouring broader rating gaps. Lower values focus on the matchups expected to reduce uncertainty most."
-            >
-              <input
-                className="form-control"
-                id="dirty-rank-calibration"
-                min=${0}
-                max=${100}
-                onChange=${function (event) { changed({ calibrationPercent: Number(event.target.value) }); }}
-                type="number"
-                value=${draft.calibrationPercent}
-              />
-            <//>
-            ${[
-              ["initialRating", "Initial rating", -100000, 100000, 1],
-              ["initialDeviation", "Initial deviation", 30, 1000, 1],
-              ["initialVolatility", "Initial volatility", 0.0001, 1, 0.001],
-              ["tau", "Tau", 0.01, 2, 0.01],
-              ["deviationFloor", "Deviation floor", 1, 1000, 1],
-              ["provisionalDeviation", "Provisional threshold", 1, 1000, 1],
-            ].map(function (definition) {
-              return html`<${Field}
-                id=${"dirty-rank-" + definition[0]}
-                key=${definition[0]}
-                label=${definition[1]}
-              >
-                <input
-                  className="form-control"
-                  id=${"dirty-rank-" + definition[0]}
-                  min=${definition[2]}
-                  max=${definition[3]}
-                  step=${definition[4]}
-                  onChange=${function (event) { var update = {}; update[definition[0]] = Number(event.target.value); changed(update); }}
-                  type="number"
-                  value=${draft[definition[0]]}
-                />
-              <//>`;
-            })}
-          </div>
-        </div>
-      </details>
-    <//>`;
-  }
+  var DirtyRankSettings = window.__dirtyRankSettingsPanel.createSettingsPanel({
+    Fragment: Fragment,
+    leaderboardPerformerCountError: leaderboardPerformerCountError,
+    COHORTS: COHORTS,
+    DEFAULT_CATEGORY_DEFINITIONS: DEFAULT_CATEGORY_DEFINITIONS,
+    DirtyPlugins: DirtyPlugins,
+    Field: Field,
+    LEADERBOARD_TOP_OPTIONS: LEADERBOARD_TOP_OPTIONS,
+    OVERALL_SCORE_PARAMETERS: OVERALL_SCORE_PARAMETERS,
+    OVERALL_SCORE_STRATEGIES: OVERALL_SCORE_STRATEGIES,
+    PLUGIN_ID: PLUGIN_ID,
+    RATING_PRESETS: RATING_PRESETS,
+    RankButton: RankButton,
+    Section: Section,
+    SettingsCard: SettingsCard,
+    SharedIconButton: SharedIconButton,
+    SharedSaveStatus: SharedSaveStatus,
+    Toggle: Toggle,
+    boxFor: boxFor,
+    boxOptions: boxOptions,
+    categoriesFor: categoriesFor,
+    categoryEligible: categoryEligible,
+    comparableSettings: comparableSettings,
+    documentationCapture: documentationCapture,
+    freshCategoryBattleEstimate: freshCategoryBattleEstimate,
+    html: html,
+    leaderboardPerformerCount: leaderboardPerformerCount,
+    leaderboardTopCount: leaderboardTopCount,
+    loadRatingIndex: loadRatingIndex,
+    overallScoreParameterError: overallScoreParameterError,
+    overallScoreStrategy: overallScoreStrategy,
+    parseEnabledCohorts: parseEnabledCohorts,
+    queryPerformers: queryPerformers,
+    ratingParameters: ratingParameters,
+    ratingPresetFor: ratingPresetFor,
+    runOperation: runOperation,
+    serializedSettings: serializedSettings,
+    settingsFromConfiguration: settingsFromConfiguration,
+    uniqueCategoryId: uniqueCategoryId,
+    useEffect: useEffect,
+    useMemo: useMemo,
+    useRef: useRef,
+    useState: useState,
+    validateSettings: validateSettings,
+  });
 
   function DirtyRankBattleNavLink() {
     if (SharedNavAction) return html`<${SharedNavAction}

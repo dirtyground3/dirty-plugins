@@ -1,5 +1,6 @@
 """Standard-library Stash transport for Dirty plugin backends."""
 import json
+import urllib.error
 import urllib.request
 
 
@@ -43,7 +44,9 @@ def contain_child_process(process):
 
 
 class StashClient:
-    def __init__(self, connection):
+    def __init__(self, connection, *, timeout=120, error_type=RuntimeError):
+        self.timeout = timeout
+        self.error_type = error_type
         host = connection.get("Host") or "127.0.0.1"
         if host in ("0.0.0.0", "::"):
             host = "127.0.0.1"
@@ -55,14 +58,19 @@ class StashClient:
         if cookie.get("Name") and cookie.get("Value"):
             self.headers["Cookie"] = cookie["Name"] + "=" + cookie["Value"]
         if connection.get("ApiKey"):
-            self.headers["ApiKey"] = connection["ApiKey"]
+            self.headers["ApiKey"] = str(connection["ApiKey"])
 
     def call(self, query, variables=None):
-        request = urllib.request.Request(self.url, json.dumps({"query": query, "variables": variables or {}}).encode(), self.headers)
-        with urllib.request.urlopen(request, timeout=120) as response:
-            result = json.load(response)
+        body = json.dumps({"query": query, "variables": variables or {}}, ensure_ascii=False).encode("utf-8")
+        request = urllib.request.Request(self.url, body, self.headers)
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                result = json.load(response)
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            raise self.error_type(f"Could not contact Stash GraphQL: {exc}") from exc
         if result.get("errors"):
-            raise RuntimeError("; ".join(error["message"] for error in result["errors"]))
+            message = "; ".join(str(error.get("message", error)) for error in result["errors"])
+            raise self.error_type(f"Stash GraphQL returned an error: {message}")
         return result.get("data") or {}
 
     def queue(self, plugin_id, args, description):

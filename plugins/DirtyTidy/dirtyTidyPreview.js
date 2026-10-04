@@ -4,12 +4,12 @@
   var INSTANCE_KEY = "__dirtyTidyPreview";
   if (window[INSTANCE_KEY]) return;
 
-  /** @param {{html: Function, React: *, DirtyPlugins: *, variables: string[][]}} dependencies */
+  /** @param {TidyPreviewDependencies} dependencies */
   function createPreview(dependencies) {
     var html = dependencies.html, React = dependencies.React;
     var DirtyPlugins = dependencies.DirtyPlugins, VARIABLES = dependencies.variables;
 
-  /** Menu items that insert a template token, grouped under headers. @param {function(string): void} onInsert @returns {Array<*>} */
+  /** Menu items that insert a template token, grouped under headers. @param {function(string): void} onInsert @returns {TidyVariableMenuItem[]} */
   function variableMenuItems(onInsert) {
     var groups = [], byGroup = {};
     VARIABLES.forEach(function (variable) {
@@ -24,8 +24,10 @@
     }, []);
   }
 
+  /** @param {{summary?: TidySummary, total: number, value: string, disabled?: boolean, onChange(value: string): void}} props */
   function Summary(props) {
     var summary = props.summary || {};
+    /** @type {Array<[string, number, string]>} */
     var values = [
       ["All", props.total || 0, "all"],
       ["Ready", summary.ready || 0, "ready"],
@@ -56,7 +58,9 @@
       </div>`;
   }
 
+  /** @param {{operation: TidyOperation}} props */
   function PreviewNotes(props) {
+    /** @type {Partial<TidyOperation>} */
     var operation = props.operation || {};
     var warnings = operation.warnings || [];
     var blockedScenes = operation.blocked_scenes || [];
@@ -83,6 +87,7 @@
       </div>`;
   }
 
+  /** @param {{operations: TidyOperation[]}} props */
   function PreviewTable(props) {
     var operations = props.operations || [];
     var docsCapture = DirtyPlugins.captureEnabled && DirtyPlugins.captureEnabled(window.location && window.location.search);

@@ -27,28 +27,8 @@
   var FREE_COUNT = "freeCount";
   var EMPTY_FILTER = { find: {}, object: {}, count: 0 };
 
-  var WIDGETS = {
-    origin: { label: "Performer origin", route: core.route, entity: "performers", group: "performers", size: "medium", options: { showNumbers: false }, choices: { showNumbers: [false, true] } },
-    growth: { label: "Content growth", route: core.route + "/scenes", entity: "scenes", group: "growth", size: "large", options: { dateBasis: "created_at", grouping: "month", showCapacity: true, showForecast: false }, choices: { dateBasis: ["created_at", "mod_time", "scene_date"], grouping: ["day", "month", "year"], showCapacity: [false, true], showForecast: [false, true] } },
-    ages: { label: "Age at scene", route: core.route + "/ages", entity: "scenes", group: "cast", size: "medium", options: { showPerformerCount: true, showModeAge: true, showMedianAge: false, showAverageAge: false }, choices: { showPerformerCount: [false, true], showModeAge: [false, true], showMedianAge: [false, true], showAverageAge: [false, true] } },
-    ratings: { label: "Scene ratings", route: core.route + "/ratings", entity: "scenes", group: "scenes", size: "medium", options: { rounding: 0.5 }, choices: { rounding: [0, 0.5, 1] } },
-    performerRatings: { label: "Performer ratings", route: core.route + "/performer-ratings", entity: "performers", group: "performers", size: "medium", options: { rounding: 0.5 }, choices: { rounding: [0, 0.5, 1] } },
-    performerScatter: { label: "Rating vs scenes", route: core.route + "/performer-scatter", entity: "performers", group: "performers", size: "medium", options: { minRating: 9, maxScenes: 10 }, choices: { minRating: [0, 5, 6, 7, 8, 9], maxScenes: [0, 5, 10, 20, 50, 100] } },
-    performerCards: { label: "Performer cards", route: core.route, entity: "performers", group: "performerCards", size: "large", options: { cardCount: 8 }, choices: { cardCount: FREE_COUNT } },
-    countRating: { label: "Count vs rating", route: core.route + "/count-rating", entity: "scenes", group: "scenes", size: "medium", options: { metric: "play_count" }, choices: { metric: ["play_count", "o_counter"] } },
-    repeatOffenders: { label: "Repeat-offender curve", route: core.route + "/repeat-offenders", entity: "scenes", group: "scenes", size: "medium", options: {}, choices: {} },
-    qualityEfficiency: { label: "Quality efficiency", route: core.route + "/quality-efficiency", entity: "scenes", group: "scenes", size: "medium", options: {}, choices: {} },
-    studios: { label: "Studio value map", route: core.route + "/studios", entity: "scenes", group: "scenes", size: "medium", options: { minScenes: 1 }, choices: { minScenes: [1, 2, 5, 10, 20] } },
-    tags: { label: "Tag DNA", route: core.route + "/tags", entity: "scenes", group: "tags", size: "medium", options: { metric: "rating", maxTags: 50 }, choices: { metric: ["rating", "play_count"], maxTags: [0, 25, 50, 100, 200] } },
-    constellation: { label: "Cast constellation", route: core.route + "/constellation", entity: "scenes", group: "cast", size: "large", options: { maxPerformers: 100, minShared: 1 }, choices: { maxPerformers: [0, 50, 100, 200, 500, 1000], minShared: [1, 2, 3, 5, 10] } },
-    birthdays: { label: "Performer birthdays", route: core.route + "/birthdays", entity: "performers", group: "performers", size: "medium", options: { upcomingCount: 6 }, choices: { upcomingCount: [3, 6, 12] } }
-  };
-  Object.keys(WIDGETS).forEach(function (name) {
-    WIDGETS[name].options.showHeader = true;
-    WIDGETS[name].choices.showHeader = [false, true];
-  });
-
-  var WIDGET_ORDER = ["origin", "growth", "ages", "ratings", "performerRatings", "performerScatter", "performerCards", "countRating", "repeatOffenders", "qualityEfficiency", "studios", "tags", "constellation", "birthdays"];
+  var WIDGETS = window.__dirtyStatsRegistry.widgets;
+  var WIDGET_ORDER = window.__dirtyStatsRegistry.widgetOrder;
   var DEFAULT_WIDGETS = [
     { id: "dashboard-ratings", statistic: "ratings", size: "medium", options: { rounding: 0.5 } },
     { id: "dashboard-performer-ratings", statistic: "performerRatings", size: "medium", options: { rounding: 0.5 } },
@@ -164,7 +144,6 @@
   }
 
   async function fetchPages(group, savedFilter, signal, limit) {
-    var page = 1, total = null, rows = [];
     var query, root, field, variables;
     if (group === "performerCards") {
       query = "query DirtyStatsDashboardPerformerCards($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id death_date}}}";
@@ -191,15 +170,15 @@
       root = "findScenes"; field = "scenes";
       variables = function (number) { return { filter: Object.assign({}, savedFilter.find, { page: number, per_page: 500, sort: "id", direction: "ASC" }), sceneFilter: savedFilter.object }; };
     }
-    do {
-      var data = await hub.graphql(query, variables(page), { signal: signal });
-      if (signal.aborted) return [];
-      var batch = data[root];
-      total = batch.count;
-      if (!batch[field].length && rows.length < total) throw new Error("The library changed while the dashboard was loading. Refresh to try again.");
-      rows = rows.concat(batch[field]); page += 1;
-    } while (group !== "performerCards" && rows.length < total);
-    return rows;
+    return window.__dirtyStatsData.fetchAllPages({
+      graphql: hub.graphql,
+      query: query,
+      variables: variables,
+      signal: signal,
+      singlePage: group === "performerCards",
+      collection: function (response) { return { count: response[root].count, rows: response[root][field] }; },
+      failureLabel: "The library changed while the dashboard was loading. Refresh to try again."
+    });
   }
 
   function State(props) {
@@ -214,27 +193,26 @@
   function Chart(props) {
     var node = React.useRef(null);
     var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
-    React.useEffect(function () {
+    var lifecycle = window.__dirtyStatsCharts.createLifecycle({
+      React: React, init: algorithms.initStatsChart, events: window,
+      Observer: typeof ResizeObserver === "function" ? ResizeObserver : undefined
+    });
+    lifecycle.useChart(function () {
       if (!node.current || !props.option) return;
       if (!charts) { setError("The bundled chart library could not be loaded."); return; }
-      var chart, observer;
-      function resize() {
-        if (chart && !chart.isDisposed()) {
-          chart.resize();
-          if (props.map) chart.setOption({ series: [algorithms.mapLayout(node.current, props.option.visualMap.show)] });
-        }
-      }
-      try {
-        if (props.map && world) charts.registerMap("dirtyStatsDashboardWorld", world);
-        chart = algorithms.initStatsChart(node.current, { renderer: "canvas" });
-        var option = props.option;
-        if (props.map) option = Object.assign({}, option, { series: [Object.assign({}, option.series[0], algorithms.mapLayout(node.current, option.visualMap.show))] });
-        chart.setOption(option, true);
-        if (typeof ResizeObserver === "function") { observer = new ResizeObserver(resize); observer.observe(node.current); }
-        window.addEventListener("resize", resize);
-        setError("");
-      } catch (chartError) { setError(chartError.message); }
-      return function () { if (observer) observer.disconnect(); window.removeEventListener("resize", resize); if (chart) chart.dispose(); };
+      return {
+        node: node.current,
+        beforeInit: function () { if (props.map && world) charts.registerMap("dirtyStatsDashboardWorld", world); },
+        configure: function (chart) {
+          var option = props.option;
+          if (props.map) option = Object.assign({}, option, { series: [Object.assign({}, option.series[0], algorithms.mapLayout(node.current, option.visualMap.show))] });
+          // Replace the complete dashboard option; full views retain their own incremental updates.
+          chart.setOption(option, true);
+          setError("");
+        },
+        resize: function (chart) { if (props.map) chart.setOption({ series: [algorithms.mapLayout(node.current, props.option.visualMap.show)] }); },
+        onError: function (error) { setError(error.message); }
+      };
     }, [props.option, props.map]);
     return html`<${React.Fragment}>
       ${error ? html`<p className="dirty-stats-dashboard-chart-error" role="alert">${error}</p>` : null}

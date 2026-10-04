@@ -14,8 +14,12 @@ ui:
   javascript:
     - vendor/echarts.min.js
     - vendor/world.js
+    - dirtyStatsRegistry.js
     - dirtyStatsGrowth.js
     - dirtyStatsAges.js
+    - dirtyStatsData.js
+    - dirtyStatsCharts.js
+    - dirtyStatsChartOptions.js
     - dirtyStats.js
     - dirtyStatsDashboard.js
   css:

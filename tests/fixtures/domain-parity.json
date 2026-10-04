@@ -1,0 +1,1018 @@
+{
+  "notes": "Fixed equivalent inputs for browser and backend calculations. Rank excludes UI-only autoPlayTopScenes. Bitrate fixtures exclude measured audio and probe estimates. Rank category ordering is compared as array order; the backend also stores an explicit order field.",
+  "rank": [
+    {
+      "name": "defaults",
+      "input": {},
+      "expected": {
+        "categoriesByCohort": {
+          "FEMALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "MALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "TRANSGENDER_MALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "INTERSEX": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "NON_BINARY": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "TRANSGENDER_FEMALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ]
+        },
+        "genderBoxes": [
+          {
+            "id": "FEMALE",
+            "name": "Female",
+            "genders": [
+              "FEMALE"
+            ],
+            "enabled": true
+          },
+          {
+            "id": "MALE",
+            "name": "Male",
+            "genders": [
+              "MALE"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "TRANSGENDER_FEMALE",
+            "name": "Transgender female",
+            "genders": [
+              "TRANSGENDER_FEMALE"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "TRANSGENDER_MALE",
+            "name": "Transgender male",
+            "genders": [
+              "TRANSGENDER_MALE"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "INTERSEX",
+            "name": "Intersex",
+            "genders": [
+              "INTERSEX"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "NON_BINARY",
+            "name": "Non-binary",
+            "genders": [
+              "NON_BINARY"
+            ],
+            "enabled": false
+          }
+        ],
+        "defaultCohort": "FEMALE",
+        "enabledCohorts": [
+          "FEMALE"
+        ],
+        "showBattlesInMenu": true,
+        "leaderboardTopCount": 3,
+        "leaderboardPerformerCount": 18,
+        "leaderboardView": "gallery",
+        "overallScoreStrategy": "weighted",
+        "overallPower": 3.0,
+        "showLeaderboardsInMenu": true,
+        "showRatingsBeforeVote": false,
+        "hidePerformerImages": false,
+        "hideBattleStandings": false,
+        "includePerformersWithoutImages": false,
+        "confidenceGoal": "ranking",
+        "confidenceTopN": 20,
+        "avoidRepeatWindow": 12,
+        "calibrationPercent": 10,
+        "initialRating": 1000.0,
+        "initialDeviation": 350.0,
+        "initialVolatility": 0.06,
+        "evidenceWeight": 2.0,
+        "tau": 0.5,
+        "deviationFloor": 30.0,
+        "provisionalDeviation": 100.0
+      }
+    },
+    {
+      "name": "legacy values",
+      "input": {
+        "initialRating": "1500",
+        "initialDeviation": "500",
+        "leaderboardTopCount": "4",
+        "leaderboardPerformerCount": "19",
+        "enabledCohorts": "[\"MALE\"]",
+        "defaultCohort": "MALE",
+        "hideBattleStandings": "true",
+        "showRatingsBeforeVote": "false"
+      },
+      "expected": {
+        "categoriesByCohort": {
+          "FEMALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "MALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "TRANSGENDER_MALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "INTERSEX": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "NON_BINARY": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "TRANSGENDER_FEMALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ]
+        },
+        "genderBoxes": [
+          {
+            "id": "FEMALE",
+            "name": "Female",
+            "genders": [
+              "FEMALE"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "MALE",
+            "name": "Male",
+            "genders": [
+              "MALE"
+            ],
+            "enabled": true
+          },
+          {
+            "id": "TRANSGENDER_FEMALE",
+            "name": "Transgender female",
+            "genders": [
+              "TRANSGENDER_FEMALE"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "TRANSGENDER_MALE",
+            "name": "Transgender male",
+            "genders": [
+              "TRANSGENDER_MALE"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "INTERSEX",
+            "name": "Intersex",
+            "genders": [
+              "INTERSEX"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "NON_BINARY",
+            "name": "Non-binary",
+            "genders": [
+              "NON_BINARY"
+            ],
+            "enabled": false
+          }
+        ],
+        "defaultCohort": "MALE",
+        "enabledCohorts": [
+          "MALE"
+        ],
+        "showBattlesInMenu": true,
+        "leaderboardTopCount": 4,
+        "leaderboardPerformerCount": 20,
+        "leaderboardView": "gallery",
+        "overallScoreStrategy": "weighted",
+        "overallPower": 3.0,
+        "showLeaderboardsInMenu": true,
+        "showRatingsBeforeVote": false,
+        "hidePerformerImages": false,
+        "hideBattleStandings": true,
+        "includePerformersWithoutImages": false,
+        "confidenceGoal": "ranking",
+        "confidenceTopN": 20,
+        "avoidRepeatWindow": 12,
+        "calibrationPercent": 10,
+        "initialRating": 1500.0,
+        "initialDeviation": 500.0,
+        "initialVolatility": 0.06,
+        "evidenceWeight": 2.0,
+        "tau": 0.5,
+        "deviationFloor": 30.0,
+        "provisionalDeviation": 100.0
+      }
+    },
+    {
+      "name": "parameter boundaries",
+      "input": {
+        "initialRating": -100001,
+        "initialDeviation": 5,
+        "initialVolatility": 2,
+        "deviationFloor": 900,
+        "provisionalDeviation": 9999,
+        "evidenceWeight": 10,
+        "confidenceTopN": 0,
+        "avoidRepeatWindow": 1000,
+        "calibrationPercent": -1,
+        "tau": 0,
+        "overallPower": 10,
+        "leaderboardTopCount": 5,
+        "leaderboardPerformerCount": 1001
+      },
+      "expected": {
+        "categoriesByCohort": {
+          "FEMALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "MALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "TRANSGENDER_MALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "INTERSEX": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "NON_BINARY": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "TRANSGENDER_FEMALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ]
+        },
+        "genderBoxes": [
+          {
+            "id": "FEMALE",
+            "name": "Female",
+            "genders": [
+              "FEMALE"
+            ],
+            "enabled": true
+          },
+          {
+            "id": "MALE",
+            "name": "Male",
+            "genders": [
+              "MALE"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "TRANSGENDER_FEMALE",
+            "name": "Transgender female",
+            "genders": [
+              "TRANSGENDER_FEMALE"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "TRANSGENDER_MALE",
+            "name": "Transgender male",
+            "genders": [
+              "TRANSGENDER_MALE"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "INTERSEX",
+            "name": "Intersex",
+            "genders": [
+              "INTERSEX"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "NON_BINARY",
+            "name": "Non-binary",
+            "genders": [
+              "NON_BINARY"
+            ],
+            "enabled": false
+          }
+        ],
+        "defaultCohort": "FEMALE",
+        "enabledCohorts": [
+          "FEMALE"
+        ],
+        "showBattlesInMenu": true,
+        "leaderboardTopCount": 5,
+        "leaderboardPerformerCount": 1000,
+        "leaderboardView": "gallery",
+        "overallScoreStrategy": "weighted",
+        "overallPower": 4.0,
+        "showLeaderboardsInMenu": true,
+        "showRatingsBeforeVote": false,
+        "hidePerformerImages": false,
+        "hideBattleStandings": false,
+        "includePerformersWithoutImages": false,
+        "confidenceGoal": "ranking",
+        "confidenceTopN": 1,
+        "avoidRepeatWindow": 100,
+        "calibrationPercent": 0,
+        "initialRating": -100000.0,
+        "initialDeviation": 30.0,
+        "initialVolatility": 1.0,
+        "evidenceWeight": 3.0,
+        "tau": 0.01,
+        "deviationFloor": 30.0,
+        "provisionalDeviation": 30.0
+      }
+    },
+    {
+      "name": "serialized category map",
+      "input": {
+        "categories": "{\"FEMALE\": [{\"id\": \"custom\", \"name\": \"Custom\", \"description\": \"Custom category\", \"weight\": 2, \"enabled\": true}]}"
+      },
+      "expected": {
+        "categoriesByCohort": {
+          "TRANSGENDER_FEMALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "TRANSGENDER_MALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "INTERSEX": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "FEMALE": [
+            {
+              "id": "custom",
+              "name": "Custom",
+              "description": "Custom category",
+              "enabled": true,
+              "weight": 2.0
+            }
+          ],
+          "MALE": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "NON_BINARY": [
+            {
+              "id": "appearance",
+              "name": "Appearance",
+              "description": "Visual appeal and on-camera presence.",
+              "enabled": true,
+              "weight": 1.0
+            },
+            {
+              "id": "performance",
+              "name": "Performance",
+              "description": "Technique, energy, chemistry, and engagement.",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ]
+        },
+        "genderBoxes": [
+          {
+            "id": "FEMALE",
+            "name": "Female",
+            "genders": [
+              "FEMALE"
+            ],
+            "enabled": true
+          },
+          {
+            "id": "MALE",
+            "name": "Male",
+            "genders": [
+              "MALE"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "TRANSGENDER_FEMALE",
+            "name": "Transgender female",
+            "genders": [
+              "TRANSGENDER_FEMALE"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "TRANSGENDER_MALE",
+            "name": "Transgender male",
+            "genders": [
+              "TRANSGENDER_MALE"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "INTERSEX",
+            "name": "Intersex",
+            "genders": [
+              "INTERSEX"
+            ],
+            "enabled": false
+          },
+          {
+            "id": "NON_BINARY",
+            "name": "Non-binary",
+            "genders": [
+              "NON_BINARY"
+            ],
+            "enabled": false
+          }
+        ],
+        "defaultCohort": "FEMALE",
+        "enabledCohorts": [
+          "FEMALE"
+        ],
+        "showBattlesInMenu": true,
+        "leaderboardTopCount": 3,
+        "leaderboardPerformerCount": 18,
+        "leaderboardView": "gallery",
+        "overallScoreStrategy": "weighted",
+        "overallPower": 3.0,
+        "showLeaderboardsInMenu": true,
+        "showRatingsBeforeVote": false,
+        "hidePerformerImages": false,
+        "hideBattleStandings": false,
+        "includePerformersWithoutImages": false,
+        "confidenceGoal": "ranking",
+        "confidenceTopN": 20,
+        "avoidRepeatWindow": 12,
+        "calibrationPercent": 10,
+        "initialRating": 1000.0,
+        "initialDeviation": 350.0,
+        "initialVolatility": 0.06,
+        "evidenceWeight": 2.0,
+        "tau": 0.5,
+        "deviationFloor": 30.0,
+        "provisionalDeviation": 100.0
+      }
+    }
+  ],
+  "compactor": [
+    {
+      "name": "portrait resize",
+      "width": 1080,
+      "height": 1920,
+      "rule": {
+        "action": "resize",
+        "width": 1280,
+        "height": 720,
+        "quality": "balanced",
+        "codec": "h264"
+      },
+      "fps": 30,
+      "sourceBitrate": null,
+      "expected": {
+        "size": [
+          720,
+          1280
+        ],
+        "mbps": 2.72
+      }
+    },
+    {
+      "name": "even resize rounding",
+      "width": 3841,
+      "height": 2161,
+      "rule": {
+        "action": "resize",
+        "width": 854,
+        "height": 480,
+        "quality": "small",
+        "codec": "hevc"
+      },
+      "fps": 60,
+      "sourceBitrate": null,
+      "expected": {
+        "size": [
+          852,
+          480
+        ],
+        "mbps": 0.75
+      }
+    },
+    {
+      "name": "never upscale",
+      "width": 640,
+      "height": 360,
+      "rule": {
+        "action": "resize",
+        "width": 1920,
+        "height": 1080,
+        "quality": "high",
+        "codec": "h264"
+      },
+      "fps": 30,
+      "sourceBitrate": null,
+      "expected": {
+        "size": [
+          640,
+          360
+        ],
+        "mbps": 1.54
+      }
+    },
+    {
+      "name": "frame rate cap",
+      "width": 3840,
+      "height": 2160,
+      "rule": {
+        "action": "reencode",
+        "quality": "balanced",
+        "codec": "hevc"
+      },
+      "fps": 240,
+      "sourceBitrate": null,
+      "expected": {
+        "size": [
+          3840,
+          2160
+        ],
+        "mbps": 16.97
+      }
+    },
+    {
+      "name": "legacy custom bitrate",
+      "width": 1920,
+      "height": 1080,
+      "rule": {
+        "action": "reencode",
+        "mbps": "2.5",
+        "codec": "h264"
+      },
+      "fps": 30,
+      "sourceBitrate": null,
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "mbps": 2.5
+      }
+    },
+    {
+      "name": "minimum custom bitrate",
+      "width": 1920,
+      "height": 1080,
+      "rule": {
+        "action": "reencode",
+        "quality": "custom",
+        "mbps": 0.05,
+        "codec": "h264"
+      },
+      "fps": 30,
+      "sourceBitrate": null,
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "mbps": 0.05
+      }
+    },
+    {
+      "name": "maximum custom bitrate",
+      "width": 1920,
+      "height": 1080,
+      "rule": {
+        "action": "reencode",
+        "quality": "custom",
+        "mbps": 1000,
+        "codec": "h264"
+      },
+      "fps": 30,
+      "sourceBitrate": null,
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "mbps": 1000.0
+      }
+    },
+    {
+      "name": "keep source bitrate",
+      "width": 1920,
+      "height": 1080,
+      "rule": {
+        "action": "reencode",
+        "quality": "source",
+        "codec": "hevc"
+      },
+      "fps": 30,
+      "sourceBitrate": 5050000,
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "mbps": 5.05
+      }
+    },
+    {
+      "name": "visual preset estimate",
+      "width": 854,
+      "height": 480,
+      "rule": {
+        "action": "reencode",
+        "quality": "visual",
+        "vmaf": 95,
+        "codec": "hevc"
+      },
+      "fps": 25,
+      "sourceBitrate": null,
+      "expected": {
+        "size": [
+          854,
+          480
+        ],
+        "mbps": 0.89
+      }
+    },
+    {
+      "name": "default frame rate",
+      "width": 1920,
+      "height": 1080,
+      "rule": {
+        "action": "reencode",
+        "quality": "balanced",
+        "codec": "h264"
+      },
+      "fps": 0,
+      "sourceBitrate": null,
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "mbps": 5.0
+      }
+    }
+  ],
+  "presets": [
+    {
+      "codec": "h264",
+      "vmaf": 90,
+      "preset": "small",
+      "crf": 25
+    },
+    {
+      "codec": "h264",
+      "vmaf": 93,
+      "preset": "small",
+      "crf": 25
+    },
+    {
+      "codec": "h264",
+      "vmaf": 94,
+      "preset": "balanced",
+      "crf": 22
+    },
+    {
+      "codec": "h264",
+      "vmaf": 95,
+      "preset": "balanced",
+      "crf": 22
+    },
+    {
+      "codec": "h264",
+      "vmaf": 96,
+      "preset": "high",
+      "crf": 19
+    },
+    {
+      "codec": "h264",
+      "vmaf": 97,
+      "preset": "high",
+      "crf": 19
+    },
+    {
+      "codec": "hevc",
+      "vmaf": 90,
+      "preset": "small",
+      "crf": 27
+    },
+    {
+      "codec": "hevc",
+      "vmaf": 93,
+      "preset": "small",
+      "crf": 27
+    },
+    {
+      "codec": "hevc",
+      "vmaf": 94,
+      "preset": "balanced",
+      "crf": 24
+    },
+    {
+      "codec": "hevc",
+      "vmaf": 95,
+      "preset": "balanced",
+      "crf": 24
+    },
+    {
+      "codec": "hevc",
+      "vmaf": 96,
+      "preset": "high",
+      "crf": 21
+    },
+    {
+      "codec": "hevc",
+      "vmaf": 97,
+      "preset": "high",
+      "crf": 21
+    }
+  ]
+}

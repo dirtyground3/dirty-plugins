@@ -22,6 +22,7 @@ function scriptPaths(pluginDirectory) {
 }
 
 function loadPluginScripts(pluginDirectory, context) {
+  if (pluginDirectory !== "DirtyPlugins" && context.window && context.window.DirtyPlugins) require("./shared_runtime").installSaveController(context.window);
   for (const filename of scriptPaths(pluginDirectory)) {
     vm.runInContext(fs.readFileSync(filename, "utf8"), context, { filename });
   }

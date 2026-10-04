@@ -67,109 +67,49 @@
         "runPluginTask(plugin_id:$pluginId,description:$description,args_map:$args)}",
       {
         pluginId: PLUGIN_ID,
-        description: "Apply confirmed DirtyTidy file plan",
+        description: "DirtyTidy: apply confirmed file organization plan",
         args: { mode: "execute", expectedStrategyHash: strategyHash },
       }
     ).then(function (data) { return data.runPluginTask; });
   }
 
-  function queueAutomation(trigger, sourceJobId) {
-    return DirtyPlugins.graphql(
-      "mutation DirtyTidyAutomation($pluginId:ID!,$description:String,$args:Map){" +
-        "runPluginTask(plugin_id:$pluginId,description:$description,args_map:$args)}",
-      {
-        pluginId: PLUGIN_ID,
-        description: "Apply approved DirtyTidy strategy after " + trigger,
-        args: {
-          mode: "automation",
-          automationTrigger: trigger,
-          sourceJobId: String(sourceJobId),
-        },
+  function queueApprovedAutomation(trigger, sourceJobId, sourceStartTime) {
+    // The backend claims the event atomically in shared storage before queuing.
+    // Browser storage cannot coordinate different origins, profiles or devices.
+    return DirtyPlugins.runPluginOperation(PLUGIN_ID, {
+      mode: "queueAutomation",
+      automationTrigger: trigger,
+      sourceJobId: String(sourceJobId),
+      sourceStartTime: sourceStartTime,
+    }).then(function (result) {
+      var queuedJobId = result && result.queuedJobId;
+      if (queuedJobId) {
+        DirtyPlugins.ui.notify(
+          "DirtyTidy queued after " + trigger + " as Stash job " + queuedJobId + "."
+        );
       }
-    ).then(function (data) { return data.runPluginTask; });
-  }
-
-  function claimAutomationJob(jobId) {
-    var storageKey = "dirtyTidy.automationJobs.v2";
-    try {
-      var handled = JSON.parse(window.localStorage.getItem(storageKey) || "[]");
-      if (!Array.isArray(handled)) handled = [];
-      if (handled.indexOf(String(jobId)) >= 0) return false;
-      handled.push(String(jobId));
-      window.localStorage.setItem(storageKey, JSON.stringify(handled.slice(-50)));
-      return true;
-    } catch (_error) {
-      return true;
-    }
-  }
-
-  function releaseAutomationJob(jobId) {
-    var storageKey = "dirtyTidy.automationJobs.v2";
-    try {
-      var handled = JSON.parse(window.localStorage.getItem(storageKey) || "[]");
-      if (!Array.isArray(handled)) return;
-      window.localStorage.setItem(storageKey, JSON.stringify(handled.filter(function (handledJobId) {
-        return handledJobId !== String(jobId);
-      })));
-    } catch (_error) {
-      // A failed local-storage cleanup must not hide the original queue error.
-    }
-  }
-
-  function queueApprovedAutomation(trigger, sourceJobId, jobKey) {
-    return DirtyPlugins.getPluginSettings(PLUGIN_ID)
-      .then(settingsFromConfiguration)
-      .then(function (settings) {
-        if (settings.automationMode !== trigger || !settings.approvedStrategyHash) return null;
-        if (!claimAutomationJob(jobKey)) return null;
-        return queueAutomation(trigger, sourceJobId)
-          .then(function (queuedJobId) {
-            DirtyPlugins.ui.notify(
-              "DirtyTidy queued after " + trigger + " as Stash job " + queuedJobId + "."
-            );
-            return queuedJobId;
-          })
-          .catch(function (automationError) {
-            releaseAutomationJob(jobKey);
-            throw automationError;
-          });
-      });
+      return queuedJobId || null;
+    });
   }
 
   function DirtyTidyAutomationMonitor() {
     var useJobsSubscription = PluginApi.GQL && PluginApi.GQL.useJobsSubscribeSubscription;
     if (typeof useJobsSubscription !== "function") return null;
     var jobsSubscription = useJobsSubscription();
-    var processingJobs = useRef({});
+    var processingJobs = useRef(null);
+    if (!processingJobs.current) processingJobs.current = DirtyPlugins.createReplayTracker();
     var event = jobsSubscription && jobsSubscription.data && jobsSubscription.data.jobsSubscribe;
     var job = event && event.job;
 
     useEffect(function () {
-      if (!job) return;
-      var trigger = job.description === "Scanning..." ? "scan" :
-        job.description === "Generating..." ? "generate" : "";
-      if (
-        event.type !== "REMOVE" ||
-        job.status !== "FINISHED" ||
-        !trigger
-      ) return;
-      // Stash restarts its job counter on startup. The built-in JobsSubscribe
-      // selection includes startTime, but not addTime (unlike JobData queries).
-      // Use the start timestamp to identify runs across restarts and replays.
-      if (!job.startTime) {
-        console.error("DirtyTidy could not identify the completed job: missing startTime", job.id);
-        return;
-      }
-      var jobKey = JSON.stringify([trigger, String(job.id), job.startTime]);
-      if (processingJobs.current[jobKey]) return;
-      processingJobs.current[jobKey] = true;
+      var completion = DirtyPlugins.completedJob(event);
+      if (!completion || !processingJobs.current.claim(completion.key)) return;
       // A finished REMOVE carries the scan identity itself, avoiding a race
       // between the separate scan-completion and job-removal subscriptions.
-      (DirtyPlugins.isInternalScan ? DirtyPlugins.isInternalScan(job.id, job.startTime) : Promise.resolve(false))
-        .then(function (internal) { return internal ? null : queueApprovedAutomation(trigger, job.id, jobKey); })
+      queueApprovedAutomation(completion.kind, completion.jobId, completion.startTime)
         .catch(function (automationError) {
           console.error("DirtyTidy could not queue automation", automationError);
-          delete processingJobs.current[jobKey];
+          processingJobs.current.release(completion.key);
         });
     }, [event && event.type, job && job.id, job && job.status, job && job.description, job && job.startTime]);
 

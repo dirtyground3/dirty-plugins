@@ -17,6 +17,10 @@ from dirty_captions_media import CaptionError, read_captions
 import dirty_captions_index as caption_index
 
 
+from dirty_plugins_protocol import StashReporter
+import dirty_plugins_protocol as protocol
+
+
 def captions(client, args):
     if args.get("mode") != "captions":
         raise CaptionError("Unknown DirtyCaptions operation.")
@@ -47,22 +51,20 @@ def captions(client, args):
 
 
 def main():
-    for stream in (sys.stdin, sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8")
+    protocol.configure_standard_streams()
     try:
-        payload = json.load(sys.stdin)
+        payload = protocol.read_payload()
         args = payload.get("args") or {}
         if not isinstance(args, dict):
             raise CaptionError("Plugin arguments must be an object.")
         client = StashClient(payload.get("server_connection") or {})
         result = captions(client, args) if args.get("mode") == "captions" else caption_index.run(client, args)
-        json.dump({"output": result}, sys.stdout, ensure_ascii=True)
+        protocol.emit_output(result)
     except Exception as error:
         print("\x01e\x02DirtyCaptions: " + str(error), file=sys.stderr)
         # Tool failures can contain private paths. Keep those in Stash's log.
         message = str(error) if isinstance(error, CaptionError) and not str(error).startswith("Caption tool failed:") else "Could not read embedded captions. Check the Stash log and retry."
-        json.dump({"error": message}, sys.stdout, ensure_ascii=True)
+        protocol.emit_error(message)
         return 1
     return 0
 

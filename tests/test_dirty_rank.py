@@ -612,6 +612,7 @@ class SettingsTests(unittest.TestCase):
 
 
 class JavaScriptAlgorithmTests(unittest.TestCase):
+    @unittest.skipIf(os.environ.get("DIRTY_PLUGINS_SKIP_JS_TESTS") == "1", "already executed by combined runner")
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for JavaScript tests")
     def test_information_gain_matchmaker(self):
         script = Path(__file__).with_name("test_dirty_rank_algorithms.js")
@@ -624,6 +625,8 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(os.environ.get("DIRTY_PLUGINS_SKIP_JS_TESTS") == "1", "already executed by combined runner")
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for JavaScript tests")
     def test_battle_media_behavior(self):
         script = Path(__file__).with_name("test_dirty_rank_media.js")
         result = subprocess.run(
@@ -637,12 +640,8 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('event.key === "ArrowUp"', source)
         self.assertIn('event.key === "ArrowDown"', source)
         self.assertIn("↑ tie · ↓ undo", source)
+        # Queue ordering, optimistic undo and shortcuts execute in the session suite.
         self.assertIn("UNDO_HISTORY_LIMIT = 25", source)
-        self.assertIn("setUndoHistory", source)
-        self.assertIn("undoHistoryRef", source)
-        self.assertIn('setFeedback({ text: "Undo queued" })', source)
-        self.assertIn("voteQueueRef.current = voteQueueRef.current.then", source)
-        self.assertNotIn("pendingVotesRef.current > 0 || !lastBattle", source)
         self.assertIn('"Undo" + (undoHistory.length', source)
 
     def test_selected_battle_category_is_persisted_per_cohort(self):

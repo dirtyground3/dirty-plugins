@@ -6,21 +6,19 @@ import os
 import shutil
 import sys
 import time
+from pathlib import Path
+
+for folder in ("dirtyPlugins", "DirtyPlugins"):
+    shared = Path(__file__).resolve().parent.parent / folder
+    if (shared / "dirty_plugins_protocol.py").is_file():
+        sys.path.insert(0, str(shared))
+        break
 
 
-class StashReporter:
-    """Write Stash's encoded log protocol to stderr."""
 
-    @staticmethod
-    def _write(level, message):
-        for line in str(message).splitlines() or [""]:
-            print(f"\x01{level}\x02{line}", file=sys.stderr, flush=True)
 
-    def info(self, message):
-        self._write("i", message)
-
-    def error(self, message):
-        self._write("e", message)
+from dirty_plugins_protocol import StashReporter
+import dirty_plugins_protocol as protocol
 
 
 def _elapsed_ms(started):
@@ -64,10 +62,11 @@ def capacities(paths, identity=volume_identity, usage=shutil.disk_usage):
 
 
 def main():
+    protocol.configure_standard_streams()
     reporter = StashReporter()
     started = time.monotonic()
     try:
-        payload = json.load(sys.stdin)
+        payload = protocol.read_payload()
         args = payload.get("args") or {}
         if args.get("mode") != "capacity":
             raise ValueError("Unsupported DirtyStats operation")
@@ -79,13 +78,13 @@ def main():
         reporter.info(
             f"DirtyStats capacity finished in {_elapsed_ms(started)}ms"
         )
-        json.dump({"output": json.dumps(result)}, sys.stdout)
+        protocol.emit_output(result, nested=True)
         return 0
     except Exception as exc:
         reporter.error(
             f"DirtyStats backend failed after {_elapsed_ms(started)}ms: {exc}"
         )
-        json.dump({"error": str(exc)}, sys.stdout)
+        protocol.emit_error(exc)
         return 1
 
 

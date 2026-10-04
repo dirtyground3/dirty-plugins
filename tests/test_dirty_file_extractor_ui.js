@@ -17,7 +17,7 @@ let hasSelection = false;
 const observers = [];
 const noop = () => {};
 const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
-const element = (type, props, ...children) => ({ type, props: props || {}, children });
+const { element } = require("./ui_harness");
 const toggle = { id: "more-menu", getAttribute: () => "true", click: noop };
 const menu = { isConnected: true, getAttribute: () => "more-menu" };
 const toolbar = {

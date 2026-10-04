@@ -135,25 +135,13 @@ component and theme conventions.
 Run the suite from the repository root:
 
 ```powershell
-python -B -m unittest discover -s tests -v
 npm ci
-npm run typecheck
-node tests/test_plugin_assets.js
-node tests/test_dirty_captions.js
-node tests/test_dirty_captions_index.js
-node --check plugins/DirtyRank/dirtyRank.js
-node tests/test_dirty_rank_algorithms.js
-node tests/test_dirty_rank_media.js
-node tests/test_dirty_rank_registration.js
-node tests/test_dirty_ui_pilot.js
-node tests/test_dirty_theme.js
-node tests/test_dirty_tidy_automation.js
-node tests/test_dirty_tidy_settings.js
-node tests/test_dirty_stats.js
-node tests/test_dirty_stats_dashboard.js
-node tests/test_dirty_stats_contrast.js
-node tests/test_dirty_multiscreen.js
+npm test
 ```
+
+`npm test` runs typecheck, every `tests/test_*.js` suite, and Python unittest
+discovery. Use `npm run test:js`, `npm run test:python`, or an individual test
+file for focused checks. See `tests/README.md` for runner and harness details.
 
 Add or update tests with behavior changes. Contract tests in `tests/` enforce
 that plugins use the shared GraphQL client, shared visual primitives, and the

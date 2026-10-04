@@ -4,6 +4,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
+const { element, find, findAll, text } = require("./ui_harness");
 const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
 
 // Exercise the actual component and asynchronous handlers without a Stash server.
@@ -11,7 +12,11 @@ const noop = function () {};
 let active;
 const React = {
   Fragment: "fragment",
-  createElement(type, props, ...children) { return { type, props: props || {}, children: children.flat() }; },
+  createElement(type, props, ...children) {
+    // Render the extracted, hook-free settings sections just as React would.
+    if (typeof type === "function" && ["GenderBoxEditor", "PresentationSettings", "CategoryEditor", "RatingSettings"].includes(type.name)) return type(props || {});
+    return element(type, props, ...children.flat());
+  },
   useState(initial) {
     const owner = active;
     const index = owner.cursor++;
@@ -103,6 +108,7 @@ const context = vm.createContext({
     clearTimeout: id => timers.delete(id),
   },
 });
+require("./shared_runtime").installSaveController(context.window);
 let source = require("./load_plugin_scripts").sourceFor("DirtyRank");
 source = source.replace("algorithms: {", "testing: { PerformerCard, PrecisionBadge, leaderboardRatingText, serializedSettings, LeaderboardGalleryCard, LeaderboardPodium, LeaderboardGallery, LeaderboardTable, LeaderboardPagination, DirtyRankRoute, DirtyRankLeaderboardsRoute, DirtyRankLeaderboardFilterCapture, filteredLeaderboardEntries, serializeLeaderboardPerformerFilter, queryLeaderboardPerformerIds, DirtyRankSettings, RankStatisticSelector, leaderboardStatPath, leaderboardIdFromPath, documentationCapture, loadNativePerformerCard, queryPerformers, scenePlaybackUrl, needsNativePreview, NativePreviewPlayer, LoadedNativePreview }, algorithms: {");
 source = source.replace("testing: {", "testing: { DirtyRankNavLinks, DirtyRankBattleNavLink, DirtyRankLeaderboardsNavLink, ");
@@ -159,21 +165,8 @@ function card(auto, overrides) {
     },
   };
 }
-function find(tree, predicate) {
-  if (!tree || typeof tree !== "object") return null;
-  if (predicate(tree)) return tree;
-  return tree.children.map(child => find(child, predicate)).find(Boolean);
-}
 const byClass = (tree, name) => find(tree, node => (node.props.className || "").split(" ").includes(name));
-function findAll(tree, predicate) {
-  if (!tree || typeof tree !== "object") return [];
-  return (predicate(tree) ? [tree] : []).concat(tree.children.flatMap(child => findAll(child, predicate)));
-}
-function visibleText(tree) {
-  if (tree == null || typeof tree === "boolean") return "";
-  if (typeof tree !== "object") return String(tree);
-  return tree.children.map(visibleText).join(" ");
-}
+const visibleText = tree => text(tree, " ");
 const video = tree => find(tree, node => node.type === "video");
 const event = () => ({ preventDefault: noop, stopPropagation() { this.stopped = true; } });
 const toggle = tree => byClass(tree, "dirty-rank-play-scene").props.onClick(event());
@@ -245,22 +238,6 @@ async function main() {
   assert.strictEqual(find(nativeTree, node => node.type === nativePlayer).props.initialTimestamp, 123);
   delete context.window.PluginApi.components;
   delete context.window.PluginApi.utils;
-
-  const hubSource = fs.readFileSync(path.join(__dirname, "../plugins/DirtyPlugins/dirtyPlugins.js"), "utf8");
-  const graphqlSource = hubSource.slice(hubSource.indexOf("  function graphql("), hubSource.indexOf("  function runPluginOperation("));
-  const graphql = vm.runInNewContext("(" + graphqlSource.trim() + ")", {
-    fetch: (_url, options) => {
-      if (!options.signal) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { ok: true } }) });
-      return new Promise((_resolve, reject) => {
-        options.signal.addEventListener("abort", () => reject(Object.assign(new Error("Cancelled"), { name: "AbortError" })));
-      });
-    },
-  });
-  const requestController = new AbortController();
-  const abortedRequest = graphql("query { ok }", {}, { signal: requestController.signal });
-  requestController.abort();
-  await assert.rejects(abortedRequest, { name: "AbortError" }, "the shared helper must forward cancellation to fetch");
-  assert.strictEqual((await graphql("query { ok }", {})).ok, true, "existing callers must work without cancellation options");
 
   assert.strictEqual(settings.autoPlayTopScenes, false);
   assert.strictEqual(plugin.testing.serializedSettings(

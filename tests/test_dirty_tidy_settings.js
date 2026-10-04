@@ -11,7 +11,7 @@ const { sourceFor } = require("./load_plugin_scripts");
 const source = sourceFor("DirtyTidy");
 const noop = () => {};
 const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
-const element = (type, props, ...children) => ({ type, props: props || {}, children });
+const { element } = require("./ui_harness");
 
 const window = {
   PluginApi: {
@@ -85,14 +85,7 @@ assert.deepEqual(clean(a.settingsFromConfiguration(canonical)), clean(canonical)
 assert.deepEqual(clean(a.settingsFromConfiguration(empties)), clean(empties));
 
 // The preview views render through the shared htm template tag.
-const text = (node) => node == null || node === false ? "" :
-  Array.isArray(node) ? node.map(text).join("") :
-  typeof node === "object" ? text(node.children) : String(node);
-const find = (node, match) => {
-  if (Array.isArray(node)) return node.map((child) => find(child, match)).find(Boolean);
-  if (!node || typeof node !== "object") return undefined;
-  return match(node) ? node : find(node.children, match);
-};
+const { text, find } = require("./ui_harness");
 const views = window.__dirtyTidyPreview.createPreview({
   html: window.DirtyPlugins.react.html,
   React: { Fragment: "Fragment" },

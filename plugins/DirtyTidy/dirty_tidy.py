@@ -13,6 +13,7 @@ import time
 import urllib.error
 import urllib.request
 import unicodedata
+import uuid
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
@@ -23,13 +24,14 @@ from dirty_tidy_templates import (
     _clean_text, _names, _stash_ids, _date_parts, _rating_bucket, _grade,
     _resolution, _duration_bucket, scene_variables, _render_template, render_template, _clean_rename_separators,
     render_rename_template, template_variable_names, sanitize_segment, sanitize_filename, _normalized_path, path_is_within,
-    find_source_root,
+    find_source_root, render_destination_folder, render_destination_filename, validate_destination,
 )
 
 
 
 PLUGIN_ID = "dirtyTidy"
 REVIEW_NAMESPACE = "dirtyTidy.reviewedPlans"
+AUTOMATION_NAMESPACE = "dirtyTidy.automationJobs"
 STRATEGY_VERSION = 6
 DEFAULT_SETTINGS = {
     "moveEnabled": True,
@@ -70,6 +72,9 @@ def _load_shared_storage():
 
 
 shared_storage = _load_shared_storage()
+from dirty_plugins_client import StashClient as BaseClient
+from dirty_plugins_protocol import Reporter, StashReporter
+import dirty_plugins_protocol as protocol
 MAX_PAGE_SIZE = 200
 SCENE_QUERY_PAGE_SIZE = 100
 PREVIEW_STATUSES = {"ready", "warning", "blocked", "unchanged"}
@@ -79,72 +84,14 @@ class PluginError(RuntimeError):
     """An error that should be shown cleanly in Stash."""
 
 
-class Reporter:
-    def info(self, _message: str) -> None:
-        pass
-
-    def error(self, _message: str) -> None:
-        pass
-
-    def progress(self, _value: float) -> None:
-        pass
 
 
-class StashReporter(Reporter):
-    @staticmethod
-    def _write(level: str, message: Any) -> None:
-        for line in str(message).splitlines() or [""]:
-            print(f"\x01{level}\x02{line}", file=sys.stderr, flush=True)
-
-    def info(self, message: str) -> None:
-        self._write("i", message)
-
-    def error(self, message: str) -> None:
-        self._write("e", message)
-
-    def progress(self, value: float) -> None:
-        self._write("p", str(min(max(float(value), 0.0), 1.0)))
 
 
-class StashClient:
-    def __init__(self, server_connection: dict[str, Any]):
-        scheme = server_connection.get("Scheme") or "http"
-        host = server_connection.get("Host") or "127.0.0.1"
-        if host in {"", "0.0.0.0", "::", None}:
-            host = "127.0.0.1"
-        port = int(server_connection.get("Port") or 9999)
-        if ":" in host and not host.startswith("["):
-            host = f"[{host}]"
+class StashClient(BaseClient):
+    def __init__(self, server_connection):
+        super().__init__(server_connection, timeout=120, error_type=PluginError)
 
-        self.url = f"{scheme}://{host}:{port}/graphql"
-        self.headers = {"Content-Type": "application/json"}
-        cookie = server_connection.get("SessionCookie") or {}
-        if cookie.get("Name") and cookie.get("Value"):
-            self.headers["Cookie"] = f'{cookie["Name"]}={cookie["Value"]}'
-        if server_connection.get("ApiKey"):
-            self.headers["ApiKey"] = str(server_connection["ApiKey"])
-
-    def call(
-        self,
-        query: str,
-        variables: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        body = json.dumps(
-            {"query": query, "variables": variables or {}},
-            ensure_ascii=False,
-        ).encode("utf-8")
-        request = urllib.request.Request(self.url, data=body, headers=self.headers)
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response:
-                result = json.load(response)
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            raise PluginError(f"Could not contact Stash GraphQL: {exc}") from exc
-
-        errors = result.get("errors") or []
-        if errors:
-            message = "; ".join(str(error.get("message", error)) for error in errors)
-            raise PluginError(f"Stash GraphQL returned an error: {message}")
-        return result.get("data") or {}
 
     def library_snapshot(self) -> tuple[list[str], list[dict[str, Any]]]:
         query = """
@@ -212,47 +159,20 @@ class StashClient:
         return bool(data.get("moveFiles"))
 
 
-def read_payload(stream: Any = sys.stdin) -> dict[str, Any]:
-    raw = stream.read()
-    if not raw.strip():
-        raise PluginError("Stash did not provide plugin input")
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise PluginError(f"Invalid plugin input: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise PluginError("Plugin input must be a JSON object")
-    return payload
+def read_payload(stream=None):
+    return protocol.read_payload(stream, error_type=PluginError)
 
 
-def emit_output(output: Any, stream: Any = sys.stdout) -> None:
-    # Stash may launch Python with a legacy Windows code page. Keeping the raw
-    # plugin protocol ASCII-only avoids charmap failures while JSON decoding
-    # still restores every Unicode character.
-    json.dump({"output": output}, stream, ensure_ascii=True)
+def emit_output(output, stream=None):
+    protocol.emit_output(output, stream, ensure_ascii=True)
 
 
-def emit_error(error: Any, stream: Any = sys.stdout) -> None:
-    json.dump({"error": str(error)}, stream, ensure_ascii=True)
+def emit_error(error, stream=None):
+    protocol.emit_error(error, stream, ensure_ascii=True)
 
 
-def configure_standard_streams() -> None:
-    """Use UTF-8 for the plugin protocol on every standard stream.
-
-    Legacy Windows hosts may hand Stash a cp1252 stdin, which would corrupt
-    non-ASCII settings before JSON decoding. Reconfiguring stdin alongside the
-    output streams keeps the protocol UTF-8 end to end.
-    """
-    for stream in (sys.stdin, sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if not callable(reconfigure):
-            continue
-        try:
-            reconfigure(encoding="utf-8", errors="backslashreplace")
-        except (OSError, ValueError):
-            # The JSON protocol remains ASCII-safe even if a host-owned stream
-            # cannot be reconfigured.
-            pass
+def configure_standard_streams():
+    protocol.configure_standard_streams(errors="backslashreplace")
 
 
 def as_bool(value: Any, default: bool) -> bool:
@@ -490,48 +410,26 @@ def build_operation(
 
     destination_folder = str(Path(source_path).parent)
     if move_allowed:
-        destination = Path(source_root)
-        for level in settings["hierarchyLevels"]:
-            rendered, missing, invalid = render_template(level, variables)
-            missing_tokens.update(missing)
-            invalid_tokens.update(invalid)
-            segment = sanitize_segment(rendered)
-            if segment.upper() in RESERVED_WINDOWS_NAMES:
-                operation["status"] = "blocked"
-                warnings.append(f"{segment} is a reserved folder name.")
-                return operation
-            destination /= segment
-        destination_folder = str(destination)
+        folder = render_destination_folder(source_root, settings["hierarchyLevels"], variables)
+        if folder.error:
+            operation["status"] = "blocked"
+            warnings.append(folder.error)
+            return operation
+        destination_folder = folder.value
+        missing_tokens.update(folder.missing)
+        invalid_tokens.update(folder.invalid)
 
     destination_basename = source_basename
     if rename_allowed:
-        if not settings["renamePattern"]:
+        filename = render_destination_filename(source_basename, settings["renamePattern"], variables, settings["maxFilenameLength"])
+        warnings.extend(filename.warnings)
+        if filename.error:
             operation["status"] = "blocked"
-            warnings.append("Renaming is enabled but the filename pattern is empty.")
+            warnings.append(filename.error)
             return operation
-        rendered, missing, invalid = render_rename_template(settings["renamePattern"], variables)
-        invalid_tokens.update(invalid)
-        rename_variables = template_variable_names(settings["renamePattern"])
-        all_rename_variables_missing = bool(rename_variables) and all(
-            variables.get(name, UNKNOWN_VALUE) == UNKNOWN_VALUE
-            for name in rename_variables
-        )
-        if all_rename_variables_missing and not invalid:
-            warnings.append(
-                "Kept the original filename because all filename variables are missing."
-            )
-        else:
-            skipped_rename_tokens.update(missing)
-            extension = Path(source_basename).suffix
-            destination_basename, filename_error = sanitize_filename(
-                rendered,
-                extension,
-                settings["maxFilenameLength"],
-            )
-            if filename_error:
-                operation["status"] = "blocked"
-                warnings.append(filename_error)
-                return operation
+        destination_basename = filename.value
+        invalid_tokens.update(filename.invalid)
+        skipped_rename_tokens.update(filename.missing)
 
     destination_path = str(Path(destination_folder) / destination_basename)
     operation["destination_folder"] = destination_folder
@@ -548,22 +446,10 @@ def build_operation(
             "Skipped empty filename variables: "
             + ", ".join(sorted(skipped_rename_tokens))
         )
-    if not path_is_within(destination_path, source_root):
-        operation["status"] = "blocked"
-        warnings.append("The destination would leave the file's Stash source.")
-
-    source_normalized = _normalized_path(source_path)
-    destination_normalized = _normalized_path(destination_path)
-    if source_normalized == destination_normalized:
-        operation["status"] = "unchanged"
-        return operation
-    if _normalized_path(str(Path(source_path).parent)) != _normalized_path(destination_folder):
-        operation["actions"].append("move")
-    if source_basename != destination_basename:
-        operation["actions"].append("rename")
-    if os.path.exists(destination_path):
-        operation["status"] = "blocked"
-        warnings.append("A file already exists at the destination.")
+    validation = validate_destination(source_path, source_root, source_basename, destination_folder, destination_basename, operation["status"])
+    operation["status"] = validation.status
+    operation["actions"] = validation.actions
+    warnings.extend(validation.warnings)
     return operation
 
 
@@ -781,6 +667,55 @@ def execute_plan(
     }
 
 
+def queue_automation(client: StashClient, args: dict[str, Any], reporter: Reporter) -> dict[str, Any]:
+    """Claim a completed job across browser sessions before creating a task."""
+    trigger = str(args.get("automationTrigger") or "").strip().lower()
+    job_id = str(args.get("sourceJobId") or "").strip()
+    start_time = str(args.get("sourceStartTime") or "").strip()
+    if trigger not in {"scan", "generate"} or not job_id or not start_time:
+        raise PluginError("DirtyTidy automation requires the completed job's trigger, ID and start time")
+    settings = normalize_settings(shared_storage.get_plugin_settings(PLUGIN_ID))
+    if settings["automationMode"] != trigger:
+        return {"skipped": True, "reason": "disabled"}
+    if not settings["approvedStrategyHash"] or settings["approvedStrategyHash"] != strategy_hash(settings):
+        return {"skipped": True, "reason": "unapproved"}
+    if shared_storage.internal_scan_check(job_id, start_time):
+        return {"skipped": True, "reason": "internal"}
+    if not settings["moveEnabled"] and not settings["renameEnabled"]:
+        return {"skipped": True, "reason": "no actions enabled"}
+
+    key = json.dumps([trigger, job_id, start_time], separators=(",", ":"))
+    token = uuid.uuid4().hex
+    claimed = shared_storage.update_json_metadata(
+        AUTOMATION_NAMESPACE, key, lambda current: current or {"token": token}
+    )
+    if claimed.get("token") != token:
+        reporter.info(f"DirtyTidy skipped duplicate {trigger} job {job_id} ({start_time}).")
+        return {"skipped": True, "reason": "duplicate"}
+
+    action = "move and rename scene files" if settings["moveEnabled"] and settings["renameEnabled"] else (
+        "organize scene files into folders" if settings["moveEnabled"] else "rename scene files"
+    )
+    description = f"DirtyTidy: {action} (after {trigger.title()} #{job_id})"
+    try:
+        queued_id = client.call(
+            "mutation DirtyTidyAutomation($pluginId:ID!,$description:String,$args:Map){"
+            "runPluginTask(plugin_id:$pluginId,description:$description,args_map:$args)}",
+            {"pluginId": PLUGIN_ID, "description": description, "args": {
+                "mode": "automation", "automationTrigger": trigger,
+                "sourceJobId": job_id, "sourceStartTime": start_time,
+            }},
+        ).get("runPluginTask")
+        if not queued_id:
+            raise PluginError("Stash did not return a DirtyTidy task ID")
+    except Exception:
+        # Only release our own claim; a failed queue remains retryable.
+        shared_storage.delete_metadata(AUTOMATION_NAMESPACE, key, expected=json.dumps(claimed))
+        raise
+    reporter.info(f"DirtyTidy queued job {queued_id}: {description}; source started {start_time}.")
+    return {"queuedJobId": str(queued_id)}
+
+
 def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, Any]:
     reporter = reporter or Reporter()
     server_connection = payload.get("server_connection") or {}
@@ -792,6 +727,8 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
 
     client = StashClient(server_connection)
     mode = str(args.get("mode") or "execute")
+    if mode == "queueAutomation":
+        return queue_automation(client, args, reporter)
     if mode == "preview":
         settings = args.get("settings")
         if not isinstance(settings, dict):

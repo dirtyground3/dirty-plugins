@@ -102,35 +102,15 @@ def _load_shared_storage():
 
 
 shared_storage = _load_shared_storage()
+from dirty_plugins_client import StashClient as BaseClient
+from dirty_plugins_protocol import Reporter, StashReporter
+import dirty_plugins_protocol as protocol
 
 
 from dirty_rank_rating import PluginError, Rating, _g, _expected, glicko2_update
 
-class Reporter:
-    def info(self, _message: str) -> None:
-        pass
-
-    def error(self, _message: str) -> None:
-        pass
-
-    def progress(self, _value: float) -> None:
-        pass
 
 
-class StashReporter(Reporter):
-    @staticmethod
-    def _write(level: str, message: Any) -> None:
-        for line in str(message).splitlines() or [""]:
-            print(f"\x01{level}\x02{line}", file=sys.stderr, flush=True)
-
-    def info(self, message: str) -> None:
-        self._write("i", message)
-
-    def error(self, message: str) -> None:
-        self._write("e", message)
-
-    def progress(self, value: float) -> None:
-        self._write("p", str(min(max(float(value), 0.0), 1.0)))
 
 
 def _finite_number(value: Any, fallback: float, minimum: float, maximum: float) -> float:
@@ -947,36 +927,19 @@ def reset_pool(
     return {"reset": int(reset), "failed": 0, "failures": []}
 
 
-def read_payload(stream: Any = sys.stdin) -> dict[str, Any]:
-    raw = stream.read()
-    if not raw.strip():
-        raise PluginError("Stash did not provide plugin input")
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise PluginError(f"Stash provided invalid JSON: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise PluginError("Stash plugin input must be an object")
-    return payload
+def read_payload(stream=None):
+    return protocol.read_payload(stream, error_type=PluginError, invalid_json="Stash provided invalid JSON: {}", invalid_object="Stash plugin input must be an object")
 
 
-def emit_output(output: Any, stream: Any = sys.stdout) -> None:
-    json.dump({"output": json.dumps(output, ensure_ascii=False)}, stream, ensure_ascii=False)
-    stream.write("\n")
-    stream.flush()
+def emit_output(output, stream=None):
+    protocol.emit_output(output, stream, nested=True, ensure_ascii=False, newline=True)
 
 
-def emit_error(error: Exception, stream: Any = sys.stdout) -> None:
-    json.dump({"error": str(error)}, stream, ensure_ascii=False)
-    stream.write("\n")
-    stream.flush()
+def emit_error(error, stream=None):
+    protocol.emit_error(error, stream, ensure_ascii=False, newline=True)
 
 
-def configure_standard_streams() -> None:
-    for stream in (sys.stdin, sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if callable(reconfigure):
-            reconfigure(encoding="utf-8")
+configure_standard_streams = protocol.configure_standard_streams
 
 
 def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, Any]:

@@ -51,10 +51,7 @@ global.window = {
   location: { pathname: "/plugins/dirty-rank" },
 };
 
-require(path.join(__dirname, "..", "plugins", "DirtyRank", "dirtyRankSettings.js"));
-require(path.join(__dirname, "..", "plugins", "DirtyRank", "dirtyRankRating.js"));
-require(path.join(__dirname, "..", "plugins", "DirtyRank", "dirtyRankMatchmaking.js"));
-require(path.join(__dirname, "..", "plugins", "DirtyRank", "dirtyRank.js"));
+for (const filename of require("./load_plugin_scripts").scriptPaths("DirtyRank")) require(filename);
 
 const algorithms = global.window.__dirtyRankPlugin.algorithms;
 const baseSettings = algorithms.settingsFromConfiguration({});

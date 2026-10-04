@@ -13,6 +13,15 @@
   var copy = rules.copy, bytes = rules.bytes, newRule = rules.newRule;
   var normalize = rules.normalize, validation = rules.validation, filterSummary = rules.filterSummary;
   var FINISHED = ["completed", "failed", "cancelled"];
+  var PLANNING = ["queued", "planning"];
+  function previewDescription(preview) {
+    if (preview.status === "queued") return "Waiting for Stash to start the preview task…";
+    if (preview.cancelRequested) return "Stopping the preview…";
+    if (preview.status === "planning") return "Checking files. Nothing will change until you run it.";
+    if (preview.status === "cancelled") return "Preview cancelled.";
+    if (preview.status === "failed") return "Preview failed.";
+    return "Nothing has changed yet.";
+  }
   var RECOVERABLE = ["recovery", "running", "finalizing", "reconciling", "queued", "acceptQueued", "discarding"];
   var ESTIMATE_SAMPLE = 200;
   var AUTOMATION_HELP = "Automatic rules run after each successful library scan. A Stash tab must be open to notice the scan; queued work continues without it. The first matching rule wins, even when it is Manual.";
@@ -96,19 +105,23 @@
             </div>
             <${ui.SceneFilterEditor} open=${openFilter} value=${r.condition} onClose=${function () { setOpenFilter(false); }} onChange=${function (v) { change("condition", v); }} />
             <div className="dirty-compactor-grid">
-              ${field(r.id + "-action", "Action", r.action, function (v) { change("action", v); }, [["resize", "Resize"], ["reencode", "Reencode (keep resolution)"], ["delete", "Delete scene and files"]])}
+              ${field(r.id + "-action", "Action", r.action, function (v) { var next = copy(r); next.action = v; props.onChange(rules.fitQuality(next)); }, [["resize", "Resize"], ["reencode", "Reencode (keep resolution)"], ["delete", "Delete scene and files"]])}
               ${r.action === "resize" && field(r.id + "-preset", "Maximum resolution", customSize ? "custom" : r.width + "x" + r.height, function (v) {
                 if (v === "custom") { setCustomSize(true); return; }
                 setCustomSize(false); var next = copy(r), d = v.split("x"); next.width = Number(d[0]); next.height = Number(d[1]); props.onChange(next);
               }, rules.RESOLUTIONS.concat([["custom", "Custom size"]]), "Never upscales. Aspect ratio is kept.")}
               ${r.action === "resize" && customSize && field(r.id + "-width", "Maximum width", r.width, function (v) { change("width", v); })}
               ${r.action === "resize" && customSize && field(r.id + "-height", "Maximum height", r.height, function (v) { change("height", v); })}
-              ${r.action !== "delete" && field(r.id + "-quality", "Quality", quality, function (v) { change("quality", v); }, rules.QUALITIES, rules.qualityHint(r))}
+              ${r.action !== "delete" && field(r.id + "-quality", "Quality", quality, function (v) { var next = copy(r); next.quality = v; if (v === "visual" && !next.vmaf) next.vmaf = 95; props.onChange(next); }, rules.qualities(r.action), rules.qualityHint(r))}
+              ${r.action !== "delete" && quality === "visual" && field(r.id + "-vmaf", "Look compared with the original", String(r.vmaf || 95), function (v) { change("vmaf", Number(v)); }, rules.VMAF_TARGETS)}
               ${r.action !== "delete" && quality === "custom" && field(r.id + "-rate", "Video bitrate (Mbps)", r.mbps, function (v) { change("mbps", v); })}
             </div>
             ${guess && html`<p className="dirty-compactor-estimate" title="Estimated from the matching scenes' sizes, durations, and resolutions before planning. Earlier rules may take some of these scenes; Preview gives the exact numbers.">
-              ${r.quality === "source" ? "Converting keeps sizes roughly the same." : html`<strong>${"≈ " + bytes(guess.saved)}</strong>${(r.action === "delete" ? " freed of " : " saved of ") + bytes(guess.total) +
-                (guess.total ? " (" + Math.round(100 * guess.saved / guess.total) + "%)" : "") + (guess.exact ? "" : " · estimated from " + guess.sampled + " sample scenes")}`}
+              ${r.quality === "source" ? "Same bitrate means about the same size. For the same look in less space, choose Match visual quality." : html`<strong>${"≈ " + bytes(guess.saved)}</strong>${(r.action === "delete" ? " freed of " : " saved of ") + bytes(guess.total) +
+                (guess.total ? " (" + Math.round(100 * guess.saved / guess.total) + "%)" : "") +
+                (guess.sourceMbps ? " · video about " + guess.sourceMbps.toFixed(1) + " → " + guess.targetMbps.toFixed(1) + " Mbps" : "") +
+                (guess.exact ? "" : " · estimated from " + guess.sampled + " sample scenes") +
+                (r.quality === "visual" ? " · measured per video during the run" : "")}`}
             </p>`}
             ${r.action === "delete" && html`<p className="dirty-compactor-danger">Deletes the scene, all its media files, and generated assets through Stash.${r.mode === "automatic" ? " Automatic runs will not ask again." : ""}</p>`}
             <${ui.SettingsToggle} checked=${r.mode === "automatic"} label="Run automatically after library scans" onChange=${function (value) { change("mode", value ? "automatic" : "manual"); }} />
@@ -146,7 +159,7 @@
           <div className="dirty-compactor-progress" role="status">
             <span>${record.progress.stage}</span>
             <progress max="1" value=${record.progress.progress}></progress>
-            <span>${Math.round(record.progress.progress * 100) + "%"}</span>
+            <span>${Math.round(record.progress.progress * 100) + "%" + (record.progress.eta != null ? " · " + rules.timeLeft(record.progress.eta) : props.kind === "preview" ? " · estimating time left…" : "")}</span>
           </div>`}
         ${record.status !== "planning" && html`<div className="dirty-compactor-metrics">${metrics.map(function (item) {
           return html`<${ui.Metric} key=${item[0]} label=${item[0]} value=${item[1]} />`;
@@ -186,7 +199,8 @@
                           ${op.destination && op.destination !== op.source && html`<div className="dirty-compactor-path">${"→ " + (props.capture ? "Path hidden" : op.destination)}</div>`}
                         </details>
                       </td>
-                      <td>${op.dimensions ? op.dimensions.join(" × ") + " · " + (op.mbps || op.rule.mbps) + " Mbps" : html`<span className="dirty-compactor-danger">Delete</span>`}<div className="dirty-compactor-muted">${op.rule.name}</div></td>
+                      <td>${op.dimensions ? op.dimensions.join(" × ") + " · " + (op.crf != null ? "CRF " + op.crf + (op.vmaf ? " · VMAF " + op.vmaf : "") + " · ~" : op.rule.quality === "visual" ? "measured when run · typically ~" : "") +
+                        (op.mbps || op.rule.mbps) + " Mbps" + (op.convert ? " (original bitrate)" : "") : html`<span className="dirty-compactor-danger">Delete</span>`}<div className="dirty-compactor-muted">${op.rule.name}</div></td>
                       <td>${bytes(op.actualSavings || op.savings)}</td>
                       <td><${ui.Badge}>${op.status}<//>${op.reason && html`<div className="dirty-compactor-muted">${op.reason}</div>`}</td>
                     </tr>`;
@@ -224,7 +238,8 @@
         </div>
         <details className="dirty-compactor-advanced">
           <summary>Details</summary>
-          <p>${"Encoder: " + review.encoder + (review.fallback ? " · CPU fallback" : "")}</p>
+          <p>${"Encoder: " + review.encoder + (review.fallback ? " · CPU fallback" : "") +
+            (review.crf != null ? " · CRF " + review.crf : "") + (review.vmaf ? " · VMAF " + review.vmaf + " on sample clips" : "")}</p>
           <p className="dirty-compactor-path">${props.capture ? "Destination hidden" : review.destination}</p>
         </details>
         ${review.reason && html`<${ui.StateView} title="Output requires attention" detail=${review.reason} />`}
@@ -241,8 +256,7 @@
   }
   function Settings(props) {
     var draftState = useState(normalize(props.configuration || {})), draft = draftState[0], setDraft = draftState[1];
-    var saved = useRef(null), draftRef = useRef(draft), saving = useRef(false), ready = useRef(false), mounted = useRef(true);
-    draftRef.current = draft;
+    var saved = useRef(null), ready = useRef(false), mounted = useRef(true);
     var statusState = useState("Loading…"), status = statusState[0], setStatus = statusState[1];
     var errorState = useState(""), error = errorState[0], setError = errorState[1];
     var blocked = useRef(false);
@@ -266,35 +280,51 @@
     function load() {
       return hub.getPluginSettings(ID).then(function (value) {
         if (!mounted.current) return;
-        var normalized = normalize(value); saved.current = JSON.stringify(normalized); ready.current = true; blocked.current = false;
-        setDraft(normalized); setStatus("Saved"); setError("");
+        var normalized = normalize(value);
+        saved.current = JSON.stringify(normalized);
+        ready.current = true;
+        blocked.current = false;
+        setDraft(normalized);
+        setStatus("Saved");
+        setError("");
       }).catch(function (failure) { if (mounted.current) setError(failure.message); });
     }
     useEffect(function () { load(); return function () { mounted.current = false; }; }, []);
     useEffect(function () {
+      // The preview itself is stored; reopen it after the tab was closed.
+      operation("latestPreview").then(function (latest) {
+        if (mounted.current && latest && latest.id) setPreviewId(function (current) { return current || latest.id; });
+      }).catch(function () {});
+    }, []);
+    useEffect(function () {
       if (props.onDirtyChange) props.onDirtyChange(ID, dirty);
       return function () { if (props.onDirtyChange) props.onDirtyChange(ID, false); };
     }, [dirty]);
+    var saveController = useRef(null);
+    if (!saveController.current) saveController.current = hub.createSaveController({
+      delay: 500,
+      validate: validation,
+      save: function (value) { return hub.configurePlugin(ID, value); },
+      onSaved: function (value) {
+        saved.current = JSON.stringify(value);
+        if (mounted.current) {
+          setError("");
+          // A draft changed during the write may need its next serialized save.
+          setDraft(function (current) { return Object.assign({}, current); });
+        }
+      },
+      onError: function () { blocked.current = true; },
+      onStatus: function (value) {
+        if (!mounted.current) return;
+        setStatus(value.state === "saving" ? "Saving…" : value.state === "saved" ? "Saved" : value.state === "pending" ? "Pending save" : "Save failed");
+        if (value.state === "error" || value.state === "invalid") setError(value.message);
+      },
+    });
     useEffect(function () {
-      if (!ready.current || !dirty || invalid || blocked.current) return undefined;
-      var timer = setTimeout(function pump() {
-        if (saving.current || !mounted.current) return;
-        var value = copy(draftRef.current);
-        if (validation(value) || JSON.stringify(value) === saved.current) return;
-        saving.current = true; setStatus("Saving…");
-        hub.configurePlugin(ID, value).then(function () {
-          saved.current = JSON.stringify(value);
-          if (mounted.current) { setStatus("Saved"); setError(""); }
-        }).catch(function (failure) {
-          blocked.current = true;
-          if (mounted.current) { setError(failure.message); setStatus("Save failed"); }
-        }).finally(function () {
-          saving.current = false;
-          if (mounted.current && !blocked.current && JSON.stringify(draftRef.current) !== saved.current) pump();
-        });
-      }, 500);
-      return function () { clearTimeout(timer); };
+      if (ready.current && dirty && !blocked.current) saveController.current.schedule(copy(draft));
+      return function () { saveController.current.cancelPending(); };
     }, [draft, dirty, invalid]);
+    useEffect(function () { return function () { saveController.current.dispose(); }; }, []);
     useEffect(function () {
       var active = true, running = false;
       function refresh() {
@@ -303,29 +333,60 @@
         Promise.all([operation("listRuns"), previewId ? operation("getPreview", { id: previewId, page: page }) : Promise.resolve(null),
           runId ? operation("getRun", { id: runId, page: page }) : Promise.resolve(null)]).then(function (values) {
           if (!active) return;
-          setHistory(values[0]); setPreview(values[1]); setRun(values[2]);
+          setHistory(values[0]);
+          setPreview(values[1]);
+          setRun(values[2]);
           if (!runId) {
             var current = values[0].find(function (r) { return FINISHED.indexOf(r.status) < 0; });
             if (current) setRunId(current.id);
           }
         }).catch(function (failure) { if (active) setError(failure.message); }).finally(function () { running = false; });
       }
-      refresh(); var timer = setInterval(refresh, 2000);
-      return function () { active = false; clearInterval(timer); };
+      refresh();
+      var timer = setInterval(refresh, 2000);
+      return function () {
+        active = false;
+        clearInterval(timer);
+      };
     }, [previewId, runId, page]);
-    function changed(next) { setDraft(next); setPreviewId(""); setPreview(null); setExcluded([]); setStatus("Pending save"); }
-    function updateRule(index, value) { var next = copy(draft); next.rules[index] = value; changed(next); }
+    function changed(next) {
+      setDraft(next);
+      setPreviewId("");
+      setPreview(null);
+      setExcluded([]);
+      setStatus("Pending save");
+    }
+    function updateRule(index, value) {
+      var next = copy(draft);
+      next.rules[index] = value;
+      changed(next);
+    }
     function act(mode, args) {
-      setBusy(mode); setError("");
+      setBusy(mode);
+      setError("");
       return operation(mode, args).then(function (value) {
-        if (mode === "preview") { setPreviewId(value.id); setPage(1); setOpenRule(""); }
-        if (mode === "startRun") { setRunId(value.id); setPreviewId(""); setConfirm(false); setLater(false); }
+        if (mode === "preview") {
+          setPreviewId(value.id);
+          setPage(1);
+          setOpenRule("");
+        }
+        if (mode === "startRun") {
+          setRunId(value.id);
+          setPreviewId("");
+          setConfirm(false);
+          setLater(false);
+        }
         if (mode === "capabilities") setCaps(value);
         if (args && args.id === runId) return operation("getRun", { id: runId, page: page }).then(setRun);
         return value;
       }).catch(function (failure) { setError(failure.message || String(failure)); }).finally(function () { setBusy(""); });
     }
-    function addRule() { var next = copy(draft), rule = newRule(); next.rules.push(rule); changed(next); setOpenRule(rule.id); }
+    function addRule() {
+      var next = copy(draft), rule = newRule();
+      next.rules.push(rule);
+      changed(next);
+      setOpenRule(rule.id);
+    }
     var readyCount = preview && preview.counts && preview.counts.ready || 0;
     var actions = preview && preview.readyActions || { resize: 0, reencode: 0, delete: 0 };
     var removeIndex = draft.rules.findIndex(function (r) { return r.id === removing; });
@@ -358,13 +419,20 @@
                 onRemove=${function () { setRemoving(r.id); }} />`;
             })}
           </div>`}
-        ${preview && html`<${Results} kind="preview" record=${preview} title="Preview" description=${preview.status === "planning" ? "Checking files…" : "Nothing has changed yet."}
+        ${preview && html`<${Results} kind="preview" record=${preview} title="Preview" description=${previewDescription(preview)}
           onPage=${setPage} capture=${capture} excluded=${excluded}
           onExclude=${function (id, remove) { setExcluded(function (current) { return remove ? current.concat(id).filter(function (v, i, a) { return a.indexOf(v) === i; }) : current.filter(function (v) { return v !== id; }); }); }}
-          actions=${html`<${React.Fragment}>
-            <${ui.Button} tone="quiet" onClick=${function () { setPreviewId(""); setPreview(null); setExcluded([]); }}>Discard<//>
-            <${ui.Button} tone="primary" disabled=${Boolean(busy) || dirty || preview.status !== "ready" || !readyCount} onClick=${function () { setConfirm(true); }}>Run…<//>
-          <//>`} />`}
+          actions=${PLANNING.indexOf(preview.status) >= 0
+            ? html`<${ui.Button} busy=${busy === "cancelPreview"} disabled=${Boolean(preview.cancelRequested)}
+                onClick=${function () { act("cancelPreview", { id: preview.id }).then(function () { setPreview(Object.assign({}, preview, { cancelRequested: true })); }); }}>${preview.cancelRequested ? "Stopping…" : "Cancel preview"}<//>`
+            : html`<${React.Fragment}>
+              <${ui.Button} tone="quiet" onClick=${function () {
+                var id = preview.id;
+                setPreviewId(""); setPreview(null); setExcluded([]);
+                if (["ready", "cancelled", "failed"].indexOf(preview.status) >= 0) operation("discardPreview", { id: id }).catch(function () {});
+              }}>Discard<//>
+              ${preview.status === "ready" && html`<${ui.Button} tone="primary" disabled=${Boolean(busy) || dirty || !readyCount} onClick=${function () { setConfirm(true); }}>${readyCount ? "Run…" : "Nothing to run"}<//>`}
+            <//>`} />`}
         ${run && html`<${Results} kind="run" record=${run} onPage=${setPage} capture=${capture}
           title=${(run.automatic ? "Automatic run" : "Manual run") + (run.created ? " · " + new Date(run.created * 1000).toLocaleString() : "")}
           description=${"Status: " + run.status}

@@ -1,3 +1,4 @@
+const { element } = require("./ui_harness");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
@@ -6,12 +7,13 @@ const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
 const context = {
   console,
   window: {
-    PluginApi: { React: { createElement: (type, props, ...children) => ({ type, props: props || {}, children }), Fragment: "fragment" }, libraries: { ReactRouterDOM: { Link: "Link" } } },
+    PluginApi: { React: { createElement: element, Fragment: "fragment" }, libraries: { ReactRouterDOM: { Link: "Link" } } },
     DirtyPlugins: { react: {}, captureUrl: path => path },
     __dirtyStatsPlugin: { route: "/plugins/dirty-stats", algorithms: {} }
   }
 };
 vm.createContext(context);
+vm.runInContext(["dirtyStatsRegistry.js", "dirtyStatsData.js", "dirtyStatsCharts.js", "dirtyStatsChartOptions.js"].map(name => fs.readFileSync("plugins/DirtyStats/" + name, "utf8")).join("\n"), context);
 context.window.DirtyPlugins.react.html = htm.bind(context.window.PluginApi.React.createElement);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStatsDashboard.js", "utf8"), context);
 
@@ -162,10 +164,13 @@ assert.equal(helpers.normalizeWidgets([{ statistic: "origin", options: { showNum
 const statisticPatches = {};
 const originContext = { window: { PluginApi: { React: { createElement: context.window.PluginApi.React.createElement }, libraries: {}, register: { route() {} }, patch: { before() {}, instead(name, callback) { statisticPatches[name] = callback; } } }, DirtyPlugins: { graphql() {} } }, console, Intl, URLSearchParams };
 vm.createContext(originContext);
+vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStatsRegistry.js", "utf8"), originContext);
+vm.runInContext(["dirtyStatsData.js", "dirtyStatsCharts.js", "dirtyStatsChartOptions.js"].map(name => fs.readFileSync("plugins/DirtyStats/" + name, "utf8")).join("\n"), originContext);
 originContext.window.DirtyPlugins.react = { html: htm.bind(originContext.window.PluginApi.React.createElement) };
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/vendor/world.js", "utf8"), originContext);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStatsGrowth.js", "utf8"), originContext);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStatsAges.js", "utf8"), originContext);
+require("./shared_runtime").installSaveController(originContext.window);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8"), originContext);
 for (const name of ["countryIndex", "aggregate", "originMapOption", "mapLayout", "aggregateGrowth", "forecastGrowth", "formatBytes"]) context.window.__dirtyStatsPlugin.algorithms[name] = originContext.window.__dirtyStatsPlugin.algorithms[name];
 context.window.__dirtyStatsWorld = originContext.window.__dirtyStatsWorld;

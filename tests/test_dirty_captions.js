@@ -4,17 +4,7 @@ const vm = require("node:vm");
 const { sourceFor } = require("./load_plugin_scripts");
 const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
 
-function events(object = {}) {
-  const handlers = new Map();
-  object.addEventListener = object.on = (event, fn) => {
-    if (!handlers.has(event)) handlers.set(event, new Set());
-    handlers.get(event).add(fn);
-  };
-  object.removeEventListener = object.off = (event, fn) => handlers.get(event)?.delete(fn);
-  object.emit = (event) => { for (const fn of handlers.get(event) || []) fn(); };
-  object.handlers = handlers;
-  return object;
-}
+const { events } = require("./ui_harness");
 const patches = [], timers = new Map();
 let timerId = 0, calls = 0, resolveRequest;
 let effects = [], currentRoot, configs = {}, statuses = [];

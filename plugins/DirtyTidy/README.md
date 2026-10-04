@@ -13,8 +13,12 @@ An approved strategy can run manually, after a completed Scan job, or after a
 completed Generate job. Stash does not currently provide Scan/Generate plugin
 hooks, so DirtyTidy listens for successfully finished jobs through Stash's
 job-status subscription; the Stash UI must remain open until the selected job
-finishes. Duplicate detection uses each job's ID and start time, so reused
-job IDs after a Stash or PC restart do not suppress new runs.
+finishes. Before queuing a task, the backend atomically claims each job's ID and
+start time in shared SQLite storage. Multiple tabs, browsers, or devices queue
+only one task, while reused job IDs after a restart still trigger new runs.
+Task names describe the enabled actions (folder organization, renaming, or both)
+and include the triggering Scan or Generate job ID. Manual tasks are labeled
+as applying the confirmed file organization plan.
 Automation recalculates the plan from the current library each time, so new
 scenes and changed metadata use the approved rules without another approval.
 

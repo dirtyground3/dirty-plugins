@@ -20,7 +20,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 0.4.9 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 0.4.6 |
 | [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 0.4.0 |
-| [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 0.2.2 |
+| [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 0.3.2 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 0.2.3 |
 | [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 0.5.6 |
 
@@ -199,10 +199,11 @@ and queues the plan.
 - Ordered rules, each with a native Stash scene filter (or **All scenes**) and
   one action: **Resize**, **Reencode**, or **Delete**. The first enabled
   matching rule wins.
-- **Quality presets** (High, Balanced, Smallest files) pick a bitrate for each
-  file from its resolution; a custom bitrate is still available. H.264 or
-  H.265 with automatic NVIDIA NVENC, Intel QSV, or AMD AMF acceleration that
-  falls back to CPU.
+- **Quality presets** (High, Balanced, Smallest files) encode with constant
+  quality (CRF); **Match visual quality (slower)** measures sample clips with
+  VMAF during the run to pick each file's setting. Custom bitrate and
+  convert-only remain. H.264 or H.265 with automatic NVIDIA NVENC, Intel QSV,
+  or AMD AMF acceleration that falls back to CPU.
 - **Preview** plans the run as a background task and estimates savings
   before anything changes.
 - Optional per-file **output review**: play or download the actual encoded

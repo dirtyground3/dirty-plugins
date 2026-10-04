@@ -49,7 +49,8 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync("plugins/DirtyStats/vendor/world.js", "utf8"), context);
-const coreSource = fs.readFileSync("plugins/DirtyStats/dirtyStatsGrowth.js", "utf8") + "\n" + fs.readFileSync("plugins/DirtyStats/dirtyStatsAges.js", "utf8") + "\n" + fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8");
+const coreSource = ["dirtyStatsRegistry.js", "dirtyStatsData.js", "dirtyStatsCharts.js", "dirtyStatsChartOptions.js"].map(name => fs.readFileSync("plugins/DirtyStats/" + name, "utf8")).join("\n") + "\n" + fs.readFileSync("plugins/DirtyStats/dirtyStatsGrowth.js", "utf8") + "\n" + fs.readFileSync("plugins/DirtyStats/dirtyStatsAges.js", "utf8") + "\n" + fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8");
+require("./shared_runtime").installSaveController(context.window);
 vm.runInContext(coreSource, context);
 const a = context.window.__dirtyStatsPlugin.algorithms;
 const originOption = a.originMapOption({ rows: [{ name: "USA", value: 500 }, { name: "Canada", value: 12 }, { name: "France", value: 2 }] },
@@ -621,6 +622,7 @@ async function testNativeRouteLoading() {
     console, URLSearchParams, Event
   };
   vm.createContext(routeContext);
+  require("./shared_runtime").installSaveController(routeContext.window);
   vm.runInContext(coreSource, routeContext);
   const render = () => {
     stateIndex = 0;

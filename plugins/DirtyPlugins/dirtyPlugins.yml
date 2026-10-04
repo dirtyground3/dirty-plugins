@@ -12,7 +12,15 @@ ui:
   javascript:
     - vendor/htm.umd.js
     - dirtyPluginsValues.js
+    - dirtyPluginsSave.js
+    - dirtyPluginsJobs.js
+    - dirtyPluginsMetadata.js
     - dirtyPluginsSceneFilter.js
+    - dirtyPluginsDebug.js
+    - dirtyPluginsTransport.js
+    - dirtyPluginsReact.js
+    - dirtyPluginsTheme.js
+    - dirtyPluginsNative.js
     - dirtyPlugins.js
   css:
     - dirtyPlugins.css

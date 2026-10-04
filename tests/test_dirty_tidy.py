@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
 
@@ -1099,6 +1100,100 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
                     )
                 },
             )
+
+
+class DirtyTidyAutomationQueueTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        environment = mock.patch.dict(os.environ, {
+            "DIRTY_PLUGINS_DATABASE_PATH": str(Path(temporary.name) / "dirty_plugins.sqlite3")
+        })
+        environment.start()
+        self.addCleanup(environment.stop)
+        self.settings = {
+            "moveEnabled": True, "renameEnabled": True,
+            "renamePattern": "{title}", "automationMode": "scan",
+        }
+        self.save_settings()
+        self.client = mock.Mock()
+        self.client.call.return_value = {"runPluginTask": "100"}
+        self.client.library_snapshot.side_effect = AssertionError("queuing must not inspect the library")
+        client_patch = mock.patch.object(dirty_tidy, "StashClient", return_value=self.client)
+        client_patch.start()
+        self.addCleanup(client_patch.stop)
+        self.args = {
+            "mode": "queueAutomation", "automationTrigger": "scan",
+            "sourceJobId": "1", "sourceStartTime": "2026-10-02T20:42:00Z",
+        }
+
+    def save_settings(self):
+        self.settings["approvedStrategyHash"] = dirty_tidy.strategy_hash(self.settings)
+        dirty_tidy.shared_storage.set_plugin_settings(dirty_tidy.PLUGIN_ID, self.settings)
+
+    def queue(self, **overrides):
+        return dirty_tidy.run({"args": {**self.args, **overrides}})
+
+    def test_simultaneous_sessions_queue_only_one_task_and_reused_ids_still_work(self):
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda unused: self.queue(), range(16)))
+        self.assertEqual(sum("queuedJobId" in result for result in results), 1)
+        self.assertEqual(self.client.call.call_count, 1)
+        self.assertEqual(self.queue()["reason"], "duplicate")
+        self.assertEqual(self.queue(sourceStartTime="2026-10-03T20:42:00Z")["queuedJobId"], "100")
+        self.assertEqual(self.client.call.call_count, 2)
+
+    def test_names_describe_enabled_actions_and_the_triggering_job(self):
+        cases = (
+            (True, True, "scan", "move and rename scene files"),
+            (True, False, "scan", "organize scene files into folders"),
+            (False, True, "generate", "rename scene files"),
+        )
+        for index, (move, rename, trigger, action) in enumerate(cases):
+            with self.subTest(action=action):
+                self.settings.update(moveEnabled=move, renameEnabled=rename, automationMode=trigger)
+                self.save_settings()
+                self.queue(automationTrigger=trigger, sourceJobId=str(index + 1))
+                variables = self.client.call.call_args.args[1]
+                self.assertEqual(variables["description"],
+                                 f"DirtyTidy: {action} (after {trigger.title()} #{index + 1})")
+                self.assertEqual(variables["args"]["mode"], "automation")
+                self.assertEqual(variables["args"]["sourceStartTime"], self.args["sourceStartTime"])
+
+    def test_failed_queue_requests_release_claims_for_retry(self):
+        self.client.call.side_effect = dirty_tidy.PluginError("queue unavailable")
+        with self.assertRaises(dirty_tidy.PluginError):
+            self.queue()
+        self.client.call.side_effect = None
+        self.client.call.return_value = {"runPluginTask": None}
+        with self.assertRaises(dirty_tidy.PluginError):
+            self.queue()
+        self.client.call.return_value = {"runPluginTask": "101"}
+        self.assertEqual(self.queue()["queuedJobId"], "101")
+        self.assertEqual(self.queue()["reason"], "duplicate")
+
+    def test_disabled_unapproved_changed_or_internal_jobs_do_not_claim_events(self):
+        cases = (
+            ({"automationMode": "manual"}, "disabled"),
+            ({"approvedStrategyHash": ""}, "unapproved"),
+            ({"renamePattern": "changed {title}"}, "unapproved"),
+        )
+        original = self.settings.copy()
+        for changes, reason in cases:
+            with self.subTest(reason=reason, changes=changes):
+                dirty_tidy.shared_storage.set_plugin_settings(dirty_tidy.PLUGIN_ID, {**original, **changes})
+                self.assertEqual(self.queue()["reason"], reason)
+        self.save_settings()
+        with mock.patch.object(dirty_tidy.shared_storage, "internal_scan_check", return_value=True):
+            self.assertEqual(self.queue()["reason"], "internal")
+        self.client.call.assert_not_called()
+        self.assertEqual(self.queue()["queuedJobId"], "100")
+
+    def test_incomplete_job_identity_cannot_queue_automation(self):
+        for field in ("automationTrigger", "sourceJobId", "sourceStartTime"):
+            with self.subTest(field=field), self.assertRaises(dirty_tidy.PluginError):
+                self.queue(**{field: ""})
+        self.client.call.assert_not_called()
 
 
 if __name__ == "__main__":

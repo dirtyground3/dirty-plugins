@@ -2,6 +2,9 @@
   "name": "dirty-plugins-source-checks",
   "private": true,
   "scripts": {
+    "test": "npm run typecheck && node tests/run_tests.js",
+    "test:js": "node tests/run_js_tests.js",
+    "test:python": "python -B -m unittest discover -s tests -v",
     "test:assets": "node tests/test_plugin_assets.js",
     "typecheck": "tsc --project tsconfig.json"
   },

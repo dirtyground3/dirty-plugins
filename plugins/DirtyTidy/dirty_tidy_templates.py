@@ -1,6 +1,8 @@
 """Template variables, filename sanitation, and source path rules for DirtyTidy."""
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 import os
 import re
 import unicodedata
@@ -324,3 +326,71 @@ def find_source_root(path: str, roots: Iterable[str]) -> str | None:
     if not candidates:
         return None
     return max(candidates, key=lambda value: len(_normalized_path(value)))
+
+
+@dataclass
+class DestinationRendering:
+    value: str
+    missing: set[str] = field(default_factory=set)
+    invalid: set[str] = field(default_factory=set)
+    warnings: list[str] = field(default_factory=list)
+    error: str | None = None
+
+
+def render_destination_folder(source_root, levels, variables) -> DestinationRendering:
+    destination = Path(source_root)
+    result = DestinationRendering(str(destination))
+    for level in levels:
+        rendered, missing, invalid = render_template(level, variables)
+        result.missing.update(missing)
+        result.invalid.update(invalid)
+        segment = sanitize_segment(rendered)
+        if segment.upper() in RESERVED_WINDOWS_NAMES:
+            result.error = f"{segment} is a reserved folder name."
+            return result
+        destination /= segment
+    result.value = str(destination)
+    return result
+
+
+def render_destination_filename(source_basename, pattern, variables, max_length) -> DestinationRendering:
+    result = DestinationRendering(source_basename)
+    if not pattern:
+        result.error = "Renaming is enabled but the filename pattern is empty."
+        return result
+    rendered, missing, invalid = render_rename_template(pattern, variables)
+    result.invalid.update(invalid)
+    names = template_variable_names(pattern)
+    if names and all(variables.get(name, UNKNOWN_VALUE) == UNKNOWN_VALUE for name in names) and not invalid:
+        result.warnings.append("Kept the original filename because all filename variables are missing.")
+        return result
+    result.missing.update(missing)
+    result.value, result.error = sanitize_filename(rendered, Path(source_basename).suffix, max_length)
+    return result
+
+
+@dataclass
+class DestinationValidation:
+    status: str
+    actions: list[str]
+    warnings: list[str]
+
+
+def validate_destination(source_path, source_root, source_basename, folder, basename, status) -> DestinationValidation:
+    """Preserve status precedence: identical paths are unchanged even with warnings."""
+    destination = str(Path(folder) / basename)
+    result = DestinationValidation(status, [], [])
+    if not path_is_within(destination, source_root):
+        result.status = "blocked"
+        result.warnings.append("The destination would leave the file's Stash source.")
+    if _normalized_path(source_path) == _normalized_path(destination):
+        result.status = "unchanged"
+        return result
+    if _normalized_path(str(Path(source_path).parent)) != _normalized_path(folder):
+        result.actions.append("move")
+    if source_basename != basename:
+        result.actions.append("rename")
+    if os.path.exists(destination):
+        result.status = "blocked"
+        result.warnings.append("A file already exists at the destination.")
+    return result

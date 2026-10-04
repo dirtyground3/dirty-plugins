@@ -9,6 +9,8 @@ ui:
     - dirtyRankSettings.js
     - dirtyRankRating.js
     - dirtyRankMatchmaking.js
+    - dirtyRankSettingsPanel.js
+    - dirtyRankBattleSession.js
     - dirtyRank.js
   css:
     - dirtyRank.css

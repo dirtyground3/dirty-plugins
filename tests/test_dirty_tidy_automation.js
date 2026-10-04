@@ -8,13 +8,16 @@ const { sourceFor } = require("./load_plugin_scripts");
 const source = sourceFor("DirtyTidy");
 const noop = () => {};
 
-// Run the real monitor with persisted browser storage and React effect semantics.
-function browser(storage = new Map()) {
+// Run the real monitor with a shared backend and React effect semantics.
+function browser(claims = new Map()) {
   let event, cursor, effects;
   const slots = [];
   const calls = [];
+  const requests = [];
+  const notifications = [];
   let settings = { automationMode: "scan", approvedStrategyHash: "a".repeat(64) };
   let failQueue = false;
+  let skipped = false;
   const React = {
     createElement: noop,
     useRef(initial) {
@@ -32,10 +35,6 @@ function browser(storage = new Map()) {
     },
   };
   const window = {
-    localStorage: {
-      getItem: key => storage.get(key),
-      setItem: (key, value) => storage.set(key, value),
-    },
     PluginApi: {
       React,
       GQL: { useJobsSubscribeSubscription: () => ({ data: { jobsSubscribe: event } }) },
@@ -49,20 +48,31 @@ function browser(storage = new Map()) {
         coerceBoolean: (value, fallback) => value === undefined ? fallback : value,
         clampInteger: (value, fallback) => value === undefined ? fallback : value,
       },
-      getPluginSettings: async () => settings,
-      graphql: async (_query, variables) => {
-        calls.push(variables.args);
+      runPluginOperation: async (pluginId, args) => {
+        assert.equal(pluginId, "dirtyTidy");
+        requests.push(args);
+        if (skipped || settings.automationMode !== args.automationTrigger || !settings.approvedStrategyHash) {
+          return { skipped: true };
+        }
+        const key = JSON.stringify([args.automationTrigger, args.sourceJobId, args.sourceStartTime]);
+        if (claims.has(key)) return { skipped: true, reason: "duplicate" };
+        calls.push(args);
         if (failQueue) throw new Error("queue unavailable");
-        return { runPluginTask: "100" };
+        claims.set(key, "100");
+        return { queuedJobId: "100" };
       },
-      ui: { notify: noop },
+      ui: { notify: message => notifications.push(message) },
     },
   };
+  require("./shared_runtime").installJobHelpers(window);
   vm.runInNewContext(source, { window, console: { error: noop } });
   return {
     calls,
+    requests,
+    notifications,
     setSettings: value => { settings = value; },
     setFailure: value => { failQueue = value; },
+    setSkipped: value => { skipped = value; },
     async render(next) {
       event = next;
       cursor = 0;
@@ -84,23 +94,26 @@ function completed(startTime, overrides = {}) {
 }
 
 async function main() {
-  const storage = new Map([["dirtyTidy.automationJobs", '["1"]']]);
+  const claims = new Map();
   const first = completed("2026-09-07T08:00:00Z");
   assert.equal(Object.hasOwn(first.job, "addTime"), false);
   const restarted = completed("2026-09-08T08:00:00Z");
-  const tab = browser(storage);
+  const tab = browser(claims);
   // A finished scan alone suffices: no start or separate completion event needed.
   await tab.render(first);
-  assert.equal(tab.calls.length, 1, "legacy ID-only claims must not suppress scans");
+  assert.equal(tab.calls.length, 1);
+  assert.equal(tab.calls[0].mode, "queueAutomation");
   assert.equal(tab.calls[0].sourceJobId, "1");
+  assert.equal(tab.calls[0].sourceStartTime, first.job.startTime);
   await tab.render(undefined);
   await tab.render(first);
   assert.equal(tab.calls.length, 1, "replayed events must not queue twice");
   await tab.render(restarted);
   assert.equal(tab.calls.length, 2, "reused IDs must work in a tab left open across restart");
-  const reloaded = browser(storage);
+  const reloaded = browser(claims);
   await reloaded.render(restarted);
-  assert.equal(reloaded.calls.length, 0, "persisted claims survive browser reload");
+  assert.equal(reloaded.calls.length, 0, "server claims survive browser reload");
+  assert.equal(reloaded.notifications.length, 0, "duplicate skips must not announce a queued task");
   await reloaded.render(completed("2026-09-09T08:00:00Z"));
   assert.equal(reloaded.calls.length, 1, "reused IDs also work after browser reload");
 
@@ -110,6 +123,8 @@ async function main() {
   await tab.render({ ...completed("later"), type: "UPDATE" });
   await tab.render(completed("later", { description: "Cleaning..." }));
   await tab.render(completed("later", { description: "Apply approved DirtyTidy strategy after scan" }));
+  await tab.render(completed("later", { description: "DirtyTidy: rename scene files (after Scan #1)" }));
+  await tab.render(completed(undefined));
   assert.equal(tab.calls.length, 2, "only successful selected jobs trigger automation");
 
   tab.setSettings({ automationMode: "manual", approvedStrategyHash: "a".repeat(64) });
@@ -122,6 +137,18 @@ async function main() {
   await tab.render(completed("generate-restart", { description: "Generating..." }));
   assert.equal(tab.calls.length, 4);
   assert.equal(tab.calls[3].automationTrigger, "generate");
+
+  const sharedBackend = new Map();
+  const sessionOne = browser(sharedBackend);
+  const sessionTwo = browser(sharedBackend);
+  await Promise.all([sessionOne.render(first), sessionTwo.render(first)]);
+  assert.equal(sessionOne.calls.length + sessionTwo.calls.length, 1,
+    "independent browser sessions must use the same backend claim");
+  const internal = browser();
+  internal.setSkipped(true);
+  await internal.render(first);
+  assert.equal(internal.calls.length, 0);
+  assert.equal(internal.notifications.length, 0);
 
   const retryStorage = new Map();
   const failing = browser(retryStorage);

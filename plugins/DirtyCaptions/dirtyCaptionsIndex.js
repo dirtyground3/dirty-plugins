@@ -152,7 +152,8 @@
       var subscription = typeof useJobsSubscription === "function" ? useJobsSubscription() : null;
       var event = subscription && subscription.data && subscription.data.jobsSubscribe;
       var job = event && event.job;
-      var processingJobs = React.useRef([]);
+      var processingJobs = React.useRef(null);
+      if (!processingJobs.current) processingJobs.current = hub.createReplayTracker();
       React.useEffect(function () {
         var pending = false, cancelled = false;
         function bootstrap() {
@@ -167,18 +168,12 @@
         return function () { cancelled = true; window.removeEventListener("dirty-plugins:configuration-changed", bootstrap); };
       }, []);
       React.useEffect(function () {
-        if (!job || event.type !== "REMOVE" || job.status !== "FINISHED" || job.description !== "Scanning..." ||
-            !job.id || !job.startTime) return;
-        // JobsSubscribe includes startTime, but not addTime/endTime. Stash
-        // reuses job IDs after restart, so the timestamp is part of the identity.
-        var key = JSON.stringify([String(job.id), job.startTime]);
-        if (processingJobs.current.indexOf(key) >= 0) return;
-        processingJobs.current.push(key);
-        processingJobs.current = processingJobs.current.slice(-50);
+        var completion = hub.completedJob(event);
+        if (!completion || completion.kind !== "scan" || !processingJobs.current.claim(completion.key)) return;
         // The backend checks the opt-in setting and internal-scan ownership,
         // and atomically deduplicates completion events from multiple tabs.
-        operation("indexAfterScan", { jobId: String(job.id), startTime: job.startTime }).catch(function (error) {
-          processingJobs.current = processingJobs.current.filter(function (item) { return item !== key; });
+        operation("indexAfterScan", { jobId: completion.jobId, startTime: completion.startTime }).catch(function (error) {
+          processingJobs.current.release(completion.key);
           if (hub.debugLog) hub.debugLog("dirtyCaptions", "Caption index refresh after Scan failed", { error: error.message });
         });
       }, [event && event.type, job && job.id, job && job.status, job && job.description, job && job.startTime]);
