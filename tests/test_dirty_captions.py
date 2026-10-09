@@ -1,3 +1,4 @@
+from plugin_paths import runtime_path
 import importlib.util
 import io
 import json
@@ -11,7 +12,7 @@ from unittest import mock
 
 
 ROOT = Path(__file__).parents[1]
-SPEC = importlib.util.spec_from_file_location("dirty_captions_tests", ROOT / "plugins/DirtyCaptions/dirty_captions.py")
+SPEC = importlib.util.spec_from_file_location("dirty_captions_tests", runtime_path("DirtyCaptions", "dirty_captions.py"))
 captions = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(captions)
 media = sys.modules["dirty_captions_media"]

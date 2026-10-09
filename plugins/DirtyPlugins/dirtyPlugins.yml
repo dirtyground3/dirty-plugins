@@ -1,26 +1,9 @@
 name: DirtyPlugins
 description: Shared settings page for Dirty plugins.
-version: 0.5.6
-
-settings:
-  visualTheme:
-    displayName: Suite theme
-    description: Choose the appearance shared by all Dirty Plugins. Native Stash cards and players keep their Stash theme.
-    type: STRING
+version: 1.0.2
 
 ui:
   javascript:
-    - vendor/htm.umd.js
-    - dirtyPluginsValues.js
-    - dirtyPluginsSave.js
-    - dirtyPluginsJobs.js
-    - dirtyPluginsMetadata.js
-    - dirtyPluginsSceneFilter.js
-    - dirtyPluginsDebug.js
-    - dirtyPluginsTransport.js
-    - dirtyPluginsReact.js
-    - dirtyPluginsTheme.js
-    - dirtyPluginsNative.js
     - dirtyPlugins.js
   css:
     - dirtyPlugins.css

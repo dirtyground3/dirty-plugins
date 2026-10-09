@@ -1,4 +1,5 @@
 "use strict";
+const { testModulePath } = require("./plugin_paths");
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -8,7 +9,8 @@ const { events } = require("./ui_harness");
 const window = events(), requests = [], hub = {};
 const noop = () => {};
 let response = {ok: true, json: async () => ({data: {ok: true}})};
-const context = vm.createContext({window, CustomEvent: class {
+const moduleExports = { exports: {} };
+const context = vm.createContext({window, module: moduleExports, exports: moduleExports.exports, CustomEvent: class {
   constructor(type, options) { this.type = type; this.detail = options?.detail; }
 }, fetch: async (url, options) => {
   requests.push({url, ...options});
@@ -17,8 +19,8 @@ const context = vm.createContext({window, CustomEvent: class {
   });
   return response;
 }});
-vm.runInContext(fs.readFileSync(path.join(__dirname, "../plugins/DirtyPlugins/dirtyPluginsTransport.js"), "utf8"), context);
-const transport = window.__dirtyPluginsTransport.createTransport({
+vm.runInContext(fs.readFileSync(testModulePath("DirtyPlugins", "transport.cjs"), "utf8"), context);
+const transport = moduleExports.exports.createTransport({
   hubApi: hub, pluginRevisionCache: {}, fieldActions: {}, settingsPanels: {},
   FIELD_ACTIONS_CHANGED_EVENT: "fields", CONFIGURATION_CHANGED_EVENT: "configuration", SETTINGS_PANELS_CHANGED_EVENT: "panels",
   asObject: value => value || {}, pluginResult: value => typeof value === "string" ? JSON.parse(value) : value,

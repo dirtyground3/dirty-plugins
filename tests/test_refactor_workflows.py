@@ -1,12 +1,13 @@
 """Workflow boundaries introduced by the readability refactor."""
+from plugin_paths import runtime_path
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1] / "plugins"
-sys.path.insert(0, str(ROOT / "DirtyCompactor"))
-sys.path.insert(0, str(ROOT / "DirtyFileExtractor"))
+sys.path.insert(0, str(runtime_path("DirtyCompactor")))
+sys.path.insert(0, str(runtime_path("DirtyFileExtractor")))
 from dirty_compactor_workflow import transition_run
 import extract_scenes as extractor
 

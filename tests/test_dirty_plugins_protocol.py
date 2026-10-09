@@ -1,3 +1,4 @@
+from plugin_paths import runtime_path
 import io
 import json
 from pathlib import Path
@@ -6,7 +7,7 @@ import unittest
 from unittest.mock import Mock, patch
 import urllib.error
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "plugins" / "DirtyPlugins"))
+sys.path.insert(0, str(runtime_path("DirtyPlugins")))
 import dirty_plugins_protocol as protocol
 from dirty_plugins_client import StashClient
 

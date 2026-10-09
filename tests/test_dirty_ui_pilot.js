@@ -4,9 +4,12 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { sourcePath } = require("./plugin_paths");
 
 const noop = function () {};
 const React = {
+  useState(value) { return [typeof value === "function" ? value() : value, noop]; },
+  useMemo: factory => factory(), useCallback: callback => callback,
   useRef(value) { return { current: value || null }; },
   useEffect: noop,
   createElement(type, props, ...children) {
@@ -67,8 +70,9 @@ window.localStorage = { getItem: () => { throw new Error("storage unavailable");
 assert.equal(debugHub.debugEnabled(), false, "blocked storage must keep default logging quiet");
 delete window.localStorage;
 
-for (const filename of ["../plugins/DirtyPlugins/dirtyPlugins.css", "../plugins/DirtyRank/dirtyRank.css", "../plugins/DirtyStats/dirtyStats.css", "../plugins/DirtyTidy/dirtyTidy.css", "../plugins/DirtyFileExtractor/extractScenes.css", "../plugins/DirtyMultiscreen/multiscreen.css"]) {
-  const css = fs.readFileSync(path.join(__dirname, filename), "utf8");
+for (const [plugin, file] of [["DirtyPlugins", "dirtyPlugins.css"], ["DirtyRank", "dirtyRank.css"], ["DirtyStats", "dirtyStats.css"], ["DirtyTidy", "dirtyTidy.css"], ["DirtyFileExtractor", "extractScenes.css"], ["DirtyMultiscreen", "multiscreen.css"]]) {
+  const filename = sourcePath(plugin, file);
+  const css = fs.readFileSync(filename, "utf8");
   const structural = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, "");
   let depth = 0;
   for (const character of structural) {

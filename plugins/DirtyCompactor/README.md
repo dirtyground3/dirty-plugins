@@ -1,11 +1,16 @@
 # DirtyCompactor
 
 Reclaim media space with ordered scene-filter rules. Requires Stash 0.31.1+,
-DirtyPlugins, Python 3.9+, FFmpeg, and FFprobe. No Python packages are required.
+DirtyPlugins 1.0.0+, Python 3.9+, FFmpeg, and FFprobe. No Python packages are required.
 The installed plugin ID is `dirtyCompactor`.
 
-The UI uses `DirtyPlugins.react.html` to render React components from plain
-JavaScript without a build step. The shared hub bundles HTM locally.
+The frontend is authored in TypeScript/TSX and compiled to one `dirtyCompactor.js`
+bundle. React comes from Stash; shared controls and data access come from
+DirtyPlugins. Installed packages need no Node.js tooling. For development, run
+`npm ci` and `npm run build` from the repository root and copy installable files
+from `.build/plugins/DirtyCompactor/`. The source directory is not directly
+installable. Release bundles carry no source map; `npm run build:dev` adds an
+inline map served through Stash's `/plugin/dirtyCompactor/javascript` endpoint.
 
 ## Rules
 

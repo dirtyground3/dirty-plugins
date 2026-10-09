@@ -15,6 +15,8 @@ reusing save/error colours.
 | Icon action | `IconButton` with an accessible label | The plugin-specific glyph |
 | Labelled setting | `Field` and a native input/select/textarea | Parsing, validation, and the user's uncommitted value |
 | Boolean setting | `SettingsToggle` | The setting key and help text |
+| Ordinary setting control | `fieldDefinition(pluginId, setting)` and `react.SettingsField` | Specialized editors, invalid raw input and domain validation |
+| Settings draft lifecycle | `react.useSettingsDraft` | Serialization, revision/conflict policy, preview/run state |
 | Page state | `StateView`, `SaveStatus`, `ui.notify` | Retry operation and data loading |
 | Data summary | `Metric`, `Badge`, `Pagination`, `.dirty-ui-table` | Page size, columns, and domain meaning |
 | Route action | `NavAction` | Route and icon meaning |
@@ -141,11 +143,15 @@ committing it; no uncensored adult media belongs in this repository.
 Check keyboard focus, Escape/Tab in dialogs and nested native popups, reduced
 motion, 360px width, and all suite themes.
 Run the Python contract suite and the affected Node tests. The shared source
-is plain PluginApi React and CSS served directly by Stash, with no build step.
-For markup-style rendering, use `DirtyPlugins.react.html` (HTM bound to
-`React.createElement`) rather than loading another copy in a plugin.
+uses PluginApi React and CSS served by Stash. Run `npm run build` to stage
+installable files in `.build/plugins/`; each plugin's TS/TSX compiles to one
+guarded browser IIFE. Release builds carry
+no source map; `npm run build:dev` adds an inline map for debugging. Components
+use the same shared primitives and tokens through typed runtime adapters.
+Write TSX; `DirtyPlugins.react.html` (HTM) is deprecated and kept only for
+feature plugins that predate the TSX versions.
 Keep a plugin's one-time route and PluginApi patch registrations behind its
-`INSTANCE_KEY` guard: Stash cannot unregister those integrations when it
+instance guard: Stash cannot unregister those integrations when it
 reloads an asset. Component effects are different; disconnect their observers
 and remove their listeners or timers when the component unmounts. The
 Multiscreen bundle uses this split so a repeated asset load does not stack
@@ -157,13 +163,23 @@ up with their tiles.
 PluginApi supplies React, ReactDOM, router, Bootstrap components, icons, and
 Stash component loaders. Stash supplies native cards, filters, player, and
 their internal GQL hooks; suite-owned data requests use the hub GraphQL client.
-Python backends use the standard library. DirtyStats alone bundles Apache
-ECharts 5.6.0 (`vendor/echarts.min.js`, 1,034,102 bytes) and Natural Earth map
-data (`vendor/world.js`, 244,998 bytes). Their license and notice files live
-beside those assets. The Stats manifest loads ECharts and the map before its
-own chart code. No other plugin should acquire these assets simply to share a
+Python backends use the standard library. DirtyStats alone bundles the parts
+of Apache ECharts 5.6.0 it uses (Apache-2.0, with d3-derived layout code under
+BSD-3-Clause), ZRender 5.6.1 (BSD-3-Clause) and tslib 2.3.0 (0BSD). These are
+pinned npm development dependencies that `src/echarts.ts` imports modularly and
+the registry declares as `bundledPackages`; their license and notice files ship
+under `vendor/`. Natural Earth map data (`vendor/world.js`, public domain) is
+also bundled. No other plugin should acquire these assets simply to share a
 control or colour token.
 
-The shared hub bundles HTM 3.1.1 (`vendor/htm.umd.js`, Apache-2.0) so suite
-plugins can write React templates without a build step. Its license and source
-notice live beside the browser asset.
+The shared hub bundles HTM 3.1.1 (`vendor/htm.umd.js`, Apache-2.0) for the
+deprecated `react.html` tag. The completion audit found no consumer among the
+current plugins; keep it and its license for older feature plugins until a
+deliberate breaking hub release removes both.
+
+Build-only dependencies are pinned in `package-lock.json`: TypeScript 5.9.3
+(Apache-2.0), esbuild 0.28.2 (MIT), YAML 2.9.1 (ISC), and React 17 type definitions
+17.0.93 (MIT), matching local Stash's React 17.0.2 API. React types depend on
+`@types/prop-types` 15.7.15, `@types/scheduler` 0.16.8, and `csstype` 3.2.3
+(all MIT). esbuild's platform binary packages are MIT. None of these packages,
+generators, or type declarations are installed into Stash.

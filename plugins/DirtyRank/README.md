@@ -367,6 +367,24 @@ every performer to start together with a different baseline.
 The backend keeps floating-point precision. The interface rounds ratings only
 for display.
 
+## Building and local development
+
+The strict TypeScript domains and focused TSX components under `src/` use
+Stash's React and the public DirtyPlugins API. `npm run build` creates the sole
+frontend script, `dirtyRank.js`, in ignored `.build/plugins/DirtyRank/`; the
+authored source directory is not an installable plugin. Install only registry
+files from staging, with the manifest copied last, then reload Stash plugins
+and hard-refresh the browser (Ctrl+F5). Keep the shared database and package
+provenance intact.
+
+Run `npm test` for module algorithms/media/session tests, compiled-bundle
+registration tests and Python backend/contract tests. The opt-in
+`tests/test_dirty_rank_stash_integration.py --binary /path/to/stash` checks an
+isolated Stash instance with generated portraits and videos, rating/undo
+round trips, native streams and the exact served bundle. After
+`npm run build:dev`, add `--development` to decode its inline source map. Add
+`--serve --stop-file <path>` for browser review; no live library is used.
+
 ## License
 
 DirtyRank is distributed under the [MIT License](LICENSE).

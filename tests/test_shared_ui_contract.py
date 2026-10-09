@@ -1,3 +1,4 @@
+import json
 import re
 import unittest
 from pathlib import Path
@@ -6,24 +7,19 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 
 
+def schema(plugin_id):
+    """The one authored settings definition (phase 5); manifests and tables are generated from it."""
+    return json.loads((ROOT / "schemas" / (plugin_id + ".settings.json")).read_text(encoding="utf-8"))
+
+
 def read(relative_path):
     path = ROOT / relative_path
     if path.suffix == ".js" and path.parent.parent.name == "plugins":
-        manifest = next(path.parent.glob("*.yml"))
-        contents = manifest.read_text(encoding="utf-8")
-        scripts = []
-        in_javascript = False
-        for line in contents.splitlines():
-            if line.strip() == "javascript:":
-                in_javascript = True
-                continue
-            if in_javascript and line.lstrip().startswith("- "):
-                name = line.split("-", 1)[1].strip().strip("\"'")
-                if not name.startswith("vendor/"):
-                    scripts.append((path.parent / name).read_text(encoding="utf-8"))
-            elif in_javascript and line.strip():
-                break
-        return "\n".join(scripts)
+        # Every plugin is authored as TS/TSX: architecture contracts inspect its source
+        # imports and components; bundle registration and rendering run in Node tests.
+        sources = sorted(source for source in (path.parent / "src").rglob("*") if source.suffix in (".ts", ".tsx"))
+        assert sources, "missing TS/TSX source for " + relative_path
+        return "\n".join(source.read_text(encoding="utf-8") for source in sources)
     return path.read_text(encoding="utf-8")
 
 
@@ -38,11 +34,17 @@ class SharedUIContractTests(unittest.TestCase):
         compactor_manifest = read("plugins/DirtyCompactor/dirtyCompactor.yml")
         hub_script = read("plugins/DirtyPlugins/dirtyPlugins.js")
         compactor_script = read("plugins/DirtyCompactor/dirtyCompactor.js")
-        self.assertIn("- vendor/htm.umd.js", hub_manifest)
+        self.assertIn("- dirtyPlugins.js", hub_manifest)
+        self.assertNotIn("- vendor/htm.umd.js", hub_manifest)
         self.assertNotIn("htm.umd.js", compactor_manifest)
-        self.assertIn("var html = htm.bind(createElement)", hub_script)
-        self.assertIn("html: html", hub_script)
-        self.assertIn("html = ui.html", compactor_script)
+        self.assertIn('import htm from "../vendor/htm.umd.js"', hub_script)
+        self.assertIn("html = htm.bind(React.createElement)", hub_script)
+        self.assertIn("hubApi.react = { html,", hub_script)
+        self.assertIn("React = runtime.api.React", compactor_script)
+        self.assertIn("ui = hub.react", compactor_script)
+        self.assertIn("<ui.SettingsCard", compactor_script)
+        self.assertNotIn("htm.bind", compactor_script)
+        self.assertNotRegex(compactor_script, r'import\s+(?!type\b).*from\s+[\"\']react(?:-dom)?[\"\']')
         self.assertTrue((ROOT / "plugins/DirtyPlugins/vendor/HTM-LICENSE").is_file())
 
     def test_plugins_load_the_shared_hub_first(self):
@@ -101,8 +103,8 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertEqual(len(dropdown), 1)
         self.assertRegex(dropdown[0], r"box-sizing:\s*border-box;")
         self.assertRegex(dropdown[0], r"height:\s*var\(--dirty-ui-control-height\);")
-        self.assertIn("StatisticSelector: StatisticSelector", hub_js)
-        self.assertIn("ActionMenu: ActionMenu", hub_js)
+        self.assertIn("export function StatisticSelector", hub_js)
+        self.assertIn("export function ActionMenu", hub_js)
         self.assertIn("ui.ActionMenu", read("plugins/DirtyCompactor/dirtyCompactor.js"))
         self.assertIn("hub.react.StatisticSelector", read("plugins/DirtyStats/dirtyStats.js"))
         self.assertIn("SharedStatisticSelector", rank_js)
@@ -148,23 +150,24 @@ class SharedUIContractTests(unittest.TestCase):
         ):
             self.assertIn(export, hub)
         for component in ("IconButton", "SettingsCard", "SettingsSection", "SettingsToggle", "StateView"):
-            self.assertIn(component + ": " + component, hub)
+            self.assertIn("export function " + component, hub)
         self.assertIn("hubApi.react.SceneFilterEditor = SceneFilterEditor", hub)
         # StateView forwards optional ARIA roles so callers keep accessible alerts.
-        self.assertIn("role=${props.role}", hub)
-        self.assertIn("aria-live=${props.ariaLive}", hub)
+        self.assertIn("role={props.role}", hub)
+        self.assertIn("aria-live={props.ariaLive}", hub)
 
     def test_settings_panels_share_the_same_building_blocks(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
         tidy_js = read("plugins/DirtyTidy/dirtyTidy.js")
         tidy_css = read("plugins/DirtyTidy/dirtyTidy.css")
 
-        self.assertIn("SettingsCard,", hub)
+        self.assertIn("export function SettingsCard", hub)
         self.assertIn("dirty-ui-row-list", tidy_js)
         self.assertIn("dirty-ui-toolbar", tidy_js)
         self.assertIn("dirty-ui-row-list", read("plugins/DirtyCompactor/dirtyCompactor.js"))
-        self.assertIn("DirtyPlugins.react.SettingsSection", tidy_js)
-        self.assertIn("DirtyPlugins.react.SettingsToggle", tidy_js)
+        self.assertIn("<ui.SettingsSection", tidy_js)
+        self.assertIn("ui = runtime.hub.react", tidy_js)
+        self.assertIn("<ui.SettingsToggle", tidy_js)
         self.assertNotIn("dirty-tidy-header", tidy_js + tidy_css)
         self.assertNotIn("dirty-tidy-section", tidy_js + tidy_css)
         self.assertNotIn("dirty-tidy-toggle", tidy_js + tidy_css)
@@ -183,7 +186,7 @@ class SharedUIContractTests(unittest.TestCase):
 
     def test_plugin_pages_use_the_shared_browser_title_hook(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
-        self.assertIn("usePageTitle: usePageTitle", hub)
+        self.assertRegex(hub, r"hubApi\.react = \{[^\n]*\busePageTitle\b")
         self.assertIn('? activePlugin.name : "Dirty Plugins", "Settings"', hub)
         for script in (
             "plugins/DirtyMultiscreen/multiscreen.js",
@@ -200,7 +203,7 @@ class SharedUIContractTests(unittest.TestCase):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
         multiscreen = read("plugins/DirtyMultiscreen/multiscreen.js")
 
-        self.assertIn("var PLUGIN_SETTING_ORDER", hub)
+        self.assertIn("export const PLUGIN_SETTING_ORDER = standardTable(", hub)
         self.assertNotIn('PluginApi.patch.before("PluginSettings"', multiscreen)
 
     def test_hub_uses_one_inner_tab_per_installed_plugin(self):
@@ -209,23 +212,23 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('role="tablist"', hub)
         self.assertIn('role="tab"', hub)
         self.assertIn('role="tabpanel"', hub)
-        self.assertIn("activePlugin && html`", hub)
+        self.assertIn("activePlugin && (", hub)
         self.assertIn("settingsRoute(props.pluginId)", hub)
 
     def test_hub_settings_patch_preserves_unmanaged_plugins(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
 
-        self.assertIn("var next = args.pop()", hub)
+        self.assertIn("const next = args.pop()", hub)
         self.assertIn("return next.apply(null, args)", hub)
 
     def test_main_plugins_page_groups_dirty_plugins(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
 
         self.assertIn(
-            'var MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor", "dirtyCaptions"]',
+            'export const MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor", "dirtyCaptions"]',
             hub,
         )
-        self.assertIn("data-dirty-plugin-id=${props.pluginId}", hub)
+        self.assertIn("data-dirty-plugin-id={props.pluginId}", hub)
         self.assertIn("orderMainPluginSettingsGroups", hub)
         self.assertIn("document.createComment", hub)
         self.assertIn("MAIN_PAGE_PLUGIN_ID_SET.has(pluginId)", hub)
@@ -235,14 +238,15 @@ class SharedUIContractTests(unittest.TestCase):
         backend = read("plugins/DirtyCaptions/dirty_captions.py")
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
         self.assertIn('api.patch.after("ScenePlayer"', script)
-        self.assertIn('hub.runPluginOperation("dirtyCaptions"', script)
+        self.assertIn('hub.runPluginOperation<CaptionResult>("dirtyCaptions"', script)
         self.assertIn('hub.getPluginSettings("dirtyCaptions")', script)
         self.assertIn("selector.addTextTrack(options, true)", script)
         self.assertIn("encodeURIComponent(track.vtt)", script)
-        self.assertIn("selector.removeTextTrack(record.element)", script)
+        self.assertIn("selector.removeTextTrack(record.element!)", script)
         self.assertNotIn('fetch("/graphql"', script)
         self.assertIn("from dirty_plugins_client import StashClient", backend)
-        self.assertIn('dirtyCaptions: ["enabled", "showByDefault", "preferredLanguage", "indexEnabled", "refreshAfterScan"]', hub)
+        self.assertEqual(list(schema("dirtyCaptions")["settings"]), ["enabled", "showByDefault", "preferredLanguage", "indexEnabled", "refreshAfterScan"])
+        self.assertIn('import * as captions from "@generated/dirtyCaptions.settings"', hub)
         self.assertIn("hubApi.registerSettingsAddon", hub)
         self.assertIn('Scene.Create.Post', read("plugins/DirtyCaptions/dirtyCaptions.yml"))
         index_ui = read("plugins/DirtyCaptions/dirtyCaptionsIndex.js")
@@ -267,10 +271,10 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('window.addEventListener("beforeunload", beforeUnload)', hub)
         self.assertIn('document.addEventListener("click", confirmLinkNavigation, true)', hub)
         self.assertIn("UNSAVED_SETTINGS_MESSAGE", hub)
-        self.assertIn("onDirtyChange=${reportCustomDirty}", hub)
-        self.assertIn("savedSettingsState", tidy)
-        self.assertIn("props.onDirtyChange(PLUGIN_ID, settingsDirty)", tidy)
-        self.assertGreaterEqual(tidy.count("setSavedSettings(draft)"), 1)
+        self.assertIn('"onDirtyChange": reportCustomDirty', hub)
+        self.assertIn("savedSettings: Settings", tidy)
+        self.assertIn("props.onDirtyChange?.(PLUGIN_ID, dirty)", tidy)
+        self.assertIn("state.savedSettings = draft", tidy)
 
     def test_shared_settings_link_is_centered(self):
         css = read("plugins/DirtyPlugins/dirtyPlugins.css")
@@ -282,20 +286,20 @@ class SharedUIContractTests(unittest.TestCase):
     def test_hub_uses_stash_direct_navigation_route_namespace(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
 
-        self.assertIn('var ROUTE_PATH = "/plugins/dirty-plugins"', hub)
-        self.assertNotIn('var ROUTE_PATH = "/plugin/dirty-plugins"', hub)
+        self.assertIn('export const ROUTE_PATH = "/plugins/dirty-plugins"', hub)
+        self.assertNotIn('ROUTE_PATH = "/plugin/dirty-plugins"', hub)
 
     def test_dirty_tidy_registers_a_custom_shared_settings_panel(self):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
 
         self.assertIn('"dirtyTidy"', hub)
-        self.assertIn("registerSettingsPanel(PLUGIN_ID, DirtyTidySettings)", tidy)
+        self.assertIn("registerSettingsPanel(PLUGIN_ID, SettingsPanel)", tidy)
         self.assertIn("DirtyPlugins.configurePlugin", tidy)
         self.assertIn("runPluginOperation", tidy)
         self.assertIn("runPluginTask", tidy)
         self.assertIn("includeAll: true", tidy)
-        self.assertIn("filteredOperations.slice", tidy)
+        self.assertIn("filtered.slice", tidy)
         self.assertNotIn("Loading filtered preview", tidy)
 
     def test_dirty_rank_uses_the_shared_runtime_and_custom_panel(self):
@@ -306,9 +310,9 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('"dirtyRank"', hub)
         self.assertIn("- dirtyPlugins", manifest)
         self.assertIn("DirtyPlugins.graphql", script)
-        self.assertIn("DirtyPlugins.react.SettingsCard", script)
-        self.assertIn("registerSettingsPanel(PLUGIN_ID, DirtyRankSettings)", script)
-        self.assertIn("PluginApi.register.route(ROUTE_PATH, DirtyRankRoute)", script)
+        self.assertIn("SettingsCard: shared.SettingsCard", script)
+        self.assertIn("registerSettingsPanel?.(PLUGIN_ID, Settings)", script)
+        self.assertIn("PluginApi.register.route(ROUTE_PATH, Route)", script)
         self.assertIn('to="/plugins/dirty-plugins?plugin=dirtyRank"', script)
 
     def test_dirty_plugins_settings_are_database_backed(self):
@@ -352,8 +356,8 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("useStatsSetting", script)
         self.assertIn("hub.getPluginSettings(PLUGIN_ID)", script)
         self.assertIn("statsSettingsSaveController = hub.createSaveController", script)
-        shared_save = read("plugins/DirtyPlugins/dirtyPluginsSave.js")
-        self.assertIn("var chain = Promise.resolve()", shared_save)
+        shared_save = read("plugins/DirtyPlugins/src/save.ts")
+        self.assertIn("Promise<R | null | void> = Promise.resolve()", shared_save)
         self.assertIn("chain.catch", shared_save)
         self.assertIn("hub.configurePlugin(PLUGIN_ID, request.snapshot)", script)
         self.assertIn("request.names.forEach(function (name) { merged[name] = request.snapshot[name]; })", script)
@@ -361,24 +365,29 @@ class SharedUIContractTests(unittest.TestCase):
         hub_manifest = read("plugins/DirtyPlugins/dirtyPlugins.yml")
         hub_styles = read("plugins/DirtyPlugins/dirtyPlugins.css")
         self.assertNotIn("visualTheme:", manifest)
-        self.assertIn("visualTheme:", hub_manifest)
+        self.assertNotIn("visualTheme:", hub_manifest)
+        theme_setting = schema("dirtyPlugins")["settings"]["visualTheme"]
         self.assertIn('"dirtyPlugins", "extractScenes"', hub)
-        self.assertIn('hubApi.theme.load = function ()', hub)
+        self.assertIn('hubApi.theme.load = function()', hub)
         self.assertIn('mode: "backupDatabase"', hub)
-        self.assertIn('var DEFAULT_VISUAL_THEME = "classic"', hub)
-        self.assertIn('visualTheme: DEFAULT_VISUAL_THEME', hub)
+        self.assertEqual(theme_setting["default"], "classic")
+        self.assertIn("export const DEFAULT_VISUAL_THEME = hubSettings.defaults.visualTheme", hub)
+        self.assertIn("export const PLUGIN_DEFAULTS = standardTable(function(settings) { return settings.defaults; })", hub)
         self.assertIn('hubApi.theme.defaultKey = DEFAULT_VISUAL_THEME', hub)
         self.assertIn('var DEFAULT_THEME = hub.theme && hub.theme.defaultKey || "classic"', script)
-        self.assertIn('{ value: "paper", label: "Paper Picnic" }', hub)
-        self.assertIn('{ value: "destijl", label: "De Stijl" }', hub)
-        self.assertIn('{ value: "destijl-dark", label: "De Stijl Dark" }', hub)
+        self.assertIn({"value": "paper", "label": "Paper Picnic"}, theme_setting["options"])
+        self.assertIn({"value": "destijl", "label": "De Stijl"}, theme_setting["options"])
+        self.assertIn({"value": "destijl-dark", "label": "De Stijl Dark"}, theme_setting["options"])
+        # Stats keeps its own copy of the theme keys; it must list the same themes in the same order.
+        self.assertEqual([option["value"] for option in theme_setting["options"]],
+                         ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"])
         self.assertIn('visualTheme: { options: ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"] }', script)
         for theme in ("candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"):
             self.assertIn(".dirty-stats-theme-" + theme, styles)
             self.assertIn(".dirty-ui-theme-" + theme, hub_styles)
         self.assertIn("initStatsChart", script)
         self.assertIn("birthdayDefaultSelection", script)
-        self.assertIn('var qualityEfficiencyRoute = registry.entries.qualityEfficiency.route', script)
+        self.assertIn('qualityEfficiencyRoute: "qualityEfficiency"', script)
         registry = read("plugins/DirtyStats/dirtyStatsRegistry.js")
         self.assertIn('qualityEfficiency: { label: "Quality efficiency", route: route + "/quality-efficiency"', registry)
         self.assertIn("aggregateQualityEfficiency", script)
@@ -395,8 +404,8 @@ class SharedUIContractTests(unittest.TestCase):
 
         # Primary loading/error/empty states reuse the shared StateView instead of
         # bespoke alert/status markup.
-        self.assertIn("hub.react && hub.react.StateView", script)
-        self.assertIn("<${StateView}", script)
+        self.assertIn("StateView: hub.react.StateView", script)
+        self.assertIn("<StateView", script)
         # The unused field rule is gone and the duplicate filter rule is merged.
         self.assertNotIn("dirty-stats-field", styles)
         statistic = css_rule_bodies(styles, ".dirty-stats-filter-statistic")
@@ -404,52 +413,69 @@ class SharedUIContractTests(unittest.TestCase):
         for declaration in ("display: flex;", "gap: .5rem;", "flex-wrap: wrap;", "order: -1;"):
             self.assertIn(declaration, statistic[0])
 
-    def test_dirty_stats_uses_the_shared_template_tag(self):
-        for name in ("dirtyStats.js", "dirtyStatsDashboard.js"):
-            script = read("plugins/DirtyStats/" + name)
-            self.assertIn("var html = hub.react.html", script)
-            self.assertIn("return html`", script)
-            self.assertNotRegex(script, r"\bh\(")
+    def test_dirty_stats_uses_typed_host_react_and_imported_views(self):
+        script = read("plugins/DirtyStats/dirtyStats.js")
+        self.assertIn("React: api.React", script)
+        self.assertIn('import { createViews } from "./views"', script)
+        self.assertIn("<views.DirtyStatsRoute", script)
+        self.assertNotIn("hub.react.html", script)
+        self.assertNotIn("window.__dirtyStatsDashboard", script)
+        self.assertNotRegex(script, r'from ["\']react["\'](?!;)')
 
-    def test_dirty_tidy_uses_the_shared_template_tag(self):
+    def test_dirty_tidy_uses_typed_host_react_and_imported_views(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
-        preview = read("plugins/DirtyTidy/dirtyTidyPreview.js")
-        self.assertIn("var html = DirtyPlugins.react && DirtyPlugins.react.html", tidy)
-        self.assertIn("createPreview({ html: html,", tidy)
-        self.assertIn("var html = dependencies.html", preview)
-        for script in (tidy, preview):
-            self.assertIn("return html`", script)
-            self.assertNotRegex(script, r"\bh\(")
-            self.assertNotIn("createElement", script)
+        self.assertIn("React = runtime.api.React", tidy)
+        self.assertIn("export function PreviewTable", tidy)
+        self.assertIn('<ui.Dialog open={confirming && Boolean(preview)}', tidy)
+        self.assertIn('import { createWorkflow', tidy)
+        self.assertNotIn("return html`", tidy)
+        self.assertNotRegex(tidy, r'import\s+(?!type\b).*from\s+["\']react(?:-dom)?["\']')
 
-    def test_dirty_multiscreen_uses_the_shared_template_tag(self):
+    def test_dirty_multiscreen_uses_typed_host_react_and_imports(self):
         multiscreen = read("plugins/DirtyMultiscreen/multiscreen.js")
-        self.assertIn("var html = DirtyPlugins.react.html", multiscreen)
-        self.assertIn("return html`", multiscreen)
-        self.assertNotIn("createElement", multiscreen)
+        self.assertRegex(multiscreen, r"React\s*=\s*runtime.api.React")
+        self.assertIn("function LoadedNativePlayer", multiscreen)
+        self.assertIn("<DirtyPlugins.react.IconButton", multiscreen)
+        self.assertIn("<DirtyPlugins.react.StateView", multiscreen)
+        self.assertIn('from "./domain/settings"', multiscreen)
+        self.assertNotIn("return html`", multiscreen)
+        self.assertNotRegex(multiscreen, r'import\s+(?!type\b).*from\s+["\']react(?:-dom)?["\']')
+        manifest = read("plugins/DirtyMultiscreen/multiscreen.yml")
+        self.assertIn("- multiscreen.js", manifest)
+        self.assertNotIn("multiscreenSettings.js", manifest)
+        self.assertNotIn("multiscreenPlaylists.js", manifest)
 
-    def test_dirty_file_extractor_uses_the_shared_template_tag(self):
+    def test_dirty_file_extractor_uses_typed_host_react_and_imports(self):
         extractor = read("plugins/DirtyFileExtractor/extractScenes.js")
-        self.assertIn("var html = hubApi.react.html", extractor)
-        self.assertIn("return html`", extractor)
-        self.assertNotRegex(extractor, r"\bh\(")
-        self.assertNotIn("React.createElement", extractor)
+        self.assertIn("React = runtime.api.React", extractor)
+        self.assertIn("export function ExtractionAction", extractor)
+        self.assertIn("<React.Fragment>", extractor)
+        self.assertIn('import { createPicker } from "./picker"', extractor)
+        self.assertNotIn("return html`", extractor)
+        self.assertNotRegex(extractor, r'import\s+(?!type\b).*from\s+["\']react(?:-dom)?["\']')
 
-    def test_hub_renders_with_its_own_template_tag(self):
-        # read() returns the hub's whole script bundle, scene filter included.
+    def test_hub_renders_tsx_and_keeps_legacy_template_compatibility(self):
+        # Architecture reads authored source; Node tests check the served bundle
+        # and render the public HTM tag with the same host React instance.
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
-        # htm stays bound to React.createElement; no render code calls it directly.
-        self.assertEqual(hub.count("React.createElement"), 1)
-        self.assertEqual(hub.count("createElement("), hub.count("document.createElement("))
-        self.assertIn("Button: Button, html: html, useEffect", hub)
-        self.assertIn("var html = dependencies.html", hub)
+        self.assertIn("html = htm.bind(React.createElement)", hub)
+        self.assertIn("export function Dialog", hub)
+        self.assertIn("function SceneFilterEditor", hub)
+        self.assertIn('import { React', hub)
+        self.assertIn("React = api.React", hub)
+        self.assertNotIn("return html`", hub)
+        self.assertNotRegex(hub, r'import\s+(?!type\b).*from\s+["\']react(?:-dom)?["\']')
 
-    def test_dirty_rank_uses_the_shared_template_tag(self):
+    def test_dirty_rank_uses_typed_modules_and_host_react(self):
         rank = read("plugins/DirtyRank/dirtyRank.js")
-        self.assertIn("var html = DirtyPlugins.react.html", rank)
-        self.assertIn("return html`", rank)
-        self.assertNotRegex(rank, r"\bh\(")
-        self.assertNotIn("createElement", rank)
+        self.assertIn('import { createViews } from "./views"', rank)
+        self.assertIn('React: api.React', rank)
+        self.assertIn('globals[INSTANCE_KEY] = instance', rank)
+        self.assertIn('registrationAttempted = true', rank)
+        self.assertIn('useSettingsDraft<', rank)
+        self.assertNotIn("return html`", rank)
+        self.assertNotRegex(rank, r'import\s+(?!type\b).*from\s+["\']react(?:-dom)?["\']')
+        self.assertNotIn('__dirtyRankAlgorithms', rank)
 
     def test_dirty_stats_dashboard_is_registered_and_persisted(self):
         script = read("plugins/DirtyStats/dirtyStats.js")
@@ -458,14 +484,14 @@ class SharedUIContractTests(unittest.TestCase):
         manifest = read("plugins/DirtyStats/dirtyStats.yml")
 
         registry = read("plugins/DirtyStats/dirtyStatsRegistry.js")
-        self.assertIn('var dashboardRoute = registry.entries.dashboard.route', script)
-        self.assertIn('entries.dashboard = { label: "Dashboard", route: route + "/dashboard" }', registry)
-        self.assertLess(manifest.index("dirtyStatsRegistry.js"), manifest.index("dirtyStats.js"))
-        self.assertIn("dirtyStatsDashboard.js", manifest)
+        self.assertIn('dashboardRoute: "dashboard"', script)
+        self.assertIn('dashboard: { label: "Dashboard", route: route + "/dashboard" }', registry)
+        self.assertRegex(manifest, r"javascript:\s*\n\s*- dirtyStats\.js\s*\n\s*css:")
+        self.assertNotIn("dirtyStatsDashboard.js", manifest)
         self.assertIn('core.setSettingExtra("dashboardWidgets", widgets)', dashboard)
         self.assertIn('var SIZES = ["small", "medium", "large"]', dashboard)
-        self.assertIn("var WIDGETS = window.__dirtyStatsRegistry.widgets", dashboard)
-        self.assertIn("var entries = {", registry)
+        self.assertIn("WIDGETS = registry.widgets", dashboard)
+        self.assertIn("var entries: Record<string, Required<StatsDefinition>>", registry)
         self.assertNotIn("dirty-stats-dashboard-size-label", dashboard)
         self.assertIn("dirty-stats-dashboard-open-link", dashboard)
         self.assertIn("dirty-stats-dashboard-visually-hidden", dashboard)
@@ -482,13 +508,13 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("MAX_WIDGETS", dashboard)
         self.assertIn("nextWidgetId", dashboard)
         self.assertNotIn('label: "Theme"', dashboard)
-        self.assertIn('editing ? html`<${React.Fragment}', dashboard)
+        self.assertIn('editing ? (<React.Fragment>', dashboard)
         self.assertNotIn('"Refresh all"', dashboard)
         self.assertNotIn("usedStatistics", dashboard)
         self.assertNotIn('WIDGETS[statistic].label + " · added"', dashboard)
         self.assertIn("DashboardFilterDialog", dashboard)
         self.assertIn("sharedReact.Dialog", dashboard)
-        self.assertIn("allowNativePopup=${true}", dashboard)
+        self.assertIn("allowNativePopup={true}", dashboard)
         self.assertIn(".dirty-stats-dashboard-dialog-backdrop", styles)
         backdrops = css_rule_bodies(styles, ".dirty-stats-dashboard-dialog-backdrop")
         self.assertTrue(any(all(declaration in body for declaration in (
@@ -527,10 +553,9 @@ class SharedUIContractTests(unittest.TestCase):
     def test_dirty_rank_settings_are_editable_weighted_and_cohort_scoped(self):
         script = read("plugins/DirtyRank/dirtyRank.js")
         backend = read("plugins/DirtyRank/dirty_rank.py")
-        # Manifest aggregation still guards suite ownership. Settings sections
-        # now precede their controller in a separate feature module.
-        battle_ui = (ROOT / "plugins/DirtyRank/dirtyRank.js").read_text(encoding="utf-8")
-        settings_ui = (ROOT / "plugins/DirtyRank/dirtyRankSettingsPanel.js").read_text(encoding="utf-8")
+        battle_ui = (ROOT / "plugins/DirtyRank/src/components/Battles.tsx").read_text(encoding="utf-8")
+        settings_ui = "\n".join(path.read_text(encoding="utf-8") for path in
+                                (ROOT / "plugins/DirtyRank/src/components/settings").glob("*.tsx"))
 
         self.assertIn("DirtyPlugins.getPluginSettings(PLUGIN_ID)", script)
         self.assertIn("function addCategory()", script)
@@ -538,10 +563,12 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("function overallPoolFor", script)
         self.assertIn('label="Overall weight"', script)
         self.assertIn('key: "evidenceWeight", id: "dirty-rank-evidence-weight", label: "Evidence per battle"', settings_ui)
-        self.assertIn('label=${definition.label}', settings_ui)
-        self.assertIn("evidenceWeight: 2", script)
-        self.assertIn('"evidenceWeight": 2.0', backend)
-        self.assertIn("<span>Advanced configuration</span>", script)
+        self.assertIn('label={definition.label}', settings_ui)
+        evidence = schema("dirtyRank")["settings"]["evidenceWeight"]
+        self.assertEqual((evidence["default"], evidence.get("integer", False)), (2, False))
+        self.assertIn("number(source.evidenceWeight, defaults.evidenceWeight", script)
+        self.assertIn('"evidenceWeight": _bounded(source, "evidenceWeight")', backend)
+        self.assertIn('{"Advanced configuration"}', script)
         self.assertNotIn("Eligibility tag IDs", script)
         self.assertNotIn("ratingPeriodDays", script)
         self.assertNotIn("ratingPeriodDays", backend)
@@ -550,7 +577,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertNotIn("Export ratings", battle_ui)
         self.assertNotIn('"Export ratings"', settings_ui)
         self.assertNotIn('"Reset current pool"', settings_ui)
-        self.assertIn(">Reset ratings<//>", settings_ui)
+        self.assertIn('{"Reset ratings"}', settings_ui)
         self.assertIn('resetCategoryPool(editingCohort, category)', settings_ui)
 
     def test_standard_and_dirty_rank_settings_save_automatically(self):
@@ -564,16 +591,17 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("hubApi.createSaveController", hub)
         self.assertNotIn('saving ? "Saving…" : "Save"', hub)
         self.assertIn("Waiting to save automatically…", rank)
-        self.assertIn("Saving automatically…", rank)
+        self.assertIn("DirtyPlugins.react.useSettingsDraft", rank)
+        self.assertIn("expectedRevision: settingsRevisionRef.current", rank)
         self.assertNotIn('Save settings")', rank)
         # Tidy keeps an explicit save and a confirmation dialog because it moves files.
-        self.assertIn(">Save<//>", tidy)
+        self.assertIn(">Save</ui.Button>", tidy)
         self.assertIn('ariaLabel="Confirm DirtyTidy plan"', tidy)
 
     def test_dirty_rank_advances_before_background_vote_persistence(self):
         script = read("plugins/DirtyRank/dirtyRank.js")
         backend = read("plugins/DirtyRank/dirty_rank.py")
-        submit = script.split("function submit(outcome)", 1)[1].split("function skip()", 1)[0]
+        submit = script.split("function submit(outcome:", 1)[1].split("function skip()", 1)[0]
 
         self.assertIn("voteQueueRef.current", submit)
         self.assertIn("pendingVotesRef.current += 1", submit)
@@ -617,7 +645,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("startMarkerPlayback", script)
         self.assertIn('"Close marker"', script)
         self.assertIn('"▶ Play top scene"', script)
-        self.assertIn("html`<video", script)
+        self.assertIn("<video", script)
         self.assertIn("event.stopPropagation()", script)
         self.assertIn("dirty-rank-scene-player", stylesheet)
         self.assertLess(
@@ -636,7 +664,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("function sortPerformersByOverall", script)
         self.assertIn('var cohort = battleCohortFor(settings, performer, "")', script)
         self.assertIn('boxGenders(settings, cohort).indexOf(String(performer.gender || "").toUpperCase())', script)
-        self.assertIn("if (left.rated !== right.rated) return left.rated ? -1 : 1", script)
+        self.assertRegex(script, r"if \(left\.rated !== right\.rated\)\s+return left\.rated \? -1 : 1")
         self.assertIn("queryFilter.itemsPerPage = -1", script)
         self.assertIn("queryFilter[OVERALL_SORT_ACTIVE] = true", script)
         self.assertIn("filter.currentPage", script)
@@ -646,10 +674,11 @@ class SharedUIContractTests(unittest.TestCase):
         multiscreen = read("plugins/DirtyMultiscreen/multiscreen.js")
 
         self.assertIn("__dirtyMultiscreenPlugin", multiscreen)
-        self.assertIn("if (window[INSTANCE_KEY]) return;", multiscreen)
-        self.assertIn("window[INSTANCE_KEY] = {", multiscreen)
-        self.assertIn("route: ROUTE_PATH,", multiscreen)
-        self.assertIn("algorithms: {", multiscreen)
+        self.assertRegex(multiscreen, r"if\s*\(!globals\[INSTANCE_KEY\]\)")
+        self.assertRegex(multiscreen, r"globals\[INSTANCE_KEY\]\s*=\s*instance")
+        self.assertIn("registrationAttempted", multiscreen)
+        self.assertIn("life.active", multiscreen)
+        self.assertNotIn("algorithms:", multiscreen)
 
     def test_multiscreen_grid_clamps_tiles_to_available_cells(self):
         multiscreen = read("plugins/DirtyMultiscreen/multiscreen.js")
@@ -669,7 +698,8 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('registerListAction("SceneList", "scene")', script)
         self.assertIn('registerListAction("SceneMarkerList", "marker")', script)
         self.assertIn('registerListAction("ImageList", "image")', script)
-        self.assertIn("Array.from(props.selectedIds)", script)
+        self.assertIn("selectionFor(kind, props.selectedIds)", script)
+        self.assertIn("Array.from(selectedIds)", script)
         self.assertNotIn('document.querySelectorAll("input[type=checkbox]:checked")', script)
         self.assertIn("window.clearTimeout(state.mutationTimer)", script)
 
@@ -713,15 +743,15 @@ class SharedUIContractTests(unittest.TestCase):
         multiscreen = read("plugins/DirtyMultiscreen/multiscreen.js")
 
         self.assertIn('className="dirty-rank-nav-icon"', rank)
-        self.assertIn('<i className="ms-nav-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></i>', multiscreen)
-        self.assertIn('html`<i\n        className=${`ms-nav-count', multiscreen)
+        self.assertRegex(multiscreen, r'<i\s+className="ms-nav-icon"\s+aria-hidden="true">\s*(?:<i\s*/>\s*){4}</i>')
+        self.assertRegex(multiscreen, r'<i\s+className=\{`ms-nav-count')
 
     def test_dirty_tidy_preview_links_blocked_scenes(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
 
         self.assertIn("function PreviewNotes", tidy)
         self.assertIn("operation.blocked_scenes", tidy)
-        self.assertIn('href=${"/scenes/" + encodeURIComponent(scene.id)}', tidy)
+        self.assertIn('href={"/scenes/" + encodeURIComponent(scene.id)}', tidy)
         self.assertIn('["female_performers", "Female performers", "Performers"]', tidy)
         self.assertIn('["male_performers", "Male performers", "Performers"]', tidy)
 
@@ -731,11 +761,11 @@ class SharedUIContractTests(unittest.TestCase):
             "function changePreviewFilter", 1
         )[0]
 
-        self.assertIn("runPreview(draft)", preview_function)
+        self.assertIn("dependencies.runPreview(draft)", preview_function)
         self.assertNotIn("configurePlugin", preview_function)
         self.assertNotIn("setSavedSettings", preview_function)
-        self.assertIn('busy=${busy === "preview"}', tidy)
-        self.assertIn("disabled=${Boolean(busy) || (!readyCount && !trigger)}", tidy)
+        self.assertIn('busy={busy === "preview"}', tidy)
+        self.assertIn("disabled={Boolean(busy) || (!readyCount && !trigger)}", tidy)
 
     def test_dirty_tidy_has_independent_stash_id_safeguards(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
@@ -752,25 +782,25 @@ class SharedUIContractTests(unittest.TestCase):
     def test_dirty_tidy_confirms_and_saves_in_a_dialog(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
 
-        self.assertIn("function applyPlan(runNow)", tidy)
+        self.assertIn("function applyPlan(runNow: boolean)", tidy)
         self.assertIn('ariaLabel="Confirm DirtyTidy plan"', tidy)
-        self.assertIn("DirtyPlugins.configurePlugin(PLUGIN_ID, approvedSettings)", tidy)
-        self.assertIn("return runNow ? queueExecution(preview.strategy_hash) : null;", tidy)
-        self.assertIn("DirtyPlugins.configurePlugin(PLUGIN_ID, draft)", tidy)
+        self.assertIn("dependencies.configurePlugin(approvedSettings)", tidy)
+        self.assertIn("runNow ? await dependencies.queueExecution(preview.strategy_hash) : null", tidy)
+        self.assertIn("dependencies.configurePlugin(draft)", tidy)
         self.assertNotIn("I reviewed this preview", tidy)
 
     def test_automation_mode_change_can_be_confirmed_and_saved_again(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")
-        changed_function = tidy.split("function changed(update, affectsStrategy)", 1)[1].split(
+        changed_function = tidy.split("function changed(update: Partial<Settings>, affectsStrategy = true)", 1)[1].split(
             "function updateLevel", 1
         )[0]
 
         self.assertIn(
-            'if (affectsStrategy !== false) {\n        setPreview(null)',
+            'state.preview = null; state.previewFilter = "all"',
             changed_function,
         )
         self.assertIn(
-            'changed({ automationMode: event.target.value }, false)',
+            'changed({ automationMode: event.target.value as AutomationMode }, false)',
             tidy,
         )
 

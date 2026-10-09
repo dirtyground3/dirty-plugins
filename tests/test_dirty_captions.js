@@ -1,45 +1,17 @@
 "use strict";
 const assert = require("node:assert/strict");
-const vm = require("node:vm");
-const { sourceFor } = require("./load_plugin_scripts");
-const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
-
+const { testModulePath } = require("./plugin_paths");
 const { events } = require("./ui_harness");
-const patches = [], timers = new Map();
-let timerId = 0, calls = 0, resolveRequest;
-let effects = [], currentRoot, configs = {}, statuses = [];
-const element = (type, props, ...children) => ({ type, props: { ...props, children } });
-const React = {
-  createElement: element, isValidElement: node => !!node?.type,
-  cloneElement: (node, props, ...children) => element(node.type, { ...node.props, ...props }, ...children),
-  useRef: () => ({ current: { parentElement: currentRoot } }),
-  useState: initial => [initial, next => statuses.push(next)],
-  useEffect: fn => effects.push(fn)
-};
-const window = events({
-  navigator: { language: "en-US" }, location: { search: "" },
-  setTimeout: fn => { const id = ++timerId; timers.set(id, fn); return id; },
-  clearTimeout: id => timers.delete(id), setInterval: () => ++timerId, clearInterval() {},
-  PluginApi: { React, patch: { after: (...args) => patches.push(args) } },
-  DirtyPlugins: {
-    values: { coerceBoolean: (value, fallback) => value === undefined ? fallback : value === true || value === "true" },
-    getPluginSettings: () => Promise.resolve(configs),
-    runPluginOperation: (id, args) => {
-      assert.equal(id, "dirtyCaptions"); assert.equal(args.mode, "captions"); calls++;
-      return new Promise(resolve => { resolveRequest = resolve; });
-    },
-    react: { html: htm.bind(element), Button: "button" }, captureEnabled: search => search.includes("docsCapture=1")
-  }
-});
-class Observer { observe() {} disconnect() {} }
-const context = vm.createContext({ window, Blob, Intl, MutationObserver: Observer, console });
-const source = sourceFor("DirtyCaptions");
-require("./shared_runtime").installJobHelpers(window);
-vm.runInContext(source, context);
-vm.runInContext(source, context);
-assert.equal(patches.length, 3, "asset reload must not stack patches");
-const playerPatch = patches.find(([name]) => name === "ScenePlayer")[1];
-const api = window.__dirtyCaptionsTracks;
+const domain = require(testModulePath("DirtyCaptions", "captions.cjs"));
+const { createTracksService } = require(testModulePath("DirtyCaptions", "tracks.cjs"));
+const values = require(testModulePath("DirtyPlugins", "values.cjs"));
+const timers = new Map(); let timerId = 0, calls = 0, resolveRequest;
+const hub = { values, runPluginOperation: (id, args) => {
+  assert.equal(id, "dirtyCaptions"); assert.equal(args.mode, "captions"); calls++;
+  return new Promise(resolve => { resolveRequest = resolve; });
+} };
+const api = {...domain, ...createTracksService(hub, {language: () => "en-US",
+  setTimeout: fn => {const id = ++timerId; timers.set(id, fn); return id;}, clearTimeout: id => timers.delete(id)})};
 const scene = { id: "1479", files: [{ id: "1493", size: 100 }] };
 const track = (index, language, isDefault = false) => ({ index, language, default: isDefault, forced: false,
   title: "", codec: "mov_text", vtt: "WEBVTT\n\n00:00.000 --> 00:01.000\nCaption\n" });
@@ -102,26 +74,15 @@ async function run() {
   api.attachTracks(manual, result, api.settings({ showByDefault: false }), () => {})();
   assert(manual.registrations.every(item => item.el.track.mode === "disabled"));
 
-  const original = element("div", { className: "VideoPlayer" }, element("div", { className: "video-wrapper" }));
-  window.location.search = "?docsCapture=1";
-  const patched = playerPatch({ scene }, {}, original);
-  assert.match(patched.props.className, /dirty-captions-capture/);
-  assert.equal(patched.props.children[0], original.props.children);
-  assert.equal(playerPatch({ scene: { files: [] } }, original), original);
-
-  const activePlayer = player();
-  currentRoot = { querySelector: () => ({ player: activePlayer }) };
-  const Controller = window.__dirtyCaptionsPlugin.CaptionsController;
-  effects = []; Controller({ scene, capture: false });
-  const cleanups = effects.map(fn => fn()); await settle();
-  const before = activePlayer.registrations.length;
-  cleanups.forEach(fn => fn?.()); resolveRequest(result); await settle();
-  assert.equal(activePlayer.registrations.length, before, "late extraction must not affect an unmounted scene");
-  const previousCalls = calls; configs = { enabled: false };
-  effects = []; Controller({ scene, capture: false });
-  const disabledCleanup = effects.map(fn => fn()); await settle();
-  assert.equal(calls, previousCalls, "disabled captions must not read media");
-  disabledCleanup.forEach(fn => fn?.());
-  console.log("DirtyCaptions native tracks, preferences, source changes, cleanup, and registration passed");
+  let failed = 0;
+  const erroneous = player();
+  const stop = api.attachTracks(erroneous, result, api.settings({}), () => failed++);
+  erroneous.registrations[0].el.emit("error"); assert.equal(failed, 1);
+  erroneous.emit("loadstart"); assert.equal(timers.size, 1); stop(); assert.equal(timers.size, 0);
+  erroneous.registrations[0].el.emit("error"); assert.equal(failed, 1, "cleanup removes error listeners");
+  const invalid = createTracksService({...hub, runPluginOperation: async () => ({tracks: null, warnings: []})});
+  await assert.rejects(invalid.requestCaptions(scene), /invalid response/);
+  await assert.rejects(invalid.requestCaptions(scene), /invalid response/, "failed extraction remains retryable");
+  console.log("DirtyCaptions imported language/settings and native track service parity/cleanup passed");
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

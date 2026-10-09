@@ -15,12 +15,13 @@ import shutil
 import subprocess
 import time
 
+from dirty_compactor_metadata import CONSTANTS
 from dirty_compactor_rules import PluginError, visual_preset
 
-# Constant-quality value per preset. Hardware encoders use the same number on
-# their own quality scale, which is close to but not identical to CRF.
-CRF = {"h264": {"high": 19, "balanced": 22, "small": 25},
-       "hevc": {"high": 21, "balanced": 24, "small": 27}}
+# Constant-quality value per preset (generated; shared with the browser). Hardware
+# encoders use the same number on their own quality scale, which is close to but
+# not identical to CRF.
+CRF = CONSTANTS["crf"]
 # Search bounds for "Match visual quality": lower values are higher quality.
 CRF_RANGE = {"h264": (14, 34), "hevc": (16, 36)}
 # The search starts at the matching preset and interpolates between measured

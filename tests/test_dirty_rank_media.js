@@ -1,11 +1,11 @@
 "use strict";
+const { testModulePath } = require("./plugin_paths");
 
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { element, find, findAll, text, createHooks } = require("./ui_harness");
-const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
 
 // Exercise the actual component and asynchronous handlers without a Stash server.
 const noop = function () {};
@@ -26,7 +26,6 @@ let nextTimer = 0;
 let response = () => Promise.resolve({ findPerformers: { performers: [] } });
 const runtime = {
   react: {
-    html: htm.bind(React.createElement),
     usePageTitle() {},
     SettingsCard: function SettingsCard() {},
     SettingsSection: function SettingsSection() {},
@@ -81,11 +80,13 @@ const context = vm.createContext({
   },
 });
 require("./shared_runtime").installSaveController(context.window);
-let source = require("./load_plugin_scripts").sourceFor("DirtyRank");
-source = source.replace("algorithms: {", "testing: { PerformerCard, PrecisionBadge, leaderboardRatingText, serializedSettings, LeaderboardGalleryCard, LeaderboardPodium, LeaderboardGallery, LeaderboardTable, LeaderboardPagination, DirtyRankRoute, DirtyRankLeaderboardsRoute, DirtyRankLeaderboardFilterCapture, filteredLeaderboardEntries, serializeLeaderboardPerformerFilter, queryLeaderboardPerformerIds, DirtyRankSettings, RankStatisticSelector, leaderboardStatPath, leaderboardIdFromPath, documentationCapture, loadNativePerformerCard, queryPerformers, scenePlaybackUrl, needsNativePreview, NativePreviewPlayer, LoadedNativePreview }, algorithms: {");
-source = source.replace("testing: {", "testing: { DirtyRankNavLinks, DirtyRankBattleNavLink, DirtyRankLeaderboardsNavLink, ");
-vm.runInContext(source, context);
-const plugin = context.window.__dirtyRankPlugin;
+runtime.react.useSettingsDraft = require("./shared_runtime").loadFeature(context.window, "SettingsDraft")
+  .createSettingsDraftHook(React);
+context.module = {exports: {}};
+vm.runInContext(fs.readFileSync(testModulePath("DirtyRank", "views.cjs"), "utf8"), context);
+const views = context.module.exports.createViews({React, PluginApi: context.window.PluginApi, DirtyPlugins: runtime});
+views.ratingPresets = views.RATING_PRESETS;
+const plugin = {testing: views, algorithms: views};
 const settings = plugin.algorithms.settingsFromConfiguration({});
 {
   const originalLocation = context.window.location;
@@ -835,6 +836,7 @@ async function verifyLeaderboardPresentationSettings() {
     assert.strictEqual(JSON.parse(savedPayload.genderBoxes).find(box => box.id === "FEMALE").name, "My mixed box", "renaming retains the stable box ID");
     assert.deepStrictEqual(JSON.parse(savedPayload.genderBoxes).find(box => box.id === "MALE").genders, ["MALE"], "other boxes remain unchanged");
     assert.strictEqual(option("Reset ratings").props.disabled, false, "category reset is available after autosave");
+    assert(visibleText(tree.props.footer).includes("Saved automatically."), "accepted normalized settings report Saved after the draft-hook callbacks");
     option("+ Add gender box").props.onClick();
     tree = render();
     assert(find(tree, node => node.props["data-box-id"] === "BOX-1"), "new boxes have independent stable IDs");

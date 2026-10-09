@@ -1,0 +1,40 @@
+{
+  "settings": {
+    "visualTheme": {
+      "type": "STRING",
+      "displayName": "Suite theme",
+      "description": "Choose the appearance shared by all Dirty Plugins. Native Stash cards and players keep their Stash theme.",
+      "default": "classic",
+      "options": [
+        {
+          "value": "classic",
+          "label": "Midnight (original)"
+        },
+        {
+          "value": "candy",
+          "label": "Candy Pop"
+        },
+        {
+          "value": "tropical",
+          "label": "Tropical Punch"
+        },
+        {
+          "value": "arcade",
+          "label": "Retro Arcade"
+        },
+        {
+          "value": "paper",
+          "label": "Paper Picnic"
+        },
+        {
+          "value": "destijl",
+          "label": "De Stijl"
+        },
+        {
+          "value": "destijl-dark",
+          "label": "De Stijl Dark"
+        }
+      ]
+    }
+  }
+}

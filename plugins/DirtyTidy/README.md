@@ -84,8 +84,11 @@ and F for 0–49. An unrated scene renders as `Unknown`.
 ## Installation
 
 DirtyTidy depends on the sibling **DirtyPlugins** settings hub. Install from the
-repository package source, or copy both complete directories into the Stash
-plugins directory and reload plugins.
+repository package source. For a local install, run `npm ci` and `npm run build`,
+then copy the contents of `.build/plugins/DirtyTidy/` into Stash's
+`plugins/dirtyTidy/`, with `.build/plugins/DirtyPlugins/` installed as
+`plugins/dirtyPlugins/`. Use DirtyPlugins 1.0.0 or newer. Reload plugins
+and hard-refresh the Stash browser (Ctrl+F5).
 
 It uses the shared suite toolbar, row list, overflow menus, fields, dialog,
 pagination, and status colours. Strategy changes are saved explicitly (**Save**
@@ -93,6 +96,44 @@ or the run confirmation) rather than automatically, because they move files. Wit
 appear as placeholders for safe screenshots.
 
 Planned improvements and known bugs are tracked in [TODO.md](TODO.md).
+
+## Development
+
+The strict TypeScript modules and focused TSX controls compile to the sole
+staged browser script, `dirtyTidy.js`. React comes from Stash's `PluginApi`;
+shared components, GraphQL, settings and completed-job handling use the public
+DirtyPlugins API. No React or hub implementation is bundled. Imported modules
+do not register effects; the entry owns the settings panel and App patch.
+Repeated loads retain the instance guard because Stash cannot remove patches.
+Teardown unsubscribes owned effects, clears dirty reports, ignores late results
+and makes the App patch pass through. Partial patch failure retains the guard.
+
+Tidy intentionally keeps manual Save and Preview/Confirm/Run. Preview normalizes
+the draft without saving it. Confirmation saves before queuing execution;
+edits made during that save require a new preview before execution. An older
+save cannot replace newer edits, and teardown prevents post-save queueing.
+
+```powershell
+npm run build
+npm run typecheck
+node tests/test_dirty_tidy_settings.js
+node tests/test_dirty_tidy_workflow.js
+node tests/test_dirty_tidy_automation.js
+node tests/test_dirty_tidy_ui.js
+python -B -m unittest discover -s tests -p test_dirty_tidy.py
+npm test
+```
+
+Module tests cover normalization, filtering/pagination, manual workflow and
+automation; bundle tests cover compiled controls, registration, capture masking
+and cleanup. Opt-in real-Stash acceptance uses synthetic media, a disposable
+database and a random non-9999 port:
+`python -B tests/test_dirty_tidy_stash_integration.py --binary <stash-executable>`.
+Add `--serve --stop-file <path>` for browser review and graceful fixture cleanup.
+The fixture checks confined native moves/renames, missing metadata/files,
+collisions, reviewed-plan validation, approved Scan automation/deduplication,
+preserved file bytes and IDs, and the exact served bundle. After
+`npm run build:dev`, add `--development` to decode its embedded source map.
 
 ## License
 

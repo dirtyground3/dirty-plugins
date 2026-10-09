@@ -6,19 +6,21 @@ import json
 import math
 from pathlib import Path
 
+# Quality tables are generated from schemas/dirtyCompactor.settings.json and shared with the browser.
+from dirty_compactor_metadata import CONSTANTS
+
 ENCODERS = {"h264": {"cpu": "libx264", "nvenc": "h264_nvenc", "qsv": "h264_qsv", "amf": "h264_amf"},
             "hevc": {"cpu": "libx265", "nvenc": "hevc_nvenc", "qsv": "hevc_qsv", "amf": "hevc_amf"}}
 # Typical video Mbps of each constant-quality preset for a 1080p, 30 fps
 # output. Presets encode by quality, not bitrate; these figures only estimate
 # savings and skip files that are already this small. Other outputs scale by
 # pixel count (sub-linearly) and frame rate.
-QUALITY_MBPS_1080P = {"h264": {"high": 8, "balanced": 5, "small": 3},
-                      "hevc": {"high": 5, "balanced": 3, "small": 1.8}}
+QUALITY_MBPS_1080P = CONSTANTS["qualityMbps1080p"]
 # "visual" searches a constant-quality value per file for a VMAF target.
 # "source" keeps each file's video bitrate: a codec/container conversion that
 # is not required to shrink the file.
-QUALITIES = ("high", "balanced", "small", "visual", "custom", "source")
-VMAF_TARGETS = (90, 93, 95, 97)
+QUALITIES = tuple(item["value"] for item in CONSTANTS["qualities"])
+VMAF_TARGETS = tuple(sorted(item["value"] for item in CONSTANTS["vmafTargets"]))
 
 
 def visual_preset(vmaf):

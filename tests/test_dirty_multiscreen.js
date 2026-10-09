@@ -1,199 +1,14 @@
 "use strict";
-
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
-const { sourceFor } = require("./load_plugin_scripts");
-
-const noop = () => {};
-const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
-const { element } = require("./ui_harness");
-const routes = [];
-const patches = [];
-const storedValues = new Map();
-
-const values = require("./shared_runtime").loadFeature({}, "Values");
-
-const window = {
-  PluginApi: {
-    React: { createElement: noop },
-    GQL: {},
-    libraries: {
-      Bootstrap: { Button: noop },
-      ReactRouterDOM: { NavLink: noop, useLocation: () => ({ pathname: "/scenes" }) },
-      FontAwesomeSolid: {},
-    },
-    register: { route: (...args) => routes.push(args) },
-    patch: {
-      before: (...args) => patches.push(args),
-      after: noop,
-      instead: noop,
-    },
-  },
-  DirtyPlugins: {
-    graphql: (query) => {
-      if (query.includes("MultiscreenPerformers")) {
-        return Promise.resolve({ findPerformers: { performers: [{ id: "p1" }] } });
-      }
-      if (query.includes("MultiscreenStudios")) {
-        return Promise.resolve({ findStudios: { studios: [{ id: "s1" }] } });
-      }
-      return Promise.resolve({});
-    },
-    values,
-    react: { html: htm.bind(noop), IconButton: noop, StateView: noop },
-  },
-  sessionStorage: {
-    getItem: (key) => (storedValues.has(key) ? storedValues.get(key) : null),
-    setItem: (key, value) => storedValues.set(key, String(value)),
-    removeItem: (key) => storedValues.delete(key),
-  },
-  location: { pathname: "/scenes" },
-  setTimeout: (callback) => {
-    callback();
-    return 0;
-  },
-};
-
-const observations = [];
-let observersConstructed = 0;
-
-class FakeMutationObserver {
-  constructor(callback) {
-    observersConstructed += 1;
-    this.callback = callback;
-    this.disconnected = false;
-  }
-
-  observe(target, options) {
-    observations.push({ target, options, observer: this });
-  }
-
-  disconnect() {
-    this.disconnected = true;
-  }
-}
-
-require("./shared_runtime").installMetadata(window);
-const context = vm.createContext({ window, console, MutationObserver: FakeMutationObserver });
-const source = sourceFor("DirtyMultiscreen");
-vm.runInContext(source, context);
-
-const plugin = window.__dirtyMultiscreenPlugin;
-const a = plugin.algorithms;
-const plain = (value) => JSON.parse(JSON.stringify(value));
-const inside = (expression) => vm.runInContext(expression, context);
-
-async function testOCounterDismissal() {
-  const componentSource = source.slice(source.indexOf("  function VisibleOCounterButton("), source.indexOf("  var MultiscreenRoute ="));
-  function mount() {
-    const slots = [];
-    const requests = [];
-    const cleanup = [];
-    let cursor = 0;
-    let disposed = false;
-    const sandbox = {
-      console: { error: noop },
-      Fragment: "fragment",
-      PluginIconButton: "button",
-      ICONS: { error: "error", oCounter: "O" },
-      incrementSceneOQuery: "increment",
-      html: htm.bind(element),
-      useState(value) {
-        const index = cursor++;
-        if (!(index in slots)) slots[index] = value;
-        return [slots[index], (next) => {
-          assert.equal(disposed, false, "pending saves must not update an unmounted control");
-          slots[index] = next;
-        }];
-      },
-      useRef(value) {
-        const index = cursor++;
-        if (!(index in slots)) slots[index] = { current: value };
-        return slots[index];
-      },
-      useEffect(effect) {
-        const index = cursor++;
-        if (!(index in slots)) { slots[index] = true; cleanup.push(effect()); }
-      },
-      graphqlRequest(query, variables) {
-        return new Promise((resolve, reject) => requests.push({ id: variables.id, resolve, reject }));
-      },
-    };
-    vm.runInNewContext(componentSource, sandbox);
-    return {
-      requests,
-      render(sceneIds = ["a", "b"]) { cursor = 0; return sandbox.VisibleOCounterButton({ sceneIds }); },
-      unmount() { cleanup.forEach((effect) => effect && effect()); disposed = true; },
-    };
-  }
-  const flush = () => new Promise((resolve) => setImmediate(resolve));
-  const finishAnimation = (tree) => {
-    const wrapper = tree.children[0];
-    wrapper.props.onAnimationEnd({ target: wrapper, currentTarget: wrapper });
-  };
-  const first = mount();
-  assert.equal(first.render([]).children[0], false, "no counter without visible scenes");
-  const click = first.render(["a", "a", "b"]).children[0].children[0].props.onClick;
-  click();
-  click();
-  await flush();
-  assert.deepEqual(first.requests.map((request) => request.id), ["a", "b"], "rapid clicks and repeated scenes must count only once");
-  let tree = first.render();
-  assert.match(tree.children[0].props.className, /ms-o-counter-dismissing/);
-  assert.equal(tree.children[0].children[0].props.disabled, true);
-  finishAnimation(tree);
-  assert.equal(first.render().children[0], false, "button disappears before a slow save finishes");
-  first.requests.forEach((request) => request.resolve());
-  await flush();
-  tree = first.render(["c"]);
-  assert.equal(tree.children[0], false, "the button stays dismissed when playback advances");
-  assert.equal(tree.children[1].children[0], "O counters increased.");
-  click();
-  await flush();
-  assert.equal(first.requests.length, 2, "a completed action cannot increment again");
-  first.unmount();
-  assert.ok(mount().render().children[0], "a new playback session restores the control");
-
-  const retry = mount();
-  retry.render().children[0].children[0].props.onClick();
-  await flush();
-  finishAnimation(retry.render());
-  retry.requests[0].resolve();
-  retry.requests[1].reject(new Error("offline"));
-  await flush();
-  tree = retry.render(["c"]);
-  assert.ok(tree.children[0], "failed saves restore a usable retry control");
-  assert.equal(tree.children[0].children[0].props.disabled, false);
-  tree.children[0].children[0].props.onClick();
-  await flush();
-  assert.deepEqual(retry.requests.map((request) => request.id), ["a", "b", "b"], "retry only failed original scenes, even after playback advances");
-  retry.requests[2].resolve();
-  await flush();
-  finishAnimation(retry.render());
-  assert.equal(retry.render().children[0], false, "successful retry also dismisses the control");
-  retry.unmount();
-
-  const pending = mount();
-  pending.render().children[0].children[0].props.onClick();
-  await flush();
-  pending.unmount();
-  pending.requests.forEach((request) => request.resolve());
-  await flush();
-}
-
+const assert=require("node:assert/strict"),{testModulePath}=require("./plugin_paths");
+const feature=name=>require(testModulePath("DirtyMultiscreen",name+".cjs"));
+const {createMultiscreenHarness}=require("./multiscreen_harness");
+const h=createMultiscreenHarness(),settings=feature("settings").createSettingsDomain(h.hub),queries=feature("queries").createQueries(h.hub,settings);
+const life={active:true,effects:new Set()},storedValues=h.storage;
+global.window=h.window;
+const contexts=feature("contexts").createContexts({life});
+const a={...settings,...queries,...feature("playlists"),...feature("context"),...feature("items")};
+const plain=value=>JSON.parse(JSON.stringify(value));
 async function main() {
-  await testOCounterDismissal();
-  assert.equal(plugin.route, "/plugins/multiscreen");
-  assert.equal(routes.length, 1, "the bundle must register one route");
-  assert.equal(patches.length, 7, "the bundle must register seven patches");
-
-  // Stash can reload assets without reloading the page.
-  vm.runInContext(source, context);
-  assert.equal(routes.length, 1, "reloading the bundle must not register a second route");
-  assert.equal(patches.length, 7, "reloading the bundle must not stack duplicate patches");
-
   const defaults = a.normalizeSettings({});
   assert.deepEqual(plain(defaults), {
     totalScreens: 4,
@@ -215,23 +30,6 @@ async function main() {
   assert.equal(a.normalizeSettings({ randomize: "false" }).randomize, false);
   assert.equal(a.normalizeSettings({ pauseWhenHidden: "invalid" }).pauseWhenHidden, true);
 
-  // Tile observers watch the mounted video/player subtree and must disconnect on
-  // cleanup so Stash asset reloads do not leak observers.
-  {
-    const tile = { id: "tile-1" };
-    let fired = 0;
-    const observer = a.observeSubtree(tile, () => { fired += 1; });
-
-    assert.equal(observersConstructed, 1);
-    assert.equal(observations.length, 1);
-    assert.equal(observations[0].target, tile);
-    assert.deepEqual(plain(observations[0].options), { childList: true, subtree: true });
-    observer.callback();
-    assert.equal(fired, 1);
-    observer.disconnect();
-    assert.equal(observer.disconnected, true);
-  }
-
   const items = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }, { id: "e" }];
   const reused = a.createMultiscreenPlaylists(items, 3, false, false);
   assert.equal(reused.length, 3);
@@ -247,10 +45,10 @@ async function main() {
   assert.deepEqual(plain(a.splitMultiscreenItemsByIndex([1, 2, 3, 4, 5], 3).map((group) => group.length)), [2, 2, 1]);
   assert.deepEqual(plain(a.splitMultiscreenItemsByIndex([1, 2], 0)), []);
 
-  inside("globalThis.__multiscreenOriginalRandom = Math.random; Math.random = () => 0;");
+  const random = Math.random; Math.random = () => 0;
   assert.deepEqual(plain(a.shuffleMultiscreenItems(["a", "b", "c"])), ["b", "c", "a"]);
   const shuffledSplit = a.createMultiscreenPlaylists(items, 2, true, true);
-  inside("Math.random = globalThis.__multiscreenOriginalRandom;");
+  Math.random = random;
   assert.deepEqual(
     plain(shuffledSplit.map((playlist) => playlist.map((item) => item.id))),
     [["b", "d", "a"], ["c", "e"]],
@@ -374,66 +172,38 @@ async function main() {
   assert.deepEqual(plain(performerFilterVariables.scene_filter.performers.value), ["p1"]);
 
   const launchContext = { source: "selection", selectedIds: ["1", "2"] };
-  a.storeLaunchContext(launchContext);
-  assert.deepEqual(plain(a.readLaunchContext()), launchContext);
-  a.storeLaunchContext(null);
-  assert.equal(a.readLaunchContext(), null);
+  contexts.storeLaunchContext(launchContext);
+  assert.deepEqual(plain(contexts.readLaunchContext()), launchContext);
+  contexts.storeLaunchContext(null);
+  assert.equal(contexts.readLaunchContext(), null);
   storedValues.set("multiscreen.launchContext", "{not json");
-  assert.equal(a.readLaunchContext(), null, "corrupt launch context JSON must be ignored");
+  assert.equal(contexts.readLaunchContext(), null, "corrupt launch context JSON must be ignored");
   storedValues.set("multiscreen.launchContext", JSON.stringify({ source: "selection", selectedIds: [] }));
-  assert.equal(a.readLaunchContext(), null, "invalid launch contexts must be ignored");
+  assert.equal(contexts.readLaunchContext(), null, "invalid launch contexts must be ignored");
 
-  const sceneListPatch = patches.find((patch) => patch[0] === "SceneList")[1];
-  const markerListPatch = patches.find((patch) => patch[0] === "SceneMarkerList")[1];
-  window.location.pathname = "/scenes";
-  sceneListPatch({
-    filter: {
-      makeFindFilter: () => ({ page: 2, per_page: 24, sort: "title" }),
-      makeFilter: () => ({ favorite: true }),
-    },
-    selectedIds: inside("new Set()"),
-  });
-  assert.deepEqual(plain(a.getLaunchContextForPath("/scenes")), {
-    source: "filter",
-    filter: { sort: "title" },
-    sceneFilter: { favorite: true },
-  });
 
-  sceneListPatch({
-    filter: {
-      makeFindFilter: () => ({ page: 1, per_page: 24, sort: "title" }),
-      makeFilter: () => ({}),
-    },
-    selectedIds: inside('new Set(["5"])'),
-  });
-  assert.deepEqual(plain(a.getLaunchContextForPath("/scenes")), {
-    source: "selection",
-    selectedIds: ["5"],
-  });
-
-  window.location.pathname = "/scenes/markers";
-  markerListPatch({
-    filter: {
-      makeFindFilter: () => ({ page: 1, per_page: 24, sort: "title" }),
-      makeFilter: () => ({}),
-    },
-    selectedIds: inside("new Set()"),
-  });
-  const markerLaunchContext = a.getLaunchContextForPath("/scenes/markers");
-  assert.deepEqual(plain(markerLaunchContext), {
-    source: "marker-filter",
-    filter: { sort: "title" },
-    markerFilter: {},
-  });
-  assert.equal(a.isMarkerLaunchContext(markerLaunchContext), true);
-  assert.equal(a.isMarkerLaunchContext({ source: "marker-selection", selectedIds: ["1"] }), true);
-  assert.equal(a.isMarkerLaunchContext({ source: "selection", selectedIds: ["1"] }), false);
-  assert.equal(a.getLaunchContextForPath("/performers/123"), null, "an unvisited detail page must not launch a context");
-
-  console.log("DirtyMultiscreen settings, playlist, launch-context and registration tests passed");
+  for(const [key,path,source]of [["scene-list","/scenes","selection"],["marker-list","/scenes/markers","marker-selection"],["performer-list","/performers","performer-selection"],["studio-list","/studios","studio-selection"]]) {
+    contexts.captureList(key,{filter:{makeFindFilter:()=>({page:2,per_page:24,sort:"title"}),makeFilter:()=>({favorite:true})},selectedIds:new Set(["off-page","5"])});
+    assert.deepEqual(plain(contexts.getLaunchContextForPath(path)),{source,selectedIds:["off-page","5"]});
+    contexts.captureList(key,{filter:{makeFindFilter:()=>({page:2,per_page:24,sort:"title"}),makeFilter:()=>({favorite:true})},selectedIds:new Set()});
+    assert.equal(contexts.getLaunchContextForPath(path).filter.page,undefined);
+  }
+  assert.equal(contexts.getLaunchContextForPath("/performers/123"),null);
+  contexts.captureDetail("performer-detail","123");assert.deepEqual(plain(contexts.getLaunchContextForPath("/performers/123")),{source:"performer-detail",performerId:"123"});
+  assert.equal(contexts.getLaunchContextForPath("/performers/456"),null);
+  contexts.captureDetail("studio-detail","456");assert.deepEqual(plain(contexts.getLaunchContextForPath("/studios/456")),{source:"studio-detail",studioId:"456"});
+  const ordered=a.orderSelected([{id:"b"},{id:"a"},{id:"c"}],["c","missing","a"]);assert.deepEqual(ordered.map(item=>item.id),["c","a"]);
+  const emptyQueries=feature("queries").createQueries({...h.hub,graphql:async()=>({findPerformers:{performers:[]},findStudios:{studios:[]}})},settings);
+  for(const source of ["performer-filter","studio-filter"]) {
+    const context={source,filter:{},[source==="performer-filter" ? "performerFilter" : "studioFilter"]:{}};
+    assert.equal(await emptyQueries.getSceneQueryVariables(defaults,context),null);
+    assert.equal(await emptyQueries.getLiveSceneCount(context),0);
+  }
+  assert.equal(await queries.getLiveSceneCount({source:"selection",selectedIds:["x","y"]}),2);
+  let now=0;const cache=feature("counts").createCounts(()=>now);cache.cacheSceneCount("empty",0);assert.equal(cache.getCachedSceneCount("empty"),0);now=30001;assert.equal(cache.getCachedSceneCount("empty"),null);
+  for(let i=0;i<101;i++)cache.cacheSceneCount(String(i),i);assert.equal(cache.getCachedSceneCount("0"),null);assert.equal(cache.getCachedSceneCount("100"),100);cache.clear();assert.equal(cache.getCachedSceneCount("100"),null);
+  for(const release of life.effects)release();assert.equal(h.timers.size,0);
+  delete global.window;
+  console.log("DirtyMultiscreen settings, playlists, items, queries, contexts and cache modules passed");
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main().catch(error=>{console.error(error);process.exitCode=1;});

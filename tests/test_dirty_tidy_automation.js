@@ -5,7 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { sourceFor } = require("./load_plugin_scripts");
-const source = sourceFor("DirtyTidy");
+const {testModulePath} = require("./plugin_paths");
+const {createAutomationMonitor} = require(testModulePath("DirtyTidy", "automation.cjs"));
 const noop = () => {};
 
 // Run the real monitor with a shared backend and React effect semantics.
@@ -65,10 +66,12 @@ function browser(claims = new Map()) {
     },
   };
   require("./shared_runtime").installJobHelpers(window);
-  vm.runInNewContext(source, { window, console: { error: noop } });
+  const lifetime = {active: true, effects: new Set()};
+  const monitor = createAutomationMonitor(window.PluginApi, window.DirtyPlugins, lifetime);
   return {
     calls,
     requests,
+    destroy() {lifetime.active = false; [...lifetime.effects].forEach(release => release());},
     notifications,
     setSettings: value => { settings = value; },
     setFailure: value => { failQueue = value; },
@@ -77,7 +80,7 @@ function browser(claims = new Map()) {
       event = next;
       cursor = 0;
       effects = [];
-      window.__dirtyTidyPlugin.automationMonitor();
+      monitor();
       effects.forEach(effect => effect());
       await new Promise(resolve => setImmediate(resolve));
     },
@@ -158,7 +161,9 @@ async function main() {
   const retry = browser(retryStorage);
   await retry.render(first);
   assert.equal(retry.calls.length, 1, "queue failures release persisted claims for retry");
-  console.log("DirtyTidy automation regression tests passed");
+  const stopped = browser(); stopped.destroy(); await stopped.render(first);
+  assert.equal(stopped.calls.length, 0, "destroyed monitors cannot queue new jobs");
+  console.log("DirtyTidy imported automation monitor regression tests passed");
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

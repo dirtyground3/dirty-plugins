@@ -2,17 +2,16 @@
 
 set -euo pipefail
 
+# Git Bash invoked from PowerShell may inherit Windows find.exe/sort.exe first.
+if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* ]]; then
+  export PATH="/usr/bin:$PATH"
+fi
+
 output_dir="${1:-_site}"
-
-case "$output_dir" in
-  ""|"/"|".")
-    echo "Refusing to replace unsafe output directory: '$output_dir'" >&2
-    exit 1
-    ;;
-esac
-
-rm -rf -- "$output_dir"
-mkdir -p -- "$output_dir"
+repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+cd -- "$repo_dir"
+output_dir=$(node scripts/prepare-site.mjs "$output_dir")
+node scripts/build.mjs
 
 yaml_value() {
   local value="$1"
@@ -49,29 +48,27 @@ ui_requires() {
 build_plugin() {
   local manifest="$1"
   local plugin_dir plugin_id name description manifest_version commit_version updated zip_path checksum required_plugin
-  local -a package_requires=()
+  local -a package_requires=() source_metadata=()
 
   plugin_dir=$(dirname "$manifest")
   plugin_id=$(basename "$manifest" .yml)
   name=$(sed -n 's/^name:[[:space:]]*//p' "$manifest" | head -n 1 | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
   description=$(sed -n 's/^description:[[:space:]]*//p' "$manifest" | head -n 1 | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
   manifest_version=$(sed -n 's/^version:[[:space:]]*//p' "$manifest" | head -n 1 | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
-  commit_version=$(git log -n 1 --pretty=format:%h -- "$plugin_dir")
-  updated=$(TZ=UTC0 git log -n 1 --date='format-local:%F %T' --pretty=format:%ad -- "$plugin_dir")
-  if [[ -z "$commit_version" ]]; then
-    commit_version="local"
-    updated=$(TZ=UTC0 date '+%F %T')
+  mapfile -t source_metadata < <(node scripts/package-metadata.mjs "$plugin_id")
+  if ((${#source_metadata[@]} != 2)); then
+    echo "Missing source build metadata for $plugin_id" >&2
+    exit 1
   fi
+  commit_version=${source_metadata[0]%$'\r'}
+  updated=${source_metadata[1]%$'\r'}
   zip_path="$output_dir/$plugin_id.zip"
   mapfile -t package_requires < <(ui_requires "$manifest")
 
   echo "Packaging $plugin_id"
   (
     cd "$plugin_dir"
-    zip -qr "$(realpath --relative-to=. "$OLDPWD/$zip_path")" . \
-      -x '*/__pycache__/*' '__pycache__/*' '*.pyc' \
-         '*.sqlite' '*.sqlite3' '*.sqlite-wal' '*.sqlite-shm' \
-         '*.sqlite3-wal' '*.sqlite3-shm' 'runtime/*'
+    zip -qr "$zip_path" .
   )
 
   checksum=$(sha256sum "$zip_path" | cut -d' ' -f1)
@@ -97,10 +94,10 @@ build_plugin() {
 
 while IFS= read -r -d '' manifest; do
   build_plugin "$manifest"
-done < <(find ./plugins -mindepth 2 -maxdepth 2 -type f -name '*.yml' -print0 | sort -z)
+done < <(find ./.build/plugins -mindepth 2 -maxdepth 2 -type f -name '*.yml' -print0 | sort -z)
 
 if [[ ! -s "$output_dir/index.yml" ]]; then
-  echo "No plugin manifests were found under ./plugins" >&2
+  echo "No plugin manifests were found under ./.build/plugins" >&2
   exit 1
 fi
 

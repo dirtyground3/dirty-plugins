@@ -1,7 +1,10 @@
 # DirtyStats
 
-The UI uses the shared `DirtyPlugins.react.html` tag for React templates, so
-its browser files run directly in Stash without a build step.
+The frontend uses strict TypeScript and focused TSX components with React supplied
+by Stash and the DirtyPlugins public API. Run `npm run build` from the repository
+root and install `.build/plugins/DirtyStats/`; raw source is not installable.
+The staged plugin serves only `dirtyStats.js`, including the ECharts 5.6.0
+modules it uses and its world map data. Stash users need no Node or TypeScript tooling.
 
 Explore Stash statistics from the **Prairie Grid icon** (red, blue, and yellow
 tiles) in the utility navigation.
@@ -357,9 +360,13 @@ by matching scenes.
 ## Bundled dependencies
 
 - Apache ECharts **5.6.0**, Apache-2.0: https://echarts.apache.org/
-  (`vendor/ECHARTS-LICENSE`, `vendor/ECHARTS-NOTICE`). Used for interactive maps,
-  charts, and the force-directed constellation; documentation:
+  (`vendor/ECHARTS-LICENSE`, `vendor/ECHARTS-NOTICE`; its d3-derived treemap,
+  force and number helpers are BSD-3-Clause, `vendor/ECHARTS-LICENSE-d3`). Only
+  the chart types and components Stats uses are bundled. Used for interactive
+  maps, charts, and the force-directed constellation; documentation:
   https://echarts.apache.org/en/api.html.
+- ZRender **5.6.1** (ECharts' renderer), BSD-3-Clause: `vendor/ZRENDER-LICENSE`.
+- tslib **2.3.0**, 0BSD: `vendor/TSLIB-LICENSE`.
 - Natural Earth **1:110m Admin 0 Countries**, public domain:
   https://www.naturalearthdata.com/about/terms-of-use/.
   `vendor/world.js` contains simplified properties from

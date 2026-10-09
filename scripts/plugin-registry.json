@@ -1,0 +1,369 @@
+[
+  {
+    "directory": "DirtyCaptions",
+    "id": "dirtyCaptions",
+    "entry": "dirtyCaptions.js",
+    "bundle": "src/index.tsx",
+    "testModules": [
+      {
+        "entry": "src/domain/captions.ts",
+        "output": "captions.cjs"
+      },
+      {
+        "entry": "src/tracks.ts",
+        "output": "tracks.cjs"
+      },
+      {
+        "entry": "src/domain/filter.ts",
+        "output": "filter.cjs"
+      },
+      {
+        "entry": "src/filterView.ts",
+        "output": "filterView.cjs"
+      },
+      {
+        "entry": "src/indexUi.ts",
+        "output": "indexUi.cjs"
+      }
+    ],
+    "files": [
+      "dirtyCaptions.yml",
+      "dirtyCaptions.js",
+      "dirtyCaptions.css",
+      "dirty_captions.py",
+      "dirty_captions_index.py",
+      "dirty_captions_media.py",
+      "README.md",
+      "LICENSE"
+    ]
+  },
+  {
+    "directory": "DirtyCompactor",
+    "id": "dirtyCompactor",
+    "entry": "dirtyCompactor.js",
+    "bundle": "src/index.tsx",
+    "generatedImports": [
+      "dirtyCompactor"
+    ],
+    "generatedFiles": [
+      "dirty_compactor_metadata.py"
+    ],
+    "testModules": [
+      {
+        "entry": "src/domain/rules.ts",
+        "output": "rules.cjs"
+      },
+      {
+        "entry": "src/automation.ts",
+        "output": "automation.cjs"
+      }
+    ],
+    "files": [
+      "dirtyCompactor.yml",
+      "dirtyCompactor.js",
+      "dirtyCompactor.css",
+      "dirty_compactor.py",
+      "dirty_compactor_metadata.py",
+      "dirty_compactor_quality.py",
+      "dirty_compactor_rules.py",
+      "dirty_compactor_workflow.py",
+      "README.md",
+      "LICENSE"
+    ],
+    "runtimeDirectories": [
+      "runtime/previews"
+    ]
+  },
+  {
+    "directory": "DirtyFileExtractor",
+    "id": "extractScenes",
+    "entry": "extractScenes.js",
+    "bundle": "src/index.tsx",
+    "testModules": [
+      {
+        "entry": "src/domain/selection.ts",
+        "output": "selection.cjs"
+      },
+      {
+        "entry": "src/domain/mutations.ts",
+        "output": "mutations.cjs"
+      },
+      {
+        "entry": "src/extraction.ts",
+        "output": "extraction.cjs"
+      }
+    ],
+    "files": [
+      "extractScenes.yml",
+      "extractScenes.js",
+      "extractScenes.css",
+      "extract_scenes.py",
+      "extract_scenes_destinations.py",
+      "extract_scenes_plan.py",
+      "README.md",
+      "LICENSE"
+    ]
+  },
+  {
+    "directory": "DirtyMultiscreen",
+    "id": "multiscreen",
+    "entry": "multiscreen.js",
+    "bundle": "src/index.tsx",
+    "testModules": [
+      {
+        "entry": "src/domain/playlists.ts",
+        "output": "playlists.cjs"
+      },
+      {
+        "entry": "src/domain/settings.ts",
+        "output": "settings.cjs"
+      },
+      {
+        "entry": "src/domain/context.ts",
+        "output": "context.cjs"
+      },
+      {
+        "entry": "src/domain/items.ts",
+        "output": "items.cjs"
+      },
+      {
+        "entry": "src/queries.ts",
+        "output": "queries.cjs"
+      },
+      {
+        "entry": "src/counts.ts",
+        "output": "counts.cjs"
+      },
+      {
+        "entry": "src/contexts.ts",
+        "output": "contexts.cjs"
+      }
+    ],
+    "files": [
+      "multiscreen.yml",
+      "multiscreen.js",
+      "multiscreen.css",
+      "README.md",
+      "LICENSE"
+    ]
+  },
+  {
+    "directory": "DirtyPlugins",
+    "id": "dirtyPlugins",
+    "entry": "dirtyPlugins.js",
+    "bundle": "src/index.tsx",
+    "generatedImports": [
+      "dirtyPlugins",
+      "dirtyCaptions",
+      "extractScenes",
+      "multiscreen"
+    ],
+    "testModules": [
+      {
+        "entry": "src/values.ts",
+        "output": "values.cjs"
+      },
+      {
+        "entry": "src/save.ts",
+        "output": "save.cjs"
+      },
+      {
+        "entry": "src/jobs.ts",
+        "output": "jobs.cjs"
+      },
+      {
+        "entry": "src/metadata.ts",
+        "output": "metadata.cjs"
+      },
+      {
+        "entry": "src/transport.ts",
+        "output": "transport.cjs"
+      },
+      {
+        "entry": "src/settings.ts",
+        "output": "settings.cjs"
+      },
+      {
+        "entry": "src/settingsDraft.ts",
+        "output": "settingsdraft.cjs"
+      },
+      {
+        "entry": "src/theme.ts",
+        "output": "theme.cjs"
+      }
+    ],
+    "files": [
+      "dirtyPlugins.yml",
+      "dirtyPlugins.js",
+      "dirtyPlugins.css",
+      "dirty_plugins.py",
+      "dirty_plugins_client.py",
+      "dirty_plugins_protocol.py",
+      "dirty_plugins_storage.py",
+      "vendor/htm.umd.js",
+      "vendor/HTM-LICENSE",
+      "vendor/HTM-NOTICE",
+      "README.md",
+      "LICENSE"
+    ]
+  },
+  {
+    "directory": "DirtyRank",
+    "id": "dirtyRank",
+    "entry": "dirtyRank.js",
+    "bundle": "src/index.tsx",
+    "generatedImports": [
+      "dirtyRank"
+    ],
+    "generatedFiles": [
+      "dirty_rank_metadata.py"
+    ],
+    "testModules": [
+      {
+        "entry": "src/domain/settings.ts",
+        "output": "settings.cjs"
+      },
+      {
+        "entry": "src/domain/rating.ts",
+        "output": "rating.cjs"
+      },
+      {
+        "entry": "src/domain/matchmaking.ts",
+        "output": "matchmaking.cjs"
+      },
+      {
+        "entry": "src/domain/navigation.ts",
+        "output": "navigation.cjs"
+      },
+      {
+        "entry": "src/domain/rank.ts",
+        "output": "rank.cjs"
+      },
+      {
+        "entry": "src/views.ts",
+        "output": "views.cjs"
+      },
+      {
+        "entry": "src/battleSession.ts",
+        "output": "session.cjs"
+      }
+    ],
+    "files": [
+      "dirtyRank.yml",
+      "dirtyRank.js",
+      "dirtyRank.css",
+      "dirty_rank.py",
+      "dirty_rank_metadata.py",
+      "dirty_rank_rating.py",
+      "README.md",
+      "LICENSE"
+    ]
+  },
+  {
+    "directory": "DirtyStats",
+    "id": "dirtyStats",
+    "entry": "dirtyStats.js",
+    "bundle": "src/index.tsx",
+    "bundledPackages": [
+      "echarts",
+      "zrender",
+      "tslib"
+    ],
+    "testModules": [
+      {
+        "entry": "src/domain/registry.ts",
+        "output": "registry.cjs"
+      },
+      {
+        "entry": "src/domain/growth.ts",
+        "output": "growth.cjs"
+      },
+      {
+        "entry": "src/domain/ages.ts",
+        "output": "ages.cjs"
+      },
+      {
+        "entry": "src/domain/data.ts",
+        "output": "data.cjs"
+      },
+      {
+        "entry": "src/domain/charts.ts",
+        "output": "charts.cjs"
+      },
+      {
+        "entry": "src/domain/chartOptions.ts",
+        "output": "chartOptions.cjs"
+      },
+      {
+        "entry": "src/settings.ts",
+        "output": "settings.cjs"
+      },
+      {
+        "entry": "src/domain/analytics.ts",
+        "output": "analytics.cjs"
+      },
+      {
+        "entry": "src/domain/filters.ts",
+        "output": "filters.cjs"
+      },
+      {
+        "entry": "src/domain/dashboard.ts",
+        "output": "dashboard.cjs"
+      },
+      {
+        "entry": "src/views.ts",
+        "output": "views.cjs"
+      },
+      {
+        "entry": "src/domain/world.ts",
+        "output": "world.cjs"
+      }
+    ],
+    "files": [
+      "dirtyStats.yml",
+      "dirtyStats.js",
+      "dirtyStats.css",
+      "dirty_stats.py",
+      "vendor/ECHARTS-LICENSE",
+      "vendor/ECHARTS-LICENSE-d3",
+      "vendor/ECHARTS-NOTICE",
+      "vendor/ZRENDER-LICENSE",
+      "vendor/TSLIB-LICENSE",
+      "README.md",
+      "LICENSE"
+    ]
+  },
+  {
+    "directory": "DirtyTidy",
+    "id": "dirtyTidy",
+    "entry": "dirtyTidy.js",
+    "bundle": "src/index.tsx",
+    "testModules": [
+      {
+        "entry": "src/domain/settings.ts",
+        "output": "settings.cjs"
+      },
+      {
+        "entry": "src/domain/preview.ts",
+        "output": "preview.cjs"
+      },
+      {
+        "entry": "src/workflow.ts",
+        "output": "workflow.cjs"
+      },
+      {
+        "entry": "src/automation.tsx",
+        "output": "automation.cjs"
+      }
+    ],
+    "files": [
+      "dirtyTidy.yml",
+      "dirtyTidy.js",
+      "dirtyTidy.css",
+      "dirty_tidy.py",
+      "dirty_tidy_templates.py",
+      "README.md",
+      "LICENSE"
+    ]
+  }
+]

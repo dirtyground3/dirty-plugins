@@ -2,12 +2,14 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { testModulePath } = require("./plugin_paths");
 
 /** Supply actual pure hub features to tests that stub the surrounding runtime. */
-function loadFeature(window, feature) {
-  const filename = path.join(__dirname, "../plugins/DirtyPlugins/dirtyPlugins" + feature + ".js");
-  vm.runInNewContext(fs.readFileSync(filename, "utf8"), { window }, { filename });
-  return window["__dirtyPlugins" + feature];
+function loadFeature(window, feature, globals = {}) {
+  const filename = testModulePath("DirtyPlugins", feature.toLowerCase() + ".cjs");
+  const module = { exports: {} };
+  vm.runInNewContext(fs.readFileSync(filename, "utf8"), { ...globals, window, module, exports: module.exports }, { filename });
+  return feature === "Metadata" ? module.exports.metadata : module.exports;
 }
 
 function installJobHelpers(window) {

@@ -1,3 +1,4 @@
+from plugin_paths import runtime_path
 import importlib.util
 import shutil
 import subprocess
@@ -7,12 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 
-MODULE_PATH = (
-    Path(__file__).parents[1]
-    / "plugins"
-    / "DirtyFileExtractor"
-    / "extract_scenes.py"
-)
+MODULE_PATH = runtime_path("DirtyFileExtractor", "extract_scenes.py")
 SPEC = importlib.util.spec_from_file_location("dirty_file_extractor", MODULE_PATH)
 extractor = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

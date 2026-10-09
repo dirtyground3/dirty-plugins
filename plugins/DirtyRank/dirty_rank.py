@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Defaults, bounds and default categories are generated from schemas/dirtyRank.settings.json.
+from dirty_rank_metadata import CONSTANTS, DEFAULTS, LIMITS  # noqa: E402
 
 
 PLUGIN_ID = "dirtyRank"
@@ -40,52 +42,7 @@ COHORT_ORDER = [
     "INTERSEX",
     "NON_BINARY",
 ]
-DEFAULT_CATEGORY_DEFINITIONS = [
-    {
-        "id": "appearance",
-        "name": "Appearance",
-        "description": "Visual appeal and on-camera presence.",
-        "enabled": True,
-        "weight": 1.0,
-    },
-    {
-        "id": "performance",
-        "name": "Performance",
-        "description": "Technique, energy, chemistry, and engagement.",
-        "enabled": True,
-        "weight": 1.0,
-    },
-]
-DEFAULT_CATEGORIES_BY_COHORT = {
-    cohort: copy.deepcopy(DEFAULT_CATEGORY_DEFINITIONS) for cohort in VALID_COHORTS
-}
-DEFAULT_SETTINGS = {
-    "categoriesByCohort": DEFAULT_CATEGORIES_BY_COHORT,
-    "defaultCohort": "FEMALE",
-    "enabledCohorts": ["FEMALE"],
-    "showBattlesInMenu": True,
-    "showLeaderboardsInMenu": True,
-    "leaderboardTopCount": 3,
-    "leaderboardPerformerCount": 18,
-    "leaderboardView": "gallery",
-    "overallScoreStrategy": "weighted",
-    "overallPower": 3.0,
-    "showRatingsBeforeVote": False,
-    "hidePerformerImages": False,
-    "hideBattleStandings": False,
-    "includePerformersWithoutImages": False,
-    "confidenceGoal": "ranking",
-    "confidenceTopN": 20,
-    "avoidRepeatWindow": 12,
-    "calibrationPercent": 10,
-    "initialRating": 1000.0,
-    "initialDeviation": 350.0,
-    "initialVolatility": 0.06,
-    "evidenceWeight": 2.0,
-    "tau": 0.5,
-    "deviationFloor": 30.0,
-    "provisionalDeviation": 100.0,
-}
+DEFAULT_CATEGORY_DEFINITIONS = CONSTANTS["defaultCategories"]
 
 
 def _load_shared_storage():
@@ -129,6 +86,17 @@ def _integer(value: Any, fallback: int, minimum: int, maximum: int) -> int:
     except (TypeError, ValueError):
         return fallback
     return min(max(number, minimum), maximum)
+
+
+def _bounded(source: dict[str, Any], key: str, minimum: float | None = None, maximum: float | None = None) -> float:
+    """A real-valued setting clamped to its schema limits, unless another setting bounds it."""
+    limits = LIMITS[key]
+    return _finite_number(source.get(key), DEFAULTS[key], limits["min"] if minimum is None else minimum,
+                          limits["max"] if maximum is None else maximum)
+
+
+def _bounded_integer(source: dict[str, Any], key: str) -> int:
+    return _integer(source.get(key), DEFAULTS[key], LIMITS[key]["min"], LIMITS[key]["max"])
 
 
 def _boolean(value: Any, fallback: bool) -> bool:
@@ -198,7 +166,8 @@ def _parse_categories_by_cohort(value: Any, boxes: list[dict[str, Any]] | None =
     source = value if isinstance(value, dict) else {}
     result = {
         cohort: _parse_category_list(source.get(cohort), cohort)
-        for cohort in VALID_COHORTS
+        # A list, not the set: the order must not depend on the process hash seed.
+        for cohort in COHORT_ORDER
     }
     for cohort in list(source) + [box["id"] for box in (boxes or [])]:
         if cohort not in result and _valid_box_id(cohort):
@@ -256,69 +225,60 @@ def _parse_enabled_cohorts(value: Any, fallback: list[str]) -> list[str]:
 
 def normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
     source = raw if isinstance(raw, dict) else {}
-    cohort = str(source.get("defaultCohort") or DEFAULT_SETTINGS["defaultCohort"]).upper()
+    cohort = str(source.get("defaultCohort") or DEFAULTS["defaultCohort"]).upper()
     boxes = _parse_gender_boxes(source.get("genderBoxes"), _parse_enabled_cohorts(source.get("enabledCohorts"), [cohort]))
     enabled_cohorts = [box["id"] for box in boxes if box["enabled"]]
     if cohort not in enabled_cohorts:
         cohort = enabled_cohorts[0]
-    confidence_goal = str(source.get("confidenceGoal") or "ranking").lower()
+    confidence_goal = str(source.get("confidenceGoal") or DEFAULTS["confidenceGoal"]).lower()
     if confidence_goal not in {"all", "ranking", "top"}:
-        confidence_goal = "ranking"
+        confidence_goal = DEFAULTS["confidenceGoal"]
     overall_strategy = source.get("overallScoreStrategy")
     if overall_strategy not in ("weighted", "power"):
-        overall_strategy = "weighted"
-    initial_deviation = _finite_number(
-        source.get("initialDeviation"), 350.0, 30.0, 1000.0
-    )
-    deviation_floor = _finite_number(
-        source.get("deviationFloor"), 30.0, 1.0, initial_deviation
-    )
-    raw_top_count = _finite_number(source.get("leaderboardTopCount"), 3.0, -1000000.0, 1000000.0)
-    top_count = int(raw_top_count) if raw_top_count in (3, 4, 5) else 3
+        overall_strategy = DEFAULTS["overallScoreStrategy"]
+    initial_deviation = _bounded(source, "initialDeviation")
+    # Floor and provisional threshold are bounded by the other deviations, not only their static limits.
+    deviation_floor = _bounded(source, "deviationFloor", maximum=initial_deviation)
+    raw_top_count = _finite_number(source.get("leaderboardTopCount"), float(DEFAULTS["leaderboardTopCount"]), -1000000.0, 1000000.0)
+    top_count = int(raw_top_count) if raw_top_count in (3, 4, 5) else DEFAULTS["leaderboardTopCount"]
     raw_performer_count = source.get("leaderboardPerformerCount")
     if raw_performer_count is None or not str(raw_performer_count).strip():
-        raw_performer_count = 18
-    performer_count = math.floor(_finite_number(raw_performer_count, 18.0, top_count * 2, 1000.0))
-    performer_count = min(1000 // top_count * top_count, (performer_count + top_count - 1) // top_count * top_count)
+        raw_performer_count = DEFAULTS["leaderboardPerformerCount"]
+    performer_limit = LIMITS["leaderboardPerformerCount"]["max"]
+    performer_count = math.floor(_finite_number(raw_performer_count, float(DEFAULTS["leaderboardPerformerCount"]),
+                                                top_count * 2, float(performer_limit)))
+    performer_count = min(performer_limit // top_count * top_count, (performer_count + top_count - 1) // top_count * top_count)
     return {
         "categoriesByCohort": _parse_categories_by_cohort(source.get("categories"), boxes),
         "genderBoxes": boxes,
         "defaultCohort": cohort,
         "enabledCohorts": enabled_cohorts,
-        "showBattlesInMenu": _boolean(source.get("showBattlesInMenu"), True),
+        "showBattlesInMenu": _boolean(source.get("showBattlesInMenu"), DEFAULTS["showBattlesInMenu"]),
         "leaderboardTopCount": top_count,
         "leaderboardPerformerCount": performer_count,
-        "leaderboardView": "table" if source.get("leaderboardView") == "table" else "gallery",
+        "leaderboardView": "table" if source.get("leaderboardView") == "table" else DEFAULTS["leaderboardView"],
         "overallScoreStrategy": overall_strategy,
-        "overallPower": _finite_number(source.get("overallPower"), 3.0, 1.0, 4.0),
+        "overallPower": _bounded(source, "overallPower"),
         "showLeaderboardsInMenu": _boolean(
-            source.get("showLeaderboardsInMenu"), True
+            source.get("showLeaderboardsInMenu"), DEFAULTS["showLeaderboardsInMenu"]
         ),
-        "showRatingsBeforeVote": _boolean(source.get("showRatingsBeforeVote"), False),
-        "hidePerformerImages": _boolean(source.get("hidePerformerImages"), False),
-        "hideBattleStandings": _boolean(source.get("hideBattleStandings"), False),
+        "showRatingsBeforeVote": _boolean(source.get("showRatingsBeforeVote"), DEFAULTS["showRatingsBeforeVote"]),
+        "hidePerformerImages": _boolean(source.get("hidePerformerImages"), DEFAULTS["hidePerformerImages"]),
+        "hideBattleStandings": _boolean(source.get("hideBattleStandings"), DEFAULTS["hideBattleStandings"]),
         "includePerformersWithoutImages": _boolean(
-            source.get("includePerformersWithoutImages"), False
+            source.get("includePerformersWithoutImages"), DEFAULTS["includePerformersWithoutImages"]
         ),
         "confidenceGoal": confidence_goal,
-        "confidenceTopN": _integer(source.get("confidenceTopN"), 20, 1, 1000),
-        "avoidRepeatWindow": _integer(source.get("avoidRepeatWindow"), 12, 0, 100),
-        "calibrationPercent": _integer(source.get("calibrationPercent"), 10, 0, 100),
-        "initialRating": _finite_number(
-            source.get("initialRating"), 1000.0, -100000.0, 100000.0
-        ),
+        "confidenceTopN": _bounded_integer(source, "confidenceTopN"),
+        "avoidRepeatWindow": _bounded_integer(source, "avoidRepeatWindow"),
+        "calibrationPercent": _bounded_integer(source, "calibrationPercent"),
+        "initialRating": _bounded(source, "initialRating"),
         "initialDeviation": initial_deviation,
-        "initialVolatility": _finite_number(
-            source.get("initialVolatility"), 0.06, 0.0001, 1.0
-        ),
-        "evidenceWeight": _finite_number(
-            source.get("evidenceWeight"), 2.0, 1.0, 3.0
-        ),
-        "tau": _finite_number(source.get("tau"), 0.5, 0.01, 2.0),
+        "initialVolatility": _bounded(source, "initialVolatility"),
+        "evidenceWeight": _bounded(source, "evidenceWeight"),
+        "tau": _bounded(source, "tau"),
         "deviationFloor": deviation_floor,
-        "provisionalDeviation": _finite_number(
-            source.get("provisionalDeviation"), 100.0, deviation_floor, initial_deviation
-        ),
+        "provisionalDeviation": _bounded(source, "provisionalDeviation", deviation_floor, initial_deviation),
     }
 
 

@@ -1,9 +1,7 @@
 "use strict";
+const { testModulePath } = require("./plugin_paths");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const vm = require("node:vm");
-const path = require("node:path");
-const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
+const htm = { bind: () => undefined };
 const element = (type, props, ...children) => ({ type, props: { ...props, children } });
 const effects = [], timers = new Map(), listeners = new Map(), calls = [];
 let id = 0;
@@ -13,75 +11,15 @@ const React = { createElement: element, cloneElement: (node, props, ...children)
 const window = { setInterval: fn => { timers.set(++id, fn); return id; }, clearInterval: key => timers.delete(key),
   addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
 require("./shared_runtime").installJobHelpers(window);
-const context = vm.createContext({ window, console });
-const source = fs.readFileSync(path.join(__dirname, "../plugins/DirtyCaptions/dirtyCaptionsIndex.js"), "utf8");
-vm.runInContext(source, context);
-const api = window.__dirtyCaptionsIndex;
-vm.runInContext(source, context);
-assert.equal(window.__dirtyCaptionsIndex, api);
+global.window = window;
+const filters = require(testModulePath("DirtyCaptions", "filter.cjs"));
+const {createIndexUi} = require(testModulePath("DirtyCaptions", "indexUi.cjs"));
+const api = {...filters, createIndexUi: deps => createIndexUi({...deps, lifetime: {active:true, effects:new Set()}})};
 // Minimal native-model contracts from Stash v0.31.1: the filter editor uses
 // native enum controls, and the factory shares criterionOptions per mode.
 // Native CustomFieldsCriterion overwrites the input array, so combining it
 // with separate caption criteria must be independent of criterion order.
-class NativeCriterion {
-  constructor(option, value) { this.criterionOption = option; this.value = value; }
-  clone() { return Object.assign(Object.create(Object.getPrototypeOf(this)), this, { value: structuredClone(this.value) }); }
-  getId() { return this.criterionOption.type; }
-  toQueryParams() { return { type: this.criterionOption.type, value: this.value }; }
-  setFromSavedCriterion(value) { this.value = structuredClone(value); }
-  fromDecodedParams(value) { this.value = structuredClone(value.value); }
-  applyToCriterionInput(input) { input[this.criterionOption.type] = this.value; }
-  applyToSavedCriterion(input) { this.applyToCriterionInput(input); }
-}
-class NativeBooleanCriterion extends NativeCriterion {
-  isValid() { return this.value === "true" || this.value === "false"; }
-  getLabel(intl) { return intl.messages[this.criterionOption.messageID] + " is " + this.value; }
-}
-class NativeResolutionCriterion extends NativeCriterion {
-  constructor(option) { super(option, ""); this.modifier = "EQUALS"; }
-  isValid() { return this.value.length > 0; }
-  getLabel(intl) { return intl.messages[this.criterionOption.messageID] + " is " + this.value; }
-}
-class NativeCustomFieldsCriterion extends NativeCriterion {
-  isValid() { return this.value.length > 0; }
-}
-class NativeOption {
-  constructor(type, makeCriterion) { this.type = type; this.messageID = type; this.makeCriterionFn = makeCriterion; }
-  makeCriterion() { return this.makeCriterionFn(this); }
-}
-const options = { criterionOptions: [
-  new NativeOption("organized", option => new NativeBooleanCriterion(option, "")),
-  new NativeOption("resolution", option => new NativeResolutionCriterion(option)),
-  new NativeOption("custom_fields", option => new NativeCustomFieldsCriterion(option, [])),
-  new NativeOption("performers", option => new NativeCriterion(option, []))
-] };
-for (const type of ["dirty_captions_any", "dirty_captions_text", "dirty_captions_verified"]) {
-  options.criterionOptions.push(new NativeOption(type, option => new NativeBooleanCriterion(option, "")));
-}
-class NativeFilter {
-  constructor(mode = "SCENES") {
-    Object.assign(this, { mode, options, criteria: [], currentPage: 5, sortBy: "rating", searchTerm: "test", randomSeed: -1 });
-  }
-  clone() { return Object.assign(Object.create(Object.getPrototypeOf(this)), this, { criteria: this.criteria.map(c => c.clone()) }); }
-  makeCriterion(type) { return this.options.criterionOptions.find(option => option.type === type).makeCriterion(); }
-  makeFilter() { const input = {}; this.criteria.forEach(c => c.applyToCriterionInput(input)); return input; }
-  makeSavedFilter() { const input = {}; this.criteria.forEach(c => c.applyToSavedCriterion(input)); return input; }
-  getSortBy() {
-    if (this.sortBy !== "random") return this.sortBy;
-    if (this.randomSeed === -1) this.randomSeed = 123;
-    return "random_" + this.randomSeed;
-  }
-  getEncodedParams() { return { sortby: this.getSortBy(), c: this.criteria.map(c => c.toQueryParams()) }; }
-  configureFromSavedFilter(saved) { this.criteria = Object.entries(saved).map(([type, value]) => {
-    const c = this.makeCriterion(type); c.setFromSavedCriterion(value); return c;
-  }); }
-  configureFromDecodedParams(params) { this.criteria = params.c.map(value => {
-    const c = this.makeCriterion(value.type); c.fromDecodedParams(value); return c;
-  }); }
-}
-function criterion(type, value, filter = new NativeFilter()) {
-  const c = filter.makeCriterion(type); c.value = value; return c;
-}
+const {NativeFilter, NativeResolutionCriterion, options, criterion}=require("./captions_native_filter").createNativeModels();
 const personal = { field: "personal", modifier: "EQUALS", value: ["keep"] };
 const oldCaption = { field: "Contains embedded captions", modifier: "EQUALS", value: ["No"] };
 const original = new NativeFilter();
@@ -192,7 +130,7 @@ assert.equal(api.installNativeFilters(performerFilter, intl), false);
 performerFilter.criteria = [criterion("custom_fields", [personal])];
 assert.equal(performerFilter.makeFilter().custom_fields[0], personal);
 const ui = api.createIndexUi({ api: { React, libraries: { Intl: { useIntl: () => intl } } },
-  hub: { ...window.__dirtyPluginsJobs, react: { html: htm.bind(element), SettingsSection: "section", Button: "button" },
+  hub: { ...window.DirtyPlugins, react: { html: htm.bind(element), SettingsSection: "section", Button: "button" },
     runPluginOperation: (_pluginId, args) => { calls.push(args); return Promise.resolve({ status: "Finished" }); } } });
 const nativeOps = element("native-operations", {});
 const nativeToolbar = element("native-toolbar", { filter: original, setFilter() { throw new Error("Equivalent URLs do not update native filter state"); },
@@ -234,7 +172,7 @@ function browser() {
   };
   const monitor = api.createIndexUi({
     api: { React: hooks, GQL: { useJobsSubscribeSubscription: () => ({ data: { jobsSubscribe: event } }) } },
-    hub: { ...window.__dirtyPluginsJobs, react: {}, runPluginOperation: async (_plugin, args) => {
+    hub: { ...window.DirtyPlugins, react: {}, runPluginOperation: async (_plugin, args) => {
       calls.push(args);
       if (fail && args.mode === "indexAfterScan") throw new Error("queue unavailable");
       return {};
@@ -293,6 +231,6 @@ async function main() {
   tab.cleanup();
   assert.equal(listeners.size, 0);
   assert.equal(timers.size, 0);
-  console.log("DirtyCaptions native filter and Scan completion regression tests passed");
+  console.log("DirtyCaptions imported native filter and Scan completion regression tests passed");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

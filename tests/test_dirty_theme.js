@@ -25,7 +25,8 @@ const fetch = (_url, options) => {
   }
   return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { runPluginOperation: JSON.stringify(output) } }) });
 };
-const React = { createElement: noop, useRef: noop };
+const React = { createElement: noop, useRef: noop, useEffect: noop,
+  useState: noop, useMemo: noop, useCallback: noop };
 const window = {
   PluginApi: {
     React,

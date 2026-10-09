@@ -1,0 +1,45 @@
+{
+  "note": "Minified release bundle sizes in bytes (measured 2026-10-05; DirtyCompactor, DirtyPlugins and DirtyRank remeasured 2026-10-08 after settings generation). Budgets allow up to 5% growth, never above the pre-migration legacy JavaScript total; raise one only with a reason recorded in docs/build-migration-status.md.",
+  "plugins": {
+    "DirtyCaptions": {
+      "measured": 16813,
+      "budget": 18432,
+      "legacy": 29442
+    },
+    "DirtyCompactor": {
+      "measured": 36095,
+      "budget": 37888,
+      "legacy": 58156
+    },
+    "DirtyFileExtractor": {
+      "measured": 13272,
+      "budget": 14336,
+      "legacy": 24613
+    },
+    "DirtyMultiscreen": {
+      "measured": 28815,
+      "budget": 30720,
+      "legacy": 55369
+    },
+    "DirtyPlugins": {
+      "measured": 50249,
+      "budget": 52224,
+      "legacy": 95942
+    },
+    "DirtyRank": {
+      "measured": 133981,
+      "budget": 139264,
+      "legacy": 248889
+    },
+    "DirtyStats": {
+      "measured": 1178323,
+      "budget": 1238016,
+      "legacy": 1554684
+    },
+    "DirtyTidy": {
+      "measured": 22636,
+      "budget": 24576,
+      "legacy": 37846
+    }
+  }
+}

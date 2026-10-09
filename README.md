@@ -15,14 +15,14 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 0.6.41 |
-| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 0.7.68 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 0.4.9 |
-| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 0.4.6 |
-| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 0.4.0 |
-| [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 0.3.2 |
-| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 0.2.3 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 0.5.6 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.2 |
+| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.2 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.1 |
+| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.1 |
+| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 1.0.1 |
+| [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 1.0.2 |
+| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.1 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.2 |
 
 ## Shared look and settings
 
@@ -288,15 +288,19 @@ own tab there.
 
 ## Manual installation
 
-1. Download the complete directory for the desired plugin and the sibling
-   [`plugins/DirtyPlugins`](plugins/DirtyPlugins/) directory.
-2. Copy both directories into the Stash plugin directory:
+1. Download the desired plugin ZIP and `dirtyPlugins.zip` from the package
+   source. Contributors can instead run `npm ci` and `npm run build`, then use
+   the complete staged directories from `.build/plugins/`.
+2. Extract each ZIP into its plugin ID directory (`dirtyPlugins`, `dirtyRank`,
+   `dirtyCompactor`, etc.) under the Stash plugin directory:
 
    - Windows: `%USERPROFILE%\.stash\plugins`
    - Linux/macOS: `~/.stash/plugins`
    - Docker: the plugins directory mounted inside the Stash container
 
-3. Keep the directory names and their contents unchanged.
+3. Keep every package file, including Python helpers and vendor licenses.
+   For staged local installs, copy the complete directory's contents into the
+   corresponding plugin ID directory. Raw repository source requires a build.
 4. In Stash, open **Settings → Plugins** and select **Reload Plugins**.
 5. Refresh the Stash browser page.
 
@@ -424,7 +428,10 @@ plugins/
 ├── DirtyStats/          # dashboard, statistics and visualizations
 └── DirtyTidy/           # preview UI and file-organization backend
 tests/                   # Python, JavaScript, and shared UI contracts
-build_site.sh            # builds the GitHub Pages package source
+scripts/                 # staged build, settings generator and install-file registry
+schemas/                 # authored settings metadata shared by manifests, TS and Python
+.build/plugins/          # generated installable output (ignored)
+build_site.sh            # packages staged plugins for GitHub Pages
 docs/images/             # censored screenshots used by the documentation
 ```
 
@@ -433,43 +440,75 @@ docs/images/             # censored screenshots used by the documentation
 Run the test suite from the repository root:
 
 ```powershell
-python -B -m unittest discover -s tests -v
 npm ci
-npm run typecheck
-node tests/test_plugin_assets.js
-node tests/test_dirty_captions.js
-node tests/test_dirty_captions_index.js
-node --check plugins/DirtyRank/dirtyRank.js
-node --check plugins/DirtyPlugins/dirtyPlugins.js
-node --check plugins/DirtyMultiscreen/multiscreen.js
-node tests/test_dirty_ui_pilot.js
-node tests/test_dirty_compactor.js
-node tests/test_dirty_file_extractor_ui.js
-node tests/test_dirty_theme.js
-node tests/test_dirty_rank_algorithms.js
-node tests/test_dirty_rank_media.js
-node tests/test_dirty_rank_registration.js
-node tests/test_dirty_tidy_automation.js
-node tests/test_dirty_tidy_settings.js
-node tests/test_dirty_stats.js
-node tests/test_dirty_stats_dashboard.js
-node tests/test_dirty_stats_contrast.js
-node tests/test_dirty_multiscreen.js
+npm test
 ```
 
-TypeScript checks annotated JavaScript and emits no files. Plugin assets remain
-plain JavaScript loaded directly in the order listed by each manifest, and
-React templates use the shared `DirtyPlugins.react.html` tag instead of a build
-step. Python backends keep one Stash entry script and import local helper
-modules.
+`npm test` builds once, checks types, and runs the JavaScript and Python suites.
+Use `npm run test:js` or `npm run test:python` for focused runs. Direct Node or
+Python test-file invocations need `npm run build` first; helpers reject missing
+or stale staging. See [tests/README.md](tests/README.md) for test paths and fixtures.
 
-Build the package source locally on a system with Bash and `zip`:
+Plugin frontends are TypeScript/TSX under each plugin's `src/`, compiled by
+esbuild into one browser bundle per plugin with the existing entry filename.
+React comes from Stash and is never bundled. The DirtyPlugins hub keeps its
+public API, including the deprecated `react.html` HTM tag for feature plugins
+that predate the TSX versions. Stats bundles only the ECharts 5.6.0 modules it
+uses (pinned npm packages) and its world map data; no other plugin or the hub
+loads a chart library. `npm run typecheck` runs the strict TypeScript check.
+Python backends retain their standard-library and same-directory import contract.
+Settings shown in Stash (labels, descriptions, defaults, bounds and options) and
+constants shared by browser and backend are authored once in `schemas/`; the build
+generates the manifest `settings:` section, TypeScript tables and, where a
+backend needs them, Python constants such as `dirty_rank_metadata.py`.
+
+Always use `.build/plugins/<Directory>/` for local installs and packages. Raw
+source directories are not installable: they contain no compiled bundle.
+Node and development dependencies are needed by contributors only; Stash users
+install the same ZIP packages without build tooling. The registry allowlists
+runtime assets and licenses, excluding source, tests, databases, and runtime data.
+
+For development:
+
+```powershell
+npm run build
+npm run build:dev
+npm run build:watch
+```
+
+`npm run build` stages release bundles without source maps; tests, packages and
+local installs use it. `npm run build:dev` and watch stage development bundles
+with inline maps, which travel with Stash's aggregated asset because Stash does
+not serve individual files. Tests and packaging refuse staging built in the
+other mode. The development cycle is: run `npm run build:dev` (or keep
+`npm run build:watch` running, which rebuilds staging after any source, schema
+or build-input change), copy the changed staged files into the installed plugin
+ID directory, reload Stash plugins, then hard-refresh the tab (Ctrl+F5). Watch
+mode never touches the installed plugins or refreshes Stash. Stop watch before
+running tests or packaging; these commands share staging, and finish with
+`npm run build` so release staging is back in place. The opt-in Stash fixtures
+check the exact served release bundle; after `npm run build:dev`, their
+`--development` option also decodes served map positions back to TSX. Manual
+DevTools stepping and other browsers are not covered by automated checks.
+Bundles target ES2020; release bundles are minified (no property mangling,
+component names and legal comments kept), development bundles stay readable.
+
+The completed TypeScript migration's [plan](docs/build-migration-plan.md),
+[baseline](docs/build-migration-baseline.md), and
+[handoff record](docs/build-migration-status.md) document each checkpoint.
+
+Build the package source locally after `npm ci`, on a system with Bash and `zip`:
 
 ```bash
 ./build_site.sh _site/main
 ```
 
-Pushes to `main` that affect plugins or packaging publish the following GitHub
+Packaging rebuilds `.build/plugins/` and writes ZIPs with the manifest at the
+archive root. Output cleanup is confined to the repository's `_site/` directory.
+Package update identities include both plugin source and shared build inputs.
+Generated `.build/` and `_site/` files are ignored and must remain uncommitted.
+
+Pushes to `main` that affect plugins, build configuration, or checks publish the following GitHub
 Pages layout through GitHub Actions:
 
 ```text
@@ -484,6 +523,20 @@ main/
 ├── dirtyStats.zip
 └── dirtyTidy.zip
 ```
+
+## Release notes
+
+- **DirtyPlugins 1.0.2, DirtyRank 1.0.2, DirtyCompactor 1.0.2:** settings
+  labels, defaults, bounds and options, and the constants shared by browser and
+  backend, now come from one schema per plugin, so Stash's settings, the browser
+  code and the Python backends cannot drift apart. DirtyRank's backend lists
+  gender-box categories in a stable order. No visible behavior changes.
+- **1.0.1 for all plugins, DirtyStats 1.0.2:** minified release bundles without
+  inline source maps, and DirtyStats loads only the ECharts modules it uses.
+  Served plugin JavaScript fell from about 8.8 MB to 1.5 MB.
+- **1.0.0 for all plugins:** frontends rewritten in TypeScript/TSX, each
+  compiled to one bundle that uses Stash's React. Settings, stored data and
+  behavior are unchanged.
 
 ## License
 

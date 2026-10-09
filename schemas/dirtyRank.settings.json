@@ -1,0 +1,287 @@
+{
+  "settings": {
+    "categories": {
+      "type": "STRING",
+      "displayName": "Rating categories",
+      "description": "Weighted category definitions for each gender box, managed by the DirtyRank settings panel."
+    },
+    "genderBoxes": {
+      "type": "STRING",
+      "displayName": "Gender boxes",
+      "description": "Named groups of performer genders, each with independent categories and ratings. Managed by the DirtyRank settings panel."
+    },
+    "defaultCohort": {
+      "type": "STRING",
+      "displayName": "Default gender box",
+      "description": "The default gender box used for battles and leaderboards.",
+      "default": "FEMALE"
+    },
+    "enabledCohorts": {
+      "type": "STRING",
+      "displayName": "Enabled gender boxes",
+      "description": "Available gender boxes, managed by the DirtyRank settings panel.",
+      "default": [
+        "FEMALE"
+      ]
+    },
+    "showBattlesInMenu": {
+      "type": "BOOLEAN",
+      "displayName": "Show Battles in the Stash header",
+      "description": "Add a Battles button to Stash's utility navigation. Enabled by default.",
+      "default": true
+    },
+    "showLeaderboardsInMenu": {
+      "type": "BOOLEAN",
+      "displayName": "Show Leaderboards in the Stash header",
+      "description": "Add a Leaderboards button to Stash's utility navigation. Enabled by default.",
+      "default": true
+    },
+    "leaderboardTopCount": {
+      "type": "NUMBER",
+      "displayName": "Featured leaderboard layout",
+      "description": "Number of performers featured in the Podium, Mount Rushmore, or Fingers layout.",
+      "default": 3,
+      "integer": true
+    },
+    "leaderboardView": {
+      "type": "STRING",
+      "displayName": "Leaderboard standings view",
+      "description": "Show full leaderboard standings as a Gallery or Table.",
+      "default": "gallery"
+    },
+    "leaderboardPerformerCount": {
+      "type": "NUMBER",
+      "displayName": "Performers per leaderboard page",
+      "description": "Total performers per page, including the featured top. Must be a multiple of 3 for Podium, 4 for Mount Rushmore, or 5 for Fingers, with at least two rows. Defaults to 18, rounded up for the selected layout.",
+      "default": 18,
+      "integer": true,
+      "max": 1000
+    },
+    "overallScoreStrategy": {
+      "type": "STRING",
+      "displayName": "Overall scoring strategy",
+      "description": "Choose Simple weighted (default) or Power mean. Applies to existing overall scores without changing category ratings or battle history.",
+      "default": "weighted"
+    },
+    "overallPower": {
+      "type": "NUMBER",
+      "displayName": "Power mean exponent",
+      "description": "Emphasis on stronger category scores. 1 matches Simple weighted; 3 is the default for this strategy. Range 1 to 4, including decimals.",
+      "default": 3,
+      "min": 1,
+      "max": 4,
+      "step": 0.1
+    },
+    "showRatingsBeforeVote": {
+      "type": "BOOLEAN",
+      "displayName": "Show ratings before voting",
+      "description": "Reveal ratings and ranks before choosing a performer. Disabled by default to reduce bias.",
+      "default": false
+    },
+    "hidePerformerImages": {
+      "type": "BOOLEAN",
+      "displayName": "Hide performer images in battles",
+      "description": "Remove performer profile images from battle cards. Disabled by default.",
+      "default": false
+    },
+    "hideBattleStandings": {
+      "type": "BOOLEAN",
+      "displayName": "Hide standings during battles",
+      "description": "Hide the right-hand standings and expand standard and Gauntlet battles. King of the hill always hides standings. Disabled by default.",
+      "default": false
+    },
+    "autoPlayTopScenes": {
+      "type": "BOOLEAN",
+      "displayName": "Automatically play top scenes",
+      "description": "Open each performer's highest-rated full scene in battles, muted, at a random point between 30% and 70%. Disabled by default. Photos remain clickable for voting unless hidden.",
+      "default": false
+    },
+    "includePerformersWithoutImages": {
+      "type": "BOOLEAN",
+      "displayName": "Include performers without images",
+      "description": "Allow performers without a profile image to appear in battles.",
+      "default": false
+    },
+    "confidenceGoal": {
+      "type": "STRING",
+      "displayName": "Confidence goal",
+      "description": "Optimize information-gain matchmaking for every rating, leaderboard order, or a top-N leaderboard. Defaults to leaderboard order.",
+      "default": "ranking"
+    },
+    "confidenceTopN": {
+      "type": "NUMBER",
+      "displayName": "Confidence top N",
+      "description": "Number of top performers to stabilize when the top-N confidence goal is selected. Defaults to 20.",
+      "default": 20,
+      "integer": true,
+      "min": 1,
+      "max": 1000,
+      "step": 1
+    },
+    "avoidRepeatWindow": {
+      "type": "NUMBER",
+      "displayName": "Repeat avoidance window",
+      "description": "Number of recent pairs to avoid when alternatives are available. Defaults to 12.",
+      "default": 12,
+      "integer": true,
+      "min": 0,
+      "max": 100
+    },
+    "calibrationPercent": {
+      "type": "NUMBER",
+      "displayName": "Calibration match percentage",
+      "description": "Percentage of matchmaking searches favouring broader rating gaps. A soft preference within the information-gain optimizer. Defaults to 10.",
+      "default": 10,
+      "integer": true,
+      "min": 0,
+      "max": 100
+    },
+    "initialRating": {
+      "type": "NUMBER",
+      "displayName": "Initial rating",
+      "description": "Starting rating for a new category and cohort pool. Defaults to 1000.",
+      "default": 1000,
+      "min": -100000,
+      "max": 100000,
+      "step": 1
+    },
+    "initialDeviation": {
+      "type": "NUMBER",
+      "displayName": "Initial rating deviation",
+      "description": "Starting uncertainty for an unrated performer. Defaults to 350.",
+      "default": 350,
+      "min": 30,
+      "max": 1000,
+      "step": 1
+    },
+    "initialVolatility": {
+      "type": "NUMBER",
+      "displayName": "Initial volatility",
+      "description": "Starting Glicko-2 volatility. Defaults to 0.06.",
+      "default": 0.06,
+      "min": 0.0001,
+      "max": 1,
+      "step": 0.001
+    },
+    "evidenceWeight": {
+      "type": "NUMBER",
+      "displayName": "Evidence per battle",
+      "description": "Strength of one subjective comparison in the Glicko-2 update. 1 is standard evidence; 2 doubles the information contribution while recording one battle. Defaults to 2.",
+      "default": 2,
+      "min": 1,
+      "max": 3,
+      "step": 0.1
+    },
+    "tau": {
+      "type": "NUMBER",
+      "displayName": "Glicko-2 tau",
+      "description": "Controls how quickly volatility may change. Defaults to 0.5.",
+      "default": 0.5,
+      "min": 0.01,
+      "max": 2,
+      "step": 0.01
+    },
+    "deviationFloor": {
+      "type": "NUMBER",
+      "displayName": "Rating deviation floor",
+      "description": "Minimum uncertainty retained for highly precise ratings. Defaults to 30.",
+      "default": 30,
+      "min": 1,
+      "max": 1000,
+      "step": 1
+    },
+    "provisionalDeviation": {
+      "type": "NUMBER",
+      "displayName": "Provisional threshold",
+      "description": "Ratings at or below this deviation are Refined; Excellent uses 60% of this threshold or the deviation floor, whichever is higher. Defaults to 100.",
+      "default": 100,
+      "min": 1,
+      "max": 1000,
+      "step": 1
+    }
+  },
+  "constants": {
+    "defaultCategories": [
+      {
+        "id": "appearance",
+        "name": "Appearance",
+        "description": "Visual appeal and on-camera presence.",
+        "enabled": true,
+        "weight": 1
+      },
+      {
+        "id": "performance",
+        "name": "Performance",
+        "description": "Technique, energy, chemistry, and engagement.",
+        "enabled": true,
+        "weight": 1
+      }
+    ],
+    "ratingPresets": [
+      {
+        "id": "default",
+        "name": "Default",
+        "description": "Original DirtyRank values. 2× evidence, 12 recent pairs avoided, 10% calibration, tau 0.5.",
+        "settings": {
+          "initialRating": 1000,
+          "initialDeviation": 350,
+          "initialVolatility": 0.06,
+          "deviationFloor": 30,
+          "provisionalDeviation": 100,
+          "evidenceWeight": 2,
+          "avoidRepeatWindow": 12,
+          "calibrationPercent": 10,
+          "tau": 0.5
+        }
+      },
+      {
+        "id": "chess",
+        "name": "Chess",
+        "description": "Lichess core Glicko-2 values. 1× evidence, 12 recent pairs avoided, 10% calibration, tau 0.75.",
+        "settings": {
+          "initialRating": 1500,
+          "initialDeviation": 500,
+          "initialVolatility": 0.09,
+          "deviationFloor": 45,
+          "provisionalDeviation": 110,
+          "evidenceWeight": 1,
+          "avoidRepeatWindow": 12,
+          "calibrationPercent": 10,
+          "tau": 0.75
+        }
+      },
+      {
+        "id": "confident",
+        "name": "Confident",
+        "description": "For consistent preferences. 2× evidence, 24 recent pairs avoided, 5% calibration, tau 0.5.",
+        "settings": {
+          "initialRating": 1000,
+          "initialDeviation": 350,
+          "initialVolatility": 0.06,
+          "deviationFloor": 30,
+          "provisionalDeviation": 100,
+          "evidenceWeight": 2,
+          "avoidRepeatWindow": 24,
+          "calibrationPercent": 5,
+          "tau": 0.5
+        }
+      },
+      {
+        "id": "extremely-confident",
+        "name": "Extremely confident",
+        "description": "Fewer battles for stable preferences. 3× evidence, 48 recent pairs avoided, 0% calibration, tau 0.3. Mistaken votes also carry more weight.",
+        "settings": {
+          "initialRating": 1000,
+          "initialDeviation": 350,
+          "initialVolatility": 0.06,
+          "deviationFloor": 30,
+          "provisionalDeviation": 100,
+          "evidenceWeight": 3,
+          "avoidRepeatWindow": 48,
+          "calibrationPercent": 0,
+          "tau": 0.3
+        }
+      }
+    ]
+  }
+}

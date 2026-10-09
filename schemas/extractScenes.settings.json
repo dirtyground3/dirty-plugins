@@ -1,0 +1,49 @@
+{
+  "settings": {
+    "destinationFolder": {
+      "type": "STRING",
+      "displayName": "Destination folder",
+      "description": "Choose an existing folder with Browse, or edit the absolute path manually. The path is on the machine running Stash.",
+      "default": ""
+    },
+    "collisionPolicy": {
+      "type": "STRING",
+      "displayName": "File collision policy",
+      "description": "rename (default), skip, or overwrite. Rename adds a numeric suffix and never replaces an existing file.",
+      "default": "rename",
+      "options": [
+        {
+          "value": "rename",
+          "label": "Rename the new file"
+        },
+        {
+          "value": "skip",
+          "label": "Skip the new file"
+        },
+        {
+          "value": "overwrite",
+          "label": "Overwrite the existing file"
+        }
+      ]
+    },
+    "createSceneFolders": {
+      "type": "BOOLEAN",
+      "displayName": "Create a folder for each item",
+      "description": "Put scenes and marker clips in scene-title folders, and images in image-title folders. Disabled by default.",
+      "default": false
+    },
+    "dryRun": {
+      "type": "BOOLEAN",
+      "displayName": "Dry run",
+      "description": "Report what would be copied without writing any files. Disabled by default.",
+      "default": false
+    },
+    "maxCopySpeedMBps": {
+      "type": "NUMBER",
+      "displayName": "Maximum copy speed (MiB/s)",
+      "description": "Limit disk usage so Stash stays responsive. Defaults to 20 MiB/s. Set to 0 for unlimited speed.",
+      "default": 20,
+      "min": 0
+    }
+  }
+}

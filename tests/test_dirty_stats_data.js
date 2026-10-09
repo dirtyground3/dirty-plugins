@@ -1,12 +1,14 @@
 "use strict";
+const { testModulePath } = require("./plugin_paths");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const { createHooks } = require("./ui_harness");
 const context = { window: {}, AbortController };
 vm.createContext(context);
-vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStatsData.js", "utf8"), context);
-const { fetchAllPages, createLoader } = context.window.__dirtyStatsData;
+context.module = {exports: {}};
+vm.runInContext(fs.readFileSync(testModulePath("DirtyStats", "data.cjs"), "utf8"), context);
+const { fetchAllPages, createLoader } = context.module.exports;
 const tick = () => new Promise(setImmediate);
 async function main() {
   const controller = new AbortController(), pages = [];
@@ -83,6 +85,20 @@ async function main() {
   await tick();
   assert.equal(render("scenes", "custom").error, "custom failure", "caller-specific failure wording is preserved");
   owner.slots.forEach(slot => { if (slot?.cleanup) slot.cleanup(); });
+  const owned = new Set();
+  let completeOwned, ownedSignal;
+  const before = published.length;
+  const ownedLoader = createLoader({React: {useEffect: effect => {cleanup = effect();}},
+    own: release => {owned.add(release); return () => owned.delete(release);},
+    graphql: (_query, _variables, config) => {ownedSignal = config.signal; return new Promise(resolve => {completeOwned = resolve;});}});
+  ownedLoader.usePageLoad(options, ["destroyed instance"]);
+  for (const release of owned) release();
+  assert.equal(ownedSignal.aborted, true, "instance cleanup aborts requests even before route unmount");
+  completeOwned({count: 1, rows: ["late"]});
+  await tick();
+  cleanup();
+  assert.equal(owned.size, 0);
+  assert.equal(published.length, before, "late instance responses cannot publish");
   console.log("Stats pagination, bounded requests and stale-response protection passed");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

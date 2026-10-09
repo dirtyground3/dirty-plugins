@@ -38,10 +38,11 @@ blurred only in this documentation capture.
 
 ## Installation
 
-1. Copy this entire directory into Stash's plugin directory. The usual paths
-   are `%USERPROFILE%\.stash\plugins\DirtyFileExtractor` on Windows and
-   `~/.stash/plugins/DirtyFileExtractor` on Linux/macOS.
-2. Copy the sibling **DirtyPlugins** directory into the same plugins directory.
+1. Install the published package, or run `npm ci` and `npm run build` from the
+   repository root and copy `.build/plugins/DirtyFileExtractor/` into Stash's
+   plugin directory as `extractScenes`. The authored source directory requires
+   compilation and is not installable.
+2. Install **DirtyPlugins** 1.0.0 or newer alongside it as `dirtyPlugins`.
 3. In Stash, open **Settings > Plugins** and click **Reload Plugins**.
 4. Expand **DirtyFileExtractor**, follow its settings link, and set
    **Destination folder** to an absolute path on
@@ -85,20 +86,38 @@ Values other than these three are rejected.
 Run the local checks from the repository root:
 
 ```powershell
-python -B -m unittest discover -s tests -v
-node --check plugins/DirtyFileExtractor/extractScenes.js
+npm run build
+npm run typecheck
+node tests/test_dirty_file_extractor.js
 node tests/test_dirty_file_extractor_ui.js
+python -B -m unittest discover -s tests -p test_dirty_file_extractor.py
+npm test
 ```
 
 The UI integration adds a React action row to Stash's scene, marker, and image
-lists through `PluginApi.patch.after`. It uses DirtyPlugins for GraphQL,
-database-backed settings, notifications, and shared visuals. Reloading tears
-down the previous instance so older patches pass the native list through.
+lists through `PluginApi.patch.after`. Strict TypeScript modules and a focused
+TSX component compile into the sole staged script, `extractScenes.js`, using
+Stash's React and DirtyPlugins' public API. No React or hub implementation is
+bundled. Repeated asset loads retain the active instance because Stash cannot
+unregister patches. Explicit teardown releases owned effects and makes its
+patches pass the native list through; partial patch failure keeps the guard.
 The folder picker is attached to `document.body` and registered as a shared
 settings field action.
 The folder picker uses the shared button style, keeps keyboard focus inside
 until closed, restores focus to its opener, and locks background scrolling.
 With `?docsCapture=1`, folder and path labels use synthetic placeholders.
+
+Opt-in acceptance uses a separate Stash database, random non-9999 port and
+synthetic media: `python -B tests/test_dirty_file_extractor_stash_integration.py
+--binary <stash-executable>`. Add `--serve --stop-file <path>` for browser review.
+The test covers planning, copies, marker timing, collisions, progress,
+cancellation, original identity and the exact served bundle. After
+`npm run build:dev`, add `--development` to decode its inline source map.
+
+Stash's hard task cancellation can leave a temporary `.part` file and an empty
+reserved destination. It does not finalize that copy or process later items.
+This existing backend behavior is preserved by the frontend migration.
+After a local build/copy, reload plugins and hard-refresh the Stash browser.
 
 ## License
 

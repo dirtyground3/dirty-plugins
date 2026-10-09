@@ -22,7 +22,10 @@ plugins/
 ├── DirtyStats/          # statistics/visualization UI
 └── DirtyTidy/           # preview UI + file-organization backend
 tests/                   # Python unittest + Node JS tests + shared UI contract tests
-build_site.sh            # builds the GitHub Pages package source
+scripts/                 # staged build, settings generator and install-file registry
+schemas/                 # authored settings metadata, one <pluginId>.settings.json each
+.build/plugins/          # ignored installable output, never authored source
+build_site.sh            # packages staged plugins for GitHub Pages
 docs/images/             # censored screenshots used by the README
 ```
 
@@ -33,7 +36,8 @@ Keep directory names stable — Stash installs by directory.
 ## Shared runtime (DirtyPlugins)
 
 Everything common lives in `plugins/DirtyPlugins/`. Do not duplicate it in
-plugins. Before writing new UI or data access, check `dirtyPlugins.js` for an
+plugins. Before writing new UI or data access, check `src/index.tsx` and the
+typed public contract in `src/types.ts` for an
 existing primitive:
 
 - `DirtyPlugins.graphql` / `hubApi.graphql` — the only GraphQL client. Plugins
@@ -43,6 +47,9 @@ existing primitive:
 - `DirtyPlugins.react` — shared components: `SettingsCard`,
   `SettingsSection`, `SettingsToggle`, `IconButton`, `StateView`, and other
   settings primitives. Prefer these over bespoke markup.
+- `DirtyPlugins.react.useSettingsDraft` — typed loading, validation, dirty
+  reporting and serialized autosave. Keep revision/conflict policy and workflow
+  state local. Ordinary controls can use `fieldDefinition` and `react.SettingsField`.
 - `hubApi.registerSettingsPanel(pluginId, component)` — mounts a plugin's
   settings UI inside the shared hub.
 - CSS custom properties prefixed `--dirty-ui-*` (tokens, radius, shadow, etc.)
@@ -74,25 +81,49 @@ ui:
 - Support the documentation-capture mode (`?docsCapture=1`) mechanics already
   used to blur private paths and adult media in screenshots.
 
-## JavaScript conventions
+## JavaScript and TypeScript conventions
 
-- No build step. Assets are served to Stash as-is.
-- Split code by responsibility. List browser files in dependency order under
-  the manifest's `ui.javascript`; Stash serves them in that order. Feature
-  files expose one plugin-owned API on `window`. The plugin entry file owns
-  registration; DirtyStats also has a dashboard extension that loads after
-  its core file.
-- Each file is an IIFE with `"use strict"` guarded by an `INSTANCE_KEY` on
-  `window`. Re-registering cleanly (tear down prior observers/handlers) is
-  required because Stash can reload assets without reloading the page.
-- Put `// @ts-check` and JSDoc contracts on new feature files. Run
-  `npm ci` and `npm run typecheck` for diagnostics; TypeScript emits nothing and
-  is never shipped with the plugins.
-- Access React through `window.PluginApi.React`. Use
-  `DirtyPlugins.react.html` for markup-style render trees, and
-  `React.createElement` for low-level integration where needed. Do not import
-  bundlers, JSX, or runtime npm packages.
-- Use ES5-compatible `var` and function style to match existing files.
+- Run `npm run build` to stage all eight plugins under `.build/plugins/`.
+  `scripts/plugin-registry.json` explicitly lists installable files. Builds never
+  overwrite source or installed plugins. Add required runtime files to the
+  allowlist; never add runtime data, source tooling, or tests.
+- `npm run build` stages minified release bundles without source maps for
+  tests, packages and installs; property names are never mangled and
+  `keepNames` preserves function/component names. `npm run build:dev` and
+  `npm run build:watch` stage readable bundles with inline maps for debugging;
+  never package or install a development build.
+- Every plugin authors `src/index.ts` or `src/index.tsx` with internal imports,
+  colocated types, and small TSX components, and compiles to one browser IIFE
+  with the existing entry filename; its manifest's `ui.javascript` lists only
+  that entry. Configure `bundle` and selected CommonJS `testModules` in the
+  registry. Source manifests keep host metadata (identity, version, exec, tasks,
+  hooks, dependencies, asset mappings).
+- Selected settings metadata (keys, labels, descriptions, defaults, bounds,
+  options) and constants shared by TS and Python live only in
+  `schemas/<pluginId>.settings.json`. The build generates `@generated/<id>.settings`
+  TS modules in `.build/generated/`, the staged manifest's `settings:` section,
+  and same-directory Python constants for registry `generatedFiles`. A bundle may
+  import only the modules in its registry `generatedImports`. Never put `settings:`
+  back into a source manifest that has a schema. Keep normalization, coercion,
+  migrations and algorithms handwritten in each language.
+- Entries validate the host and claim their instance guard before registration.
+  Imported modules must not install routes, patches, or listeners. Tear down
+  owned effects where supported; preserve one-time guards for host integrations
+  that cannot unregister.
+- Source is strict TypeScript (`tsconfig.json`). Run `npm ci` and
+  `npm run typecheck`, which generates `.build/generated/` first; esbuild does
+  not replace checking and TypeScript is never shipped to Stash. The only global
+  declarations are in `types/stash-globals.d.ts`; use `import type` for hub types.
+- Access React through `window.PluginApi.React` with a typed host adapter and
+  classic `React.createElement`/`React.Fragment` output. Never bundle
+  React/ReactDOM or another plugin's implementation; type-only imports are
+  allowed. Shared runtime APIs remain on DirtyPlugins. `DirtyPlugins.react.html`
+  (HTM) is a deprecated compatibility API for feature plugins that predate the
+  TSX ports: do not use it, and keep it and its license until a deliberate
+  breaking hub release removes it.
+- Bundles target ES2020. Check browser behavior with the opt-in isolated Stash
+  fixtures (synthetic media); `tests/library_copy_fixture.py` adds read-only
+  checks against a path-redirected copy of the local library.
 - Use `useMemo`/`useCallback` where existing code does; keep components small.
 
 ## Python conventions
@@ -112,8 +143,9 @@ ui:
   authoritative store for settings and high-frequency data (for example
   DirtyRank rating pools and battle journal). It lives outside Stash entity
   hooks by design.
-- Manifests still declare typed `settings:` entries so the hub can render
-  controls, but plugins read/write values through the hub, not Stash config.
+- Staged manifests declare typed `settings:` entries (generated from `schemas/`)
+  so the hub can render controls, but plugins read/write values through the hub,
+  not Stash config.
 - Writes are debounced and serialized so an older request cannot overwrite a
   newer value. Keep that guarantee.
 - Never force-add runtime artifacts (`.sqlite*`, WAL, backups, `__pycache__`)
@@ -123,8 +155,10 @@ ui:
 
 Prefer libraries already available through Stash `PluginApi`, the shared
 DirtyPlugins code, and small plain implementations. DirtyStats has one existing
-exception: its bundled ECharts 5.6.0 and Natural Earth map data, with notices
-under `plugins/DirtyStats/vendor/`. Keep those assets local to Stats; the other
+exception: modular ECharts 5.6.0 (with ZRender and tslib, pinned npm development
+dependencies declared as `bundledPackages`) and Natural Earth map data, with
+licenses under `plugins/DirtyStats/vendor/`. Register only the chart types and
+components Stats uses in `src/echarts.ts`. Keep these local to Stats; the other
 plugins and the hub must not load a chart library. A new dependency needs a
 clear use case, license inventory, offline packaging, and no equivalent shared
 or native Stash capability. See `plugins/DirtyPlugins/STYLE.md` for the UI
@@ -139,9 +173,11 @@ npm ci
 npm test
 ```
 
-`npm test` runs typecheck, every `tests/test_*.js` suite, and Python unittest
-discovery. Use `npm run test:js`, `npm run test:python`, or an individual test
-file for focused checks. See `tests/README.md` for runner and harness details.
+`npm test` builds once, then runs typecheck, every `tests/test_*.js` suite, and
+Python unittest discovery. Focused npm test commands also prepare staging.
+Direct Node/Python test-file invocations require `npm run build` first. Runtime
+tests use staged path helpers; architecture checks use authored source.
+Missing/stale builds fail clearly. See `tests/README.md` for details.
 
 Add or update tests with behavior changes. Contract tests in `tests/` enforce
 that plugins use the shared GraphQL client, shared visual primitives, and the
@@ -149,12 +185,18 @@ hub runtime exports.
 
 ## Build and release
 
-- Local package build (needs Bash and `zip`):
+- Local package build (needs Node dependencies, Bash and `zip`):
   `./build_site.sh _site/main`
-- Pushes to `main` touching `plugins/**` or `build_site.sh` publish the package
+- The package script builds staging and limits output cleanup to `_site/`.
+  Package update identities include plugin source and shared build inputs.
+- Pushes to `main` touching plugins or shared build/test inputs publish the package
   source to GitHub Pages via `.github/workflows/deploy.yml`. Do not commit
   generated `_site/` output.
-- Bump the plugin's `version` in its manifest for user-visible changes.
+- Every plugin's first TS/TSX release was `1.0.0`. Bump the patch version of
+  each plugin whose runtime files (bundle, manifest content, styles, backends)
+  change, once per release, and update the README version table and release
+  notes. README-only and staging-only changes keep versions.
+  `docs/build-migration-status.md` records the completed migration's handoffs.
 
 ## Local install (this machine)
 
@@ -164,6 +206,7 @@ Installed directories are the plugin IDs (not the repo directory names):
 `DirtyMultiscreen`→`multiscreen`, `DirtyRank`→`dirtyRank`,
 `DirtyStats`→`dirtyStats`, `DirtyTidy`→`dirtyTidy`,
 `DirtyCaptions`→`dirtyCaptions`.
+`DirtyCompactor`→`dirtyCompactor`.
 
 DirtyCaptions requires DirtyPlugins 0.5.6+ for its hub-managed settings. Keep
 subtitle payloads in memory: its backend converts through FFmpeg stdout and its
@@ -186,8 +229,9 @@ preserve unrelated custom fields in either criterion order,
 and serialize URLs and saved filters as normal Stash custom-field criteria.
 
 ```powershell
-# 1. Copy changed files into the installed plugin directory.
-Copy-Item -LiteralPath plugins\DirtyStats\dirtyStats.js `
+# 1. Build and copy changed runtime files from staging.
+npm run build
+Copy-Item -LiteralPath .build\plugins\DirtyStats\dirtyStats.js `
   -Destination C:\Users\FABIO\.stash\plugins\dirtyStats\dirtyStats.js -Force
 
 # 2. Reload plugins in the running Stash.

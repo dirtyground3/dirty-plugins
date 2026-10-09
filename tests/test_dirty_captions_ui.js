@@ -1,0 +1,77 @@
+"use strict";
+const assert=require("node:assert/strict"), {createCaptionsHarness}=require("./captions_harness"), {events,text}=require("./ui_harness");
+const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
+function player(){
+  const list=events([]), remote=[], removed=[], registrations=[];
+  const selector={addTextTrack(options){const el=events({track:{kind:options.kind,mode:"disabled"}});registrations.push({options,el});list.push(el.track);remote.push(el.track);return el;},
+    removeTextTrack(el){removed.push(el);for(const collection of [list,remote]){const index=collection.indexOf(el.track);if(index>=0)collection.splice(index,1);}}};
+  return events({isDisposed:()=>false,textTracks:()=>list,remoteTextTracks:()=>remote,sourceSelector:()=>selector,ready:fn=>fn(),list,registrations,removed});
+}
+const result={sceneId:"1",fileId:"10",tracks:[{index:1,language:"eng",codec:"mov_text",title:"Synthetic",default:true,forced:false,vtt:"WEBVTT\n\n00:00.000 --> 00:01.000\nCaption\n"}],warnings:[]};
+async function main(){
+  const native=player(), h=createCaptionsHarness({player:native,capture:true,operation:async args=>args.mode==="captions" ? result : {status:"Finished"}});
+  h.load();h.load();await h.flush();assert.deepEqual(h.patchNames,["App","FilteredSceneList","ScenePlayer"]);
+  assert(h.addon);assert.equal(h.window.__dirtyCaptionsPlugin.status,"active");
+  assert(!h.window.__dirtyCaptionsTracks && !h.window.__dirtyCaptionsIndex,"private feature globals are removed");
+  assert.equal(native.registrations.length,1);assert.match(native.registrations[0].options.src,/^data:text\/vtt/);
+  assert.equal(native.list[0].mode,"showing");
+  assert(h.nodes(node=>node.props?.className?.includes("dirty-captions-capture")).length);
+  assert.equal(h.calls.filter(args=>args.mode==="indexBootstrap").length,1);
+  assert(h.timers.size===2,"only player discovery and displayed index status are polled");
+  await h.click("Refresh caption index");assert.equal(h.calls.at(-1).mode,"indexRefresh");
+  await h.click("Reprobe all files");assert.equal(h.calls.at(-1).force,true);
+  h.window.__dirtyCaptionsPlugin.destroy();await h.flush();assert.equal(native.list.length,0);assert.equal(h.timers.size,0);
+  assert(h.observers.every(observer=>!observer.connected));
+  assert.equal(h.window.handlers.get("dirty-plugins:configuration-changed").size,0);
+  const before=h.calls.length;
+  await h.event({type:"REMOVE",job:{id:"9",status:"FINISHED",description:"Scanning...",startTime:"later"}});
+  assert.equal(h.calls.length,before);h.load();assert.equal(h.patchNames.length,3,"destroyed patches retain their durable guard");
+  const original=h.React.createElement("native-app",{});assert.equal(h.patches.get("App")(original),original);
+  assert.equal(h.patches.get("ScenePlayer")({scene:{id:"1",files:[{id:"10"}]}},original),original);
+
+  const {NativeFilter,criterion}=require("./captions_native_filter").createNativeModels();
+  const filter=new NativeFilter(),personal={field:"personal",modifier:"EQUALS",value:["keep"]};
+  filter.criteria=[criterion("custom_fields",[personal,{field:"Contains embedded captions",modifier:"EQUALS",value:["No"]}])];
+  const listHost=createCaptionsHarness();listHost.load();
+  const toolbar=listHost.React.createElement("native-toolbar",{filter,setFilter(){throw Error("must not replace equivalent URL");}});
+  const tags=listHost.React.createElement("native-tags",{criteria:filter.criteria});
+  const list=listHost.React.createElement("native-list",{},toolbar,tags);
+  const decorated=listHost.patches.get("FilteredSceneList")(list);
+  assert.notEqual(decorated,list);assert.equal(decorated.props.children[0],toolbar);
+  assert.equal(decorated.props.children[1].props.criteria,filter.criteria);
+  assert.equal(filter.criteria.find(c=>c.criterionOption.type==="dirty_captions").value,"None");
+  const fields=filter.makeFilter().custom_fields;
+  assert.equal(JSON.stringify(fields.find(field=>field.field==="personal")),JSON.stringify(personal));
+  assert.equal(fields.find(field=>field.field==="Contains embedded captions").value[0],"No");
+  assert(filter.getEncodedParams().c.every(c=>c.type!=="dirty_captions"));
+  listHost.window.__dirtyCaptionsPlugin.destroy();assert.equal(listHost.patches.get("FilteredSceneList")(list),list);
+
+  const late=deferred(), pendingPlayer=player(), lateHarness=createCaptionsHarness({player:pendingPlayer,operation:args=>args.mode==="captions" ? late.promise : Promise.resolve({status:"Finished"})});
+  lateHarness.load();await lateHarness.flush();await lateHarness.unmount();late.resolve(result);await lateHarness.flush();
+  assert.equal(pendingPlayer.registrations.length,0,"late VTT cannot attach to an unmounted player");assert.equal(lateHarness.timers.size,0);
+  const oldLoad=deferred(), disabled=createCaptionsHarness({player:player(),load:()=>oldLoad.promise});disabled.load();await disabled.flush();
+  disabled.window.__dirtyCaptionsPlugin.destroy();await disabled.flush();oldLoad.resolve({enabled:true});await disabled.flush();
+  assert(!disabled.calls.some(args=>args.mode==="captions"));assert.equal(disabled.observers.length,0);
+  const off=createCaptionsHarness({player:player(),settings:{enabled:false}});off.load();await off.flush();assert(!off.calls.some(args=>args.mode==="captions"));await off.unmount();
+  let attempts=0;
+  const retryPlayer=player(), retry=createCaptionsHarness({player:retryPlayer,operation:async args=>{
+    if(args.mode!=="captions")return {status:"Finished"};if(++attempts===1)throw Error("synthetic conversion failure");return result;
+  }});retry.load();await retry.flush();assert(text(retry.tree).includes("synthetic conversion failure"));await retry.click("Retry captions");
+  assert.equal(attempts,2);assert.equal(retryPlayer.registrations.length,1);await retry.unmount();
+
+  const firstStatus=deferred(), action=deferred();let statusCalls=0;
+  const locked=createCaptionsHarness({operation:args=>args.mode==="indexStatus" && !statusCalls++ ? firstStatus.promise : args.mode==="indexRefresh" ? action.promise : Promise.resolve({status:"Finished"})});
+  locked.load();await locked.flush();const refresh=locked.button("Refresh caption index");refresh.props.onClick();refresh.props.onClick();await locked.flush();
+  assert.equal(locked.calls.filter(args=>args.mode==="indexRefresh").length,1,"busy lock works before a React rerender");
+  action.resolve({status:"Running",checked:4});await locked.flush();firstStatus.resolve({status:"Finished",checked:0});await locked.flush();
+  assert(text(locked.tree).includes("Running · 4"),"a late status poll cannot replace a newer action result");
+  assert(locked.button("Stop refresh"));await locked.click("Stop refresh");await locked.unmount();assert.equal(locked.timers.size,0);
+
+  const missing=createCaptionsHarness();missing.window.PluginApi=undefined;missing.load();assert.equal(missing.patchNames.length,0);assert(!missing.window.__dirtyCaptionsPlugin);
+  const reversible=createCaptionsHarness({register:()=>{throw Error("settings registration failure");}});reversible.load();assert(!reversible.window.__dirtyCaptionsPlugin);assert(!reversible.addon);assert.equal(reversible.patchNames.length,0);
+  const failed=createCaptionsHarness({patch:name=>{if(name==="FilteredSceneList")throw Error("partial patch failure");}});failed.load();
+  assert.equal(failed.window.__dirtyCaptionsPlugin.status,"failed");assert(!failed.addon);failed.load();assert.equal(failed.patchNames.length,2);
+  assert.equal(failed.patches.get("App")(original),original);assert.equal(failed.window.__dirtyCurrentPluginId,null);
+  console.log("DirtyCaptions compiled TSX, native player, index actions, races, masks, guards and cleanup passed");
+}
+main().catch(error=>{console.error(error);process.exitCode=1;});

@@ -2,7 +2,7 @@
 const fs = require("node:fs");
 const vm = require("node:vm");
 const { loadPluginScripts } = require("./load_plugin_scripts");
-const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
+const { testModulePath } = require("./plugin_paths");
 
 /** Only native host interfaces are stubbed; calculations use manifest assets. */
 function domainAlgorithms() {
@@ -14,13 +14,14 @@ function domainAlgorithms() {
     location: {search: "", pathname: "/"},
     PluginApi: {React, libraries: {Intl: {useIntl: () => ({messages: {}})}, ReactRouterDOM: {NavLink: noop}},
       patch: {before: noop, after: noop, instead: noop}, register: {route: noop}},
-    DirtyPlugins: {react: {html: htm.bind(noop)}, registerSettingsPanel: noop,
+    DirtyPlugins: {react: {}, registerSettingsPanel: noop,
       getPluginSettings: async () => ({}), graphql: async () => ({}), runPluginOperation: async () => ({})}
   }, console, URLSearchParams});
-  vm.runInContext(fs.readFileSync("plugins/DirtyPlugins/dirtyPluginsValues.js", "utf8"), context);
-  context.window.DirtyPlugins.values = context.window.__dirtyPluginsValues;
-  loadPluginScripts("DirtyRank", context);
-  loadPluginScripts("DirtyCompactor", context);
-  return {rank: context.window.__dirtyRankPlugin.algorithms, compactor: context.window.__dirtyCompactorRules};
+  context.window.DirtyPlugins.values = require("./shared_runtime").loadFeature(context.window, "Values");
+  const rank = require(testModulePath("DirtyRank", "rank.cjs")).createRankDomain({
+    DirtyPlugins: context.window.DirtyPlugins, PluginApi: context.window.PluginApi,
+  });
+  return {rank,
+    compactor: require(testModulePath("DirtyCompactor", "rules.cjs"))};
 }
 module.exports = {domainAlgorithms};

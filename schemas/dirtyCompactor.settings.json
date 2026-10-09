@@ -1,0 +1,80 @@
+{
+  "settings": {
+    "automationPaused": {
+      "type": "BOOLEAN",
+      "displayName": "Pause automatic runs",
+      "description": "Automatic rules run after successful scans observed by an open Stash browser tab.",
+      "default": true
+    }
+  },
+  "constants": {
+    "qualityMbps1080p": {
+      "h264": {
+        "high": 8,
+        "balanced": 5,
+        "small": 3
+      },
+      "hevc": {
+        "high": 5,
+        "balanced": 3,
+        "small": 1.8
+      }
+    },
+    "crf": {
+      "h264": {
+        "high": 19,
+        "balanced": 22,
+        "small": 25
+      },
+      "hevc": {
+        "high": 21,
+        "balanced": 24,
+        "small": 27
+      }
+    },
+    "qualities": [
+      {
+        "value": "high",
+        "label": "High quality"
+      },
+      {
+        "value": "balanced",
+        "label": "Balanced"
+      },
+      {
+        "value": "small",
+        "label": "Smallest files"
+      },
+      {
+        "value": "visual",
+        "label": "Match visual quality (slower)"
+      },
+      {
+        "value": "source",
+        "label": "Same bitrate (convert only)"
+      },
+      {
+        "value": "custom",
+        "label": "Custom bitrate"
+      }
+    ],
+    "vmafTargets": [
+      {
+        "value": 97,
+        "label": "Nearly identical (VMAF 97)"
+      },
+      {
+        "value": 95,
+        "label": "Very close (VMAF 95)"
+      },
+      {
+        "value": 93,
+        "label": "Close (VMAF 93)"
+      },
+      {
+        "value": 90,
+        "label": "Good enough (VMAF 90)"
+      }
+    ]
+  }
+}

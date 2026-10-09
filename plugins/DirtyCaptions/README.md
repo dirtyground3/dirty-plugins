@@ -207,10 +207,39 @@ sharing or committing a screenshot. Do not commit uncensored Stash captures.
 
 Install DirtyCaptions from the suite package source. DirtyPlugins installs as
 its dependency. See the [suite installation instructions](../../README.md#installation-from-stash).
-For a manual installation, copy this directory to `<plugins_path>/dirtyCaptions`
-and install/update DirtyPlugins alongside it. On Windows, the default target is
+For a manual installation, run `npm ci` and `npm run build` at the repository
+root, then copy `.build/plugins/DirtyCaptions/` to `<plugins_path>/dirtyCaptions`
+and install/update the staged DirtyPlugins alongside it. The authored `src/`
+directory requires compilation; it is not directly installable. On Windows, the default target is
 `%USERPROFILE%\.stash\plugins\dirtyCaptions`.
 Reload Stash plugins, then hard-refresh the browser (**Ctrl+F5**).
+
+## Development
+
+The frontend uses strict TypeScript modules and focused TSX components under
+`src/`, compiled to the sole `dirtyCaptions.js` script. React comes from Stash
+and shared services/components come from the DirtyPlugins public API. Python,
+settings keys, native filters and media/index storage contracts are unchanged.
+It runs with DirtyPlugins 1.0.0 or newer; the public API it uses remains
+compatible with the documented 0.5.6 minimum.
+
+The entry validates the host before claiming its instance guard. It owns
+registration; imported modules do not install patches or listeners. Teardown
+removes owned tracks, timers, observers, settings registration and event
+listeners. Stash patches/native filter prototype integration cannot unregister;
+the entry retains their guard and deactivates callbacks rather than repatching.
+The native player, external tracks and host job subscription retain their
+own lifecycles. No recurring library check is scheduled.
+
+Run `npm test` from the root. Caption language/track/filter/Scan domains are
+tested through selected module builds; registration, components, async races
+and cleanup run against the compiled browser bundle. The opt-in fixture
+`python -B tests/test_dirty_captions_stash_integration.py --binary /path/to/stash`
+uses an isolated server and synthetic subtitle media to check FFmpeg output,
+index fields, file-map skipping, forced errors/recovery, Scan deduplication,
+byte/entity preservation and the exact served bundle. After `npm run build:dev`,
+add `--development` to decode its inline source map. Add
+`--serve --stop-file <path>` for browser review and graceful cleanup.
 
 ## License
 

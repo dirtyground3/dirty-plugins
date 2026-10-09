@@ -1,3 +1,4 @@
+from plugin_paths import runtime_path
 import json
 from pathlib import Path
 import sys
@@ -5,7 +6,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 for plugin in ("DirtyRank", "DirtyCompactor"):
-    sys.path.insert(0, str(ROOT / "plugins" / plugin))
+    sys.path.insert(0, str(runtime_path(plugin)))
 import dirty_rank as rank
 import dirty_compactor_rules as compactor
 import dirty_compactor_quality as quality

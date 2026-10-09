@@ -1,3 +1,4 @@
+from plugin_paths import runtime_path
 import copy
 import importlib.util
 import os
@@ -11,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("dirty_compactor_test", ROOT / "plugins/DirtyCompactor/dirty_compactor.py")
+spec = importlib.util.spec_from_file_location("dirty_compactor_test", runtime_path("DirtyCompactor", "dirty_compactor.py"))
 compactor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(compactor)
 

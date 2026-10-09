@@ -1,3 +1,4 @@
+from plugin_paths import runtime_path
 import importlib.util
 import json
 import sqlite3
@@ -7,7 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 
-MODULE_PATH = Path(__file__).parents[1] / "plugins" / "DirtyPlugins" / "dirty_plugins_storage.py"
+MODULE_PATH = runtime_path("DirtyPlugins", "dirty_plugins_storage.py")
 SPEC = importlib.util.spec_from_file_location("dirty_plugins_storage_tests", MODULE_PATH)
 storage = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

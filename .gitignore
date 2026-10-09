@@ -1,5 +1,7 @@
 __pycache__/
 node_modules/
+.build/
+_site/
 *.py[cod]
 plugins/DirtyCompactor/runtime/
 *.sqlite*

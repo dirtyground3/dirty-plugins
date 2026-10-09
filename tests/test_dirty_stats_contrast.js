@@ -1,10 +1,11 @@
 "use strict";
+const { runtimePath } = require("./plugin_paths");
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const css = fs.readFileSync(path.join(__dirname, "../plugins/DirtyPlugins/dirtyPlugins.css"), "utf8");
+const css = fs.readFileSync(runtimePath("DirtyPlugins", "dirtyPlugins.css"), "utf8");
 function declarations(selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = css.match(new RegExp(escaped + "\\s*\\{([^}]*)\\}"));

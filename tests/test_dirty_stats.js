@@ -2,7 +2,6 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
-const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
 const createElement = (type, props, ...children) => ({ type, props: props || {}, children });
 const routes = [], patches = [], savedSettings = [];
 const notifications = [];
@@ -29,7 +28,7 @@ const context = {
     PluginApi: { React: { createElement }, libraries: {}, register: { route: (...args) => routes.push(args) }, patch: { before: (...args) => patches.push(args), instead: (...args) => patches.push(args) } },
     DirtyPlugins: {
       graphql() {},
-      react: { html: htm.bind(createElement) },
+      react: {},
       theme: { defaultKey: "classic" },
       ui: { notify: (...args) => notifications.push(args) },
       getPluginSettings: () => Promise.resolve(storedSettings),
@@ -48,11 +47,8 @@ const context = {
   clearTimeout
 };
 vm.createContext(context);
-vm.runInContext(fs.readFileSync("plugins/DirtyStats/vendor/world.js", "utf8"), context);
-const coreSource = ["dirtyStatsRegistry.js", "dirtyStatsData.js", "dirtyStatsCharts.js", "dirtyStatsChartOptions.js"].map(name => fs.readFileSync("plugins/DirtyStats/" + name, "utf8")).join("\n") + "\n" + fs.readFileSync("plugins/DirtyStats/dirtyStatsGrowth.js", "utf8") + "\n" + fs.readFileSync("plugins/DirtyStats/dirtyStatsAges.js", "utf8") + "\n" + fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8");
 require("./shared_runtime").installSaveController(context.window);
-vm.runInContext(coreSource, context);
-const a = context.window.__dirtyStatsPlugin.algorithms;
+const statsModules=require("./stats_modules"),plugin=statsModules.core(context),a=plugin.algorithms,world=statsModules.moduleIn(context,"world").world;
 const originOption = a.originMapOption({ rows: [{ name: "USA", value: 500 }, { name: "Canada", value: 12 }, { name: "France", value: 2 }] },
   ["USA", "Canada", "France", "Empty"].map(name => ({ properties: { name } })),
   { map: "test", showLegend: true, showNumbers: true });
@@ -81,12 +77,13 @@ for (const theme of ["classic", "candy", "tropical", "arcade", "paper", "destijl
   }
   a.statsSettings.visualTheme = previousTheme;
 }
-// Verify the bundled ECharts renderer, including its special handling of null
-// map values, rather than relying only on the shape of our options.
-const echarts = require("../plugins/DirtyStats/vendor/echarts.min.js");
-echarts.registerMap("origin-test", context.window.__dirtyStatsWorld);
+// Verify the real ECharts renderer, including its special handling of null
+// map values, rather than relying only on the shape of our options. This is the
+// same pinned 5.6.0 package whose modules the Stats bundle imports.
+const echarts = require("echarts");
+echarts.registerMap("origin-test", world);
 const renderedMap = echarts.init(null, null, { renderer: "svg", ssr: true, width: 1000, height: 500 });
-const realOriginOption = a.originMapOption({ rows: [{ name: "United States of America", value: 500 }, { name: "Canada", value: 12 }, { name: "France", value: 2 }] }, context.window.__dirtyStatsWorld.features, { map: "origin-test", showNumbers: true });
+const realOriginOption = a.originMapOption({ rows: [{ name: "United States of America", value: 500 }, { name: "Canada", value: 12 }, { name: "France", value: 2 }] }, world.features, { map: "origin-test", showNumbers: true });
 renderedMap.setOption(realOriginOption);
 const renderedOriginData = renderedMap.getModel().getSeriesByIndex(0).getData();
 const renderedFill = name => renderedOriginData.getItemVisual(renderedOriginData.indexOfName(name), "style").fill;
@@ -401,7 +398,7 @@ const leapBirthdays = a.aggregateBirthdays([{id: "1", name: "Leap", birthdate: "
 assert.equal(leapBirthdays.entries[0].daysUntil, 0, "Feb 29 falls on Feb 28 in non-leap years");
 assert.deepEqual(JSON.parse(JSON.stringify(a.birthdayDefaultSelection(leapBirthdays, leapBirthdayNow))), {month: 2, day: 28, today: true});
 assert.equal(a.birthdayEntriesFor(leapBirthdays.entries, 2, 28, true)[0].id, "1", "the today selection includes observed leap-day birthdays");
-const index = a.countryIndex(context.window.__dirtyStatsWorld.features);
+const index = a.countryIndex(world.features);
 assert.equal(index[a.normalize("US")], index[a.normalize("United States")]);
 assert.equal(index[a.normalize("USA")], index[a.normalize("United States of America")]);
 assert.equal(index[a.normalize("GB")], index[a.normalize("UK")]);
@@ -554,21 +551,7 @@ for (const lon of [-180, -90, 0, 45, 180]) {
 }
 assert.ok(a.eckertIV.project([0, 45])[1] < 0); // north is above the equator
 assert.equal(a.aggregate([], index).rows.length, 0);
-assert.equal(routes[0][0], "/plugins/dirty-stats");
-assert.equal(patches[0][0], "PerformerList");
-assert.equal(patches[1][0], "SceneList");
-assert.equal(patches[2][0], "MainNavBar.UtilityItems");
-context.window.location = { pathname: "/performers" };
-const original = { original: true };
-assert.equal(patches[0][1]({ extraCriteria: { dirtyStats: true } }, () => original), original);
-context.window.location.pathname = "/plugins/dirty-stats";
-assert.equal(patches[0][1]({ extraCriteria: {} }, () => original), original);
-assert.equal(patches[1][1]({ filter: native }, () => original), original);
-context.window.location.pathname = "/scenes";
-assert.equal(patches[1][1]({ filter: native }, () => original), original);
-vm.runInContext(coreSource, context);
-assert.equal(routes.length, 1);
-
+// Registration and native patch fallthrough are checked against the final IIFE.
 async function testNativeRouteLoading() {
   const state = [], effects = [], loads = [], routeRegistrations = [], nativePatches = {}, pageTitles = [];
   let stateIndex = 0, pathname = "/plugins/dirty-stats/dashboard", search = "?docsCapture=1";
@@ -604,7 +587,7 @@ async function testNativeRouteLoading() {
       PluginApi: pluginApi,
       DirtyPlugins: {
         graphql() {},
-        react: { html: htm.bind(react.createElement), Dialog: "Dialog", usePageTitle: (pluginName, viewTitle) => pageTitles.push(viewTitle + " - " + pluginName) },
+        react: { Dialog: "Dialog", usePageTitle: (pluginName, viewTitle) => pageTitles.push(viewTitle + " - " + pluginName) },
         getPluginSettings: () => Promise.resolve(routeSettings),
         configurePlugin: (id, settings) => { Object.assign(routeSettings, settings); return Promise.resolve({ settings }); },
         native: { ensureComponents: (bundle, names) => new Promise(resolve => {
@@ -614,7 +597,7 @@ async function testNativeRouteLoading() {
           } });
         }) }
       },
-      __dirtyStatsDashboard: { Component: "Dashboard" },
+
       location: { pathname: "/plugins/dirty-stats/ages" },
       dispatchEvent() {}, addEventListener() {}, removeEventListener() {},
       setTimeout, clearTimeout
@@ -623,7 +606,10 @@ async function testNativeRouteLoading() {
   };
   vm.createContext(routeContext);
   require("./shared_runtime").installSaveController(routeContext.window);
-  vm.runInContext(coreSource, routeContext);
+  const routePlugin=statsModules.core(routeContext);
+  routeRegistrations.push(routePlugin.views.DirtyStatsRoute);
+  routePlugin.views.Dashboard="Dashboard";
+  nativePatches.PerformerList=(props)=>({type:routePlugin.views.PerformerFilterCapture,props});
   const render = () => {
     stateIndex = 0;
     effects.length = 0;
@@ -655,7 +641,7 @@ async function testNativeRouteLoading() {
   const loaded = render();
   assert.equal(loaded.children[1].props.value, "ages");
   assert.equal(loaded.children[2].type, "FilteredSceneList", "Age at scene renders when all dependencies are ready");
-  const routePlugin = routeContext.window.__dirtyStatsPlugin;
+
   const filters = routePlugin.algorithms;
   effects.at(-1)();
   assert.equal(routePlugin.getSettingExtra("statisticFilter_ages"), savedAgeQuery);
@@ -816,11 +802,11 @@ async function testNativeRouteLoading() {
   );
 
   a.setStatsSetting("growthShowForecast", true);
-  assert.equal(context.window.__dirtyStatsPlugin.getSaveStatus().state, "pending");
+  assert.equal(plugin.getSaveStatus().state, "pending");
   await new Promise((resolve) => setTimeout(resolve, 500));
   assert.equal(savedSettings.length, 2);
   assert.equal(savedSettings[1].settings.growthShowForecast, true);
-  assert.equal(context.window.__dirtyStatsPlugin.getSaveStatus().state, "saved");
+  assert.equal(plugin.getSaveStatus().state, "saved");
 
   let conflictCalls = 0;
   context.window.DirtyPlugins.getPluginSettings = () => Promise.resolve(Object.assign({}, storedSettings, { remoteOnly: "preserved" }));
@@ -839,7 +825,7 @@ async function testNativeRouteLoading() {
   context.window.DirtyPlugins.configurePlugin = () => Promise.reject(new Error("storage unavailable"));
   a.setStatsSetting("growthGrouping", "month");
   await new Promise((resolve) => setTimeout(resolve, 600));
-  assert.equal(context.window.__dirtyStatsPlugin.getSaveStatus().state, "error");
+  assert.equal(plugin.getSaveStatus().state, "error");
   assert.equal(notifications.length, 1, "a failed save and retry should notify the user");
   assert.match(notifications[0][0], /could not be saved/);
   assert.equal(notifications[0][1].tone, "error");
@@ -850,19 +836,19 @@ async function testNativeRouteLoading() {
   };
   a.setStatsSetting("growthGrouping", "day");
   await new Promise((resolve) => setTimeout(resolve, 500));
-  assert.equal(context.window.__dirtyStatsPlugin.getSaveStatus().state, "saved", "a later valid edit recovers from a failed save");
+  assert.equal(plugin.getSaveStatus().state, "saved", "a later valid edit recovers from a failed save");
 
   const savedBeforeDashboard = savedSettings.length;
-  context.window.__dirtyStatsPlugin.setSettingExtra("dashboardWidgets", [{ id: "saved-widget" }]);
-  assert.equal(context.window.__dirtyStatsPlugin.getSaveStatus().state, "pending", "dashboard edits show pending feedback");
+  plugin.setSettingExtra("dashboardWidgets", [{ id: "saved-widget" }]);
+  assert.equal(plugin.getSaveStatus().state, "pending", "dashboard edits show pending feedback");
   await new Promise((resolve) => setTimeout(resolve, 500));
   assert.equal(savedSettings.length, savedBeforeDashboard + 1, "a changed dashboard persists once");
   assert.deepEqual(savedSettings.at(-1).settings.dashboardWidgets, [{ id: "saved-widget" }]);
-  context.window.__dirtyStatsPlugin.setSettingExtra("dashboardWidgets", [{ id: "saved-widget" }]);
+  plugin.setSettingExtra("dashboardWidgets", [{ id: "saved-widget" }]);
   await new Promise((resolve) => setTimeout(resolve, 500));
   assert.equal(savedSettings.length, savedBeforeDashboard + 1, "reopening an unchanged dashboard does not write or show a false save");
 
-  console.log("DirtyStats country aggregation, growth, filters, persisted display settings and registration passed");
+  console.log("DirtyStats country aggregation, growth, filters, persisted display settings and native route loading passed");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

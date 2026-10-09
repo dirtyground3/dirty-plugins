@@ -1,4 +1,5 @@
 "use strict";
+const { testModulePath } = require("./plugin_paths");
 
 const assert = require("assert");
 const path = require("path");
@@ -12,7 +13,6 @@ function parseMaybeJson(value) {
   }
 }
 
-const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
 const noop = function () {};
 const React = {
   Fragment: "fragment",
@@ -30,7 +30,7 @@ global.window = {
     getPluginSettings: function () { return Promise.resolve({}); },
     graphql: function () { return Promise.resolve({ findPerformers: { performers: [] } }); },
     runPluginOperation: function () { return Promise.resolve({ version: 2, revision: 0, states: {} }); },
-    react: { html: htm.bind(noop) },
+    react: {},
     registerSettingsPanel: noop,
     values: {
       asObject: function (value) { return value && typeof value === "object" ? value : {}; },
@@ -51,9 +51,10 @@ global.window = {
   location: { pathname: "/plugins/dirty-rank" },
 };
 
-for (const filename of require("./load_plugin_scripts").scriptPaths("DirtyRank")) require(filename);
-
-const algorithms = global.window.__dirtyRankPlugin.algorithms;
+const algorithms = require(testModulePath("DirtyRank", "rank.cjs")).createRankDomain({
+  DirtyPlugins: global.window.DirtyPlugins, PluginApi: global.window.PluginApi,
+});
+algorithms.ratingPresets = algorithms.RATING_PRESETS;
 const baseSettings = algorithms.settingsFromConfiguration({});
 const category = { id: "appearance", name: "Appearance", enabled: true, weight: 1 };
 const ratingStates = {};

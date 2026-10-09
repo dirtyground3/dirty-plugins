@@ -4,6 +4,12 @@ DirtyPlugins provides the shared runtime and unlisted settings page used by
 plugins in this repository. It is installed automatically as a dependency
 when a Dirty plugin is installed from the package source.
 
+The hub is written as TypeScript modules and focused TSX components under
+`src/`. Contributors must build first and install from
+`.build/plugins/DirtyPlugins/`; the raw source directory is not installable.
+Stash loads one `dirtyPlugins.js` bundle using its own React instance. Public
+APIs, settings and storage stay compatible, including the deprecated HTM tag.
+
 ![DirtyPlugins General tab with the suite theme selector and database backup](../../docs/images/dirty-plugins-general.png)
 
 DirtyCompactor uses this hub for its rule settings, native scene-filter editor,
@@ -17,10 +23,20 @@ value coercion, stacked notifications, reusable React settings-card, section,
 toggle, icon, and state components, custom settings-panel registration, and
 the visual tokens used by the Dirty plugins.
 
-`DirtyPlugins.react.html` is a shared HTM tag bound to Stash's React
-`createElement`. Plugins can use markup-style templates without a build step;
-the hub loads the local HTM runtime before plugin code. HTM 3.1.1 is bundled
-under `vendor/` with its Apache-2.0 license and source notice.
+Typed panels can use `DirtyPlugins.react.useSettingsDraft` with callbacks for
+loading, normalization, validation, comparison, serialization and saving.
+It preserves invalid raw edits, debounces writes, advances the saved baseline
+without replacing newer edits, reports dirty state and cancels pending work on
+unmount. A failed save blocks further autosaves until explicit retry or reload;
+callers own revisions and conflict handling. Compactor uses reload after a
+conflict. The hub route owns leave protection through dirty reports.
+`fieldDefinition(pluginId, setting)` and `react.SettingsField` share ordinary
+native controls and their limits/options. Specialized editors remain local.
+
+`DirtyPlugins.react.html` is a deprecated HTM tag bound to Stash's React
+`createElement`, kept for feature plugins that predate the TSX versions; current
+plugins render TSX. HTM 3.1.1 is bundled under `vendor/` with its Apache-2.0
+license and source notice.
 
 ## UI contract
 

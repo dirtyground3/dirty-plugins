@@ -1,18 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
-const { loadPluginScripts } = require("./load_plugin_scripts");
-let registrations = 0;
-const window = { PluginApi: { React: {}, patch: { after() {} } }, DirtyPlugins: {
-  react: { SceneFilterEditor() {}, html() {} }, registerSettingsPanel() { registrations++; },
-} };
-const context = vm.createContext({ window });
-loadPluginScripts("DirtyCompactor", context);
-loadPluginScripts("DirtyCompactor", context);
-assert.equal(registrations, 1, "asset reload must not duplicate registrations");
-const a = window.__dirtyCompactorPlugin.algorithms;
+const {testModulePath} = require("./plugin_paths");
+const a = require(testModulePath("DirtyCompactor", "rules.cjs"));
 const rule = a.newRule();
 assert.equal(rule.enabled, false);
 assert.equal(rule.mode, "manual");
@@ -37,7 +26,7 @@ assert.equal(a.targetMbps({ quality: "custom", mbps: "2.5", codec: "h264" }, 384
 assert.equal(a.targetMbps({ quality: "balanced", codec: "h264" }, 1920, 1080, 60), 7.07, "matches the backend's frame-rate factor");
 assert.equal(a.targetMbps({ quality: "source", codec: "hevc" }, 1920, 1080, 30, 7500000), 7.5);
 assert.equal(a.actionSummary({ action: "reencode", codec: "hevc", quality: "source" }), "Reencode · H.265 · same bitrate");
-const rulesApi = window.__dirtyCompactorRules;
+const rulesApi = a;
 assert.equal(rulesApi.timeLeft(45), "less than a minute left");
 assert.equal(rulesApi.timeLeft(25 * 60 + 10), "about 25 min left");
 assert.equal(rulesApi.timeLeft(3 * 3600 + 5 * 60), "about 3 h 5 min left");
@@ -112,83 +101,22 @@ assert.equal(a.filterSummary({ scene: { resolution: { value: "FOUR_K", modifier:
 "Resolution = 4K · Rating < 1 star · Studio: 2 studios · Organized: yes", "scene filters without a saved query still read naturally");
 assert.equal(a.bytes(1024), "1.00 KiB");
 
-let settingsPanel;
-let hookIndex = 0;
-let hookValues = {};
-const React = {
-  Fragment: "Fragment",
-  createElement(type, props, ...children) { return { type, props: props || {}, children }; },
-  useState(initial) { const index = hookIndex++; return [Object.hasOwn(hookValues, index) ? hookValues[index] : initial, () => {}]; },
-  useRef(initial) { return { current: initial }; },
-  useEffect() {},
-};
-const ui = Object.fromEntries(["SettingsCard", "SettingsSection", "SettingsToggle", "Badge", "Button", "Field",
-  "SceneFilterEditor", "StateView", "Pagination", "SaveStatus", "Dialog", "ActionMenu", "Metric"].map(name => [name, name]));
-ui.usePageTitle = () => {};
-const renderWindow = { location: { search: "" }, PluginApi: { React, patch: { after() {} } }, DirtyPlugins: {
-  react: ui, captureEnabled: () => false, registerSettingsPanel(id, component) { settingsPanel = component; },
-} };
-const renderContext = vm.createContext({ window: renderWindow });
-vm.runInContext(fs.readFileSync(path.join(__dirname, "../plugins/DirtyPlugins/vendor/htm.umd.js"), "utf8"), renderContext);
-ui.html = renderContext.htm.bind(React.createElement);
-loadPluginScripts("DirtyCompactor", renderContext);
-assert.equal(typeof settingsPanel, "function", "HTM asset must load before the settings panel");
-
-const sampleRule = a.newRule();
-sampleRule.condition.all = true;
-const operation = { id: "op-1", sceneId: 1, title: "Scene", source: "source.mp4", destination: "output.mp4",
-  rule: sampleRule, status: "ready", savings: 100, dimensions: [1920, 1080] };
-const preview = { id: "preview-1", status: "ready", total: 16, operations: [operation], counts: { ready: 1, unchanged: 12, blocked: 3 },
-  skipReasons: [["Already at or below target bitrate", 12], ["Scene has files shared with another scene", 3]],
-  readyActions: { resize: 1, reencode: 0, delete: 0 }, page: 1, pages: 1 };
-const run = { id: "run-1", status: "running", total: 1, operations: [operation], page: 1, pages: 1,
-  review: { operationId: "op-1", title: "Scene", url: "/preview", originalSize: 200, outputSize: 100,
-    original: { width: 1920, height: 1080, codec: "h264", bitrate: 2000000 },
-    output: { width: 1280, height: 720, codec: "h264", bitrate: 1000000 }, encoder: "cpu", destination: "output.mp4" } };
-// Settings state order: 4 preview, 6 run, 15 open rule editor.
-hookValues = { 4: preview, 6: run, 15: sampleRule.id };
-let root = settingsPanel({ configuration: { rules: [sampleRule], automationPaused: false } });
-const nodes = [];
-function visit(value) {
-  if (Array.isArray(value)) return value.forEach(visit);
-  if (!value || typeof value !== "object" || !Object.hasOwn(value, "type")) return;
-  if (typeof value.type === "function") {
-    hookIndex = 0;
-    hookValues = {};
-    return visit(value.type(value.props));
-  }
-  nodes.push(value);
-  value.children.forEach(visit);
-}
-visit(root);
-assert(nodes.some(node => node.type === "SettingsToggle" && node.props.label === "Automatic runs" && node.props.checked === true));
-assert(nodes.some(node => node.type === "Button" && node.children.includes("Add rule")));
-assert(nodes.some(node => node.type === "Field"), "open rule editor must render");
-assert(nodes.some(node => node.type === "Field" && node.props.label === "Quality"), "encoding rules offer quality presets");
-assert(!nodes.some(node => node.type === "Field" && /bitrate/i.test(node.props.label)), "custom bitrate stays hidden for presets");
-const ruleMenu = nodes.find(node => node.type === "ActionMenu" && /^Actions for/.test(node.props.ariaLabel));
-assert.equal(JSON.stringify(ruleMenu.props.items.map(item => item.label)), JSON.stringify(["Close editor", "Move up", "Move down", "Duplicate", "Delete rule"]));
-assert(nodes.some(node => node.type === "Metric" && node.props.label === "Estimated savings"), "preview leads with totals");
-assert(!nodes.some(node => node.type === "table"), "file tables stay collapsed until requested");
-const flat = node => typeof node === "string" ? node : Array.isArray(node) ? node.map(flat).join("") : node && node.children ? flat(node.children) : "";
-assert(nodes.some(node => node.type === "Metric" && node.props.value === "1 file"), "counts are pluralized");
-const skippedBox = nodes.find(node => node.props && node.props.className === "dirty-compactor-skipped");
-assert.equal(flat(skippedBox), "Why 15 files were skipped12 Already at or below target bitrate3 Scene has files shared with another scene");
-assert(nodes.some(node => node.type === "Button" && node.children.includes("Show files")));
-assert(nodes.some(node => node.type === "video"), "output review must render");
-// While a preview is still being planned, it offers Cancel instead of Run.
-hookIndex = 0;
-hookValues = { 4: Object.assign({}, preview, { status: "planning", progress: { stage: "Checking files · scene 3 of 16", progress: 0.19 } }) };
-nodes.length = 0;
-visit(settingsPanel({ configuration: { rules: [sampleRule], automationPaused: false } }));
-const planningButtons = nodes.filter(node => node.type === "Button").map(node => flat(node.children));
-assert(planningButtons.includes("Cancel preview"));
-assert(!planningButtons.some(label => /^Run/.test(label)), "no Run button until the plan is ready");
-assert(nodes.some(node => node.type === "progress"), "planning shows progress");
-hookIndex = 0;
-hookValues = { 4: Object.assign({}, preview, { status: "planning", cancelRequested: true }) };
-nodes.length = 0;
-visit(settingsPanel({ configuration: { rules: [sampleRule], automationPaused: false } }));
-const stopping = nodes.find(node => node.type === "Button" && flat(node.children) === "Stopping…");
-assert(stopping && stopping.props.disabled, "a requested cancel is visible and cannot be repeated");
-console.log("DirtyCompactor UI algorithms and registration passed");
+const {createAutomationMonitor} = require(testModulePath("DirtyCompactor", "automation.cjs"));
+let subscription = {data: {jobsSubscribe: {type: "REMOVE"}}}, watched, queued, notification;
+const monitor = createAutomationMonitor({
+  api: {GQL: {useJobsSubscribeSubscription: () => subscription}}, useRef() {}, useEffect() {},
+  hub: {createJobHook: () => (event, complete, fail, kind) => {watched = {event, complete, fail, kind};},
+    ui: {notify: value => {notification = value;}}},
+  operation: async (mode, args) => {queued = {mode, args};},
+});
+assert.equal(monitor(), null);
+assert.equal(watched.event, subscription.data.jobsSubscribe);
+assert.equal(watched.kind, "scan");
+watched.fail(Error("fixture failure"));
+assert.match(notification, /could not queue automation: fixture failure/);
+const absent = createAutomationMonitor({api: {}, hub: {createJobHook: () => () => {throw Error("unexpected job hook");}}});
+assert.equal(absent(), null, "hosts without a jobs subscription keep automation inert");
+watched.complete({jobId: "10", startTime: "2026-10-04T09:00:00Z"}).then(() => {
+  assert.deepEqual(queued, {mode: "startAutomaticRun", args: {jobId: "10", startTime: "2026-10-04T09:00:00Z"}});
+  console.log("DirtyCompactor typed rules, injectable automation modules and domain parity passed");
+}).catch(error => {console.error(error); process.exitCode = 1;});

@@ -1,4 +1,5 @@
 "use strict";
+const { testModulePath } = require("./plugin_paths");
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -7,7 +8,7 @@ const vm = require("node:vm");
 const { events, createHooks } = require("./ui_harness");
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 
-function createSession() {
+function createSession(options = {}) {
   const window = events({setTimeout: () => 1, clearTimeout() {}});
   const document = events({activeElement: null});
   const owner = {slots: [], effects: [], cursor: 0}, calls = [], paths = [];
@@ -18,10 +19,11 @@ function createSession() {
   const settings = {defaultCohort: "FEMALE", avoidRepeatWindow: 10};
   const location = {pathname: "/battle/appearance", search: ""}, history = {replace() {}, push(value) { paths.push(value); }};
   const context = vm.createContext({window, document, URLSearchParams});
-  vm.runInContext(fs.readFileSync(path.join(__dirname, "../plugins/DirtyRank/dirtyRankBattleSession.js"), "utf8"), context);
-  const useSession = window.__dirtyRankBattleSession.createBattleSession({
+  context.module = {exports: {}};
+  vm.runInContext(fs.readFileSync(testModulePath("DirtyRank", "session.cjs"), "utf8"), context);
+  const useSession = context.module.exports.createBattleSession({
     ...hooks, CONFIGURATION_CHANGED_EVENT: "configuration", PLUGIN_ID: "dirtyRank", UNDO_HISTORY_LIMIT: 25,
-    DirtyPlugins: {react: {usePageTitle() {}}, getPluginSettings: async () => settings},
+    DirtyPlugins: {react: {usePageTitle() {}}, getPluginSettings: options.getPluginSettings || (async () => settings)},
     Router: {useHistory: () => history, useLocation: () => location},
     battleCategoryPath: id => "/battle/" + id, battleCohortFor: () => "FEMALE", battleId: () => "battle-" + ++nextId,
     categoriesForPerformer: () => [category], categoryConfidence: () => ({}), cohortLabel: value => value,
@@ -40,7 +42,7 @@ function createSession() {
     owner.effects.splice(0).forEach(effect => effect());
     return session;
   }
-  return {window, document, calls, paths, render, unmount() { owner.slots.forEach(slot => { if (slot?.cleanup) slot.cleanup(); }); }};
+  return {window, document, calls, paths, owner, render, unmount() { owner.slots.forEach(slot => { if (slot?.cleanup) slot.cleanup(); }); }};
 }
 
 const result = rating => ({left: {id: "left", state: {rating}}, right: {id: "right", state: {rating}}});
@@ -99,5 +101,20 @@ const result = rating => ({left: {id: "left", state: {rating}}, right: {id: "rig
   assert.equal(session.undoHistory.length, 0);
   assert.match(session.error, /storage failed/);
   failed.unmount();
+  const loads = [];
+  const late = createSession({getPluginSettings: () => new Promise(resolve => loads.push(resolve))});
+  late.render();
+  late.window.emit("configuration", {detail: {pluginId: "dirtyRank"}});
+  assert.equal(loads.length, 2);
+  loads[1]({defaultCohort: "FEMALE", avoidRepeatWindow: 11}); await flush();
+  late.render();
+  assert.equal(late.render().settings.avoidRepeatWindow, 11);
+  loads[0]({defaultCohort: "FEMALE", avoidRepeatWindow: 99}); await flush();
+  assert.equal(late.render().settings.avoidRepeatWindow, 11, "older settings load cannot replace a newer refresh");
+  late.window.emit("configuration", {detail: {pluginId: "dirtyRank"}});
+  late.unmount();
+  const before = JSON.stringify(late.owner.slots);
+  loads[2]({defaultCohort: "FEMALE", avoidRepeatWindow: 55}); await flush();
+  assert.equal(JSON.stringify(late.owner.slots), before, "unmounted session ignores late settings and media loads");
   console.log("Rank queued votes, optimistic undo, failure recovery, exit protection and cleanup passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

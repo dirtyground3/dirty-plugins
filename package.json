@@ -2,13 +2,21 @@
   "name": "dirty-plugins-source-checks",
   "private": true,
   "scripts": {
-    "test": "npm run typecheck && node tests/run_tests.js",
-    "test:js": "node tests/run_js_tests.js",
-    "test:python": "python -B -m unittest discover -s tests -v",
-    "test:assets": "node tests/test_plugin_assets.js",
-    "typecheck": "tsc --project tsconfig.json"
+    "build": "node scripts/build.mjs",
+    "build:dev": "node scripts/build.mjs --development",
+    "build:watch": "node scripts/build.mjs --watch --development",
+    "test": "npm run build && npm run typecheck && node tests/run_tests.js",
+    "test:js": "npm run build && node tests/run_js_tests.js",
+    "test:python": "npm run build && python -B -m unittest discover -s tests -v",
+    "test:assets": "npm run build && node tests/test_plugin_assets.js",
+    "test:packages": "node scripts/check-packages.mjs _site/main",
+    "typecheck": "node scripts/generate-settings.mjs && tsc --project tsconfig.json"
   },
   "devDependencies": {
-    "typescript": "5.9.3"
+    "@types/react": "17.0.93",
+    "echarts": "5.6.0",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "yaml": "2.9.1"
   }
 }

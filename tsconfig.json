@@ -1,13 +1,18 @@
 {
   "compilerOptions": {
-    "allowJs": true,
-    "checkJs": false,
+    "strict": true,
     "noEmit": true,
     "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "lib": ["ES2020", "DOM"],
-    "types": [],
-    "skipLibCheck": true
+    "types": ["react"],
+    "jsx": "react",
+    "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment",
+    "skipLibCheck": true,
+    "paths": { "@generated/*": ["./.build/generated/*"] }
   },
-  "include": ["plugins/**/*.js", "types/**/*.d.ts"],
-  "exclude": ["plugins/DirtyStats/vendor/**", "node_modules/**"]
+  "include": ["plugins/**/src/**/*.ts", "plugins/**/src/**/*.tsx", "types/**/*.d.ts"],
+  "exclude": ["node_modules/**", ".build/**"]
 }

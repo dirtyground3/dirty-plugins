@@ -1,3 +1,4 @@
+from plugin_paths import runtime_path
 import importlib.util
 import io
 import json
@@ -9,7 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 
-MODULE_PATH = Path(__file__).parents[1] / "plugins" / "DirtyTidy" / "dirty_tidy.py"
+MODULE_PATH = runtime_path("DirtyTidy", "dirty_tidy.py")
 SPEC = importlib.util.spec_from_file_location("dirty_tidy", MODULE_PATH)
 dirty_tidy = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

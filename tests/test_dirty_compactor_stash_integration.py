@@ -2,13 +2,17 @@
 
 python -B tests/test_dirty_compactor_stash_integration.py --binary /path/to/stash
 Add --serve to leave the synthetic fixture open for browser review until Ctrl+C.
+Add --development after `npm run build:dev` to decode the served inline TSX maps.
 """
+from plugin_paths import build_mode, runtime_path, use_build_mode
 import argparse
+import base64
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import socket
 import subprocess
@@ -35,11 +39,19 @@ def wait_for(function, timeout=90):
 
 
 class Fixture:
-    def __init__(self, binary):
-        self.directory = tempfile.TemporaryDirectory(prefix="dirty-compactor-stash-", ignore_cleanup_errors=True)
+    def __init__(self, binary, prefix="dirty-compactor-stash-", prepare=None):
+        self.prefix = prefix
+        self.directory = tempfile.TemporaryDirectory(prefix=prefix, ignore_cleanup_errors=True)
         self.root = Path(self.directory.name)
         self.process = None
         self.log = None
+        try:
+            self._start(binary, prepare)
+        except BaseException:
+            self.close()
+            raise
+
+    def _start(self, binary, prepare):
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
             self.port = listener.getsockname()[1]
@@ -48,7 +60,7 @@ class Fixture:
         for name in ("media", "generated", "metadata", "cache", "blobs", "plugins", "scrapers"):
             (self.root / name).mkdir()
         for name, installed in (("DirtyPlugins", "dirtyPlugins"), ("DirtyCompactor", "dirtyCompactor")):
-            shutil.copytree(REPO / "plugins" / name, self.root / "plugins" / installed,
+            shutil.copytree(runtime_path(name), self.root / "plugins" / installed,
                             ignore=shutil.ignore_patterns("runtime", "__pycache__", "*.sqlite*", "*.pyc"))
         config = {"database": str(self.root / "stash.sqlite"), "generated": str(self.root / "generated"),
                   "metadata": str(self.root / "metadata"), "cache": str(self.root / "cache"),
@@ -58,6 +70,8 @@ class Fixture:
         lines = [key + ": " + json.dumps(value) for key, value in config.items()]
         lines += ["stash:", "  - path: " + json.dumps(str(self.root / "media")), "    excludeimage: false", "    excludevideo: false"]
         (self.root / "config.yml").write_text("\n".join(lines), encoding="utf-8")
+        if prepare:
+            prepare(self.root)
         self.log = (self.root / "stash.log").open("wb")
         self.process = subprocess.Popen([str(binary), "--config", str(self.root / "config.yml"), "--host", "127.0.0.1", "--port", str(self.port), "--nobrowser"],
                                         cwd=self.root, stdout=self.log, stderr=self.log,
@@ -113,13 +127,116 @@ class Fixture:
         if self.log:
             self.log.close()
         # Only this freshly-created, named fixture tree is ever cleaned up.
-        assert self.root.name.startswith("dirty-compactor-stash-")
+        assert self.root.name.startswith(self.prefix)
         self.directory.cleanup()
+
+
+def add_build_mode_argument(parser):
+    parser.add_argument("--development", action="store_true",
+                        help="Check a development build (npm run build:dev) and decode its inline TSX maps")
+
+
+def select_build_mode(args):
+    use_build_mode("development" if args.development else "release")
+
+
+def verify_served_bundle(fixture, directory, plugin_id, entry, components, required=()):
+    """Check Stash's real aggregated endpoint, not individual assets.
+
+    Release staging must be served byte-for-byte without a map, built only from
+    the plugin's own inputs. A development build also decodes the inline map at
+    the named components' compiled entry lines back to their embedded TSX.
+    """
+    staged = runtime_path(directory, entry).read_bytes()
+    with urllib.request.urlopen(fixture.url + "/plugin/" + plugin_id + "/javascript") as response:
+        served = response.read()
+    assert served == staged + b"\n", "Stash must serve the exact sole compiled bundle plus its final newline"
+    owner = "plugins/" + directory + "/"
+    registry = json.loads((REPO / "scripts" / "plugin-registry.json").read_text(encoding="utf-8"))
+    # Declared, pinned npm packages (Stats' modular ECharts) are the only other allowed inputs.
+    packages = ["node_modules/" + name + "/" for item in registry if item["directory"] == directory
+                for name in item.get("bundledPackages", [])]
+    # Generated settings metadata the plugin declares is data, not another plugin's implementation.
+    generated = [".build/generated/" + name + ".settings.ts" for item in registry if item["directory"] == directory
+                 for name in item.get("generatedImports", [])]
+    if build_mode() == "release":
+        assert b"sourceMappingURL" not in served, "release bundles carry no source map"
+        state = json.loads((REPO / ".build" / "build-state.json").read_text(encoding="utf-8"))
+        inputs = list(state["plugins"][directory]["metafile"]["inputs"])
+        assert inputs and all(name.startswith(owner) or name in generated or any(name.startswith(package) for package in packages)
+                              for name in inputs), "only plugin-owned inputs; no React or hub copies"
+        assert all(any(name.endswith(suffix) for name in inputs) for suffix in required)
+        return "exact sole served release bundle without a map, " + directory + "-only inputs"
+    assert served.count(b"sourceMappingURL=data:") == 1, "one bundle, one inline development map"
+    encoded = re.search(rb"sourceMappingURL=data:application/json;base64,([^\s]+)", served).group(1)
+    source_map = json.loads(base64.b64decode(encoded))
+    assert source_map["version"] == 3 and source_map["mappings"]
+    assert len(source_map["sources"]) == len(source_map["sourcesContent"])
+    # Map sources are relative to the staged output (for example ../../../generated/<id>.settings.ts).
+    assert all(owner in name or any(name.endswith(path[len(".build"):]) for path in generated) or any(package in name for package in packages)
+               for name in source_map["sources"]), "only plugin-owned sources; no React or hub copies"
+    assert all(isinstance(text, str) and text for text in source_map["sourcesContent"])
+    assert all(any(name.endswith(suffix) for name in source_map["sources"]) for suffix in required)
+    verify_component_mappings(served, source_map, components)
+    return ("exact sole served development bundle, one inline map, " + directory + "-only sources, decoded "
+            + "/".join(sorted(components)) + " TSX")
+
+
+def verify_frontend(fixture):
+    detail = verify_served_bundle(fixture, "DirtyCompactor", "dirtyCompactor", "dirtyCompactor.js",
+                                  {"Settings": "Settings", "OutputReview": "OutputReview"})
+    print("PASS: " + detail, flush=True)
+
+
+def verify_component_mappings(served, source_map, components):
+
+    # Decode standard base64 VLQ mappings at two compiled component entry lines.
+    # This checks the real served offsets and embedded TSX, without fetching
+    # authored source URLs (Stash intentionally serves only aggregated assets).
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    def vlq(segment):
+        values, value, shift = [], 0, 0
+        for char in segment:
+            digit = alphabet.index(char)
+            value |= (digit & 31) << shift
+            if digit & 32:
+                shift += 5
+            else:
+                values.append(-(value >> 1) if value & 1 else value >> 1)
+                value, shift = 0, 0
+        assert shift == 0
+        return values
+
+    lines = served.decode().splitlines()
+    wanted = {next(i for i, line in enumerate(lines) if "function " + name + "(" in line): name
+                for name in components}
+    source, original_line, original_column = 0, 0, 0
+    mapped = set()
+    for line_number, line in enumerate(source_map["mappings"].split(";")):
+        for segment in filter(None, line.split(",")):
+            fields = vlq(segment)
+            if len(fields) < 4:
+                continue
+            source += fields[1]
+            original_line += fields[2]
+            original_column += fields[3]
+            if line_number in wanted:
+                name = wanted[line_number]
+                target = components[name]
+                suffix = "/" + target + ".tsx" if "/" in target else "/components/" + target + ".tsx"
+                assert source_map["sources"][source].endswith(suffix)
+                authored = source_map["sourcesContent"][source].splitlines()[original_line]
+                assert "function " + name + "(" in authored
+                mapped.add(name)
+                # Later tokens on this generated line may map to the body.
+                del wanted[line_number]
+    assert mapped == set(components)
 
 
 def exercise(fixture):
     fixture.gql("mutation{reloadPlugins}")
     fixture.gql("mutation{setPluginsEnabled(enabledMap:{dirtyPlugins:true,dirtyCompactor:true})}")
+    verify_frontend(fixture)
     source = fixture.root / "media" / "synthetic.mp4"
     subprocess.run([shutil.which("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=25", "-t", "3", "-c:v", "libx264", "-crf", "5", str(source)], check=True)
     original = source.read_bytes()
@@ -204,7 +321,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True)
     parser.add_argument("--serve", action="store_true")
+    add_build_mode_argument(parser)
     args = parser.parse_args()
+    select_build_mode(args)
     fixture = Fixture(args.binary)
     try:
         print("FIXTURE " + fixture.url + " " + str(fixture.root), flush=True)

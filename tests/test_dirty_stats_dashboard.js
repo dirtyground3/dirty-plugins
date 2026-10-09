@@ -1,23 +1,20 @@
+"use strict";
 const { element } = require("./ui_harness");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
-const htm = require("../plugins/DirtyPlugins/vendor/htm.umd.js");
 
 const context = {
   console,
   window: {
     PluginApi: { React: { createElement: element, Fragment: "fragment" }, libraries: { ReactRouterDOM: { Link: "Link" } } },
     DirtyPlugins: { react: {}, captureUrl: path => path },
-    __dirtyStatsPlugin: { route: "/plugins/dirty-stats", algorithms: {} }
+
   }
 };
 vm.createContext(context);
-vm.runInContext(["dirtyStatsRegistry.js", "dirtyStatsData.js", "dirtyStatsCharts.js", "dirtyStatsChartOptions.js"].map(name => fs.readFileSync("plugins/DirtyStats/" + name, "utf8")).join("\n"), context);
-context.window.DirtyPlugins.react.html = htm.bind(context.window.PluginApi.React.createElement);
-vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStatsDashboard.js", "utf8"), context);
-
-const dashboard = context.window.__dirtyStatsDashboard;
+const statsModules=require("./stats_modules"),core={algorithms:{}};
+const dashboard=statsModules.dashboard(context,core.algorithms);
 const helpers = dashboard.algorithms;
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
@@ -134,9 +131,9 @@ assert.ok(!editNodes.some((node) => node.type === "Link" || node.type === "input
 assert.ok(viewNodes.some((node) => node.type === "Link"), "the full view link returns outside edit mode");
 assert.ok(!viewNodes.some((node) => node.type === "input" && node.props.className === "dirty-stats-dashboard-title-input"), "the title is plain text outside edit mode");
 let chartTheme = { text: "#f0f0f0", primary: "#54d5ca" };
-context.window.__dirtyStatsPlugin.algorithms.themeColor = name => chartTheme[name];
-context.window.__dirtyStatsPlugin.algorithms.themePalette = () => [chartTheme.primary, "#f3c779"];
-context.window.__dirtyStatsPlugin.algorithms.aggregateRatings = () => ({ rows: [{ name: "8", value: 1 }], total: 1 });
+core.algorithms.themeColor = name => chartTheme[name];
+core.algorithms.themePalette = () => [chartTheme.primary, "#f3c779"];
+core.algorithms.aggregateRatings = () => ({ rows: [{ name: "8", value: 1 }], total: 1 });
 const chartWidget = helpers.normalizeWidgets([{ statistic: "ratings", size: "large" }])[0];
 const chartResources = { [helpers.resourceKey(chartWidget)]: { loading: false, rows: [{}] } };
 function chartOption() {
@@ -164,21 +161,11 @@ assert.equal(helpers.normalizeWidgets([{ statistic: "origin", options: { showNum
 const statisticPatches = {};
 const originContext = { window: { PluginApi: { React: { createElement: context.window.PluginApi.React.createElement }, libraries: {}, register: { route() {} }, patch: { before() {}, instead(name, callback) { statisticPatches[name] = callback; } } }, DirtyPlugins: { graphql() {} } }, console, Intl, URLSearchParams };
 vm.createContext(originContext);
-vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStatsRegistry.js", "utf8"), originContext);
-vm.runInContext(["dirtyStatsData.js", "dirtyStatsCharts.js", "dirtyStatsChartOptions.js"].map(name => fs.readFileSync("plugins/DirtyStats/" + name, "utf8")).join("\n"), originContext);
-originContext.window.DirtyPlugins.react = { html: htm.bind(originContext.window.PluginApi.React.createElement) };
-vm.runInContext(fs.readFileSync("plugins/DirtyStats/vendor/world.js", "utf8"), originContext);
-vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStatsGrowth.js", "utf8"), originContext);
-vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStatsAges.js", "utf8"), originContext);
 require("./shared_runtime").installSaveController(originContext.window);
-vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStats.js", "utf8"), originContext);
-for (const name of ["countryIndex", "aggregate", "originMapOption", "mapLayout", "aggregateGrowth", "forecastGrowth", "formatBytes"]) context.window.__dirtyStatsPlugin.algorithms[name] = originContext.window.__dirtyStatsPlugin.algorithms[name];
-context.window.__dirtyStatsWorld = originContext.window.__dirtyStatsWorld;
-context.window.echarts = { registerMap() {} };
-// Dashboard captures the map at load time.
-delete context.window.__dirtyStatsDashboard;
-vm.runInContext(fs.readFileSync("plugins/DirtyStats/dirtyStatsDashboard.js", "utf8"), context);
-const originDashboard = context.window.__dirtyStatsDashboard;
+const originCore=statsModules.core(originContext);
+for(const name of ["countryIndex","aggregate","originMapOption","mapLayout","aggregateGrowth","forecastGrowth","formatBytes"])core.algorithms[name]=originCore.algorithms[name];
+context.window.echarts={registerMap(){}};
+const originDashboard=statsModules.dashboard(context,core.algorithms);
 let originChartComponent, originChartProps;
 for (const size of ["small", "medium", "large"]) {
   for (const showHeader of [false, true]) {
@@ -196,7 +183,7 @@ for (const size of ["small", "medium", "large"]) {
 }
 const resizeOptions = [];
 let chartEffect, resizeCallback, observedNode, disconnected = false, disposed = false;
-context.window.__dirtyStatsPlugin.algorithms.initStatsChart = () => ({ setOption: option => resizeOptions.push(option), resize() {}, isDisposed: () => disposed, dispose() { disposed = true; } });
+core.algorithms.initStatsChart = () => ({ setOption: option => resizeOptions.push(option), resize() {}, isDisposed: () => disposed, dispose() { disposed = true; } });
 context.ResizeObserver = function (callback) { resizeCallback = callback; this.observe = node => { observedNode = node; }; this.disconnect = () => { disconnected = true; }; };
 context.window.addEventListener = () => {};
 context.window.removeEventListener = () => {};
@@ -231,7 +218,7 @@ for (const size of ["small", "medium", "large"]) {
 }
 
 // Verify the shared setting against every widget renderer and size.
-Object.assign(context.window.__dirtyStatsPlugin.algorithms, originContext.window.__dirtyStatsPlugin.algorithms);
+Object.assign(core.algorithms, originCore.algorithms);
 const headerScenes = [{ id: "1", date: "2026-09-01", created_at: "2026-09-01", rating100: 80, play_count: 3, o_counter: 2, files: [{ id: "f1", size: 1000, duration: 120 }], studio: { id: "s1", name: "Studio" }, tags: [{ id: "t1", name: "Tag" }], performers: [{ id: "p1", name: "Performer", birthdate: "2000-01-01", gender: "FEMALE" }, { id: "p2", name: "Other", birthdate: "2001-01-01", gender: "FEMALE" }] }];
 const headerPerformers = [{ id: "p1", name: "Performer", birthdate: "2000-01-01", country: "US", rating100: 90, scene_count: 2 }];
 for (const statistic of Object.keys(dashboard.registry)) {
@@ -299,10 +286,10 @@ for (const name of Object.keys(ageMetricOptions)) {
   assert.deepEqual(plain(changed), { ...plain(ageWidget.options), [name]: false }, "individual toggles preserve other widget settings");
 }
 
-// Render the full view through its native SceneList integration.
+// Render the imported full view; the IIFE integration has separate coverage.
 originContext.window.location = { pathname: "/plugins/dirty-stats/scenes" };
 const sceneFilter = { makeFindFilter: () => ({}), makeFilter: () => ({}) };
-const growthPage = statisticPatches.SceneList({ filter: sceneFilter }, () => null).type;
+const growthPage = originCore.views.GrowthPage;
 let growthHookIndex = 0;
 const growthReact = originContext.window.PluginApi.React;
 growthReact.useRef = value => ({ current: value });
@@ -347,7 +334,7 @@ context.window.location = { search: "?docsCapture=1" };
 context.window.PluginApi.React.useState = value => [value, () => {}];
 context.window.PluginApi.React.useRef = value => ({ current: value });
 context.window.PluginApi.React.useEffect = () => {};
-context.window.__dirtyStatsPlugin.algorithms.docsCaptureEnabled = () => true;
+core.algorithms.docsCaptureEnabled = () => true;
 const capturedFilters = dashboard.FilterChooser({ entity: "scenes", onChange() {} });
 assert.match(capturedFilters.props.className, /dirty-stats-capture-filter/);
 assert.match(capturedFilters.children[0], /Native filter results are hidden/, "capture mode does not mount potentially explicit native results");
@@ -365,7 +352,7 @@ cardEffect();
 assert.equal(nativeLoads, 0, "capture mode does not load native performer cards");
 assert.equal(querySkipped, true, "capture mode does not query native cards");
 context.window.location.search = "";
-context.window.__dirtyStatsPlugin.algorithms.docsCaptureEnabled = () => false;
+core.algorithms.docsCaptureEnabled = () => false;
 cardRenderer({ widget: cardWidget, rows: [{ id: "42" }] });
 cardEffect();
 assert.equal(nativeLoads, 1, "dashboard cards use the shared Stash component loader");

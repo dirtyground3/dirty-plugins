@@ -1,3 +1,4 @@
+from plugin_paths import runtime_path
 import copy
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -12,7 +13,7 @@ import unittest
 from unittest import mock
 
 ROOT = Path(__file__).parents[1]
-SPEC = importlib.util.spec_from_file_location("caption_index_entry_tests", ROOT / "plugins/DirtyCaptions/dirty_captions.py")
+SPEC = importlib.util.spec_from_file_location("caption_index_entry_tests", runtime_path("DirtyCaptions", "dirty_captions.py"))
 entry = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(entry)
 index = entry.caption_index

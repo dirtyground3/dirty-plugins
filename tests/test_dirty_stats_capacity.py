@@ -1,9 +1,10 @@
+from plugin_paths import runtime_path
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
-spec = importlib.util.spec_from_file_location("dirty_stats", Path(__file__).resolve().parents[1] / "plugins/DirtyStats/dirty_stats.py")
+spec = importlib.util.spec_from_file_location("dirty_stats", runtime_path("DirtyStats", "dirty_stats.py"))
 stats = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stats)
 

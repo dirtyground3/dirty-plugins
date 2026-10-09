@@ -1,0 +1,199 @@
+import type * as R from "react";
+import type { NativeProps } from "../../../DirtyPlugins/src/types";
+import { GAUNTLET_ROUTE_PATH, LEADERBOARDS_ROUTE_PATH, OVERALL_SORT_ACTIVE, OVERALL_SORT_DIRECTION, OVERALL_SORT_LABEL, OVERALL_SORT_MESSAGE_ID, OVERALL_SORT_PAGE, OVERALL_SORT_PAGE_SIZE, OVERALL_SORT_VALUE, PERFORMERS_ROUTE_PATH, PLUGIN_ID, ROUTE_PATH } from "../constants";
+import type { RankPerformer, RankSettings } from "../types";
+import type { ViewDependencies } from "../view";
+export function createNative(dependencies: Pick<ViewDependencies, "React" | "getOverallSortSettings" | "getOverallSortRevision" | "Fragment" | "DirtyPlugins" | "NavLink" | "useIntl" | "useState" | "useEffect" | "useMemo" | "SharedNavAction" | "CONFIGURATION_CHANGED_EVENT" | "settingsFromConfiguration" | "subscribeToOverallSortSettings" | "sortPerformersByOverall">) {
+  const { React, getOverallSortSettings, getOverallSortRevision, Fragment, DirtyPlugins, NavLink, useIntl, useState, useEffect, useMemo, SharedNavAction, CONFIGURATION_CHANGED_EVENT, settingsFromConfiguration, subscribeToOverallSortSettings, sortPerformersByOverall } = dependencies;
+  const overallFilterHookCache = new WeakMap();
+  function isPerformerListRoute() {
+    return window.location.pathname === PERFORMERS_ROUTE_PATH;
+  }
+
+  function addOverallSortOption(filter: NativeProps) {
+    var options = filter && filter.options && filter.options.sortByOptions;
+    if (!Array.isArray(options)) return;
+    if (options.some(function (option) { return option.value === OVERALL_SORT_VALUE; })) return;
+    options.push({
+      messageID: OVERALL_SORT_MESSAGE_ID,
+      value: OVERALL_SORT_VALUE,
+    });
+  }
+
+  function applyOverallPerformerFilter(filter: NativeProps, originalHook?: (filter: NativeProps) => NativeProps) {
+    addOverallSortOption(filter);
+    var effective = originalHook ? originalHook(filter) : filter;
+    if (!effective) effective = filter;
+    if (filter.sortBy !== OVERALL_SORT_VALUE) return effective;
+
+    var queryFilter = effective.clone();
+    queryFilter.sortBy = "name";
+    queryFilter.sortDirection = "ASC";
+    queryFilter.currentPage = 1;
+    queryFilter.itemsPerPage = -1;
+    queryFilter[OVERALL_SORT_ACTIVE] = true;
+    queryFilter[OVERALL_SORT_PAGE] = filter.currentPage;
+    queryFilter[OVERALL_SORT_PAGE_SIZE] = filter.itemsPerPage;
+    queryFilter[OVERALL_SORT_DIRECTION] = filter.sortDirection;
+    return queryFilter;
+  }
+
+  function defaultOverallPerformerFilterHook(filter: NativeProps) {
+    return applyOverallPerformerFilter(filter, undefined);
+  }
+
+  function overallPerformerFilterHook(originalHook?: (filter: NativeProps) => NativeProps) {
+    if (typeof originalHook !== "function") return defaultOverallPerformerFilterHook;
+    if (!overallFilterHookCache.has(originalHook)) {
+      overallFilterHookCache.set(originalHook, function (filter: NativeProps) {
+        return applyOverallPerformerFilter(filter, originalHook);
+      });
+    }
+    return overallFilterHookCache.get(originalHook);
+  }
+
+  function DirtyRankPerformerListShell(props: { children?: R.ReactNode }): R.JSX.Element {
+    var intl = useIntl();
+    if (intl.messages && !Object.prototype.hasOwnProperty.call(intl.messages, OVERALL_SORT_MESSAGE_ID)) {
+      intl.messages[OVERALL_SORT_MESSAGE_ID] = OVERALL_SORT_LABEL;
+    }
+    return <Fragment>
+      {props.children}
+    </Fragment>;
+  }
+
+  function DirtyRankSortedPerformerList(props: NativeProps): R.JSX.Element | null {
+    var revisionState = useState(getOverallSortRevision());
+    var revision = revisionState[0];
+    var setRevision = revisionState[1];
+    useEffect(function () { return subscribeToOverallSortSettings(setRevision); }, []);
+
+    var listProps = props.listProps;
+    var filter = listProps.filter;
+    var currentPage = Number(filter[OVERALL_SORT_PAGE]) || 1;
+    var pageSize = Number(filter[OVERALL_SORT_PAGE_SIZE]) || 40;
+    var direction = filter[OVERALL_SORT_DIRECTION] || "ASC";
+    var pagePerformers = useMemo(function () {
+      var sorted = sortPerformersByOverall(
+        Array.isArray(listProps.performers) ? listProps.performers : [],
+        direction,
+        getOverallSortSettings()
+      );
+      var start = Math.max(0, (currentPage - 1) * pageSize);
+      return sorted.slice(start, start + pageSize);
+    }, [currentPage, direction, listProps.performers, pageSize, revision]);
+
+    return props.next(Object.assign({}, listProps, { performers: pagePerformers }));
+  }
+
+  function DirtyRankBattleNavLink(): R.JSX.Element | null {
+    if (SharedNavAction) return (<SharedNavAction
+      as={NavLink}
+      className="dirty-rank-nav-link dirty-rank-nav-button"
+      exact={false}
+      icon={RankNavGlyph("battle")}
+      label="DirtyRank performer battles"
+      to={ROUTE_PATH} />);
+    return (<NavLink className="nav-utility dirty-rank-nav-link" exact={false} to={ROUTE_PATH}>
+      <button
+        className="minimal d-flex align-items-center h-100 dirty-rank-nav-button"
+        title="DirtyRank performer battles"
+        type="button">
+        {RankNavGlyph("battle")}
+      </button>
+    </NavLink>);
+  }
+
+  function DirtyRankGauntletLaunch(props: { performer: RankPerformer }): R.JSX.Element | null {
+    return (<div className="dirty-rank-gauntlet-launch">
+      <NavLink
+        className="btn btn-secondary dirty-rank-gauntlet-launch-button"
+        title="Refine this performer's category ratings through focused DirtyRank battles"
+        to={GAUNTLET_ROUTE_PATH.replace(":performerId", props.performer.id)}>
+        <span aria-hidden="true">
+          {"⚔"}
+        </span>
+        {" Start Gauntlet"}
+      </NavLink>
+    </div>);
+  }
+
+  function RankNavGlyph(kind: string): R.JSX.Element | null {
+    return (<i aria-hidden="true" className="dirty-rank-nav-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--dirty-ui-icon-white)" strokeWidth="1.8">
+        {kind === "battle"
+          ? ["red", "blue"].map(function (color, index) {
+            return (<g
+              key={color}
+              transform={index ? "translate(24 0) scale(-1 1)" : undefined}
+              strokeLinejoin="round"
+              strokeLinecap="round">
+              <path d="M2.5 2.5l4 1L17 14l-3 3L3.5 6.5z" fill={"var(--dirty-ui-icon-" + color + ")"} strokeWidth="0.7" />
+              <path d="M16.5 16.5l4 4" strokeWidth="3.2" />
+              <path d="M16.5 16.5l4 4" stroke="var(--dirty-ui-icon-blue)" strokeWidth="1.6" />
+              <path d="M12.5 18.5l6-6M19 22l3-3" strokeWidth="1.8" />
+            </g>);
+          })
+          : (<Fragment>
+            <path d="M7 5H4v2c0 2 1 3 4 4" stroke="var(--dirty-ui-icon-red)" />
+            <path d="M17 5h3v2c0 2-1 3-4 4" stroke="var(--dirty-ui-icon-blue)" />
+            <path d="M7 3h10v6c0 3-2 5-5 5s-5-2-5-5V3z" fill="var(--dirty-ui-icon-blue)" />
+            <path d="M12 14v5M8 21h8M10 19h4" />
+          </Fragment>)}
+      </svg>
+    </i>);
+  }
+
+  function DirtyRankLeaderboardsNavLink(): R.JSX.Element | null {
+    if (SharedNavAction) return (<SharedNavAction
+      as={NavLink}
+      className="dirty-rank-nav-link dirty-rank-leaderboards-nav-link dirty-rank-nav-button"
+      exact={true}
+      icon={RankNavGlyph("leaderboard")}
+      label="DirtyRank leaderboards"
+      to={LEADERBOARDS_ROUTE_PATH} />);
+    return (<NavLink
+      className="nav-utility dirty-rank-nav-link dirty-rank-leaderboards-nav-link"
+      exact={true}
+      to={LEADERBOARDS_ROUTE_PATH}>
+      <button
+        className="minimal d-flex align-items-center h-100 dirty-rank-nav-button"
+        title="DirtyRank leaderboards"
+        type="button">
+        {RankNavGlyph("leaderboard")}
+      </button>
+    </NavLink>);
+  }
+
+  function DirtyRankNavLinks(): R.JSX.Element | null {
+    var navigationState = useState<RankSettings | null>(null);
+    var navigation = navigationState[0];
+    var setNavigation = navigationState[1];
+
+    useEffect(function () {
+      var active = true;
+      function refreshNavigation() {
+        DirtyPlugins.getPluginSettings(PLUGIN_ID).then(function (configuration) {
+          if (active) setNavigation(settingsFromConfiguration(configuration));
+        }).catch(function (error) {
+          console.error("DirtyRank could not refresh navigation settings", error);
+        });
+      }
+      function configurationChanged(event: import("../types").ConfigurationEvent) {
+        if (!event.detail || event.detail.pluginId === PLUGIN_ID) refreshNavigation();
+      }
+      refreshNavigation();
+      window.addEventListener(CONFIGURATION_CHANGED_EVENT, configurationChanged);
+      return function () {
+        active = false;
+        window.removeEventListener(CONFIGURATION_CHANGED_EVENT, configurationChanged);
+      };
+    }, []);
+
+    return (<Fragment>
+      {navigation && navigation.showBattlesInMenu && (<DirtyRankBattleNavLink />)}
+      {navigation && navigation.showLeaderboardsInMenu && (<DirtyRankLeaderboardsNavLink />)}
+    </Fragment>);
+  }
+  return { isPerformerListRoute, addOverallSortOption, applyOverallPerformerFilter, defaultOverallPerformerFilterHook, overallPerformerFilterHook, DirtyRankPerformerListShell, DirtyRankSortedPerformerList, DirtyRankBattleNavLink, DirtyRankGauntletLaunch, RankNavGlyph, DirtyRankLeaderboardsNavLink, DirtyRankNavLinks };
+}

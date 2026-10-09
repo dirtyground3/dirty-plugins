@@ -1,3 +1,4 @@
+from plugin_paths import runtime_path, source_path
 import importlib.util
 import json
 import os
@@ -11,7 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 
-MODULE_PATH = Path(__file__).parents[1] / "plugins" / "DirtyRank" / "dirty_rank.py"
+MODULE_PATH = runtime_path("DirtyRank", "dirty_rank.py")
 SPEC = importlib.util.spec_from_file_location("dirty_rank", MODULE_PATH)
 dirty_rank = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
@@ -20,19 +21,9 @@ SPEC.loader.exec_module(dirty_rank)
 
 
 def rank_source():
-    manifest = MODULE_PATH.with_name("dirtyRank.yml").read_text(encoding="utf-8")
-    scripts = []
-    in_javascript = False
-    for line in manifest.splitlines():
-        if line.strip() == "javascript:":
-            in_javascript = True
-            continue
-        if in_javascript and line.lstrip().startswith("- "):
-            name = line.split("-", 1)[1].strip().strip("\"'")
-            scripts.append(MODULE_PATH.with_name(name).read_text(encoding="utf-8"))
-        elif in_javascript and line.strip():
-            break
-    return "\n".join(scripts)
+    """Architecture contracts inspect authored modules; Node tests execute staging."""
+    return "\n".join(path.read_text(encoding="utf-8") for path in
+                     sorted(source_path("DirtyRank", "src").rglob("*.ts*")))
 
 
 class Glicko2Tests(unittest.TestCase):
@@ -538,6 +529,15 @@ class SettingsTests(unittest.TestCase):
         self.assertNotIn("ratingPeriodDays", manifest)
         self.assertNotIn("Inactivity period", source)
 
+    def test_category_cohort_order_does_not_depend_on_the_hash_seed(self):
+        self.assertEqual(list(dirty_rank.normalize_settings({})["categoriesByCohort"]), dirty_rank.COHORT_ORDER)
+        script = ("import json, sys; sys.path.insert(0, sys.argv[1]); import dirty_rank; "
+                  "print(json.dumps(list(dirty_rank.normalize_settings({})['categoriesByCohort'])))")
+        for seed in ("1", "2", "3"):
+            result = subprocess.run([sys.executable, "-B", "-c", script, str(MODULE_PATH.parent)], capture_output=True,
+                                    text=True, check=True, env=dict(os.environ, PYTHONHASHSEED=seed))
+            self.assertEqual(json.loads(result.stdout), dirty_rank.COHORT_ORDER, "PYTHONHASHSEED=" + seed)
+
     def test_evidence_weight_is_bounded(self):
         self.assertEqual(
             dirty_rank.normalize_settings({"evidenceWeight": 0.1})["evidenceWeight"],
@@ -662,8 +662,8 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("hidePerformerImages", source)
         self.assertIn("dirty-rank-card-no-image", source)
         self.assertIn("var showMedia = showImages || Boolean(scene) || sceneLoading", source)
-        self.assertIn("showMedia && html`", source)
-        self.assertIn('showImages && html`<div className="dirty-rank-portrait">', source)
+        self.assertIn("showMedia && (", source)
+        self.assertIn('showImages && (<div className="dirty-rank-portrait">', source)
         self.assertIn('get("censorMedia") === "1"', source)
         self.assertIn("dirty-rank-censored-media", styles)
         self.assertIn("blur(42px)", styles)
@@ -672,12 +672,12 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         source = rank_source()
         styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
 
-        self.assertIn('to=${"/performers/" + performer.id}', source)
+        self.assertIn('to={"/performers/" + performer.id}', source)
         self.assertIn('event.stopPropagation()', source)
         self.assertIn('className="dirty-rank-scene-panel"', source)
         self.assertIn('var arenaLeftKey = arenaLeft && (gauntletMode ? "gauntlet:" + arenaLeft.id : kingsMode ? "kings:"', source)
-        self.assertIn("key=${arenaLeftKey}", source)
-        self.assertIn('key=${kingsMode ? "kings:"', source)
+        self.assertIn("key={arenaLeftKey}", source)
+        self.assertIn('key={kingsMode ? "kings:"', source)
         self.assertIn("@keyframes dirty-rank-card-change", styles)
         self.assertIn("@keyframes dirty-rank-firework-burst", styles)
         self.assertIn(".dirty-rank-image-ready .dirty-rank-image", styles)
@@ -700,10 +700,10 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
     def test_pending_operations_guard_navigation_and_page_close(self):
         source = rank_source()
 
-        self.assertIn("var Prompt = Router.Prompt", source)
+        self.assertIn("Prompt: Router.Prompt", source)
         self.assertIn('window.addEventListener("beforeunload", preventPendingOperationExit)', source)
         self.assertIn('window.removeEventListener("beforeunload", preventPendingOperationExit)', source)
-        self.assertIn("when=${pendingVotes > 0}", source)
+        self.assertIn("when={pendingVotes > 0}", source)
         self.assertIn("DirtyRank is still saving queued votes or undos", source)
 
     def test_gauntlet_route_and_performer_page_launch_are_registered(self):
@@ -717,7 +717,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn(".dirty-rank-gauntlet-confidence.dirty-rank-gauntlet-established", styles)
         self.assertIn("dirty-rank-gauntlet-excellent", source)
         self.assertIn("function DirtyRankGauntletLaunch", source)
-        self.assertIn('PluginApi.register.route(GAUNTLET_ROUTE_PATH, DirtyRankRoute)', source)
+        self.assertIn('PluginApi.register.route(GAUNTLET_ROUTE_PATH, Route)', source)
         self.assertIn("gauntletPathActive && !routeTargetId", source)
         self.assertIn('PluginApi.patch.after("PerformerDetailsPanel"', source)
         self.assertIn('" Start Gauntlet"', source)
@@ -735,20 +735,22 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn('"Rated coverage"', source)
         self.assertIn('"Median RD"', source)
         self.assertIn('"Draw rate"', source)
-        podium = source[source.index("function LeaderboardPodium(props)") : source.index("function LeaderboardTable")]
+        podium = source[source.index("function LeaderboardPodium(") : source.index("function LeaderboardTable")]
         self.assertNotIn("dirty-rank-podium-medal", podium)
         self.assertNotIn("dirty-rank-showcase-heading", podium)
-        self.assertNotIn("<${PrecisionBadge}", podium)
+        self.assertNotIn("<PrecisionBadge", podium)
         self.assertIn("dirty-rank-leaderboard-rating-row", podium)
         self.assertIn("leaderboardRatingText(pool, props.settings)", podium)
         self.assertIn("var podiumOrder = [1, 0, 2]", source)
         self.assertIn("dirty-rank-podium-step", source)
         self.assertIn('PluginApi.register.route(LEADERBOARDS_ROUTE_PATH + "/:statistic?"', source)
-        self.assertIn('function RankStatisticSelector(props)', source)
-        self.assertIn('source.leaderboardView === "table" ? "table" : "gallery"', source)
+        self.assertIn('function RankStatisticSelector(', source)
+        self.assertIn('source.leaderboardView === "table" ? "table" : defaults.leaderboardView', source)
+        schema = json.loads((source_path("DirtyRank").parent.parent / "schemas" / "dirtyRank.settings.json").read_text(encoding="utf-8"))
+        self.assertEqual(schema["settings"]["leaderboardView"]["default"], "gallery")
         self.assertIn('leaderboardTopCount: leaderboardTopCount(source.leaderboardTopCount)', source)
-        self.assertIn('<option value="gallery">Gallery</option>', source)
-        self.assertIn('<option value="table">Table</option>', source)
+        self.assertRegex(source, r'<option value="gallery">\s*\{"Gallery"\}\s*</option>')
+        self.assertRegex(source, r'<option value="table">\s*\{"Table"\}\s*</option>')
         self.assertNotIn('LEADERBOARD_TOP_STORAGE_KEY', source)
         self.assertIn("function LeaderboardGallery", source)
         self.assertIn("function LeaderboardPagination", source)
@@ -766,11 +768,11 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
 
     def test_battle_sidebar_uses_the_selected_category_standings(self):
         source = rank_source()
-        sidebar = source[source.index("function Leaderboard(props)") : source.index("function ConfidenceIndicator")]
+        sidebar = source[source.index("function Leaderboard(") : source.index("function ConfidenceIndicator")]
 
         self.assertIn("props.category.id", sidebar)
         self.assertIn('props.category.name + " standings"', sidebar)
-        self.assertIn(">Current battle category · top 12<", sidebar)
+        self.assertIn('{"Current battle category · top 12"}', sidebar)
         self.assertNotIn("rankOverallPerformers", sidebar)
         self.assertNotIn("overallPoolFor", sidebar)
 
@@ -789,7 +791,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         source = rank_source()
 
         self.assertIn("enabledCohorts", source)
-        self.assertIn('availableCohorts.length > 1 && html`<div', source)
+        self.assertIn('availableCohorts.length > 1 && (<div', source)
         self.assertIn('id="dirty-rank-battle-cohort"', source)
         self.assertIn('id="dirty-rank-leaderboard-cohort"', source)
         self.assertIn('title="Gender boxes"', source)
@@ -801,7 +803,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("DirtyRankLeaderboardsNavLink", source)
         self.assertIn("dirty-rank-leaderboards-nav-link", source)
         self.assertIn('["showLeaderboardsInMenu", "Show Leaderboards in the Stash header"]', source)
-        self.assertIn('checked=${draft[key]} label=${definition[1]}', source)
+        self.assertRegex(source, r'checked=\{draft\[key as keyof RankSettingsDraft\] as boolean\}\s+label=\{definition\[1\]\}')
         self.assertIn('["showBattlesInMenu", "Show Battles in the Stash header"]', source)
 
     def test_category_editor_can_configure_disabled_boxes(self):
@@ -811,7 +813,7 @@ class JavaScriptAlgorithmTests(unittest.TestCase):
         self.assertIn("boxOptions(draft, false)", category_editor)
         self.assertIn('label="Categories for gender box"', category_editor)
         self.assertIn(
-            'draft.genderBoxes.length > 1 && html`<div className="dirty-rank-category-cohort">',
+            'draft.genderBoxes.length > 1 && (<div className="dirty-rank-category-cohort">',
             source,
         )
 
