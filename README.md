@@ -15,13 +15,13 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.2 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.3 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.2 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.1 |
-| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.1 |
-| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 1.0.1 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.2 |
+| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.2 |
+| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 1.0.2 |
 | [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 1.0.2 |
-| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.1 |
+| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.2 |
 | [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.2 |
 
 ## Shared look and settings
@@ -239,8 +239,8 @@ After installing, reload plugins and hard-refresh the browser (**Ctrl+F5**).
 Open a scene and wait for extraction; captions show automatically by default.
 The **CC** menu identifies tracks with **embedded** and lets you change language
 or turn captions off. Existing external captions remain available. Settings
-live in **Dirty Plugins settings → DirtyCaptions** and require DirtyPlugins
-0.5.6 or newer. See the [DirtyCaptions guide](plugins/DirtyCaptions/README.md) for
+live in **Dirty Plugins settings → DirtyCaptions**. See the
+[DirtyCaptions guide](plugins/DirtyCaptions/README.md) for
 setup, supported formats, and troubleshooting.
 
 ## Installation from Stash
@@ -451,9 +451,9 @@ or stale staging. See [tests/README.md](tests/README.md) for test paths and fixt
 
 Plugin frontends are TypeScript/TSX under each plugin's `src/`, compiled by
 esbuild into one browser bundle per plugin with the existing entry filename.
-React comes from Stash and is never bundled. The DirtyPlugins hub keeps its
-public API, including the deprecated `react.html` HTM tag for feature plugins
-that predate the TSX versions. Stats bundles only the ECharts 5.6.0 modules it
+React comes from Stash and is never bundled. Versions before 1.0.0 were
+developer builds; their compatibility APIs (such as the HTM `react.html` tag)
+were removed. Stats bundles only the ECharts 5.6.0 modules it
 uses (pinned npm packages) and its world map data; no other plugin or the hub
 loads a chart library. `npm run typecheck` runs the strict TypeScript check.
 Python backends retain their standard-library and same-directory import contract.
@@ -526,6 +526,16 @@ main/
 
 ## Release notes
 
+- **DirtyStats 1.0.3 and 1.0.2 for the other plugins:** dead code and
+  compatibility with pre-1.0 developer builds are removed. The hub no longer
+  bundles HTM (`react.html`) and exposes only the API members the plugins use;
+  older-hub fallbacks and the `?censorMedia=1` alias are gone (use
+  `?docsCapture=1`). Readers for data written by pre-1.0 versions were removed
+  after a read-only check showed current data no longer uses them: the shared
+  Stats rounding key and Stats-only theme, Tidy JSON-string settings, Rank
+  cohort-only settings and old category IDs, caption-index records without
+  Stash identities, and Compactor outcomes recorded before quick fingerprints.
+  DirtyRank's reset message drops its always-zero failure count.
 - **DirtyPlugins 1.0.2, DirtyRank 1.0.2, DirtyCompactor 1.0.2:** settings
   labels, defaults, bounds and options, and the constants shared by browser and
   backend, now come from one schema per plugin, so Stash's settings, the browser

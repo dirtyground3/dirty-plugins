@@ -69,9 +69,6 @@ export function installNativeFilters(filter: NativeFilter | null | undefined, in
     };
     options.push(option);
   }
-  for (var old = options.length - 1; old >= 0; old -= 1) {
-    if (/^dirty_captions_(any|text|verified)$/.test(options[old].type)) options.splice(old, 1);
-  }
   var prototype = Object.getPrototypeOf(filter) as Record<string, unknown>, key = "__dirtyCaptionsNativeFilters";
   if (!prototype[key]) {
     // Convert only when serializing: the UI keeps one native enum criterion,
@@ -105,8 +102,8 @@ export function normalizeFilter(filter: NativeFilter): NativeFilter {
   });
   if (filter.criteria.some(function (item) { return item.criterionOption.type === FILTER_TYPE; })) return filter;
   // Prefer the two-field bitmap category over its generic Any captions part.
-  // Leave additional legacy predicates in Custom Fields to preserve their
-  // exact meaning instead of broadening an existing URL or saved filter.
+  // Leave additional predicates in Custom Fields to preserve their exact
+  // meaning instead of broadening an existing URL or saved filter.
   var definition = DEFINITIONS.slice().sort(function (a, b) { return b.fields.length - a.fields.length; }).filter(function (item) {
     return item.fields.every(function (expected) {
       var matches = values.filter(function (field) { return field.field === expected.field; });

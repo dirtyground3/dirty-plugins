@@ -16,7 +16,7 @@ if (!globals[INSTANCE_KEY]) {
       if (!lifetime.active) return;
       lifetime.active = false; instance.status = "destroyed";
       Array.from(lifetime.effects).forEach(release => release()); lifetime.effects.clear();
-      if (indexUi) hub.unregisterSettingsAddon?.(PLUGIN_ID, indexUi.SettingsAddon);
+      if (indexUi) hub.unregisterSettingsAddon(PLUGIN_ID, indexUi.SettingsAddon);
     }
     try {
       const dependencies = { ...runtime, lifetime }, tracks = createTracksService(hub);
@@ -42,7 +42,7 @@ if (!globals[INSTANCE_KEY]) {
         return React.cloneElement(result, { className }, result.props.children,
           <CaptionsController key="dirty-captions-controller" scene={props.scene} capture={capture} />);
       });
-      instance.status = "active"; hub.debugLog?.(PLUGIN_ID, "Native scene player captions registered");
+      instance.status = "active"; hub.debugLog(PLUGIN_ID, "Native scene player captions registered");
     } catch (error) {
       destroy(); instance.status = "failed"; if (!patchAttempted) delete globals[INSTANCE_KEY];
       console.error("[DirtyCaptions] registration failed", error);

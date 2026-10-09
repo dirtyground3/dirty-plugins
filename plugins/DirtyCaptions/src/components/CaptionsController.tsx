@@ -46,7 +46,7 @@ export function createCaptionsController({ api, hub, lifetime }: Dependencies, t
             waiting = true; setStatus({ message: "Loading embedded captions…", retry: false });
             tracks.requestCaptions(scene).then(data => {
               if (!alive()) return;
-              result = data; hub.debugLog?.("dirtyCaptions", "Embedded captions loaded", {
+              result = data; hub.debugLog("dirtyCaptions", "Embedded captions loaded", {
                 sceneId: scene.id, tracks: data.tracks.length, warnings: data.warnings.length,
               }); apply();
             }, fail);

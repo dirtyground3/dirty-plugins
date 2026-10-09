@@ -1,6 +1,6 @@
 # Build migration status
 
-Updated: 8 October 2026 (Europe/Paris).
+Updated: 9 October 2026 (Europe/Paris).
 
 Plan: [build-migration-plan.md](build-migration-plan.md). This file is the
 handoff record; update it after each implementation or verification checkpoint.
@@ -14,6 +14,14 @@ DirtyFileExtractor, DirtyTidy, DirtyCaptions, DirtyMultiscreen, DirtyRank and
 now **DirtyStats** are each at a separate review checkpoint. All eight plugins
 compile to one staged bundle each and are installed and enabled on port 9999
 (seven at 1.0.1, Stats at 1.0.2). All earlier uncommitted work is preserved.
+
+**Dead-code cleanup (9 October 2026) stopped at its review checkpoint.** HTM,
+hub API members no plugin used, pre-1.0 compatibility shims, dead code, the
+domain-port tests and stored-data readers that real data no longer needs are
+removed. All eight plugins changed: Captions, Extractor, Multiscreen and Tidy
+1.0.2, Stats 1.0.3; hub, Rank and Compactor stay 1.0.2. **All eight are
+installed live on port 9999 (9 October 2026, user: "install all eight live").**
+See "Dead-code cleanup" below.
 
 **The migration is complete: phase 6 finished on 8 October 2026 and stopped at
 its review checkpoint.** Legacy staging, types, checks and test shims are gone.
@@ -33,7 +41,9 @@ review checkpoint (8 October 2026).** All three changes are implemented,
 verified and installed live: A (release builds without inline maps), B
 (minification) and C (modular ECharts for Stats).
 
-- **Live port 9999:** seven plugins at 1.0.1 (A+B) and **DirtyStats 1.0.2** (C),
+- **Live port 9999 (since 9 October 2026):** DirtyStats **1.0.3** and the other
+  seven at **1.0.2**, all enabled; served plugin JavaScript 1,468,974 bytes.
+  Before that: seven plugins at 1.0.1 (A+B) and **DirtyStats 1.0.2** (C),
   all enabled. Every served bundle equals release staging plus Stash's newline,
   with no map. Served plugin JavaScript fell from 8,824,354 bytes before the
   step to **1,477,451 bytes** (Stats 1,178,324). Hard-refresh the live Stash tab
@@ -41,9 +51,8 @@ verified and installed live: A (release builds without inline maps), B
 - Final checks on the current tree (after phase 6): `npm test` (39 JS suites,
   284 Python tests), clean packaging, `npm run test:packages`, the package
   install test, the Rank and hub fixtures and `git diff --check` passed.
-- Next: the user reviews phase 6 (and phase 5) and decides on the live install
-  of the 1.0.2 releases (see "Phase 6 next actions"). Work remains uncommitted;
-  no pushes/releases.
+- Next: the user hard-refreshes Stash (Ctrl+F5) and reviews the installed
+  cleanup. Work remains uncommitted; no pushes/releases.
 - New opt-in tool for faster porting checks: `tests/library_copy_fixture.py`
   runs a second Stash on a path-redirected copy of the local library (see
   "Library-copy test instance" below).
@@ -93,6 +102,217 @@ verified and installed live: A (release builds without inline maps), B
   Tidy `TODO.md`; runtime files, README, licenses and vendor notices stay intact.
 
 ## Current work / next action
+
+### Dead-code cleanup (review checkpoint, 9 October 2026)
+
+- User: clean up dead code now that the migration is complete. Decision:
+  everything before 1.0.0 was a developer build; keep no compatibility with
+  pre-1.0 plugin versions, APIs, URLs or file layouts. Code that reads old
+  stored data is removed only if a read-only check shows real data no longer
+  needs it. Delete rather than refactor; no new abstractions. Nothing committed,
+  pushed, released or installed; port 9999 untouched. Baseline snapshot of the
+  tree before the cleanup: `.build/cleanup-baseline/` (source, git status,
+  `npm test` log: 39 JS suites, 284 Python tests, all passing).
+- **How candidates were found.** `tsc --noUnusedLocals --noUnusedParameters`;
+  a TypeScript language-service scan for exports nothing imports; a scan of
+  `create*` factory return objects whose members no other file names; a scan
+  of every public hub member against the seven feature plugins; a CSS scan of
+  plugin-owned class, ID and data selectors against all sources (dynamic
+  `"prefix-" +` names checked by hand); Python AST scans for unreferenced
+  top-level names and unused imports; `tsc --checkJs --noUnusedLocals` and AST
+  scans over the tests; and a search for compatibility notes (`legacy`,
+  `older`, `0.5.6`, `censorMedia`, fallbacks for missing hub members). Every
+  item below had no remaining reference; after its removal `npm run typecheck`
+  (also with the unused flags) and the affected suites passed.
+- **HTM removed.** `DirtyPlugins.react.html`, `HtmlRenderer`,
+  `vendor/htm.umd.js`, `htm.umd.d.ts`, `HTM-LICENSE`, `HTM-NOTICE` (the hub's
+  `vendor/` folder is gone) and their three registry install files; the
+  template check in `test_dirty_ui_pilot.js` (now asserts `react.html` is
+  absent), the "keeps legacy template compatibility" contract (renamed
+  `test_hub_renders_tsx`) and the HTM runtime contract (now asserts no vendor
+  folder, registry entry or `htm.` use); the Captions index test's HTM stub;
+  and the HTM text in AGENTS, root README, hub README and STYLE (dependency
+  inventory). AGENTS now states the pre-1.0 policy.
+- **Hub API members no plugin used** (public exposure removed; internal code
+  kept): `runSharedOperation`, `completedJob`, `createReplayTracker`,
+  `fieldDefinition`, `react.SettingsField`, `isInternalScan` (plus its backend
+  `isInternalScan` mode), `serializeSceneFilter`, `ui.trapDialogTab`,
+  `ui.lockBodyScroll`, `theme.load`, `debugLogThrottled`, `debugDescribe`,
+  `debugEnabled`, and the public `fieldActions`/`settingsPanels` objects with the
+  "keep an existing `window.DirtyPlugins` identity" start-up path (no plugin can
+  create that object before the hub). Tests moved to the same guarantees:
+  field metadata through `settings.cjs`, raw invalid input through the rendered
+  settings page, scene-filter serialization through a new `scenefilter.cjs` test
+  module (registry entry), Tab wrap and scroll locks through `manageDialog`,
+  debug opt-in through console output, backups through `runPluginOperation`.
+  Kept: `react.Glyph` (part of the shared Controls spread; hiding it would add
+  code) and `dumpDebugLogs` (documented console tool). Storage
+  `settings_revision` (unreferenced) removed.
+- **Pre-1.0 shims removed.** `?censorMedia=1` (hub `captureEnabled`/`captureUrl`,
+  Rank and Multiscreen local fallbacks, README/STYLE notes); the
+  "DirtyPlugins 0.5.6" minimum notes (AGENTS, root and Captions READMEs, hub
+  README); older-hub fallbacks: Extractor's DOM-observed floating Browse button
+  (mutation observer, window listeners, `domain/mutations.ts`, its registry test
+  module, CSS and tests), Rank's twelve local renderings for missing shared
+  components (button, badge, metric, field, pagination, dialog, two nav links,
+  three icon buttons, save status), its two `PluginApi` component-loader
+  fallbacks, the `ensureComponents` guard and four `captureUrl` guards, Stats'
+  `hub.theme`/`hub.ui`/`typeof` guards, Compactor's `unregisterSettingsPanel`
+  guard, and optional calls (`?.`) on always-present hub methods in Captions,
+  Extractor, Multiscreen, Rank, Stats and Tidy (their local hub types now require
+  them; harness stubs gained the members). Captions: removal of the pre-1.0
+  per-option criterion types and the `indexTick` alias. Extractor backend:
+  `copy_scenes`, `scene_ids_from_args` and singular `scene_id`/`marker_id`/
+  `image_id` arguments (the UI sends only the plural lists).
+- **Dead code removed.** Unused locals: Compactor `last`; Multiscreen's unused
+  query imports; Rank `leaderboardPerformerCount`/`Leaderboard`/`PerformerCard`
+  destructures, `leaderboardName`, two `Fragment`s, `Toggle`, `boxFor`,
+  `PluginApi` and an ignored parameter; Stats' 19 unused destructured names and
+  locals and an unused callback parameter. Unused types `AddonProps` (Captions)
+  and `GrowthSummary` (Stats). Factory members no file consumed: 18 in Rank
+  (settings, matchmaking, domain, native views) and 14 in Stats (analytics,
+  dashboard, settings, views); the functions stay where used internally.
+  Python: `OPERATION_TRANSITIONS` (Compactor), `MarkerOperation` (Extractor),
+  unused imports in Rank and Extractor, and Tidy's 20 unused template
+  re-exports (tests now read the three they used from `dirty_tidy_templates`).
+  From TODO.md: Tidy's unreachable server-side preview paging, `PREVIEW_STATUSES`,
+  `MAX_PAGE_SIZE` and the unused `excludeVideo` query field (R2; the panel
+  always requested the full plan and pages locally, so `includeAll` is gone too);
+  Stats' write-only `sceneIds` on constellation links and Tag DNA rows (P1); and
+  Rank's always-zero `failed`/`failures` reset fields with the "0 failed" status
+  text (R3). CSS: `.dirty-rank-subtitle`, `-gallery-heading`, `-gallery-rank`,
+  `-stat-label/-value/-detail`, `-field`, `-field-help`, `-pagination-summary`
+  (several only styled the removed fallbacks), `.dirty-file-extractor-browse`
+  and `.dirty-stats-dashboard-theme`. Test helpers: `loadPluginScripts`, the
+  exports `copy` (Compactor harness), `Node` (Extractor harness), `runtime`
+  (Stats modules) and `NativeCriterion`, the Extractor harness's unused frame and
+  timer stubs, the hub harness `hub` option, and 25 unused requires/imports.
+- **Port scaffolding removed.** `test_dirty_rank_domain_port.js`,
+  `test_dirty_stats_domain_port.js` and their hash fixtures (73,518 bytes), which
+  only compared against the pre-port 0.7.68/0.6.41 implementations. Coverage
+  check first: every Rank function they hashed (`leaderboardData`,
+  `sortPerformersByOverall`, `categoryConfidence`, the pair selectors,
+  `applyRatingIndex` with stale revisions, settings parsing/serialization) and
+  every Stats growth/age/birthday function is exercised with explicit
+  assertions in `test_dirty_rank_algorithms.js`/`_session.js` and
+  `test_dirty_stats.js`; the Stats registry through the dashboard and route
+  tests. Their two non-port checks moved into `test_dirty_rank_algorithms.js`:
+  domain construction installs no host integration, and the last chosen category
+  is remembered per gender box. `test_domain_parity` (JS/Python parity) stays.
+- **Stored-data readers (checked against real data).** A read-only snapshot of
+  the live `dirty_plugins.sqlite3` and `stash-go.sqlite` (SQLite backup API,
+  source opened `mode=ro`) was taken into the session scratchpad, inspected and
+  deleted. Removed, because no real data needs them:
+  - Hub legacy theme fallback to DirtyStats' `visualTheme` (theme load and the
+    settings page): the suite `visualTheme` is stored (`destijl-dark`).
+  - Stats `ratingRounding` migration and its save-time deletion: the key is
+    absent; both new rounding keys are stored.
+  - Tidy JSON-string configuration, JSON-string `hierarchyLevels` and
+    `{template}` level objects (TS and Python): all 11 Tidy values are plain
+    JSON; `hierarchyLevels` is a list of strings.
+  - Rank cohort-only settings (boxes derived from `enabledCohorts` when
+    `genderBoxes` was missing) and comma-separated cohort lists: `genderBoxes`
+    is stored. The start-up category-ID migration (`_ensure_category_ids`):
+    running the canonicalizer on the stored categories gives no remaps. Renaming
+    on save keeps `_category_settings_with_label_ids`; its chained-swap test now
+    goes through `saveSettings`.
+  - Captions index upgrades: all 1,385 file records already store Stash
+    identities and all 1,384 scene snapshots store `files`, so the
+    fingerprint-only upgrade, `timestamp_ns`, the no-metadata path and the
+    missing-`files` upgrade were removed (with the legacy-map test). No saved
+    filter (8) uses caption or custom-field criteria; the pre-1.0 option-type
+    cleanup was removed. Partial custom-field combinations stay in Custom Fields
+    (current behavior; the comment no longer calls them legacy).
+  - Compactor outcomes recorded before quick fingerprints: no `completed`
+    records exist (only preview, progress, cancel and qualitySearch), and current
+    runs always store `quickHash`.
+
+  Evidence on real data: old and new Rank and Tidy Python normalization of the
+  stored settings are byte-identical, and the Tidy strategy hash still equals the
+  stored `approvedStrategyHash`, so the live automation approval stays valid.
+  Kept because real data uses them or they are current formats: Rank's JSON-string
+  `categories`, `genderBoxes` and `enabledCohorts` (its own serialization), the
+  stored `recentBattleIds` column (a schema change), Stats' dashboard schema
+  version seeding (stored version 2 is current), and storage schema creation.
+- **Not removed, for review.** Exports used only inside their own module keep
+  their `export` keyword (no runtime effect). Host-version fallbacks stay
+  (Multiscreen icon aliases, Rank's card when Stash's `PerformerCard` is
+  unavailable). Rank's `enabledCohorts` setting is now write-only (derived from
+  the boxes) and Stats still persists a copy of the suite theme as its own
+  `visualTheme`; dropping either is a settings-schema change. The static
+  harmony fixture pages still show three removed Rank classes.
+- **Versions.** Runtime files changed in all eight plugins: DirtyCaptions,
+  DirtyFileExtractor, DirtyMultiscreen and DirtyTidy 1.0.1 → **1.0.2**;
+  DirtyStats 1.0.2 → **1.0.3**; DirtyPlugins, DirtyRank and DirtyCompactor stay
+  **1.0.2** (not installed). README version table and release notes updated;
+  TODO.md marks #11 and the flat-array follow-up done (both languages now
+  fall back to default categories) and notes P1/R2/R3 progress. The hub 1.0.2
+  remains compatible with the live 1.0.1 plugins and Stats 1.0.2 (none uses a
+  removed member).
+- **Size.** Release bundles (bytes, recorded in `tests/fixtures/bundle-sizes.json`):
+  hub 50,249 → 47,363 (−2,886), Extractor 13,272 → 10,794 (−2,478), Rank
+  133,981 → 129,686 (−4,295), Stats 1,178,323 → 1,177,160 (−1,163), Tidy
+  22,636 → 22,479 (−157), Captions 16,813 → 16,702 (−111), Multiscreen
+  28,815 → 28,727 (−88), Compactor 36,095 → 36,055 (−40); total 1,480,184 →
+  **1,468,966 (−11,218)**. Budgets tightened by the existing rule (5% over the
+  measured size, rounded up to whole KiB) where the bundle shrank noticeably:
+  hub 52,224 → 50,176, Extractor 14,336 → 12,288, Rank 139,264 → 136,192. ZIPs:
+  hub 47,385 → 40,054 (12 → 9 files), Rank 74,667 → 73,400, Extractor 21,214 →
+  20,187, Tidy 27,024 → 26,362, Captions 26,683 → 26,080, Stats 423,352 →
+  422,832, Compactor 45,917 → 45,753, Multiscreen 15,712 → 15,659 (total
+  −11,627). Source: plugin TS/Python/CSS 29,722 → 28,777 lines (−945, of which
+  209 HTM vendor/license lines); tests 14,875 → 14,636 lines; fixtures −73,518
+  bytes.
+- **Verification.** `npm test`: 37 JS suites (two domain-port suites removed)
+  and 283 Python tests (the caption legacy-map test removed), two expected skips
+  (`.build/cleanup-npm-test.log`); typecheck also clean with
+  `--noUnusedLocals --noUnusedParameters`. `_site/` deleted, `./build_site.sh
+  _site/main` and `npm run test:packages` passed (`.build/cleanup-package.log`,
+  `.build/cleanup-test-packages.log`). Package install test passed: all eight
+  installed through Stash's package manager at their new versions
+  (`.build/cleanup-package-install.log`). Isolated Stash fixtures (synthetic
+  media, separate instance) passed for all eight changed plugins
+  (`.build/cleanup-{plugins,captions,compactor,file_extractor,multiscreen,rank,stats,tidy}-fixture.log`).
+  `git diff --check` passed, and the same check over untracked changes against
+  the baseline snapshot passed. Four empty fixture folders from these runs were
+  removed.
+- Line endings: a `sed -i` version bump normalized four CRLF manifests and one
+  retained line in Tidy `domain/settings.ts` to LF; all were restored from the
+  baseline bytes. A per-line comparison with the baseline snapshot reports no
+  changed ending for any retained line.
+- Checkpoint: `.build/cleanup-checkpoint/` (`review.patch` against the
+  baseline snapshot, changed-file list, git status).
+- **Live install (9 October 2026).** User: "install all eight live".
+  `.build/install-cleanup-release.ps1` (log `.build/install-cleanup-release.log`)
+  checked fresh release staging and the live versions (seven 1.0.1, Stats
+  1.0.2), backed up every replaced or removed file to
+  `.build/install-backups/20261009T103439549Z/`, copied 66 registry files (two
+  new: Rank and Compactor `*_metadata.py`) with every manifest last (hub
+  first), removed the three install files that left the registry (hub
+  `vendor/htm.umd.js`, `HTM-LICENSE`, `HTM-NOTICE`, then the empty `vendor/`)
+  and reloaded plugins. Verified: all eight enabled at 1.0.2 (Stats 1.0.3);
+  each served bundle equals staging plus Stash's newline, without a map, and
+  each served stylesheet equals staging; the six non-Dirty plugins are
+  unchanged; read-only backend calls (hub and Rank `getSettings`, Captions
+  `indexStatus`) answer; 119 other files under the plugins root are
+  unchanged apart from normal activity (database WAL checkpoint, Python
+  caches). In the browser pane (capture mode, settings page only, no
+  screenshots) the hub registered without `react.html`, the stored
+  `destijl-dark` theme applied, Rank, Stats, Captions, Extractor and
+  Compactor were active, all eight tabs listed, and no console errors.
+  The installed hub folder still holds the pre-1.0 `STYLE.md` (dropped from
+  packages in phase 6; not an install file, left untouched).
+
+#### Dead-code cleanup next actions (exact)
+
+1. Review `.build/cleanup-checkpoint/review.patch`, especially the public hub
+   API reductions and the removed stored-data readers above.
+2. Done 9 October 2026: all eight installed live (see above). Hard-refresh the
+   live Stash tab (Ctrl+F5) so the browser loads the new bundles.
+3. Optional follow-ups: drop Rank's write-only `enabledCohorts` and Stats'
+   persisted theme copy from their settings; decide on Rank's `recentBattleIds`
+   column.
+4. Commit when ready, on `main`. No pushes or releases were made.
 
 ### Phase 6 — completion (review checkpoint, 8 October 2026)
 

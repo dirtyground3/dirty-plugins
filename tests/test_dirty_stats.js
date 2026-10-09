@@ -1,6 +1,5 @@
 "use strict";
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
 const vm = require("node:vm");
 const createElement = (type, props, ...children) => ({ type, props: props || {}, children });
 const routes = [], patches = [], savedSettings = [];
@@ -29,7 +28,7 @@ const context = {
     DirtyPlugins: {
       graphql() {},
       react: {},
-      theme: { defaultKey: "classic" },
+      theme: { defaultKey: "classic", ready: Promise.resolve("candy") },
       ui: { notify: (...args) => notifications.push(args) },
       getPluginSettings: () => Promise.resolve(storedSettings),
       configurePlugin: (pluginId, settings) => {
@@ -765,17 +764,8 @@ async function testNativeRouteLoading() {
   assert.equal(a.parseStatsSetting("visualTheme", "formal"), null);
   assert.equal(a.statsSettings.countRatingMetric, "play_count", "the count metric defaults to the view count");
 
-  const legacy = a.statsSettingsFromStorage({ ratingRounding: 1 });
-  assert.deepEqual(JSON.parse(JSON.stringify(legacy)), {
-    performerRatingRounding: 1,
-    sceneRatingRounding: 1
-  }, "a single legacy rounding value must migrate to both charts");
-  const overridden = a.statsSettingsFromStorage({ ratingRounding: 1, sceneRatingRounding: 0 });
-  assert.deepEqual(JSON.parse(JSON.stringify(overridden)), {
-    performerRatingRounding: 1,
-    sceneRatingRounding: 0
-  }, "an explicit new rounding value must win over the legacy value");
-  assert.deepEqual(JSON.parse(JSON.stringify(a.statsSettingsFromStorage({ ratingRounding: 2 }))), {});
+  assert.deepEqual(JSON.parse(JSON.stringify(a.statsSettingsFromStorage({ ratingRounding: 1 }))), {},
+    "the pre-1.0 shared rounding key is not read");
 
   a.setStatsSetting("sceneRatingRounding", 0.5);
   a.setStatsSetting("performerRatingRounding", 1);
@@ -795,11 +785,6 @@ async function testNativeRouteLoading() {
   assert.equal(savedSettings[0].settings.performerRatingRounding, 1);
   assert.equal(savedSettings[0].settings.showMapNumbers, false);
   assert.equal(savedSettings[0].settings.countRatingMetric, "o_counter");
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(savedSettings[0].settings, "ratingRounding"),
-    false,
-    "the legacy shared rounding key must be dropped on save"
-  );
 
   a.setStatsSetting("growthShowForecast", true);
   assert.equal(plugin.getSaveStatus().state, "pending");

@@ -86,7 +86,6 @@ export interface StatsFile { id?: string; size?: string | number | null; mod_tim
 export interface StatsPerformer { id: string; name?: string; birthdate?: string | null; death_date?: string | null; image_path?: string | null; gender?: string; country?: string; rating100?: number | string | null; scene_count?: number | string | null; }
 export interface StatsScene { id: string; title?: string; date?: string | null; created_at?: string | null; files?: StatsFile[]; performers?: StatsPerformer[]; rating100?: number | string | null; play_count?: number | null; o_counter?: number | null; studio?: { id: string; name?: string; image_path?: string }; tags?: Array<{ id: string; name: string }>; }
 export interface BirthdayEntry { id: string; name: string; birthdate: string; deathDate: string; deceased: boolean; month: number; day: number; turns: number; daysUntil: number; image: string; }
-export interface GrowthSummary { points: number[][]; bytes: number; included: number; }
 // ECharts supplies open option/event payloads. Entity/domain models stay typed.
 export type ChartOption = Record<string, any>;
 export interface ChartEvent { data: any; value: any; name: string; percent?: number; seriesName?: string; componentType?: string; dataType?: string; event?: { offsetX: number; offsetY: number }; }
@@ -108,7 +107,7 @@ export interface StatsSettings extends Record<string, SettingValue> {
   countRatingMetric: string; studioMinScenes: number; tagDnaColorMetric: string; tagDnaMaxTags: number;
 }
 export interface Capacity { total: number; free: number; errors: string[]; }
-export interface TagRow { id: string; name: string; scenes: number; rated: number; unrated: number; rating: number | null; plays: number; playsPerScene: number; sceneIds: string[]; }
+export interface TagRow { id: string; name: string; scenes: number; rated: number; unrated: number; rating: number | null; plays: number; playsPerScene: number; }
 export interface ConstellationSelection { ids: string[]; label: string; type: string; key: string; }
 export interface DashboardWidgetModel { id: string; statistic: string; title: string; size: string; options: WidgetOptions; filter: import("./runtime").SavedFilter; }
 export interface DashboardResource { key: string; group: string; filter: import("./runtime").SavedFilter; limit: number; }

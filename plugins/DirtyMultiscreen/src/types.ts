@@ -1,6 +1,6 @@
 import type * as R from "react";
 import type { HubApi } from "../../DirtyPlugins/src/types";
-export type Hub = Pick<HubApi, "graphql" | "values" | "settingsMetadata" | "react" | "native" | "getPluginSettings" | "captureEnabled" | "debugLog" | "debugElapsed">;
+export type Hub = Pick<HubApi, "graphql" | "values" | "settingsMetadata" | "react" | "native" | "getPluginSettings" | "captureEnabled" | "debugLog">;
 export interface Settings { totalScreens: number; rows: number; columns: number; randomize: boolean; splitScenes: boolean; startMuted: boolean; randomStart: boolean; loopScenes: boolean; markerDuration: number; pauseWhenHidden: boolean; }
 export interface PlaybackSettings { startMuted: boolean; randomStart: boolean; loop: boolean; pauseWhenHidden: boolean; }
 export interface Scene { id: string; title?: string | null; paths?: { stream?: string | null }; sceneStreams?: { url: string; mime_type?: string; label?: string }[]; files?: { duration?: number }[]; }

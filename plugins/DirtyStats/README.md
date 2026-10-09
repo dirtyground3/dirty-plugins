@@ -30,8 +30,7 @@ The suite has seven visual themes. **Midnight** is the fresh-install default;
 give DirtyStats pages, dashboard cards, controls, calendars, Tag DNA, and charts
 their own colors and character. Select the theme in the **General** tab of
 DirtyPlugins settings. It applies to all Dirty plugins and saves automatically.
-An existing DirtyStats theme choice is used until a suite theme is saved, so
-updating does not reset the current appearance. Unknown values display Midnight.
+Unknown values display Midnight.
 
 Filter selection opens in a dedicated responsive dialog so native filter
 dropdowns have room to expand. The dialog becomes full-screen on narrow

@@ -3,7 +3,7 @@ import type { PageProps } from "../props";
 import type { Capacity, ChartInstance, StatsPerformer, StatsScene } from "../types";
 import type { ViewDependencies } from "../view";
 export function createGrowth(dependencies: ViewDependencies) {
-  const { themeColor, useStatsSetting, useChartTheme, StatsState, pageToolbar, exportButton, chartImage, sceneVariables, SceneCards, hub, React, chartLifecycle, chartOptions, dataLoader, charts, growth, formatBytes, growthBucket, growthBucketEnd, aggregateGrowth, scenesInPeriod, periodGrowth, growthDataZoomRange, forecastGrowth } = dependencies;
+  const { themeColor, useStatsSetting, useChartTheme, StatsState, pageToolbar, exportButton, chartImage, sceneVariables, SceneCards, hub, React, chartLifecycle, chartOptions, dataLoader, charts, formatBytes, growthBucket, growthBucketEnd, aggregateGrowth, scenesInPeriod, periodGrowth, growthDataZoomRange, forecastGrowth } = dependencies;
   function GrowthPage(props: PageProps): R.ReactElement | null {
     var chartTheme = useChartTheme();
     var pageData = dataLoader.usePageData<StatsScene & StatsPerformer>(), scenes = pageData.rows, loading = pageData.loading, error = pageData.error;

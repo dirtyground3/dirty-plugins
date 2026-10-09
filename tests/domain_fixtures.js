@@ -1,7 +1,5 @@
 "use strict";
-const fs = require("node:fs");
 const vm = require("node:vm");
-const { loadPluginScripts } = require("./load_plugin_scripts");
 const { testModulePath } = require("./plugin_paths");
 
 /** Only native host interfaces are stubbed; calculations use manifest assets. */

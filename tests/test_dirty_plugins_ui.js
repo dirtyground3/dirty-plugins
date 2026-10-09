@@ -45,10 +45,8 @@ async function main() {
     h.load();
     assert.deepEqual([h.patches.length, h.registrations.length, h.requests.length], before, "failed guard prevents duplicate integrations");
   }
-  const existing = { settingsPanels: {}, fieldActions: {} };
-  const h = createHubHarness({ hub: existing });
+  const h = createHubHarness();
   h.load();
-  assert.equal(h.window.DirtyPlugins, existing);
   assert.equal(h.window.__dirtyPluginsSettingsHub.status, "registered");
   assert.deepEqual(h.patches.map(item => item.name), ["SceneList", "PluginSettings"]);
   const before = [h.patches.length, h.registrations.length, h.requests.length];
@@ -56,19 +54,21 @@ async function main() {
   assert.deepEqual([h.patches.length, h.registrations.length, h.requests.length], before);
   const hub = h.window.DirtyPlugins;
   for (const name of ["graphql", "runPluginOperation", "configurePlugin", "getPluginSettings", "createSaveController", "createJobHook", "registerSettingsPanel", "registerSettingsAddon", "unregisterSettingsPanel", "unregisterSettingsAddon"]) assert.equal(typeof hub[name], "function", name);
-  for (const name of ["Button", "Field", "SettingsCard", "Dialog", "SceneFilterEditor", "StateView", "ActionMenu", "StatisticSelector", "usePageTitle", "useSettingsDraft", "SettingsField", "html"]) assert.equal(typeof hub.react[name], "function", name);
-  const numberField = hub.fieldDefinition("multiscreen", { name: "totalScreens", display_name: "Screens", type: "NUMBER" });
+  for (const name of ["Button", "Field", "SettingsCard", "Dialog", "SceneFilterEditor", "StateView", "ActionMenu", "StatisticSelector", "usePageTitle", "useSettingsDraft"]) assert.equal(typeof hub.react[name], "function", name);
+  // Members no plugin used were removed from the public API (pre-1.0 compatibility and internals).
+  for (const name of ["runSharedOperation", "completedJob", "createReplayTracker", "fieldDefinition", "isInternalScan", "serializeSceneFilter",
+    "fieldActions", "settingsPanels", "debugLogThrottled", "debugDescribe", "debugEnabled"]) assert.equal(hub[name], undefined, name);
+  for (const name of ["html", "SettingsField"]) assert.equal(hub.react[name], undefined, name);
+  assert.deepEqual(Object.keys(hub.ui).sort(), ["manageDialog", "notify"]);
+  assert.equal(hub.theme.load, undefined);
+  const numberField = domain.fieldDefinition("multiscreen", { name: "totalScreens", display_name: "Screens", type: "NUMBER" });
   assert.equal(numberField.kind, "number"); assert.equal(numberField.min, 1); assert.equal(numberField.max, 36);
-  assert.equal(hub.fieldDefinition("dirtyPlugins", { name: "visualTheme", type: "STRING" }).options.length, 7);
-  assert.equal(hub.fieldDefinition("multiscreen", { name: "randomize", type: "BOOLEAN" }).kind, "checkbox");
-  let raw;
-  const fieldElement = hub.react.SettingsField({ definition: numberField, value: "invalid", onChange: next => { raw = next; } });
-  const numberControl = fieldElement.children[0];
-  assert.equal(numberControl.props.value, "invalid"); numberControl.props.onChange({ target: { value: "" } }); assert.equal(raw, "");
+  assert.equal(domain.fieldDefinition("dirtyPlugins", { name: "visualTheme", type: "STRING" }).options.length, 7);
+  assert.equal(domain.fieldDefinition("multiscreen", { name: "randomize", type: "BOOLEAN" }).kind, "checkbox");
   const patch = h.patches.find(item => item.name === "PluginSettings").callback;
   assert.equal(patch({ id: "unmanaged" }, () => "native settings"), "native settings");
   assert.equal(patch({ id: "multiscreen" }, () => "native settings").props.pluginId, "multiscreen");
-  const filter = hub.serializeSceneFilter({ makeFindFilter: () => ({ page: 2, per_page: 10, q: "fixture" }), makeQueryParameters: () => "page=2&per_page=10&q=fixture", makeFilter: () => ({ rating100: { value: 80 } }) });
+  const filter = require(testModulePath("DirtyPlugins", "scenefilter.cjs")).createSceneFilter({}).serialize({ makeFindFilter: () => ({ page: 2, per_page: 10, q: "fixture" }), makeQueryParameters: () => "page=2&per_page=10&q=fixture", makeFilter: () => ({ rating100: { value: 80 } }) });
   assert.deepEqual(JSON.parse(JSON.stringify(filter)), { all: false, find: { q: "fixture" }, query: "q=fixture", scene: { rating100: { value: 80 } } });
 
   await h.settle();
@@ -91,6 +91,7 @@ async function main() {
   h.nodes(node => node.type === "input")[0].props.onChange({ target: { value: "invalid" } });
   await h.settle(); await h.tick();
   assert.match(h.text(), /must be a number/);
+  assert.equal(h.nodes(node => node.type === "input")[0].props.value, "invalid", "invalid drafts keep the raw input");
   assert.equal(h.settings.multiscreen.totalScreens, 8);
   h.nodes(node => node.type === "input")[0].props.onChange({ target: { value: "9" } });
   await h.settle(); h.unmount(); await h.tick();

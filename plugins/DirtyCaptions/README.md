@@ -3,7 +3,7 @@
 Display embedded text subtitles in Stash's native scene player without creating
 separate subtitle files or re-encoding the video. Includes scene filters for
 embedded subtitle tracks. Requires Stash 0.31.1 or newer,
-Python 3.9+, FFmpeg/ffprobe, and **DirtyPlugins 0.5.6 or newer** on the Stash
+Python 3.9+, FFmpeg/ffprobe, and the **DirtyPlugins** hub on the Stash
 server. Playback and seeking have been verified with Stash 0.31.1 and embedded
 MP4 `mov_text` captions.
 
@@ -107,7 +107,7 @@ checked, it matches **Any captions** and also **Unverified**. Saved filters and
 URLs store ordinary Stash custom-field criteria, so they keep working when
 DirtyCaptions is disabled. Existing caption
 custom-field filters are displayed in the single native picker when possible.
-Complex legacy combinations keep additional predicates under **Custom Fields**
+Other combinations keep additional predicates under **Custom Fields**
 so their results remain unchanged. Selecting a new value uses the existing file
 map and does not trigger file probes.
 
@@ -171,7 +171,7 @@ browser-native fullscreen on mobile depends on its text-track support.
 
 | Symptom | What to check |
 | --- | --- |
-| DirtyCaptions is missing from the shared settings page | Update DirtyPlugins to 0.5.6 or newer, reload plugins, and hard-refresh the browser. |
+| DirtyCaptions is missing from the shared settings page | Install or update DirtyPlugins, reload plugins, and hard-refresh the browser. |
 | No embedded entry appears in the CC menu | Check that DirtyCaptions is enabled in Stash, **Load embedded captions** is on, and the file contains a supported, nonempty text subtitle track. Stash's Troubleshooting mode disables plugin JavaScript. |
 | Captions are available but do not appear automatically | Check **Show captions automatically**, then select the embedded track manually. An external caption already showing keeps priority. Subtitles appear only during their timed dialogue; the first line may begin well after the video starts. |
 | Caption loading is slow or times out | FFmpeg reads through the media container. Check server storage access, particularly network drives. Reopening the scene repeats extraction. |
@@ -220,8 +220,7 @@ The frontend uses strict TypeScript modules and focused TSX components under
 `src/`, compiled to the sole `dirtyCaptions.js` script. React comes from Stash
 and shared services/components come from the DirtyPlugins public API. Python,
 settings keys, native filters and media/index storage contracts are unchanged.
-It runs with DirtyPlugins 1.0.0 or newer; the public API it uses remains
-compatible with the documented 0.5.6 minimum.
+It runs with DirtyPlugins 1.0.0 or newer.
 
 The entry validates the host before claiming its instance guard. It owns
 registration; imported modules do not install patches or listeners. Teardown

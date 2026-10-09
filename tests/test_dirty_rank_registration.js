@@ -20,7 +20,7 @@ function host(failure) {
       react: {useSettingsDraft: noop}, graphql: async () => ({findPerformers: {performers: []}}),
       getPluginSettings: async () => ({}), runPluginOperation: async () => ({revision: 0, states: {}}),
       registerSettingsPanel(id, component) {panels.set(id, component); if (failure === "panel") throw Error("panel failure");},
-      unregisterSettingsPanel(id, component) {if (panels.get(id) === component) panels.delete(id);}}});
+      unregisterSettingsPanel(id, component) {if (panels.get(id) === component) panels.delete(id);}, debugLog: noop}});
   const context = vm.createContext({window, URLSearchParams, console: {error: (...args) => errors.push(args)}});
   return {window, routes, patches, panels, errors, load: () => vm.runInContext(source, context)};
 }

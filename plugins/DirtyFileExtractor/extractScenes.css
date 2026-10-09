@@ -6,15 +6,6 @@
   text-align: left;
 }
 
-.dirty-file-extractor-browse {
-  position: fixed;
-  z-index: 1050;
-}
-
-.dirty-file-extractor-browse[hidden] {
-  display: none !important;
-}
-
 .dirty-file-extractor-picker-dialog {
   display: flex;
   flex-direction: column;

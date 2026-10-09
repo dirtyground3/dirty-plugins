@@ -29,7 +29,7 @@ if (runtime) {
     instance.state = "failed";
     // Settings can be unregistered. Stash's App patches cannot; a patch that
     // throws after installation must retain its guard to avoid duplicate hooks.
-    if (!patchAttempted && runtime.hub.unregisterSettingsPanel) {
+    if (!patchAttempted) {
       runtime.hub.unregisterSettingsPanel(ID, Settings);
       delete owner[INSTANCE_KEY];
     }

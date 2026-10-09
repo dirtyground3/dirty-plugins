@@ -214,10 +214,7 @@ export function createDebug(dependencies: HubDebugDependencies) {
   window.addEventListener("unhandledrejection", onUnhandledRejection);
 
   hubApi.debugLog = debugLog;
-  hubApi.debugLogThrottled = debugLogThrottled;
-  hubApi.debugEnabled = debugEnabled;
   hubApi.debugElapsed = debugElapsed;
-  hubApi.debugDescribe = debugDescribe;
   hubApi.dumpDebugLogs = function() {
     try {
       if (console.table) console.table(debugWindow[DEBUG_LOG_KEY]);

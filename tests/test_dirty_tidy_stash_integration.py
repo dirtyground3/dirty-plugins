@@ -13,7 +13,7 @@ import subprocess
 import time
 
 from plugin_paths import runtime_path
-from test_dirty_compactor_stash_integration import Fixture, wait_for, add_build_mode_argument, select_build_mode, verify_served_bundle
+from test_dirty_compactor_stash_integration import Fixture, add_build_mode_argument, select_build_mode, verify_served_bundle
 from test_dirty_file_extractor_stash_integration import finish
 
 
@@ -39,7 +39,7 @@ def settings(fixture, values=None):
 
 
 def preview(fixture, values):
-    return operation(fixture, "dirtyTidy", mode="preview", settings=values, includeAll=True)
+    return operation(fixture, "dirtyTidy", mode="preview", settings=values)
 
 
 def scenes(fixture):

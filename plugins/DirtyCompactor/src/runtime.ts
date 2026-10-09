@@ -19,7 +19,7 @@ export interface Hub {
   createSaveController<T, R>(options: SaveControllerOptions<T, R>): SaveController<T, R>;
   createJobHook(hooks: Pick<typeof HostReact, "useRef" | "useEffect">): CompletedJobHook;
   registerSettingsPanel(id: string, component: HostReact.ComponentType<SettingsProps>): void;
-  unregisterSettingsPanel?(id: string, component: HostReact.ComponentType<SettingsProps>): void;
+  unregisterSettingsPanel(id: string, component: HostReact.ComponentType<SettingsProps>): void;
   captureEnabled(search: string): boolean;
   ui: { notify(message: string): void };
 }

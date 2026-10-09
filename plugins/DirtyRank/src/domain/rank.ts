@@ -6,10 +6,10 @@ import * as navigation from "./navigation";
 import { expectedDeviationAfterBattle, pairInformationGain } from "./rating";
 import { createSettings } from "./settings";
 export function createRankDomain(runtime: Runtime) {
-  const { DirtyPlugins, PluginApi } = runtime;
+  const { DirtyPlugins } = runtime;
   const { cohortLabel, leaderboardTopCount, leaderboardPerformerCount, leaderboardPerformerCountError } = navigation;
   const settingsApi = createSettings({ DirtyPlugins, cohortLabel, leaderboardTopCount, leaderboardPerformerCount, leaderboardPerformerCountError });
-  const { number, integer, slug, boxGenders, boxFor, categoriesFor, categoryIncludes, categoryById, categoriesForPerformer, battleCohortFor, overallScoreStrategy, settingsFromConfiguration } = settingsApi;
+  const { number, integer, slug, boxGenders, categoriesFor, categoryIncludes, categoryById, categoriesForPerformer, battleCohortFor, overallScoreStrategy, settingsFromConfiguration } = settingsApi;
   let overallSortSettings = settingsFromConfiguration({});
   let overallSortRevision = 0, sortRequest = 0;
   const overallSortListeners = new Set<(revision: number) => void>();
@@ -82,15 +82,7 @@ export function createRankDomain(runtime: Runtime) {
     return ratingIndexPromise;
   }
   function loadNativePerformerCard() {
-    if (DirtyPlugins.native && DirtyPlugins.native.loadComponent) {
-      return DirtyPlugins.native.loadComponent("PerformerCard").catch(function () { return null; });
-    }
-    if (PluginApi.components && PluginApi.components.PerformerCard)
-      return Promise.resolve();
-    if (!PluginApi.utils || !PluginApi.utils.loadComponents || !PluginApi.loadableComponents || !PluginApi.loadableComponents.PerformerCard) {
-      return Promise.resolve();
-    }
-    return PluginApi.utils.loadComponents([PluginApi.loadableComponents.PerformerCard]);
+    return DirtyPlugins.native.loadComponent("PerformerCard").catch(function () { return null; });
   }
   function queryPerformers(withCardData?: boolean) {
     return DirtyPlugins.graphql<{
@@ -117,14 +109,7 @@ export function createRankDomain(runtime: Runtime) {
     notifyRatingListeners();
   }
   function loadNativePreviewPlayer() {
-    if (DirtyPlugins.native && DirtyPlugins.native.loadComponent) {
-      return DirtyPlugins.native.loadComponent("ScenePlayer").catch(function () { return null; });
-    }
-    if (PluginApi.components && PluginApi.components.ScenePlayer)
-      return Promise.resolve();
-    if (!PluginApi.utils || !PluginApi.utils.loadComponents || !PluginApi.loadableComponents || !PluginApi.loadableComponents.ScenePlayer)
-      return Promise.resolve();
-    return PluginApi.utils.loadComponents([PluginApi.loadableComponents.ScenePlayer]);
+    return DirtyPlugins.native.loadComponent("ScenePlayer").catch(function () { return null; });
   }
   function loadPreferredMedia(performerId: string, fullScene: boolean, signal?: AbortSignal) {
     var cacheKey = String(performerId) + (fullScene ? ":scene" : ":preferred");
@@ -589,7 +574,7 @@ export function createRankDomain(runtime: Runtime) {
       return props.entries;
     return leaderboardEntries(props.ranked).slice(leaderboardFeaturedCount(props));
   }
-  function filteredLeaderboardPanelProps(entries: StandingEntry[]) {
+  function filteredLeaderboardPanelProps() {
     return {
       emptyMessage: "No rated performers match these filters.",
     };
@@ -610,6 +595,6 @@ export function createRankDomain(runtime: Runtime) {
     };
   }
   const matchmaker = createMatchmaker({ categoryEligible, poolFor, precisionTier, rankPerformers, settingsFromConfiguration, pairToken, recentPairWindow, expectedDeviationAfterBattle, pairInformationGain });
-  return { dispose, ...navigation, ...settingsApi, ...matchmaker, expectedDeviationAfterBattle, pairInformationGain, refreshOverallSortSettings, subscribeToOverallSortSettings, runOperation, notifyRatingListeners, applyRatingIndex, loadRatingIndex, loadNativePerformerCard, queryPerformers, setOverallReferencePerformers, loadNativePreviewPlayer, loadPreferredMedia, scenePlaybackUrl, needsNativePreview, parseState, keyFor, poolFor, excellentDeviationThreshold, precisionTier, updatePerformerState, categoryEligible, pairToken, recentPairWindow, rankPerformers, overallCategoryScoreFor, overallPoolFor, rankOverallPerformers, leaderboardPoolFor, leaderboardData, overallSortData, sortPerformersByOverall, leaderboardFeaturedCount, leaderboardPageSize, overallCategoryScoresTitle, categoryLeaderboardRankFor, leaderboardRatingText, leaderboardEntries, filteredLeaderboardEntries, serializeLeaderboardPerformerFilter, queryLeaderboardPerformerIds, leaderboardStandingEntries, filteredLeaderboardPanelProps, paginatedLeaderboard, getOverallSortSettings: () => overallSortSettings, getRatingIndexRevision: () => ratingIndexRevision, getOverallSortRevision: () => overallSortRevision };
+  return { dispose, ...navigation, ...settingsApi, ...matchmaker, expectedDeviationAfterBattle, pairInformationGain, refreshOverallSortSettings, subscribeToOverallSortSettings, runOperation, applyRatingIndex, loadRatingIndex, loadNativePerformerCard, queryPerformers, setOverallReferencePerformers, loadNativePreviewPlayer, loadPreferredMedia, scenePlaybackUrl, needsNativePreview, parseState, poolFor, excellentDeviationThreshold, precisionTier, updatePerformerState, categoryEligible, pairToken, recentPairWindow, rankPerformers, overallCategoryScoreFor, overallPoolFor, rankOverallPerformers, leaderboardPoolFor, leaderboardData, sortPerformersByOverall, leaderboardFeaturedCount, leaderboardPageSize, overallCategoryScoresTitle, leaderboardRatingText, leaderboardEntries, filteredLeaderboardEntries, serializeLeaderboardPerformerFilter, queryLeaderboardPerformerIds, leaderboardStandingEntries, filteredLeaderboardPanelProps, paginatedLeaderboard, getOverallSortSettings: () => overallSortSettings, getRatingIndexRevision: () => ratingIndexRevision, getOverallSortRevision: () => overallSortRevision };
 }
 export type RankDomain = ReturnType<typeof createRankDomain>;

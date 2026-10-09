@@ -2,7 +2,7 @@ import type * as R from "react";
 import type { DashboardDependencies } from "../dashboardView";
 import type { CheckProps, FilterControlProps, NumberProps, SelectProps, WidgetOptionsProps } from "../props";
 export function createDashboardControls(dependencies: DashboardDependencies) {
-  const { metric, filterSummary, React, Field, Toggle, MAX_CARD_COUNT, WIDGETS } = dependencies;
+  const { filterSummary, React, Field, Toggle, MAX_CARD_COUNT, WIDGETS } = dependencies;
   var controlId = 0;
   function SelectControl(props: SelectProps): R.ReactElement | null {
     var id = React.useRef<string | null>(null);

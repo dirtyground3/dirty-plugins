@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
 import re
 import sys
@@ -17,10 +16,7 @@ from typing import Any, Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dirty_tidy_templates import (
-    UNKNOWN_VALUE, VARIABLE_NAMES, TOKEN_PATTERN, INVALID_PATH_CHARS, RESERVED_WINDOWS_NAMES,
-    _clean_text, _names, _stash_ids, _date_parts, _rating_bucket, _grade,
-    _resolution, _duration_bucket, scene_variables, _render_template, render_template, _clean_rename_separators,
-    render_rename_template, template_variable_names, sanitize_segment, sanitize_filename, _normalized_path, path_is_within,
+    _clean_text, scene_variables, _normalized_path,
     find_source_root, render_destination_folder, render_destination_filename, validate_destination,
 )
 
@@ -70,9 +66,7 @@ shared_storage = _load_shared_storage()
 from dirty_plugins_client import StashClient as BaseClient
 from dirty_plugins_protocol import Reporter, StashReporter
 import dirty_plugins_protocol as protocol
-MAX_PAGE_SIZE = 200
 SCENE_QUERY_PAGE_SIZE = 100
-PREVIEW_STATUSES = {"ready", "warning", "blocked", "unchanged"}
 
 
 class PluginError(RuntimeError):
@@ -91,7 +85,7 @@ class StashClient(BaseClient):
     def library_snapshot(self) -> tuple[list[str], list[dict[str, Any]]]:
         query = """
           query DirtyTidyScenes($filter: FindFilterType) {
-            configuration { general { stashes { path excludeVideo } } }
+            configuration { general { stashes { path } } }
             findScenes(filter: $filter) {
               count
               scenes {
@@ -185,21 +179,9 @@ def as_bool(value: Any, default: bool) -> bool:
 
 
 def _parse_levels(value: Any) -> list[str]:
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            parsed = [value]
-        value = parsed
     if not isinstance(value, list):
         return list(DEFAULT_SETTINGS["hierarchyLevels"])
-    levels: list[str] = []
-    for item in value:
-        template = item.get("template") if isinstance(item, dict) else item
-        template = str(template or "").strip()
-        if template:
-            levels.append(template)
-    return levels
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()]
 
 
 def normalize_settings(raw: Any) -> dict[str, Any]:
@@ -513,48 +495,14 @@ def build_plan(
 def preview_plan(
     client: StashClient,
     raw_settings: dict[str, Any],
-    page: int = 1,
-    per_page: int = 50,
-    status_filter: str = "all",
-    include_all: bool = False,
     record_review: bool = False,
 ) -> dict[str, Any]:
+    # The settings panel filters and pages the complete plan locally.
     roots, scenes = client.library_snapshot()
     plan = build_plan(roots, scenes, raw_settings)
     if record_review:
         save_reviewed_plan(plan)
-    status_filter = str(status_filter or "all").strip().lower()
-    if status_filter not in PREVIEW_STATUSES:
-        status_filter = "all"
-    filtered_operations = plan["operations"]
-    if status_filter != "all":
-        filtered_operations = [
-            operation
-            for operation in filtered_operations
-            if operation["status"] == status_filter
-        ]
-    if include_all:
-        result = dict(plan)
-        result["operations"] = filtered_operations
-        result["filter"] = status_filter
-        result["filtered_total"] = len(filtered_operations)
-        result["page"] = 1
-        result["per_page"] = max(1, len(filtered_operations))
-        result["pages"] = 1
-        return result
-    page = max(1, int(page))
-    per_page = max(1, min(MAX_PAGE_SIZE, int(per_page)))
-    pages = max(1, math.ceil(len(filtered_operations) / per_page))
-    page = min(page, pages)
-    start = (page - 1) * per_page
-    result = dict(plan)
-    result["operations"] = filtered_operations[start : start + per_page]
-    result["filter"] = status_filter
-    result["filtered_total"] = len(filtered_operations)
-    result["page"] = page
-    result["per_page"] = per_page
-    result["pages"] = pages
-    return result
+    return plan
 
 
 def execute_plan(
@@ -728,15 +676,7 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
         settings = args.get("settings")
         if not isinstance(settings, dict):
             settings = shared_storage.get_plugin_settings(PLUGIN_ID)
-        return preview_plan(
-            client,
-            settings,
-            int(args.get("page") or 1),
-            int(args.get("perPage") or 50),
-            str(args.get("status") or "all"),
-            as_bool(args.get("includeAll"), False),
-            record_review=True,
-        )
+        return preview_plan(client, settings, record_review=True)
     if mode == "execute":
         stored_settings = shared_storage.get_plugin_settings(PLUGIN_ID)
         return execute_plan(

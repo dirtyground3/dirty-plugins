@@ -12,7 +12,7 @@ import { createSettingsPanel } from "./settingsPanel";
 export function createViews(runtime: UIRuntime) {
   const domain = createRankDomain(runtime), { React, PluginApi, DirtyPlugins } = runtime;
   const Router = PluginApi.libraries.ReactRouterDOM, shared = DirtyPlugins.react;
-  function documentationCapture() { return DirtyPlugins.captureEnabled ? DirtyPlugins.captureEnabled(window.location.search) : new URLSearchParams(window.location.search).get("docsCapture") === "1" || new URLSearchParams(window.location.search).get("censorMedia") === "1"; }
+  function documentationCapture() { return DirtyPlugins.captureEnabled(window.location.search); }
   const base = {
     ...runtime, ...domain, ...React, useEffect: runtime.useEffect || React.useEffect, Fragment: React.Fragment, Router,
     NavLink: Router.NavLink, Prompt: Router.Prompt, useIntl: PluginApi.libraries.Intl.useIntl, documentationCapture,

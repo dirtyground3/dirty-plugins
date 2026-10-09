@@ -19,7 +19,7 @@ from typing import Any, Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from extract_scenes_destinations import (
-    sanitize_folder_name, destination_key, renamed_destination, resolve_destination,
+    sanitize_folder_name, destination_key, resolve_destination,
     resolve_generated_destination, reserve_destination, marker_clip_basename, format_bytes,
 )
 
@@ -205,23 +205,10 @@ def _unique_ids(raw_ids: Any) -> list[str]:
     return result
 
 
-def scene_ids_from_args(args: dict[str, Any]) -> list[str]:
-    raw_ids = args.get("scene_ids")
-    if raw_ids is None and args.get("scene_id") is not None:
-        raw_ids = [args.get("scene_id")]
-    result = _unique_ids(raw_ids)
-    if not result:
-        raise PluginError("Select at least one scene before starting the copy")
-    return result
-
-
 def selections_from_args(args: dict[str, Any]) -> dict[str, list[str]]:
     selections: dict[str, list[str]] = {}
     for kind in ("scene", "marker", "image"):
-        raw_ids = args.get(f"{kind}_ids")
-        if raw_ids is None and args.get(f"{kind}_id") is not None:
-            raw_ids = [args.get(f"{kind}_id")]
-        selections[kind] = _unique_ids(raw_ids)
+        selections[kind] = _unique_ids(args.get(f"{kind}_ids"))
     if not any(selections.values()):
         raise PluginError(
             "Select at least one scene, marker, or image before starting the copy"
@@ -792,31 +779,6 @@ def _copy_resolved_items(
         f"{len(plan.missing)} missing, {len(failed)} failed"
     )
     return _extraction_result(options, requested_counts, copied, plan.skipped, plan.missing, failed)
-
-
-def copy_scenes(
-    client: StashClient,
-    scene_ids: Iterable[str],
-    settings: dict[str, Any],
-    reporter: Reporter | None = None,
-) -> dict[str, Any]:
-    """Backward-compatible scene-only entry point used by existing callers."""
-    requested_scene_ids = list(scene_ids)
-    items: list[dict[str, Any]] = []
-    missing: list[dict[str, str]] = []
-    for scene_id in requested_scene_ids:
-        scene = client.scene(scene_id)
-        if scene:
-            items.append(_scene_item(scene))
-        else:
-            missing.append({"scene_id": scene_id, "reason": "scene not found"})
-    return _copy_resolved_items(
-        items,
-        {"scene": len(requested_scene_ids), "marker": 0, "image": 0},
-        settings,
-        reporter,
-        missing,
-    )
 
 
 def copy_selected(

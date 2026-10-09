@@ -49,7 +49,7 @@ existing primitive:
   settings primitives. Prefer these over bespoke markup.
 - `DirtyPlugins.react.useSettingsDraft` — typed loading, validation, dirty
   reporting and serialized autosave. Keep revision/conflict policy and workflow
-  state local. Ordinary controls can use `fieldDefinition` and `react.SettingsField`.
+  state local.
 - `hubApi.registerSettingsPanel(pluginId, component)` — mounts a plugin's
   settings UI inside the shared hub.
 - CSS custom properties prefixed `--dirty-ui-*` (tokens, radius, shadow, etc.)
@@ -117,10 +117,11 @@ ui:
 - Access React through `window.PluginApi.React` with a typed host adapter and
   classic `React.createElement`/`React.Fragment` output. Never bundle
   React/ReactDOM or another plugin's implementation; type-only imports are
-  allowed. Shared runtime APIs remain on DirtyPlugins. `DirtyPlugins.react.html`
-  (HTM) is a deprecated compatibility API for feature plugins that predate the
-  TSX ports: do not use it, and keep it and its license until a deliberate
-  breaking hub release removes it.
+  allowed. Shared runtime APIs remain on DirtyPlugins; the hub exposes only
+  members that a plugin uses.
+- Versions before 1.0.0 were developer builds. Do not keep compatibility with
+  their APIs, URLs, file layouts or hub versions. Code that reads older stored
+  data is removed only after a read-only check shows real data no longer needs it.
 - Bundles target ES2020. Check browser behavior with the opt-in isolated Stash
   fixtures (synthetic media); `tests/library_copy_fixture.py` adds read-only
   checks against a path-redirected copy of the local library.
@@ -208,12 +209,11 @@ Installed directories are the plugin IDs (not the repo directory names):
 `DirtyCaptions`→`dirtyCaptions`.
 `DirtyCompactor`→`dirtyCompactor`.
 
-DirtyCaptions requires DirtyPlugins 0.5.6+ for its hub-managed settings. Keep
-subtitle payloads in memory: its backend converts through FFmpeg stdout and its
-frontend uses data URLs accepted by Stash's default CSP. Register tracks with
-the native source selector to preserve transcode timing adjustments, and remove
-only plugin-owned tracks on cleanup. Do not persist subtitle text or create
-sidecars as part of this playback feature.
+DirtyCaptions keeps subtitle payloads in memory: its backend converts through
+FFmpeg stdout and its frontend uses data URLs accepted by Stash's default CSP.
+Register tracks with the native source selector to preserve transcode timing
+adjustments, and remove only plugin-owned tracks on cleanup. Do not persist
+subtitle text or create sidecars as part of this playback feature.
 The caption index stores fingerprints and status through shared storage metadata;
 only its three owned scene custom fields are updated with partial GraphQL writes.
 Preserve unknown/error results and hook-loop protection. Server hooks queue work;

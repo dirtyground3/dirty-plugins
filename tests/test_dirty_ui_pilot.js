@@ -2,7 +2,6 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const path = require("node:path");
 const vm = require("node:vm");
 const { sourcePath } = require("./plugin_paths");
 
@@ -55,19 +54,18 @@ const retainedLogs = window.__dirtyPluginsDebugLog.length;
 debugHub.debugLog("dirtyRank", "routine battle update");
 assert.equal(consoleMessages.length, 0, "routine activity must not flood the console");
 assert.equal(window.__dirtyPluginsDebugLog.length, retainedLogs + 1, "quiet mode retains diagnostic entries");
+const logged = message => { const before = consoleMessages.length; debugHub.debugLog("dirtyRank", message); return consoleMessages.length > before; };
 window.localStorage = { getItem: () => "1" };
-assert.equal(debugHub.debugEnabled(), true, "persistent console logging requires explicit opt-in");
-debugHub.debugLog("dirtyRank", "debug update");
-assert.equal(consoleMessages.length, 1);
+assert.equal(logged("debug update"), true, "persistent console logging requires explicit opt-in");
 window.__dirtyPluginsDebug = false;
-assert.equal(debugHub.debugEnabled(), false, "a page override can silence persistent debug logging");
+assert.equal(logged("silenced update"), false, "a page override can silence persistent debug logging");
 window.localStorage = { getItem: () => "0" };
 window.__dirtyPluginsDebug = true;
-assert.equal(debugHub.debugEnabled(), true, "a page override can enable logging for this session");
+assert.equal(logged("session update"), true, "a page override can enable logging for this session");
 delete window.__dirtyPluginsDebug;
-assert.equal(debugHub.debugEnabled(), false);
+assert.equal(logged("quiet update"), false);
 window.localStorage = { getItem: () => { throw new Error("storage unavailable"); } };
-assert.equal(debugHub.debugEnabled(), false, "blocked storage must keep default logging quiet");
+assert.equal(logged("blocked update"), false, "blocked storage must keep default logging quiet");
 delete window.localStorage;
 
 for (const [plugin, file] of [["DirtyPlugins", "dirtyPlugins.css"], ["DirtyRank", "dirtyRank.css"], ["DirtyStats", "dirtyStats.css"], ["DirtyTidy", "dirtyTidy.css"], ["DirtyFileExtractor", "extractScenes.css"], ["DirtyMultiscreen", "multiscreen.css"]]) {
@@ -87,11 +85,7 @@ for (const [plugin, file] of [["DirtyPlugins", "dirtyPlugins.css"], ["DirtyRank"
 const hub = window.DirtyPlugins;
 const ui = hub.react;
 assert(hub && ui, "the shared hub should expose the pilot components");
-assert.equal(typeof ui.html, "function", "the hub should expose its shared HTM tag");
-const templatedButton = ui.html`<${ui.Button} disabled=${true}>Shared template<//>`;
-assert.equal(templatedButton.type, ui.Button);
-assert.equal(templatedButton.props.disabled, true);
-assert.equal(templatedButton.props.children, "Shared template");
+assert.equal(ui.html, undefined, "the pre-1.0 HTM tag was removed; plugins render TSX");
 assert.equal(hub.theme.defaultKey, "classic", "the hub owns the suite's default visual theme");
 
 const titleObservers = [];
@@ -221,22 +215,8 @@ assert.equal(ui.Pagination({ page: 1, totalPages: 1 }), null);
 const firstFocus = { disabled: false, getClientRects: () => [1], focus() { document.activeElement = this; } };
 const lastFocus = { disabled: false, getClientRects: () => [1], focus() { document.activeElement = this; } };
 const dialog = { querySelectorAll: () => [firstFocus, lastFocus], contains: item => item === firstFocus || item === lastFocus, focus() { document.activeElement = this; } };
-document.activeElement = lastFocus;
-let prevented = false;
-hub.ui.trapDialogTab({ key: "Tab", shiftKey: false, preventDefault() { prevented = true; } }, dialog);
-assert.equal(prevented, true);
-assert.equal(document.activeElement, firstFocus, "Tab wraps to the first dialog control");
-document.activeElement = firstFocus;
-hub.ui.trapDialogTab({ key: "Tab", shiftKey: true, preventDefault() {} }, dialog);
-assert.equal(document.activeElement, lastFocus, "Shift+Tab wraps to the last dialog control");
 const bodyClasses = new Set();
 document.body = { classList: { add: name => bodyClasses.add(name), remove: name => bodyClasses.delete(name) } };
-const unlockFirst = hub.ui.lockBodyScroll();
-const unlockSecond = hub.ui.lockBodyScroll();
-unlockFirst();
-assert.equal(bodyClasses.has("dirty-ui-modal-open"), true, "a second dialog keeps background scroll locked");
-unlockSecond();
-assert.equal(bodyClasses.has("dirty-ui-modal-open"), false);
 
 const keydownListeners = new Set();
 document.addEventListener = (name, listener) => { if (name === "keydown") keydownListeners.add(listener); };
@@ -252,10 +232,17 @@ assert.equal(bodyClasses.has("dirty-ui-modal-open"), true);
 let topClosed = 0;
 const topDialog = { ...dialog, querySelector: () => lastFocus };
 const releaseTop = hub.ui.manageDialog({ dialog: topDialog, opener: firstFocus, onClose() { topClosed += 1; } });
+let prevented = false;
+for (const listener of keydownListeners) listener({ key: "Tab", shiftKey: false, preventDefault() { prevented = true; } });
+assert.equal(prevented, true);
+assert.equal(document.activeElement, firstFocus, "Tab wraps to the first dialog control");
+for (const listener of keydownListeners) listener({ key: "Tab", shiftKey: true, preventDefault() {} });
+assert.equal(document.activeElement, lastFocus, "Shift+Tab wraps to the last dialog control");
 for (const listener of keydownListeners) listener({ key: "Escape", preventDefault() {} });
 assert.equal(closed, 0, "only the top dialog handles Escape");
 assert.equal(topClosed, 1);
 releaseTop();
+assert.equal(bodyClasses.has("dirty-ui-modal-open"), true, "a second dialog keeps background scroll locked");
 const nativePopup = { classList: { contains: name => name === "show" }, contains: () => false };
 document.querySelectorAll = () => [nativePopup];
 for (const listener of keydownListeners) listener({ key: "Escape", preventDefault() {} });
@@ -274,10 +261,10 @@ assert.equal(document.activeElement, emptyDialog, "a dialog without controls rem
 releaseEmpty();
 
 assert.equal(hub.captureEnabled("?docsCapture=1"), true);
-assert.equal(hub.captureEnabled("?censorMedia=1"), true);
 assert.equal(hub.captureEnabled("?docsCapture=0"), false);
 assert.equal(hub.captureUrl("/plugins/dirty-stats", "?docsCapture=1"), "/plugins/dirty-stats?docsCapture=1");
-assert.equal(hub.captureUrl("/plugins/dirty-plugins?plugin=dirtyTidy", "?censorMedia=1"), "/plugins/dirty-plugins?plugin=dirtyTidy&docsCapture=1");
+assert.equal(hub.captureEnabled("?censorMedia=1"), false, "the pre-1.0 Rank capture alias was removed");
+assert.equal(hub.captureUrl("/plugins/dirty-plugins?plugin=dirtyTidy", "?docsCapture=1"), "/plugins/dirty-plugins?plugin=dirtyTidy&docsCapture=1");
 assert.equal(hub.captureUrl("/plugins/dirty-stats?docsCapture=0", "?docsCapture=1"), "/plugins/dirty-stats?docsCapture=1");
 window.location.search = "?docsCapture=1";
 assert.equal(hub.captureEnabled(window.location.search), true);

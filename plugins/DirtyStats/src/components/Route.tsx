@@ -1,7 +1,7 @@
 import type * as R from "react";
 import type { ViewDependencies } from "../view";
 export function createRoute(dependencies: ViewDependencies) {
-  const { statsThemeClass, useStatsSetting, StatsSaveStatus, StatsState, StatisticSelector, FilterStatisticSelector, nativeFilterQuery, statisticFilterSearch, setStatsSettingExtra, api, hub, React, route, dashboardRoute, growthRoute, ageRoute, ratingRoute, performerRatingRoute, performerScatterRoute, countRatingRoute, repeatOffenderRoute, qualityEfficiencyRoute, constellationRoute, studioRoute, tagDnaRoute, birthdayRoute, ages, STATISTIC_LABELS, growth, statsSettingsReady } = dependencies;
+  const { statsThemeClass, useStatsSetting, StatsSaveStatus, StatsState, StatisticSelector, FilterStatisticSelector, nativeFilterQuery, statisticFilterSearch, setStatsSettingExtra, api, hub, React, dashboardRoute, growthRoute, ageRoute, ratingRoute, performerRatingRoute, performerScatterRoute, countRatingRoute, repeatOffenderRoute, qualityEfficiencyRoute, constellationRoute, studioRoute, tagDnaRoute, birthdayRoute, STATISTIC_LABELS } = dependencies;
   function DirtyStatsRoute(): R.ReactElement | null {
     var page = React.useRef<HTMLElement>(null);
     var themeState = useStatsSetting("visualTheme"), visualTheme = themeState[0];

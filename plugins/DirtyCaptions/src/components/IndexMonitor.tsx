@@ -11,7 +11,7 @@ export function createIndexMonitor({ api, hub, lifetime }: Dependencies) {
         if (pending || !alive.current || !lifetime.active) return;
         pending = true;
         hub.runPluginOperation("dirtyCaptions", { mode: "indexBootstrap" }).catch(error => {
-          if (alive.current && lifetime.active) hub.debugLog?.("dirtyCaptions", "Caption index maintenance failed", { error: error.message });
+          if (alive.current && lifetime.active) hub.debugLog("dirtyCaptions", "Caption index maintenance failed", { error: error.message });
         }).then(() => { pending = false; });
       }
       const release = () => { alive.current = false; window.removeEventListener("dirty-plugins:configuration-changed", bootstrap); lifetime.effects.delete(release); };
@@ -24,7 +24,7 @@ export function createIndexMonitor({ api, hub, lifetime }: Dependencies) {
       // The backend checks opt-in/internal ownership and claims ID + startTime.
       await hub.runPluginOperation("dirtyCaptions", { mode: "indexAfterScan", jobId: completion.jobId, startTime: completion.startTime });
     }, error => {
-      if (alive.current && lifetime.active) hub.debugLog?.("dirtyCaptions", "Caption index refresh after Scan failed", { error: error.message });
+      if (alive.current && lifetime.active) hub.debugLog("dirtyCaptions", "Caption index refresh after Scan failed", { error: error.message });
     }, "scan");
     return null;
   };

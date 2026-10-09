@@ -7,8 +7,9 @@ when a Dirty plugin is installed from the package source.
 The hub is written as TypeScript modules and focused TSX components under
 `src/`. Contributors must build first and install from
 `.build/plugins/DirtyPlugins/`; the raw source directory is not installable.
-Stash loads one `dirtyPlugins.js` bundle using its own React instance. Public
-APIs, settings and storage stay compatible, including the deprecated HTM tag.
+Stash loads one `dirtyPlugins.js` bundle using its own React instance. Settings
+and storage stay compatible. The public API exposes only what the Dirty plugins
+use; pre-1.0 developer-build APIs such as the HTM `react.html` tag are gone.
 
 ![DirtyPlugins General tab with the suite theme selector and database backup](../../docs/images/dirty-plugins-general.png)
 
@@ -30,13 +31,8 @@ without replacing newer edits, reports dirty state and cancels pending work on
 unmount. A failed save blocks further autosaves until explicit retry or reload;
 callers own revisions and conflict handling. Compactor uses reload after a
 conflict. The hub route owns leave protection through dirty reports.
-`fieldDefinition(pluginId, setting)` and `react.SettingsField` share ordinary
-native controls and their limits/options. Specialized editors remain local.
-
-`DirtyPlugins.react.html` is a deprecated HTM tag bound to Stash's React
-`createElement`, kept for feature plugins that predate the TSX versions; current
-plugins render TSX. HTM 3.1.1 is bundled under `vendor/` with its Apache-2.0
-license and source notice.
+Ordinary settings on the hub page use the generated limits and options;
+specialized editors remain local to their plugins.
 
 ## UI contract
 
@@ -79,7 +75,7 @@ Stash module registers several components, as the Stats filters do.
 Escape, stacked scroll locks, and focus restoration across React and DOM
 dialogs. A dialog containing Stash filters uses `allowNativePopup` so a native
 popup can take focus. `DirtyPlugins.captureEnabled`
-accepts `docsCapture=1` and Rank's legacy `censorMedia=1`; `captureUrl` carries
+accepts `docsCapture=1`; `captureUrl` carries
 capture mode through suite navigation. Capture pages still need opaque covers
 for media and private paths before a screenshot is saved.
 
@@ -129,8 +125,8 @@ tools; DirtyCompactor uses one for its rules, previews, and runs.
 
 DirtyCaptions uses standard autosaving controls for embedded-caption loading,
 automatic display, preferred language, caption-index maintenance, and optional
-refresh after Scan. Its tab requires DirtyPlugins 0.5.6
-or newer and opens directly at `/plugins/dirty-plugins?plugin=dirtyCaptions`.
+refresh after Scan. Its tab opens directly at
+`/plugins/dirty-plugins?plugin=dirtyCaptions`.
 The shared database also stores the persistent file-ID map, Stash content hashes,
 sizes and modification times, index status, pending checks,
 and the index-worker lease. Filterable caption flags are published to three

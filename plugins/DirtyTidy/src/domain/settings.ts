@@ -54,16 +54,10 @@ export const VARIABLES: Variable[] = [
 // by the two sides defaulting differently.
 /** @param {*} value @returns {string[]} */
 export function parseLevels(value: unknown): string[] {
-  if (typeof value === "string") {
-    try { value = JSON.parse(value); } catch (_error) { value = [value]; }
-  }
   if (!Array.isArray(value)) return DEFAULT_SETTINGS.hierarchyLevels.slice();
   // An explicit all-empty list stays empty rather than reverting to the
   // defaults the server would never plan with.
-  return value.map(function (item: unknown) {
-    var template = (typeof item === "object" && item) ? (item as { template?: unknown }).template : item;
-    return template ? String(template).trim() : "";
-  }).filter(Boolean);
+  return value.map(function (item: unknown) { return typeof item === "string" ? item.trim() : ""; }).filter(Boolean);
 }
 
 /** @param {*} value @returns {number} */
@@ -114,10 +108,6 @@ export function parseApprovalHash(value: unknown): string {
 
 /** @param {*} configuration @returns {Record<string, *>} */
 export function settingsFromConfiguration(configuration: unknown): Settings {
-  // Preserve the hub's legacy JSON-string configuration coercion at this boundary.
-  if (typeof configuration === "string") {
-    try { configuration = JSON.parse(configuration); } catch { configuration = {}; }
-  }
   // Narrow the input shape; scalar/array configurations use the same empty fallback.
   const source = configuration && typeof configuration === "object" && !Array.isArray(configuration) ? configuration as Record<string, unknown> : {};
   return {

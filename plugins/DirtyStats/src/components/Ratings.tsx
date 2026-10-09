@@ -3,7 +3,7 @@ import type { PageProps } from "../props";
 import type { ChartInstance, StatsPerformer, StatsScene } from "../types";
 import type { ViewDependencies } from "../view";
 export function createRatings(dependencies: ViewDependencies) {
-  const { useStatsSetting, useChartTheme, StatsState, pageToolbar, exportButton, chartImage, sceneVariables, performerVariables, PerformerCards, SceneCards, sceneRating, aggregateRatings, React, chartLifecycle, chartOptions, dataLoader, STATS_SETTING_SPECS, charts, growth } = dependencies;
+  const { useStatsSetting, useChartTheme, StatsState, pageToolbar, exportButton, chartImage, sceneVariables, performerVariables, PerformerCards, SceneCards, sceneRating, aggregateRatings, React, chartLifecycle, chartOptions, dataLoader, STATS_SETTING_SPECS, charts } = dependencies;
   function RatingPage(props: PageProps): R.ReactElement | null {
     var chartTheme = useChartTheme();
     var performerMode = Boolean(props.performerMode), entity = performerMode ? "performers" : "scenes", title = performerMode ? "Performer ratings" : "Scene ratings";

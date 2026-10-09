@@ -27,12 +27,6 @@ class PlannedOperation(TypedDict):
     size: int
 
 
-class MarkerOperation(PlannedOperation):
-    marker_id: str
-    seconds: float
-    end_seconds: float
-
-
 @dataclass
 class ExtractionPlan:
     operations: list[PlannedOperation]

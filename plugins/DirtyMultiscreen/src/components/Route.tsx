@@ -67,7 +67,7 @@ export function createRoute(deps: ComponentDependencies) {
     const loading = settingsQuery.loading || activeQuery.loading || nativePlayerQuery.loading;
     const error = settingsQuery.error ?? activeQuery.error ?? nativePlayerQuery.error;
     const itemType = markerMode ? "markers" : "scenes";
-    const docsCapture = DirtyPlugins.captureEnabled ? DirtyPlugins.captureEnabled(window.location.search) : new URLSearchParams(window.location.search).get("docsCapture") === "1";
+    const docsCapture = DirtyPlugins.captureEnabled(window.location.search);
     const retryAll = () => {
       void reloadSettings();
       void activeQuery.refresh();

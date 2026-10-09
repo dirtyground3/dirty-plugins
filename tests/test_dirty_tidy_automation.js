@@ -1,10 +1,6 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
-const { sourceFor } = require("./load_plugin_scripts");
 const {testModulePath} = require("./plugin_paths");
 const {createAutomationMonitor} = require(testModulePath("DirtyTidy", "automation.cjs"));
 const noop = () => {};

@@ -135,14 +135,6 @@ def _plugin_revision_key(plugin_id: str) -> str:
     return f"plugin-revision:{plugin_id}"
 
 
-def settings_revision(connection: sqlite3.Connection) -> int:
-    rows = connection.execute(
-        "SELECT value FROM dirty_metadata WHERE namespace=? AND key LIKE 'plugin-revision:%'",
-        (SETTINGS_NAMESPACE,),
-    ).fetchall()
-    return max((int(row[0]) for row in rows), default=0)
-
-
 def get_plugin_revision(
     plugin_id: str,
     path: str | Path | None = None,

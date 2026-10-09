@@ -2,7 +2,7 @@ import type * as R from "react";
 import type { PerformerCardsProps, SceneCardsProps } from "../props";
 import type { ViewDependencies } from "../view";
 export function createCards(dependencies: ViewDependencies) {
-  const { docsCaptureEnabled, StatsState, orderedCards, api, hub, React, countries } = dependencies;
+  const { docsCaptureEnabled, StatsState, orderedCards, api, hub, React } = dependencies;
   function PerformerCards(props: PerformerCardsProps): R.ReactElement | null {
     var state = React.useState(1), page = state[0], setPage = state[1];
     var docsCapture = docsCaptureEnabled(window.location.search);

@@ -27,6 +27,7 @@ function createCaptionsHarness(options = {}) {
       args.mode === "captions" ? {sceneId:String(scene.id),fileId:"10",tracks:[],warnings:[]} : {status:args.mode === "indexRefresh" ? "Running" : "Finished",checked:2,skipped:2};},
     registerSettingsAddon(id,component){addon=component;options.register?.();},
     unregisterSettingsAddon(id,component){if(addon===component){addon=null;changed=true;}},
+    debugLog(){},
   };
   const window=events({DirtyPlugins:hub,navigator:{language:"en-US"},location:{search:options.capture ? "?docsCapture=1" : ""},
     setTimeout:fn=>{const id=++nextTimer;timers.set(id,{fn,kind:"timeout"});return id;},clearTimeout:id=>timers.delete(id),

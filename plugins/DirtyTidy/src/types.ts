@@ -23,7 +23,6 @@ export interface Host {
   patch?: { after(name: string, handler: (...args: unknown[]) => R.ReactNode): void };
   GQL?: { useJobsSubscribeSubscription?: () => { data?: { jobsSubscribe?: StashJobEvent } } };
 }
-export type Hub = Pick<HubApi, "react" | "getPluginSettings" | "configurePlugin" | "graphql" | "runPluginOperation" | "createJobHook" | "registerSettingsPanel" | "ui" | "captureEnabled"> &
-  Partial<Pick<HubApi, "unregisterSettingsPanel" | "debugLog">>;
+export type Hub = Pick<HubApi, "react" | "getPluginSettings" | "configurePlugin" | "graphql" | "runPluginOperation" | "createJobHook" | "registerSettingsPanel" | "unregisterSettingsPanel" | "ui" | "captureEnabled" | "debugLog">;
 export type SettingsProps = PanelProps;
 export interface Lifetime { active: boolean; effects: Set<() => void>; }

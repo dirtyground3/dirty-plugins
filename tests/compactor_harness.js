@@ -2,7 +2,6 @@
 
 const fs = require("node:fs");
 const vm = require("node:vm");
-const {runtimePath} = require("./plugin_paths");
 const {scriptPaths} = require("./load_plugin_scripts");
 const {createHooks, findAll, text} = require("./ui_harness");
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -158,4 +157,4 @@ function createCompactorHarness(options = {}) {
     unmount() {for (const item of owners.values()) release(item); owners.clear(); panel = null; appPatch = null;},
   };
 }
-module.exports = {createCompactorHarness, copy};
+module.exports = {createCompactorHarness};

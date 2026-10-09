@@ -19,7 +19,7 @@ if (!globals[INSTANCE_KEY]) {
       if (!lifetime.active) return;
       lifetime.active = false; instance.status = "destroyed";
       Array.from(lifetime.effects).forEach(release => release()); lifetime.effects.clear();
-      DirtyPlugins.unregisterSettingsPanel?.(PLUGIN_ID, SettingsPanel);
+      DirtyPlugins.unregisterSettingsPanel(PLUGIN_ID, SettingsPanel);
     }
     try {
       AutomationMonitor = createAutomationMonitor(api, DirtyPlugins, lifetime);
@@ -31,7 +31,7 @@ if (!globals[INSTANCE_KEY]) {
         });
       }
       DirtyPlugins.registerSettingsPanel(PLUGIN_ID, SettingsPanel); instance.status = "active";
-      DirtyPlugins.debugLog?.(PLUGIN_ID, "script finished registering");
+      DirtyPlugins.debugLog(PLUGIN_ID, "script finished registering");
     } catch (error) {
       destroy(); instance.status = "failed";
       if (!patchAttempted) delete globals[INSTANCE_KEY];

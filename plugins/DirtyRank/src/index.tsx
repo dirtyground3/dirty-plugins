@@ -30,8 +30,8 @@ if (!globals[INSTANCE_KEY]) {
       PluginApi.register.route(GAUNTLET_ROUTE_PATH, Route);
       PluginApi.register.route(GAUNTLET_ROUTE_PATH + "/:categoryId", Route);
       PluginApi.register.route(LEADERBOARDS_ROUTE_PATH + "/:statistic?", Boards);
-      life.own(() => DirtyPlugins.unregisterSettingsPanel?.(PLUGIN_ID, Settings));
-      DirtyPlugins.registerSettingsPanel?.(PLUGIN_ID, Settings);
+      life.own(() => DirtyPlugins.unregisterSettingsPanel(PLUGIN_ID, Settings));
+      DirtyPlugins.registerSettingsPanel(PLUGIN_ID, Settings);
       void views.refreshOverallSortSettings();
       const changed = (event: import("./types").ConfigurationEvent) => {
         if (life.isActive() && (!event.detail || event.detail.pluginId === PLUGIN_ID)) void views.refreshOverallSortSettings();
@@ -67,7 +67,7 @@ if (!globals[INSTANCE_KEY]) {
             <Navigation />
           </React.Fragment>
         }] : [props]);
-      instance.status = "active"; DirtyPlugins.debugLog?.(PLUGIN_ID, "script finished registering");
+      instance.status = "active"; DirtyPlugins.debugLog(PLUGIN_ID, "script finished registering");
     } catch (error) {
       destroy(); instance.status = "failed";
       if (!registrationAttempted) delete globals[INSTANCE_KEY];

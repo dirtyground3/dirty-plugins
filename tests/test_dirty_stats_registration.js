@@ -32,7 +32,7 @@ function fixture(fail={}) {
     register:{route:(path,component)=>{routes.push({path,component});if(fail.route)throw Error("route registration");}},
     patch:{instead:(name,handler)=>{patches.push({name,handler});if(fail.patch===name)throw Error("patch registration");},before:(name,handler)=>patches.push({name,handler})}};
   const hub={graphql:async()=>({}),getPluginSettings:async()=>({}),configurePlugin:async()=>({}),createSaveController:()=>({dispose:noop}),
-    native:{ensureComponents:async()=>[]},react:{StateView:noop,StatisticSelector:noop},theme:{defaultKey:"classic",subscribe:listener=>{themes.add(listener);return()=>themes.delete(listener);}}};
+    native:{ensureComponents:async()=>[]},react:{StateView:noop,StatisticSelector:noop},debugLog:noop,theme:{defaultKey:"classic",currentKey:"classic",normalizeKey:key=>key,ready:Promise.resolve("classic"),subscribe:listener=>{themes.add(listener);return()=>themes.delete(listener);}}};
   const window={PluginApi:host,DirtyPlugins:hub,location:{pathname:"/other",search:""},
     addEventListener:(name,handler)=>listeners.set(name,handler),removeEventListener:name=>{listeners.delete(name);if(fail.cleanup)throw Error("cleanup");},setTimeout,clearTimeout};
   const context=vm.createContext({window,navigator:{userAgent:"Synthetic Stash host"},document:{documentElement:{style:{}}},console:{warn:noop,error:(...args)=>errors.push(args)},URLSearchParams,Intl,Event,setTimeout,clearTimeout});

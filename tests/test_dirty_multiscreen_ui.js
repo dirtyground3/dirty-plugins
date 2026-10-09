@@ -1,5 +1,5 @@
 "use strict";
-const assert=require("node:assert/strict"),{createMultiscreenHarness}=require("./multiscreen_harness"),{text}=require("./ui_harness");
+const assert=require("node:assert/strict"),{createMultiscreenHarness}=require("./multiscreen_harness");
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 async function start(options){const h=createMultiscreenHarness(options);h.load();await h.flush();return h;}
 async function registration() {

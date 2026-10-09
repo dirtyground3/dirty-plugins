@@ -15,6 +15,7 @@ SPEC = importlib.util.spec_from_file_location("dirty_tidy", MODULE_PATH)
 dirty_tidy = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(dirty_tidy)
+import dirty_tidy_templates as templates  # noqa: E402  (on sys.path once dirty_tidy is loaded)
 
 
 def scene(file_path, **overrides):
@@ -65,7 +66,7 @@ class DirtyTidyTests(unittest.TestCase):
 
         for rating, grade in expected.items():
             with self.subTest(rating=rating):
-                self.assertEqual(dirty_tidy._grade(rating), grade)
+                self.assertEqual(templates._grade(rating), grade)
 
     def test_grade_can_be_used_in_folder_hierarchy(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -220,7 +221,7 @@ class DirtyTidyTests(unittest.TestCase):
             self.assertIn("Used Unknown for: studio, year", operation["warnings"])
 
     def test_rename_removes_invalid_characters_and_preserves_extension(self):
-        filename, error = dirty_tidy.sanitize_filename(
+        filename, error = templates.sanitize_filename(
             'Bad<>:"/\\|?* Name',
             ".mp4",
             16,
@@ -339,7 +340,7 @@ class DirtyTidyTests(unittest.TestCase):
 
         for template, rendered in expected.items():
             with self.subTest(template=template):
-                value, missing, invalid = dirty_tidy.render_rename_template(
+                value, missing, invalid = templates.render_rename_template(
                     template, variables
                 )
                 self.assertEqual(value, rendered)
@@ -472,7 +473,7 @@ class DirtyTidyTests(unittest.TestCase):
             self.assertEqual(plan["summary"]["warnings"], 1)
             self.assertEqual(plan["summary"]["blocked"], 0)
 
-    def test_preview_filters_before_pagination(self):
+    def test_preview_returns_the_complete_plan(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             live = root / "live.mp4"
@@ -495,6 +496,7 @@ class DirtyTidyTests(unittest.TestCase):
                 def library_snapshot(self):
                     return [str(root)], [value]
 
+            # The settings panel filters and pages locally; the backend returns everything.
             preview = dirty_tidy.preview_plan(
                 SnapshotClient(),
                 {
@@ -502,32 +504,10 @@ class DirtyTidyTests(unittest.TestCase):
                     "renameEnabled": True,
                     "renamePattern": "{title}",
                 },
-                page=1,
-                per_page=1,
-                status_filter="warning",
             )
 
-            self.assertEqual(preview["filter"], "warning")
             self.assertEqual(preview["total"], 2)
-            self.assertEqual(preview["filtered_total"], 1)
-            self.assertEqual(preview["pages"], 1)
-            self.assertEqual([item["status"] for item in preview["operations"]], ["warning"])
-
-            complete_preview = dirty_tidy.preview_plan(
-                SnapshotClient(),
-                {
-                    "moveEnabled": False,
-                    "renameEnabled": True,
-                    "renamePattern": "{title}",
-                },
-                page=1,
-                per_page=1,
-                include_all=True,
-            )
-
-            self.assertEqual(complete_preview["total"], 2)
-            self.assertEqual(len(complete_preview["operations"]), 2)
-            self.assertEqual(complete_preview["pages"], 1)
+            self.assertEqual(sorted(item["status"] for item in preview["operations"]), ["ready", "warning"])
 
     def test_duplicate_destinations_are_blocked(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -661,7 +641,7 @@ class DirtyTidyTests(unittest.TestCase):
         # sync with tests/test_dirty_tidy_settings.js.
         settings = dirty_tidy.normalize_settings(
             {
-                "hierarchyLevels": ["  {studio} ", "", {"template": "{year}"}],
+                "hierarchyLevels": ["  {studio} ", "", " {year}"],
                 "renamePattern": "  {title}  ",
                 "maxFilenameLength": "250",
                 "multiValueSeparator": "abcdefghijklmnop",
@@ -827,7 +807,7 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
                 os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}
             ):
                 preview = dirty_tidy.preview_plan(
-                    client, settings, include_all=True, record_review=True
+                    client, settings, record_review=True
                 )
                 self.assertEqual(preview["summary"]["ready"], 1)
                 self.assertEqual(preview["summary"]["warnings"], 1)
@@ -889,7 +869,7 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
                 os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}
             ):
                 preview = dirty_tidy.preview_plan(
-                    client, settings, include_all=True, record_review=True
+                    client, settings, record_review=True
                 )
                 result = dirty_tidy.execute_plan(
                     client, settings, preview["strategy_hash"], dirty_tidy.Reporter()

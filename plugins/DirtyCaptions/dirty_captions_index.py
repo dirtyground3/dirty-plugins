@@ -3,9 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
 from pathlib import Path
-import re
 import shutil
 import sys
 import time
@@ -69,18 +67,6 @@ def stash_identity(file):
     }}
 
 
-def timestamp_ns(value):
-    # GraphQL Time retains nanoseconds; datetime alone truncates to microseconds.
-    match = re.fullmatch(r"(.+T\d\d:\d\d:\d\d)(?:\.(\d{1,9}))?(Z|[+-]\d\d:\d\d)", str(value))
-    if not match:
-        return None
-    try:
-        seconds = int(datetime.fromisoformat(match[1] + match[3].replace("Z", "+00:00")).timestamp())
-    except ValueError:
-        return None
-    return seconds * 1000000000 + int((match[2] or "0").ljust(9, "0"))
-
-
 def cached_file(file, records=None):
     cached = read_record(FILES, file["id"]) if records is None else records.get(str(file["id"]), {})
     source = stash_identity(file)
@@ -98,20 +84,7 @@ def cached_file(file, records=None):
             cached["stash"] = source
             storage.set_metadata(FILES, str(file["id"]), json.dumps(cached))
         return cached
-    identity = cached.get("fingerprint")
-    if not identity:
-        return None
-    if source is not None:
-        # Upgrade the existing map using stored stat metadata. Do not re-read
-        # files merely because an older plugin version did not store Stash IDs.
-        if identity[1:] != [source["size"], timestamp_ns(source["mtime"])]:
-            return None
-        cached["stash"] = source
-        storage.set_metadata(FILES, str(file["id"]), json.dumps(cached))
-        return cached
-    # Compatibility for callers without Stash metadata; production queries
-    # always include the database identity fields above.
-    return cached if identity == fingerprint(file["path"]) else None
+    return None
 
 
 def save_file(file, streams, identity):
@@ -190,16 +163,13 @@ def needs_scene(scene, file_records, scene_records):
     if not snapshot:
         return True
     files = sorted(str(file["id"]) for file in scene.get("files", []))
-    if "files" in snapshot and snapshot["files"] != files:
+    if snapshot.get("files") != files:
         return True
     failed = any(record.get("failed") for record in records)
     fields, unused = caption_fields([None if record.get("failed") else record for record in records], failed)
     current = scene.get("custom_fields") or {}
     if any(current.get(key) != fields.get(key) for key in OWN_FIELDS):
         return True
-    if "files" not in snapshot:
-        snapshot.update(files=files)
-        storage.set_metadata(SCENES, str(scene["id"]), json.dumps(snapshot))
     return False
 
 
@@ -527,8 +497,7 @@ def run(client, args):
         return status()
     if mode == "indexRefresh":
         return request_refresh(client, args.get("force") is True)
-    if mode in ("indexBootstrap", "indexTick"):
-        # Accept the old operation name for tabs using cached plugin assets.
+    if mode == "indexBootstrap":
         return bootstrap(client)
     if mode == "indexAfterScan":
         return after_scan(client, args)

@@ -6,7 +6,7 @@ export function createSettings(runtime: Runtime) {
   const { React, hub } = runtime;
   let disposed = false, loadGeneration = 0;
   var PLUGIN_ID = "dirtyStats";
-  var DEFAULT_THEME = hub.theme && hub.theme.defaultKey || "classic";
+  var DEFAULT_THEME = hub.theme.defaultKey;
   var STATS_SETTING_SPECS = {
     visualTheme: { options: ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"] },
     showMapNumbers: { options: [false, true] },
@@ -26,7 +26,7 @@ export function createSettings(runtime: Runtime) {
     tagDnaMaxTags: { options: [0, 25, 50, 100, 200] }
   };
   var statsSettings: StatsSettings = {
-    visualTheme: hub.theme && hub.theme.currentKey || DEFAULT_THEME,
+    visualTheme: hub.theme.currentKey,
     showMapNumbers: false,
     sceneRatingRounding: 0.5,
     performerRatingRounding: 0.5,
@@ -116,7 +116,7 @@ export function createSettings(runtime: Runtime) {
       soft: "--dirty-stats-soft", softer: "--dirty-stats-softer"
     };
     var page = typeof document !== "undefined" && document.querySelector ? document.querySelector(".dirty-stats-page") : null;
-    var readRole = hub.theme && hub.theme.readRole;
+    var readRole = hub.theme.readRole;
     return page && propertyNames[name] ? readRole(page, propertyNames[name]) || statsTheme()[name as keyof StatsTheme] as string : statsTheme()[name as keyof StatsTheme] as string;
   }
 
@@ -146,7 +146,7 @@ export function createSettings(runtime: Runtime) {
   }
 
   function syncSuiteTheme(key: string) {
-    var next = hub.theme && hub.theme.normalizeKey ? hub.theme.normalizeKey(key) : key;
+    var next = hub.theme.normalizeKey(key);
     if (!next || statsSettings.visualTheme === next) return;
     statsSettings.visualTheme = next;
     notifyStatsSettings();
@@ -159,7 +159,6 @@ export function createSettings(runtime: Runtime) {
   }
 
   function scheduleStatsSettingsSave() {
-    if (typeof hub.configurePlugin !== "function") return;
     if (!statsSettingsSaveController) statsSettingsSaveController = hub.createSaveController({
       delay: 400,
       save: function (request) {
@@ -172,7 +171,6 @@ export function createSettings(runtime: Runtime) {
           return hub.getPluginSettings(PLUGIN_ID).then(function (latest) {
             var merged = Object.assign({}, latest || {});
             request.names.forEach(function (name) { merged[name] = request.snapshot[name]; });
-            delete merged.ratingRounding;
             return hub.configurePlugin(PLUGIN_ID, merged);
           });
         });
@@ -180,7 +178,7 @@ export function createSettings(runtime: Runtime) {
       onError: function (error, request) {
         request.names.forEach(function (name) { statsSettingsDirtyNames.add(name); });
         console.warn("DirtyStats could not save its settings", error);
-        if (hub.ui && hub.ui.notify) hub.ui.notify("DirtyStats settings could not be saved. Retry or reload this page.", { tone: "error" });
+        hub.ui.notify("DirtyStats settings could not be saved. Retry or reload this page.", { tone: "error" });
       },
       onStatus: function (value) {
         var message = value.state === "pending" ? "Unsaved settings."
@@ -211,25 +209,18 @@ export function createSettings(runtime: Runtime) {
       var value = parseStatsSetting(name, source[name]);
       if (value !== null) parsed[name] = value;
     });
-    // Older builds stored one rounding value shared by both ratings charts.
-    var legacyRounding = parseStatsSetting("sceneRatingRounding", source.ratingRounding);
-    if (legacyRounding !== null) {
-      if (parsed.performerRatingRounding === undefined) parsed.performerRatingRounding = legacyRounding as number;
-      if (parsed.sceneRatingRounding === undefined) parsed.sceneRatingRounding = legacyRounding as number;
-    }
     return parsed;
   }
 
   function loadStatsSettings() {
     const generation = ++loadGeneration;
-    if (typeof hub.getPluginSettings !== "function") return Promise.resolve();
     return hub.getPluginSettings(PLUGIN_ID).then(function (stored) {
       if (disposed || generation !== loadGeneration) return;
       var parsed = statsSettingsFromStorage(stored);
       var changed = false;
       statsSettingsExtras = {};
       Object.keys(stored || {}).forEach(function (name) {
-        if (!Object.prototype.hasOwnProperty.call(statsSettings, name) && name !== "ratingRounding") statsSettingsExtras[name] = stored[name];
+        if (!Object.prototype.hasOwnProperty.call(statsSettings, name)) statsSettingsExtras[name] = stored[name];
       });
       Object.keys(parsed).forEach(function (name) {
         if (statsSettings[name] !== parsed[name]) {
@@ -238,9 +229,7 @@ export function createSettings(runtime: Runtime) {
         }
       });
       if (changed) notifyStatsSettings();
-      if (hub.theme && hub.theme.ready) {
-        return hub.theme.ready.then(function (key) { if (!disposed && generation === loadGeneration) syncSuiteTheme(key); });
-      }
+      return hub.theme.ready.then(function (key) { if (!disposed && generation === loadGeneration) syncSuiteTheme(key); });
     }).catch(function (error) {
       console.warn("DirtyStats could not load its display settings", error);
     });
@@ -275,6 +264,6 @@ export function createSettings(runtime: Runtime) {
     setStatsSettingsSaveStatus("pending", "Unsaved settings.");
     scheduleStatsSettingsSave();
   }
-  return { statsTheme, themeColor, themePalette, statsThemeClass, parseStatsSetting, notifyStatsSettings, syncSuiteTheme, setStatsSettingsSaveStatus, scheduleStatsSettingsSave, setStatsSetting, statsSettingsFromStorage, loadStatsSettings, useStatsSetting, useChartTheme, getStatsSettingExtra, setStatsSettingExtra, statsSettings, STATS_SETTING_SPECS, getSaveStatus: () => ({ ...statsSettingsSaveStatus }), subscribeSaveStatus: (listener: () => void) => { statsSaveStatusListeners.add(listener); return () => { statsSaveStatusListeners.delete(listener) } }, getSaveStatusRevision: () => statsSaveStatusRevision, dispose: () => { disposed = true; loadGeneration++; statsSettingsSaveController?.dispose(); statsSettingsListeners.clear(); statsSaveStatusListeners.clear(); }, };
+  return { statsTheme, themeColor, themePalette, statsThemeClass, parseStatsSetting, syncSuiteTheme, scheduleStatsSettingsSave, setStatsSetting, statsSettingsFromStorage, loadStatsSettings, useStatsSetting, useChartTheme, getStatsSettingExtra, setStatsSettingExtra, statsSettings, STATS_SETTING_SPECS, getSaveStatus: () => ({ ...statsSettingsSaveStatus }), subscribeSaveStatus: (listener: () => void) => { statsSaveStatusListeners.add(listener); return () => { statsSaveStatusListeners.delete(listener) } }, getSaveStatusRevision: () => statsSaveStatusRevision, dispose: () => { disposed = true; loadGeneration++; statsSettingsSaveController?.dispose(); statsSettingsListeners.clear(); statsSaveStatusListeners.clear(); }, };
 }
 export type Settings = ReturnType<typeof createSettings>;

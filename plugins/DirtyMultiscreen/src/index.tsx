@@ -42,7 +42,7 @@ if (!globals[INSTANCE_KEY]) {
       captureList("StudioList", "/studios", "studio-list");
       runtime.api.patch.before("StudioPage", props => { if (life.active && window.location.pathname.startsWith("/studios/") && props.studio?.id) contexts.captureDetail("studio-detail", props.studio.id); return [props]; });
       runtime.api.patch.before("MainNavBar.UtilityItems", props => life.active ? [{ children: <React.Fragment>{props.children}<Navigation /></React.Fragment> }] : [props]);
-      instance.status = "active"; runtime.hub.debugLog?.("multiscreen", "script finished registering");
+      instance.status = "active"; runtime.hub.debugLog("multiscreen", "script finished registering");
     } catch (error) { destroy(); instance.status = "failed"; if (!registrationAttempted) delete globals[INSTANCE_KEY]; console.error("[DirtyMultiscreen] registration failed", error); }
     finally { globals.__dirtyCurrentPluginId = null; }
   }

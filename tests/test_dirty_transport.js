@@ -3,7 +3,6 @@ const { testModulePath } = require("./plugin_paths");
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const path = require("node:path");
 const vm = require("node:vm");
 const { events } = require("./ui_harness");
 const window = events(), requests = [], hub = {};

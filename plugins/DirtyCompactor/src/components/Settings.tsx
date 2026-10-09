@@ -113,7 +113,6 @@ export function Settings(props: SettingsProps) {
   let actions = preview && preview.readyActions || { resize: 0, reencode: 0, delete: 0 };
   let removeIndex = draft.rules.findIndex(function(r) { return r.id === removing; });
   let runActive = run && FINISHED.indexOf(run.status) < 0;
-  let last = history[0];
   return (
     <div className={"dirty-compactor" + (capture ? " dirty-compactor-capture" : "")}>
       <div className="dirty-ui-toolbar">

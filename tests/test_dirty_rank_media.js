@@ -3,7 +3,6 @@ const { testModulePath } = require("./plugin_paths");
 
 const assert = require("assert");
 const fs = require("fs");
-const path = require("path");
 const vm = require("vm");
 const { element, find, findAll, text, createHooks } = require("./ui_harness");
 
@@ -32,8 +31,18 @@ const runtime = {
     SettingsToggle: function SettingsToggle() {},
     StatisticSelector: function SharedStatisticSelector() {},
     Dialog: function SharedDialog() {},
+    Button: function SharedButton() {},
+    Badge: function SharedBadge() {},
+    Field: function SharedField() {},
+    Metric: function SharedMetric() {},
+    Pagination: function SharedPagination() {},
+    NavAction: function SharedNavAction() {},
+    IconButton: function SharedIconButton() {},
+    SaveStatus: function SharedSaveStatus() {},
   },
-  native: { ensureComponents: () => Promise.resolve([]) },
+  native: { ensureComponents: () => Promise.resolve([]), loadComponent: () => Promise.resolve(null) },
+  captureEnabled: search => new URLSearchParams(search).get("docsCapture") === "1",
+  captureUrl: path => path,
   getPluginSettings: () => Promise.resolve({}),
   runPluginOperation: (_pluginId, args) => Promise.resolve(args.mode === "getSettings" ? { revision: 0, settings: {} } : { states: {} }),
   graphql: (query, variables, options) => { calls.push({ query, variables, signal: options && options.signal }); return response(query, variables, options && options.signal); },
@@ -164,9 +173,7 @@ function attachPlayer(tree, attributes) {
 
 async function main() {
   context.window.location.search = "?docsCapture=1";
-  assert(plugin.testing.documentationCapture());
-  context.window.location.search = "?censorMedia=1";
-  assert(plugin.testing.documentationCapture());
+  assert(plugin.testing.documentationCapture(), "capture mode follows the hub's docsCapture detection");
   context.window.location.search = "";
   const playbackUrl = plugin.testing.scenePlaybackUrl;
   const legacyScene = {
@@ -361,15 +368,14 @@ async function main() {
   const api = context.window.PluginApi;
   const nativeCard = function NativePerformerCard() {};
   api.components = {};
-  api.loadableComponents = { PerformerCard: "native-performer-module" };
-  let loadedModule;
-  api.utils = { loadComponents: modules => {
-    loadedModule = modules[0];
+  let loadedComponent;
+  runtime.native.loadComponent = name => {
+    loadedComponent = name;
     api.components.PerformerCard = nativeCard;
-    return Promise.resolve();
-  } };
+    return Promise.resolve(nativeCard);
+  };
   await plugin.testing.loadNativePerformerCard();
-  assert.strictEqual(loadedModule, "native-performer-module");
+  assert.strictEqual(loadedComponent, "PerformerCard", "native cards load through the hub's component loader");
   const rankedPerformer = { ...manual.props.performer, rating100: 87, favorite: true };
   const standingsProps = {
     performer: rankedPerformer, rank: 4, ranked: [rankedPerformer],
@@ -407,10 +413,11 @@ async function main() {
   delete api.components.PerformerCard;
   active = { slots: [], effects: [], cursor: 0 };
   assert(byClass(plugin.testing.LeaderboardGalleryCard(standingsProps), "dirty-rank-gallery-image-link"), "older Stash builds keep the fallback card");
+  const hubNative = runtime.native;
   runtime.native = { loadComponent: () => Promise.reject(new Error("native card unavailable")) };
   assert.strictEqual(await plugin.testing.loadNativePerformerCard(), null,
     "an unavailable native card must keep the fallback route usable");
-  delete runtime.native;
+  runtime.native = hubNative;
   response = () => Promise.resolve({ findPerformers: { performers: [rankedPerformer] } });
   await plugin.testing.queryPerformers(true);
   assert(calls.at(-1).query.includes("favorite rating100 o_counter"));
@@ -662,7 +669,7 @@ async function verifyCategoryResets() {
     if (args.mode === "getSettings") return Promise.resolve({ revision: 0, settings: configuration });
     if (args.mode === "resetPool") {
       resets.push(args);
-      return new Promise(resolve => { finishReset = () => resolve({ reset: 3, failed: 0 }); });
+      return new Promise(resolve => { finishReset = () => resolve({ reset: 3 }); });
     }
     if (args.mode === "loadAll") { reloads++; return Promise.resolve({ states: {} }); }
     throw new Error("Unexpected operation during a category reset: " + args.mode);
@@ -698,7 +705,7 @@ async function verifyCategoryResets() {
     await flush();
     tree = render();
     assert.strictEqual(reloads, 1, "successful reset refreshes the rating index");
-    assert(visibleText(tree.props.footer).includes("Reset Mixed box / Energy: 3 rating(s); 0 failed."));
+    assert(find(tree.props.footer, node => node.type === runtime.react.SaveStatus).props.message.includes("Reset Mixed box / Energy: 3 rating(s)."));
     assert(notifications[0].includes("Mixed box / Energy"));
     assert(buttons().every(button => !button.props.disabled));
   } finally {
@@ -836,7 +843,7 @@ async function verifyLeaderboardPresentationSettings() {
     assert.strictEqual(JSON.parse(savedPayload.genderBoxes).find(box => box.id === "FEMALE").name, "My mixed box", "renaming retains the stable box ID");
     assert.deepStrictEqual(JSON.parse(savedPayload.genderBoxes).find(box => box.id === "MALE").genders, ["MALE"], "other boxes remain unchanged");
     assert.strictEqual(option("Reset ratings").props.disabled, false, "category reset is available after autosave");
-    assert(visibleText(tree.props.footer).includes("Saved automatically."), "accepted normalized settings report Saved after the draft-hook callbacks");
+    assert(find(tree.props.footer, node => node.type === runtime.react.SaveStatus).props.message.includes("Saved automatically."), "accepted normalized settings report Saved after the draft-hook callbacks");
     option("+ Add gender box").props.onClick();
     tree = render();
     assert(find(tree, node => node.props["data-box-id"] === "BOX-1"), "new boxes have independent stable IDs");

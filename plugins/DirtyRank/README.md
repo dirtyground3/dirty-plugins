@@ -232,9 +232,8 @@ normalized score.
 ## Screenshots
 
 For safe documentation views, append `?docsCapture=1` to either DirtyRank page.
-The older `?censorMedia=1` URL remains supported. Capture mode hides media,
-including media inside native Stash cards and players; inspect any image before
-adding it to repository documentation.
+Capture mode hides media, including media inside native Stash cards and
+players; inspect any image before adding it to repository documentation.
 
 ### Performer battles
 

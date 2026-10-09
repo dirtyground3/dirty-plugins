@@ -3,7 +3,7 @@ import type { FilterCaptureProps, SelectorProps } from "../props";
 import type { SavedFilter } from "../runtime";
 import type { ViewDependencies } from "../view";
 export function createFilters(dependencies: ViewDependencies) {
-  const { statsThemeClass, nativeFilterQuery, restoredPerformerFilter, serializeDashboardFilter, performerVariables, getStatsSettingExtra, setStatsSettingExtra, api, hub, React, ageRoute, performerFilterEvent, ages, STATISTIC_ROUTES, STATISTIC_LABELS, STATISTIC_ORDER, filterBridge } = dependencies;
+  const { statsThemeClass, nativeFilterQuery, restoredPerformerFilter, serializeDashboardFilter, performerVariables, getStatsSettingExtra, setStatsSettingExtra, api, hub, React, ageRoute, performerFilterEvent, STATISTIC_ROUTES, STATISTIC_LABELS, STATISTIC_ORDER, filterBridge } = dependencies;
   var agePerformerFilter: import("../runtime").StatsFilter | null = null;
   function StatisticSelector(props: SelectorProps): R.ReactElement | null {
     var history = api.libraries.ReactRouterDOM.useHistory();

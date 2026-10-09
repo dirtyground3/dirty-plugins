@@ -32,9 +32,6 @@ const options = { criterionOptions: [
   new NativeOption("custom_fields", option => new NativeCustomFieldsCriterion(option, [])),
   new NativeOption("performers", option => new NativeCriterion(option, []))
 ] };
-for (const type of ["dirty_captions_any", "dirty_captions_text", "dirty_captions_verified"]) {
-  options.criterionOptions.push(new NativeOption(type, option => new NativeBooleanCriterion(option, "")));
-}
 class NativeFilter {
   constructor(mode = "SCENES") {
     Object.assign(this, { mode, options, criteria: [], currentPage: 5, sortBy: "rating", searchTerm: "test", randomSeed: -1 });
@@ -59,6 +56,6 @@ class NativeFilter {
 function criterion(type, value, filter = new NativeFilter()) {
   const c = filter.makeCriterion(type); c.value = value; return c;
 }
-return {NativeFilter, NativeCriterion, NativeResolutionCriterion, options, criterion};
+return {NativeFilter, NativeResolutionCriterion, options, criterion};
 }
 module.exports={createNativeModels};

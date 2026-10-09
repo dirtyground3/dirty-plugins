@@ -8,7 +8,7 @@ export function useWorkflow(props: SettingsProps, lifetime: Lifetime): Workflow 
   const [, render] = React.useState(0);
   if (!ref.current) ref.current = createWorkflow(props.configuration, {
     getSettings: () => DirtyPlugins.getPluginSettings(PLUGIN_ID),
-    runPreview: settings => DirtyPlugins.runPluginOperation<Preview>(PLUGIN_ID, { includeAll: true, mode: "preview", settings }),
+    runPreview: settings => DirtyPlugins.runPluginOperation<Preview>(PLUGIN_ID, { mode: "preview", settings }),
     configurePlugin: settings => DirtyPlugins.configurePlugin(PLUGIN_ID, settings),
     queueExecution: async strategyHash => {
       const data = await DirtyPlugins.graphql<{ runPluginTask: string }>(

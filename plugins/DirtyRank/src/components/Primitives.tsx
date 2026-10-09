@@ -3,8 +3,8 @@ import type { SharedProps } from "../../../DirtyPlugins/src/types";
 import { OVERALL_LEADERBOARD_ID } from "../constants";
 import type { ConfidenceProps, Decision, DisplayPool, RankCategory, RankPerformer, RankSettings } from "../types";
 import type { ViewDependencies } from "../view";
-export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | "Fragment" | "DirtyPlugins" | "PluginApi" | "Router" | "Toggle" | "SharedButton" | "SharedBadge" | "SharedField" | "SharedMetric" | "SharedStatisticSelector" | "boxFor" | "boxGendersLabel" | "categoriesFor" | "representativeOpponent" | "estimatedMatchesToConfidence" | "categoryEntries" | "categoryConfidence" | "poolFor" | "excellentDeviationThreshold" | "precisionTier" | "categoryEligible" | "rankPerformers" | "leaderboardPoolFor" | "leaderboardData" | "leaderboardStatPath">) {
-  const { React, Fragment, DirtyPlugins, PluginApi, Router, Toggle, SharedButton, SharedBadge, SharedField, SharedMetric, SharedStatisticSelector, boxFor, boxGendersLabel, categoriesFor, representativeOpponent, estimatedMatchesToConfidence, categoryEntries, categoryConfidence, poolFor, excellentDeviationThreshold, precisionTier, categoryEligible, rankPerformers, leaderboardPoolFor, leaderboardData, leaderboardStatPath } = dependencies;
+export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | "DirtyPlugins" | "PluginApi" | "Router" | "SharedButton" | "SharedBadge" | "SharedField" | "SharedMetric" | "SharedStatisticSelector" | "boxFor" | "boxGendersLabel" | "categoriesFor" | "representativeOpponent" | "estimatedMatchesToConfidence" | "categoryEntries" | "categoryConfidence" | "poolFor" | "excellentDeviationThreshold" | "precisionTier" | "categoryEligible" | "rankPerformers" | "leaderboardPoolFor" | "leaderboardData" | "leaderboardStatPath">) {
+  const { React, DirtyPlugins, PluginApi, Router, SharedButton, SharedBadge, SharedField, SharedMetric, SharedStatisticSelector, boxFor, boxGendersLabel, categoriesFor, representativeOpponent, estimatedMatchesToConfidence, categoryEntries, categoryConfidence, poolFor, excellentDeviationThreshold, precisionTier, categoryEligible, rankPerformers, leaderboardPoolFor, leaderboardData, leaderboardStatPath } = dependencies;
   function RankCrown(): R.JSX.Element | null {
     return (<svg
       aria-hidden="true"
@@ -25,15 +25,9 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
   }
 
   function RankButton(props: SharedProps): R.JSX.Element | null {
-    if (SharedButton) return (<SharedButton {...props}>
+    return (<SharedButton {...props}>
       {props.children}
     </SharedButton>);
-    return (<button className={"btn btn-" + (props.tone || "secondary") +
-      " dirty-ui-button dirty-ui-control" +
-      (props.compact ? " dirty-ui-control-compact" : "") +
-      (props.className ? " " + props.className : "")} disabled={props.disabled} aria-pressed={props.pressed == null ? undefined : Boolean(props.pressed)} onClick={props.onClick} type="button">
-      {props.children}
-    </button>);
   }
 
   function PrecisionBadge(props: { pool: DisplayPool; settings: RankSettings }): R.JSX.Element | null {
@@ -43,12 +37,9 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
       " categories rated · mean category RD " + props.pool.deviation.toFixed(1)
       : tier.label + " precision · RD " + props.pool.deviation.toFixed(1);
     title += " · " + props.pool.matches.toLocaleString() + (props.pool.matches === 1 ? " battle" : " battles");
-    if (SharedBadge) return (<SharedBadge className={"text-uppercase dirty-rank-status-" + tier.id} title={title}>
+    return (<SharedBadge className={"text-uppercase dirty-rank-status-" + tier.id} title={title}>
       {tier.label}
     </SharedBadge>);
-    return (<span className={"badge badge-pill text-uppercase dirty-rank-status-" + tier.id} title={title}>
-      {tier.label}
-    </span>);
   }
 
   function Leaderboard(props: ConfidenceProps): R.JSX.Element | null {
@@ -181,22 +172,11 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
   }
 
   function LeaderboardStat(props: SharedProps): R.JSX.Element | null {
-    if (SharedMetric) return (<SharedMetric
+    return (<SharedMetric
       className="dirty-rank-stat dirty-ui-feature-card"
       label={props.label}
       value={props.value}
       detail={props.detail} />);
-    return (<div className="dirty-rank-stat dirty-ui-feature-card">
-      <span className="dirty-rank-stat-label">
-        {props.label}
-      </span>
-      <strong className="dirty-rank-stat-value">
-        {props.value}
-      </strong>
-      <span className="dirty-rank-stat-detail">
-        {props.detail}
-      </span>
-    </div>);
   }
 
   function OverallConfidence(props: Omit<ConfidenceProps, "category">): R.JSX.Element | null {
@@ -263,21 +243,9 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
   }
 
   function Field(props: SharedProps): R.JSX.Element | null {
-    if (SharedField) return (<SharedField {...props}>
+    return (<SharedField {...props}>
       {props.children}
     </SharedField>);
-    return (<div className={"dirty-rank-field" + (props.className ? " " + props.className : "")}>
-      <label htmlFor={props.id}>
-        {props.label}
-      </label>
-      {props.children}
-      {props.help && (<p className="dirty-rank-field-help">
-        {props.help}
-      </p>)}
-      {props.error && (<p className="dirty-ui-text-error" role="alert">
-        {props.error}
-      </p>)}
-    </div>);
   }
 
   function RankStatisticSelector(props: { value: string; categories: RankCategory[]; boxId?: string }): R.JSX.Element | null {
@@ -286,7 +254,7 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
       id="dirty-rank-statistic"
       value={props.value}
       options={[{ value: OVERALL_LEADERBOARD_ID, label: "Overall" }].concat(props.categories.map(function (category) { return { value: category.id, label: category.name }; }))}
-      onSelect={function (id: string) { var path = leaderboardStatPath(id, props.boxId); history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(path) : path); }} />);
+      onSelect={function (id: string) { history.push(DirtyPlugins.captureUrl(leaderboardStatPath(id, props.boxId))); }} />);
   }
 
   function LeaderboardInfoPopover(props: SharedProps): R.JSX.Element | null {

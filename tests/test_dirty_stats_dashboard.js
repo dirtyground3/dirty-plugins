@@ -1,14 +1,13 @@
 "use strict";
 const { element } = require("./ui_harness");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
 const vm = require("node:vm");
 
 const context = {
   console,
   window: {
     PluginApi: { React: { createElement: element, Fragment: "fragment" }, libraries: { ReactRouterDOM: { Link: "Link" } } },
-    DirtyPlugins: { react: {}, captureUrl: path => path },
+    DirtyPlugins: { react: {}, captureUrl: path => path, getPluginSettings: async () => ({}) },
 
   }
 };
@@ -159,7 +158,7 @@ assert.equal(helpers.normalizeWidgets([{ statistic: "origin", options: { showNum
 
 // Exercise the origin renderer with the real map data and shared map adapter.
 const statisticPatches = {};
-const originContext = { window: { PluginApi: { React: { createElement: context.window.PluginApi.React.createElement }, libraries: {}, register: { route() {} }, patch: { before() {}, instead(name, callback) { statisticPatches[name] = callback; } } }, DirtyPlugins: { graphql() {} } }, console, Intl, URLSearchParams };
+const originContext = { window: { PluginApi: { React: { createElement: context.window.PluginApi.React.createElement }, libraries: {}, register: { route() {} }, patch: { before() {}, instead(name, callback) { statisticPatches[name] = callback; } } }, DirtyPlugins: { graphql() {}, getPluginSettings: async () => ({}) } }, console, Intl, URLSearchParams };
 vm.createContext(originContext);
 require("./shared_runtime").installSaveController(originContext.window);
 const originCore=statsModules.core(originContext);

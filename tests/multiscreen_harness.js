@@ -24,7 +24,7 @@ function createMultiscreenHarness(options={}) {
     return React.createElement("native-player",props);
   }
   const controls=Object.fromEntries(["IconButton","StateView","NavAction"].map(name=>[name,props=>React.createElement(name,props,props.children)]));
-  const hub={values,react:{...controls,usePageTitle(){}},captureEnabled:()=>!!options.capture,native:{loadComponent:async()=>NativePlayer},
+  const hub={values,react:{...controls,usePageTitle(){}},captureEnabled:()=>!!options.capture,debugLog(){},native:{loadComponent:async()=>NativePlayer},
     getPluginSettings:async()=>options.loadSettings ? options.loadSettings() : options.settings || {rows:1,columns:2,totalScreens:2,randomize:false,randomStart:false,loopScenes:false},
     graphql:async(query,variables)=>{calls.push({query,variables});if(options.graphql)return options.graphql(query,variables);
       if(query.includes("MultiscreenMarkers"))return {findSceneMarkers:{count:options.markers?.length || 0,scene_markers:options.markers || []}};

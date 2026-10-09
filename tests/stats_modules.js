@@ -10,6 +10,8 @@ function moduleIn(context,name) {
 function runtime(context) {
   const api=context.window.PluginApi,hub=context.window.DirtyPlugins;
   hub.react ||= {};
+  // The 1.0 hub always provides the full theme API; suites override what they exercise.
+  hub.theme = Object.assign({defaultKey:"classic",currentKey:"classic",normalizeKey:key=>key,ready:Promise.resolve("classic"),readRole:()=>"",subscribe:()=>()=>{}},hub.theme);
   api.libraries ||= {};api.libraries.ReactRouterDOM ||= {};
   return {React:api.React,api,hub,charts:context.window.echarts,world:moduleIn(context,"world").world,filterBridge:{activeEntity:null,listener:null}};
 }
@@ -21,4 +23,4 @@ function core(context) {
 function dashboard(context,algorithms={},core={}) {
   return moduleIn(context,"views").createDashboardViews(runtime(context),algorithms,core);
 }
-module.exports={moduleIn,runtime,core,dashboard};
+module.exports={moduleIn,core,dashboard};

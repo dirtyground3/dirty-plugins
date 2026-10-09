@@ -3,7 +3,7 @@ import type { PageProps } from "../props";
 import type { ChartInstance, StatsPerformer, StatsScene } from "../types";
 import type { ViewDependencies } from "../view";
 export function createCounters(dependencies: ViewDependencies) {
-  const { useStatsSetting, useChartTheme, StatsState, pageToolbar, exportButton, chartImage, sceneVariables, SceneCards, countRatingLabel, countRatingSeriesData, aggregateCountRating, aggregateRepeatOffenders, repeatOffenderSeriesData, repeatOffenderRowAtShare, React, chartLifecycle, chartOptions, dataLoader, STATS_SETTING_SPECS, charts, growth } = dependencies;
+  const { useStatsSetting, useChartTheme, StatsState, pageToolbar, exportButton, chartImage, sceneVariables, SceneCards, countRatingLabel, countRatingSeriesData, aggregateCountRating, aggregateRepeatOffenders, repeatOffenderSeriesData, repeatOffenderRowAtShare, React, chartLifecycle, chartOptions, dataLoader, STATS_SETTING_SPECS, charts } = dependencies;
   function CountRatingPage(props: PageProps): R.ReactElement | null {
     var chartTheme = useChartTheme();
     var pageData = dataLoader.usePageData<StatsScene & StatsPerformer>(), scenes = pageData.rows, loading = pageData.loading, error = pageData.error;

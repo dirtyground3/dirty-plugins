@@ -180,7 +180,7 @@ export function createAnalytics(dependencies: Pick<Settings, "themeColor" | "sta
     });
     var ranked = Array.from(performers.values()).sort(function (a, b) { return b.value - a.value || a.name.localeCompare(b.name) || a.id.localeCompare(b.id); });
     var requestedLimit = Number(maxPerformers);
-    var limit = requestedLimit === 0 ? ranked.length : Math.max(1, requestedLimit || 100), nodes = ranked.slice(0, limit), visible = new Set(nodes.map(function (node) { return node.id; })), pairs = new Map<string, import("../types").StatsConstellationLink & { id: string; sceneIds: string[] }>();
+    var limit = requestedLimit === 0 ? ranked.length : Math.max(1, requestedLimit || 100), nodes = ranked.slice(0, limit), visible = new Set(nodes.map(function (node) { return node.id; })), pairs = new Map<string, import("../types").StatsConstellationLink & { id: string }>();
     uniqueScenes.forEach(function (scene) {
       var scenePerformers = new Map<string, string>();
       (scene.performers || []).forEach(function (performer) {
@@ -190,8 +190,8 @@ export function createAnalytics(dependencies: Pick<Settings, "themeColor" | "sta
       var ids = Array.from(scenePerformers.keys()).sort();
       for (var i = 0;i < ids.length;i++) for (var j = i + 1;j < ids.length;j++) {
         var key = ids[i] + "\u0000" + ids[j];
-        if (!pairs.has(key)) pairs.set(key, { id: key, source: ids[i], target: ids[j], sourceName: scenePerformers.get(ids[i])!, targetName: scenePerformers.get(ids[j])!, value: 0, sceneIds: [] });
-        var pair = pairs.get(key)!; pair.value++; pair.sceneIds.push(String(scene.id));
+        if (!pairs.has(key)) pairs.set(key, { id: key, source: ids[i], target: ids[j], sourceName: scenePerformers.get(ids[i])!, targetName: scenePerformers.get(ids[j])!, value: 0 });
+        pairs.get(key)!.value++;
       }
     });
     var threshold = Math.max(1, Number(minShared) || 1);
@@ -364,12 +364,12 @@ export function createAnalytics(dependencies: Pick<Settings, "themeColor" | "sta
   }
 
   function aggregateTagDna(scenes: StatsScene[]) {
-    var uniqueScenes = new Map<string, StatsScene>(), tags = new Map<string, { id: string; name: string; scenes: number; rated: number; ratingSum: number; plays: number; sceneIds: string[] }>(), taggedScenes = 0, assignments = 0;
+    var uniqueScenes = new Map<string, StatsScene>(), tags = new Map<string, { id: string; name: string; scenes: number; rated: number; ratingSum: number; plays: number }>(), taggedScenes = 0, assignments = 0;
     scenes.forEach(function (scene) {
       var sceneId = String(scene && scene.id != null ? scene.id : "");
       if (sceneId && !uniqueScenes.has(sceneId)) uniqueScenes.set(sceneId, scene);
     });
-    uniqueScenes.forEach(function (scene, sceneId) {
+    uniqueScenes.forEach(function (scene) {
       var sceneTags = new Map<string, string>();
       (scene.tags || []).forEach(function (tag) {
         var id = String(tag && tag.id != null ? tag.id : "");
@@ -380,14 +380,14 @@ export function createAnalytics(dependencies: Pick<Settings, "themeColor" | "sta
       var plays = Number(scene.play_count);
       if (!Number.isFinite(plays) || plays < 0) plays = 0;
       sceneTags.forEach(function (name, id) {
-        if (!tags.has(id)) tags.set(id, { id: id, name: name, scenes: 0, rated: 0, ratingSum: 0, plays: 0, sceneIds: [] });
+        if (!tags.has(id)) tags.set(id, { id: id, name: name, scenes: 0, rated: 0, ratingSum: 0, plays: 0 });
         var entry = tags.get(id)!;
-        entry.scenes++; entry.plays += plays; entry.sceneIds.push(sceneId); assignments++;
+        entry.scenes++; entry.plays += plays; assignments++;
         if (rating != null) { entry.rated++; entry.ratingSum += rating; }
       });
     });
     var rows = Array.from(tags.values()).map(function (entry) {
-      return { id: entry.id, name: entry.name, scenes: entry.scenes, rated: entry.rated, unrated: entry.scenes - entry.rated, rating: entry.rated ? entry.ratingSum / entry.rated : null, plays: entry.plays, playsPerScene: entry.scenes ? entry.plays / entry.scenes : 0, sceneIds: entry.sceneIds };
+      return { id: entry.id, name: entry.name, scenes: entry.scenes, rated: entry.rated, unrated: entry.scenes - entry.rated, rating: entry.rated ? entry.ratingSum / entry.rated : null, plays: entry.plays, playsPerScene: entry.scenes ? entry.plays / entry.scenes : 0 };
     }).sort(function (a, b) { return b.scenes - a.scenes || a.name.localeCompare(b.name) || a.id.localeCompare(b.id); });
     return { rows: rows, totalScenes: uniqueScenes.size, taggedScenes: taggedScenes, untaggedScenes: uniqueScenes.size - taggedScenes, tags: rows.length, assignments: assignments };
   }
@@ -432,7 +432,7 @@ export function createAnalytics(dependencies: Pick<Settings, "themeColor" | "sta
       var fill = tagDnaColor(row, metric, maximum);
       var labelColor = chartLabelColor(fill);
       return {
-        id: row.id, name: row.name, value: row.scenes, rating: row.rating, rated: row.rated, unrated: row.unrated, plays: row.plays, playsPerScene: row.playsPerScene, sceneIds: row.sceneIds,
+        id: row.id, name: row.name, value: row.scenes, rating: row.rating, rated: row.rated, unrated: row.unrated, plays: row.plays, playsPerScene: row.playsPerScene,
         label: { color: labelColor, textBorderColor: labelColor === "#fff" ? "rgba(0,0,0,.65)" : "rgba(255,255,255,.65)", textBorderWidth: 1 },
         itemStyle: { color: fill, borderColor: row.id === selected ? themeColor("selection") : themeColor("background"), borderWidth: row.id === selected ? 4 : 2 }
       };
@@ -597,6 +597,6 @@ export function createAnalytics(dependencies: Pick<Settings, "themeColor" | "sta
     return Math.max(6, 36 * Math.sqrt(bytes / maxBytes));
   }
   const countries = countryIndex(world.features);
-  return { normalize, countryIndex, countryPlaceholder, countryName, aggregate, filterAgeScenes, sceneVariables, mapLayout, originMapOption, performerVariables, orderedCards, countryPerformers, constellationGender, constellationLayout, aggregateConstellation, constellationScenes, ratingNumber, roundRating, sceneRating, aggregateRatings, scatterBound, aggregateScatter, studioSymbolSize, studioImageSource, loadStudioImage, renderStudioLogo, studioLogoSymbol, studioSeriesData, aggregateStudios, aggregateTagDna, tagDnaMetricValue, tagDnaMetricLabel, tagDnaColor, chartLabelColor, tagDnaSeriesData, tagDnaScenes, birthdayDayLabel, scatterSeriesData, nearestScatterOption, scatterGuideLines, scatterGuideForClick, scatterClickHitsPoint, countRatingLabel, countRatingSeriesData, aggregateCountRating, aggregateRepeatOffenders, repeatOffenderSeriesData, repeatOffenderRowAtShare, aggregateQualityEfficiency, qualityEfficiencySeriesData, qualityEfficiencySymbolSize, eckertIV, countries, dispose() { disposed = true; Array.from(pendingImages).forEach(cancel => cancel()); pendingImages.clear(); studioImagePromises = {}; studioImages = {}; studioLogoSymbols = {}; } };
+  return { normalize, countryIndex, countryName, aggregate, filterAgeScenes, sceneVariables, mapLayout, originMapOption, performerVariables, orderedCards, countryPerformers, constellationGender, constellationLayout, aggregateConstellation, constellationScenes, roundRating, sceneRating, aggregateRatings, aggregateScatter, loadStudioImage, studioSeriesData, aggregateStudios, aggregateTagDna, tagDnaMetricLabel, tagDnaSeriesData, tagDnaScenes, birthdayDayLabel, scatterSeriesData, nearestScatterOption, scatterGuideLines, scatterGuideForClick, scatterClickHitsPoint, countRatingLabel, countRatingSeriesData, aggregateCountRating, aggregateRepeatOffenders, repeatOffenderSeriesData, repeatOffenderRowAtShare, aggregateQualityEfficiency, qualityEfficiencySeriesData, qualityEfficiencySymbolSize, eckertIV, countries, dispose() { disposed = true; Array.from(pendingImages).forEach(cancel => cancel()); pendingImages.clear(); studioImagePromises = {}; studioImages = {}; studioLogoSymbols = {}; } };
 }
 export type Analytics = ReturnType<typeof createAnalytics>;

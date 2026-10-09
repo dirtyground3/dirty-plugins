@@ -4,7 +4,6 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import hashlib
 import importlib.util
-import json
 import os
 from pathlib import Path
 import tempfile
@@ -189,26 +188,6 @@ class CaptionIndexTests(unittest.TestCase):
         result = self.execute(client)
         self.assertEqual(result["probed"], 1)
         self.assertEqual(client.scenes["1"]["custom_fields"][index.ANY_FIELD], "Yes")
-
-    def test_legacy_map_upgrades_from_stored_metadata_without_media_access(self):
-        client = Client([self.scene(1)])
-        index.request_refresh(client)
-        self.execute(client)
-        record = index.read_record(index.FILES, "10")
-        record.pop("stash")
-        storage.set_metadata(index.FILES, "10", json.dumps(record))
-        snapshot = index.read_record(index.SCENES, "1")
-        snapshot.pop("files")
-        storage.set_metadata(index.SCENES, "1", json.dumps(snapshot))
-        with mock.patch.object(index, "fingerprint") as stat:
-            index.request_refresh(client)
-            result = self.execute(client)
-        stat.assert_not_called()
-        self.assertEqual(result["skipped"], 1)
-        self.assertIn("stash", index.read_record(index.FILES, "10"))
-        self.assertEqual(index.read_record(index.SCENES, "1")["files"], ["10"])
-        self.assertEqual(index.timestamp_ns("2026-10-02T13:31:20.123456789+02:00"),
-                         index.timestamp_ns("2026-10-02T11:31:20.123456789Z"))
 
     def test_failed_unchanged_file_is_skipped_until_forced_or_changed(self):
         client = Client([self.scene(1)])

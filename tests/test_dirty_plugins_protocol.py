@@ -1,7 +1,6 @@
 from plugin_paths import runtime_path
 import io
 import json
-from pathlib import Path
 import sys
 import unittest
 from unittest.mock import Mock, patch

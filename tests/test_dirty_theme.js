@@ -1,13 +1,12 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
 const vm = require("node:vm");
 
 const noop = () => {};
 const classes = new Set();
 const requests = [];
-const saved = { dirtyPlugins: {}, dirtyStats: { visualTheme: "arcade" } };
+const saved = { dirtyPlugins: { visualTheme: "arcade" }, dirtyStats: { visualTheme: "candy" } };
 const revisions = { dirtyPlugins: 0, dirtyStats: 1 };
 const fetch = (_url, options) => {
   const args = JSON.parse(options.body).variables.args;
@@ -51,9 +50,10 @@ vm.runInNewContext(require("./load_plugin_scripts").sourceFor("DirtyPlugins"), {
 (async () => {
   const hub = window.DirtyPlugins;
   await hub.theme.ready;
-  assert.equal(hub.theme.currentKey, "arcade", "an existing Stats choice migrates visually without a write");
+  assert.equal(hub.theme.currentKey, "arcade", "the stored suite theme applies without a write");
   assert(classes.has("dirty-ui-theme-arcade"));
   assert.equal(requests.filter(item => item.mode === "setSettings").length, 0);
+  assert(!requests.some(item => item.pluginId === "dirtyStats"), "the pre-1.0 Stats theme key is no longer read");
 
   const observed = [];
   const unsubscribe = hub.theme.subscribe(key => observed.push(key));
@@ -62,27 +62,24 @@ vm.runInNewContext(require("./load_plugin_scripts").sourceFor("DirtyPlugins"), {
   assert(classes.has("dirty-ui-theme-paper"));
   assert(!classes.has("dirty-ui-theme-arcade"));
   assert.deepEqual(observed, ["paper"]);
-  await hub.theme.load();
-  assert.equal(hub.theme.currentKey, "paper", "the suite choice wins over legacy Stats storage");
+  assert.equal(saved.dirtyPlugins.visualTheme, "paper");
   await hub.configurePlugin("dirtyPlugins", { visualTheme: "destijl" });
   assert.equal(hub.theme.currentKey, "destijl");
   assert(classes.has("dirty-ui-theme-destijl"));
   assert(!classes.has("dirty-ui-theme-paper"));
-  await hub.theme.load();
-  assert.equal(hub.theme.currentKey, "destijl", "De Stijl survives a settings reload");
+  assert.equal(saved.dirtyPlugins.visualTheme, "destijl", "De Stijl is stored for the next load");
   assert.deepEqual(observed, ["paper", "destijl"]);
   await hub.configurePlugin("dirtyPlugins", { visualTheme: "destijl-dark" });
   assert.equal(hub.theme.currentKey, "destijl-dark");
   assert(classes.has("dirty-ui-theme-destijl-dark"));
   assert(!classes.has("dirty-ui-theme-destijl"), "the dark variant replaces the light variant");
-  await hub.theme.load();
-  assert.equal(hub.theme.currentKey, "destijl-dark", "the dark variant survives a settings reload");
+  assert.equal(saved.dirtyPlugins.visualTheme, "destijl-dark", "the dark variant is stored for the next load");
   await hub.configurePlugin("dirtyPlugins", { visualTheme: "classic" });
   assert(!classes.has("dirty-ui-theme-destijl"), "switching away removes all De Stijl overrides");
   assert(!classes.has("dirty-ui-theme-destijl-dark"));
   unsubscribe();
 
-  const backup = await hub.runSharedOperation({ mode: "backupDatabase" });
+  const backup = await hub.runPluginOperation("dirtyPlugins", { mode: "backupDatabase" });
   assert.equal(backup.path, "backup.sqlite3");
   assert(requests.some(item => item.mode === "backupDatabase"));
   console.log("Dirty Plugins suite theme and backup routing passed");

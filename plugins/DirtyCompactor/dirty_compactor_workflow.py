@@ -54,17 +54,6 @@ RUN_TRANSITIONS = {
     "recovery": {"queued", "reconciling"},
     "completed": set(), "cancelled": set(), "failed": set(),
 }
-OPERATION_TRANSITIONS = {
-    "ready": {"encoding", "deleting", "cancelled", "failed", "unchanged"},
-    "encoding": {"validated", "ready", "failed", "unchanged", "cancelled"},
-    "validated": {"awaitingReview", "staging", "ready", "failed", "cancelled"},
-    "awaitingReview": {"staging", "discarded", "cancelled"},
-    "staging": {"installing", "ready", "failed", "cancelled"},
-    "installing": {"reconciling", "restoring"},
-    "reconciling": {"reconciling", "completed", "restoring"},
-    "restoring": {"restoring", "restored"},
-    "deleting": {"completed"},
-}
 
 
 def transition_run(run: Run, status: RunStatus, persist, *, expected=None) -> bool:

@@ -3,8 +3,7 @@ export function createTheme(dependencies: HubThemeDependencies) {
   var hubApi = dependencies.hubApi;
   var DEFAULT_VISUAL_THEME = dependencies.DEFAULT_VISUAL_THEME;
   var getPluginSettings = dependencies.getPluginSettings;
-  var asObject = dependencies.asObject;
-  hubApi.theme = hubApi.theme || {} as ThemeApi;
+  hubApi.theme = {} as ThemeApi;
   hubApi.theme.defaultKey = DEFAULT_VISUAL_THEME;
   var visualThemeKeys = dependencies.VISUAL_THEME_KEYS;
   var visualThemeListeners: ((key: string) => void)[] = [];
@@ -35,18 +34,16 @@ export function createTheme(dependencies: HubThemeDependencies) {
       if (index >= 0) visualThemeListeners.splice(index, 1);
     };
   };
-  hubApi.theme.load = function() {
-    return Promise.all([getPluginSettings("dirtyPlugins"), getPluginSettings("dirtyStats")]).then(function(settings) {
-      var suite = asObject(settings[0]);
-      var legacy = asObject(settings[1]);
-      return applyVisualTheme(suite.visualTheme || legacy.visualTheme);
+  function load() {
+    return getPluginSettings("dirtyPlugins").then(function(settings) {
+      return applyVisualTheme(settings.visualTheme);
     }).catch(function(error) {
       console.warn("DirtyPlugins could not load the suite theme", error);
       return applyVisualTheme(DEFAULT_VISUAL_THEME);
     });
-  };
+  }
   if (typeof fetch === "function" && document.documentElement) {
-    hubApi.theme.ready = hubApi.theme.load();
+    hubApi.theme.ready = load();
   } else {
     hubApi.theme.ready = Promise.resolve(visualThemeKey);
   }
@@ -55,7 +52,6 @@ export function createTheme(dependencies: HubThemeDependencies) {
     return window.getComputedStyle(root).getPropertyValue(propertyName).trim();
   };
   return {
-    applyVisualTheme: applyVisualTheme,
-    normalizedVisualTheme: normalizedVisualTheme
+    applyVisualTheme: applyVisualTheme
   };
 }

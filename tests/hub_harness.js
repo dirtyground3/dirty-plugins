@@ -54,7 +54,6 @@ function createHubHarness(options = {}) {
     register: { route(path, component) { registrations.push(path); route = component; options.register?.(path, component); } },
   };
   if (options.api) options.api(PluginApi);
-  if (options.hub) window.DirtyPlugins = options.hub;
   const fetch = async (_url, init) => {
     const request = JSON.parse(init.body);
     requests.push(request);

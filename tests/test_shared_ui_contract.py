@@ -29,23 +29,22 @@ def css_rule_bodies(styles, selector):
 
 
 class SharedUIContractTests(unittest.TestCase):
-    def test_hub_owns_shared_htm_runtime(self):
+    def test_hub_ships_tsx_components_without_a_template_runtime(self):
         hub_manifest = read("plugins/DirtyPlugins/dirtyPlugins.yml")
-        compactor_manifest = read("plugins/DirtyCompactor/dirtyCompactor.yml")
         hub_script = read("plugins/DirtyPlugins/dirtyPlugins.js")
         compactor_script = read("plugins/DirtyCompactor/dirtyCompactor.js")
+        registry = read("scripts/plugin-registry.json")
         self.assertIn("- dirtyPlugins.js", hub_manifest)
-        self.assertNotIn("- vendor/htm.umd.js", hub_manifest)
-        self.assertNotIn("htm.umd.js", compactor_manifest)
-        self.assertIn('import htm from "../vendor/htm.umd.js"', hub_script)
-        self.assertIn("html = htm.bind(React.createElement)", hub_script)
-        self.assertIn("hubApi.react = { html,", hub_script)
+        # HTM (react.html) was removed with the pre-1.0 compatibility APIs.
+        self.assertFalse((ROOT / "plugins/DirtyPlugins/vendor").exists())
+        for name in ("htm.umd.js", "HTM-LICENSE", "HTM-NOTICE"):
+            self.assertNotIn(name, registry)
+        self.assertNotIn("htm.", hub_script)
+        self.assertIn("hubApi.react = { ...controls,", hub_script)
         self.assertIn("React = runtime.api.React", compactor_script)
         self.assertIn("ui = hub.react", compactor_script)
         self.assertIn("<ui.SettingsCard", compactor_script)
-        self.assertNotIn("htm.bind", compactor_script)
         self.assertNotRegex(compactor_script, r'import\s+(?!type\b).*from\s+[\"\']react(?:-dom)?[\"\']')
-        self.assertTrue((ROOT / "plugins/DirtyPlugins/vendor/HTM-LICENSE").is_file())
 
     def test_plugins_load_the_shared_hub_first(self):
         for manifest in (
@@ -129,7 +128,9 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('get("docsCapture") === "1"', hub_js)
         self.assertIn("dirty-plugins-docs-capture", hub_css)
         self.assertIn("#dirty-plugins-panel-extractScenes", hub_css)
-        self.assertIn('get("docsCapture") === "1"', multiscreen_js)
+        # Feature plugins rely on the hub's detection; pre-1.0 local fallbacks were removed.
+        self.assertIn("DirtyPlugins.captureEnabled(window.location.search)", multiscreen_js)
+        self.assertNotIn("censorMedia", hub_js)
         self.assertIn(".ms-docs-capture .ms-native-tile .VideoPlayer", multiscreen_css)
         self.assertIn(".dirty-rank-censored-media .dirty-rank-podium-image", rank_css)
         self.assertIn(".dirty-rank-censored-media .dirty-rank-table-performer img", rank_css)
@@ -298,7 +299,8 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("DirtyPlugins.configurePlugin", tidy)
         self.assertIn("runPluginOperation", tidy)
         self.assertIn("runPluginTask", tidy)
-        self.assertIn("includeAll: true", tidy)
+        # The panel pages the complete plan locally; the backend has no server-side paging.
+        self.assertIn('{ mode: "preview", settings }', tidy)
         self.assertIn("filtered.slice", tidy)
         self.assertNotIn("Loading filtered preview", tidy)
 
@@ -311,7 +313,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("- dirtyPlugins", manifest)
         self.assertIn("DirtyPlugins.graphql", script)
         self.assertIn("SettingsCard: shared.SettingsCard", script)
-        self.assertIn("registerSettingsPanel?.(PLUGIN_ID, Settings)", script)
+        self.assertIn("DirtyPlugins.registerSettingsPanel(PLUGIN_ID, Settings)", script)
         self.assertIn("PluginApi.register.route(ROUTE_PATH, Route)", script)
         self.assertIn('to="/plugins/dirty-plugins?plugin=dirtyRank"', script)
 
@@ -368,13 +370,15 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertNotIn("visualTheme:", hub_manifest)
         theme_setting = schema("dirtyPlugins")["settings"]["visualTheme"]
         self.assertIn('"dirtyPlugins", "extractScenes"', hub)
-        self.assertIn('hubApi.theme.load = function()', hub)
+        # The suite theme is read only from DirtyPlugins; the pre-1.0 Stats fallback was removed.
+        self.assertIn('return getPluginSettings("dirtyPlugins").then', hub)
+        self.assertNotIn('getPluginSettings("dirtyStats")', hub)
         self.assertIn('mode: "backupDatabase"', hub)
         self.assertEqual(theme_setting["default"], "classic")
         self.assertIn("export const DEFAULT_VISUAL_THEME = hubSettings.defaults.visualTheme", hub)
         self.assertIn("export const PLUGIN_DEFAULTS = standardTable(function(settings) { return settings.defaults; })", hub)
         self.assertIn('hubApi.theme.defaultKey = DEFAULT_VISUAL_THEME', hub)
-        self.assertIn('var DEFAULT_THEME = hub.theme && hub.theme.defaultKey || "classic"', script)
+        self.assertIn("var DEFAULT_THEME = hub.theme.defaultKey", script)
         self.assertIn({"value": "paper", "label": "Paper Picnic"}, theme_setting["options"])
         self.assertIn({"value": "destijl", "label": "De Stijl"}, theme_setting["options"])
         self.assertIn({"value": "destijl-dark", "label": "De Stijl Dark"}, theme_setting["options"])
@@ -454,11 +458,9 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertNotIn("return html`", extractor)
         self.assertNotRegex(extractor, r'import\s+(?!type\b).*from\s+["\']react(?:-dom)?["\']')
 
-    def test_hub_renders_tsx_and_keeps_legacy_template_compatibility(self):
-        # Architecture reads authored source; Node tests check the served bundle
-        # and render the public HTM tag with the same host React instance.
+    def test_hub_renders_tsx(self):
+        # Architecture reads authored source; Node tests check the served bundle.
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
-        self.assertIn("html = htm.bind(React.createElement)", hub)
         self.assertIn("export function Dialog", hub)
         self.assertIn("function SceneFilterEditor", hub)
         self.assertIn('import { React', hub)
@@ -686,22 +688,19 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("rows * columns", multiscreen)
         self.assertIn("Math.min(clampInteger(rawSettings.totalScreens", multiscreen)
 
-    def test_extractor_mutations_are_filtered_and_debounced(self):
+    def test_extractor_uses_the_hub_field_action_and_native_selections(self):
         script = read("plugins/DirtyFileExtractor/extractScenes.js")
 
-        self.assertNotIn("new MutationObserver(scheduleRender)", script)
-        self.assertIn("new MutationObserver(onDocumentMutations)", script)
-        self.assertIn("RELEVANT_MUTATION_SELECTOR", script)
-        self.assertIn("hasRelevantMutations", script)
-        self.assertIn("MUTATION_DEBOUNCE_MS", script)
-        self.assertIn('if (!registerHubFieldAction()) {', script)
+        # The DOM-observed Browse fallback for pre-1.0 hubs was removed.
+        self.assertNotIn("MutationObserver(onDocumentMutations)", script)
+        self.assertNotIn("dirty-file-extractor-browse", script)
+        self.assertIn('hubApi.registerFieldAction(PLUGIN_ID, "destinationFolder", hubFieldAction)', script)
         self.assertIn('registerListAction("SceneList", "scene")', script)
         self.assertIn('registerListAction("SceneMarkerList", "marker")', script)
         self.assertIn('registerListAction("ImageList", "image")', script)
         self.assertIn("selectionFor(kind, props.selectedIds)", script)
         self.assertIn("Array.from(selectedIds)", script)
         self.assertNotIn('document.querySelectorAll("input[type=checkbox]:checked")', script)
-        self.assertIn("window.clearTimeout(state.mutationTimer)", script)
 
     def test_dirty_tidy_manual_execution_uses_preview_and_automation_uses_strategy(self):
         tidy = read("plugins/DirtyTidy/dirtyTidy.js")

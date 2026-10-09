@@ -171,7 +171,7 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
       var targetPath = categoryPath(category!.id, kingsMode, cohort);
       rememberCategory(cohort, category!.id);
       if (location.pathname !== targetPath.split("?")[0] || requestedCohort !== (targetPath.indexOf("?") !== -1 ? cohort : "")) {
-        history.replace(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(targetPath) : targetPath);
+        history.replace(DirtyPlugins.captureUrl(targetPath));
       }
     }, [category, cohort, gauntletTargetId, history, kingsMode, loading, location.pathname, requestedCohort, settings]);
 
@@ -211,7 +211,7 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
     /** @param {string} nextCategoryId @param {boolean} nextKingsMode @param {string} nextCohort */
     function navigate(nextCategoryId: string, nextKingsMode: boolean, nextCohort: string) {
       var nextPath = categoryPath(nextCategoryId, nextKingsMode, nextCohort);
-      history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(nextPath) : nextPath);
+      history.push(DirtyPlugins.captureUrl(nextPath));
       resetPair();
     }
 

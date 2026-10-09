@@ -241,7 +241,7 @@ export function createSettingsPanel(dependencies: RankSettingsPanelDependencies)
       }).then(function (result) {
         return loadRatingIndex().then(function () {
           if (!mounted.current) return;
-          setStatus("Reset " + target + ": " + result.reset + " rating(s); " + result.failed + " failed.");
+          setStatus("Reset " + target + ": " + result.reset + " rating(s).");
           DirtyPlugins.ui.notify("DirtyRank reset " + target + ": " + result.reset + " rating(s).");
         });
       }).catch(function (caught) { if (mounted.current) { setError(caught.message || String(caught)); setStatus(""); } })
@@ -269,14 +269,10 @@ export function createSettingsPanel(dependencies: RankSettingsPanelDependencies)
       bodyClassName="dirty-rank-settings-body"
       plugin={props.plugin}
       footer={(<div className="card-footer dirty-plugins-card-footer dirty-rank-settings-actions">
-        {SharedSaveStatus ? (<SharedSaveStatus
+        <SharedSaveStatus
           className="dirty-rank-settings-status"
           message={visibleStatus || (dirty ? "Waiting to save automatically…" : "")}
-          state={error ? "error" : busy || saving ? "saving" : dirty ? "pending" : "saved"} />) : (<span
-            className={"dirty-rank-settings-status" + (error ? " dirty-ui-text-error" : "")}
-            role={error ? "alert" : "status"}>
-            {visibleStatus}
-          </span>)}
+          state={error ? "error" : busy || saving ? "saving" : dirty ? "pending" : "saved"} />
       </div>)}>
       <GenderBoxEditor
         draft={draft}

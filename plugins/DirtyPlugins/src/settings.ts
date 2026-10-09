@@ -1,5 +1,5 @@
 import { FIELD_LIMITS, FIELD_OPTIONS, MANAGED_PLUGIN_IDS, MANAGED_PLUGIN_ID_SET, PLUGIN_DEFAULTS, PLUGIN_SETTING_ORDER, ROUTE_PATH } from "./constants";
-import { fieldActions, theme, transport } from "./runtime";
+import { fieldActions, transport } from "./runtime";
 import type { Drafts, FieldValue, Plugin, Setting, Snapshot } from "./types";
 import { asObject } from "./values";
 export interface FieldDefinition {
@@ -34,12 +34,6 @@ export function loadSettingsSnapshot(): Promise<Snapshot> {
     var data = values[0];
     var settingsPayload = asObject(values[1]);
     var configuration = asObject(settingsPayload.settings) as Snapshot["configuration"];
-    var suiteSettings = asObject(configuration.dirtyPlugins);
-    if (!Object.prototype.hasOwnProperty.call(suiteSettings, "visualTheme")) {
-      configuration.dirtyPlugins = Object.assign({}, suiteSettings, {
-        visualTheme: theme.normalizedVisualTheme(asObject(configuration.dirtyStats).visualTheme),
-      });
-    }
     var revisions = asObject(settingsPayload.pluginRevisions) as Snapshot["pluginRevisions"];
     Object.keys(revisions).forEach(function(pluginId) {
       transport.rememberPluginRevision(pluginId, revisions[pluginId]);

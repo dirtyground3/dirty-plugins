@@ -3,7 +3,6 @@ const { testModulePath } = require("./plugin_paths");
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const path = require("node:path");
 const vm = require("node:vm");
 const { events, createHooks } = require("./ui_harness");
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };

@@ -3,7 +3,6 @@ const { runtimePath } = require("./plugin_paths");
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const path = require("node:path");
 
 const css = fs.readFileSync(runtimePath("DirtyPlugins", "dirtyPlugins.css"), "utf8");
 function declarations(selector) {

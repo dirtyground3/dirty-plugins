@@ -4,7 +4,7 @@ import type { DashboardPageProps } from "../props";
 import type { SavedFilter } from "../runtime";
 import type { Capacity, DashboardResource, DashboardWidgetModel, ResourceState } from "../types";
 export function createDashboardPage(dependencies: DashboardDependencies) {
-  const { clone, normalizeOptions, normalizeFilter, normalizeTitle, widgetTitle, normalizeWidgets, dashboardNeedsInitialSave, nextWidgetId, requiredResources, reorderWidgets, fetchPages, State, SelectControl, WidgetOptions, filterSummary, DashboardFilterChooser, DashboardFilterDialog, DashboardWidget, hub, core, React, Field, SIZES, SIZE_LABELS, DASHBOARD_VERSION, MAX_WIDGETS, WIDGETS, WIDGET_ORDER } = dependencies;
+  const { normalizeOptions, normalizeFilter, normalizeTitle, widgetTitle, normalizeWidgets, dashboardNeedsInitialSave, nextWidgetId, requiredResources, reorderWidgets, fetchPages, State, SelectControl, WidgetOptions, filterSummary, DashboardFilterChooser, DashboardFilterDialog, DashboardWidget, hub, core, React, Field, SIZES, SIZE_LABELS, DASHBOARD_VERSION, MAX_WIDGETS, WIDGETS, WIDGET_ORDER } = dependencies;
   function DashboardPage(props: DashboardPageProps): R.ReactElement | null {
     var widgetsState = React.useState<DashboardWidgetModel[]>([]), widgets = widgetsState[0], setWidgets = widgetsState[1];
     var readyState = React.useState(false), ready = readyState[0], setReady = readyState[1];

@@ -126,30 +126,30 @@ export function createDashboardDomain(runtime: Pick<Runtime, "hub">) {
   }
 
   async function fetchPages(group: string, savedFilter: SavedFilter, signal: AbortSignal, limit: number) {
-    var query: string, root: "findScenes" | "findPerformers", field: string, variables: (number: number) => Record<string, unknown>;
+    var query: string, root: "findScenes" | "findPerformers", variables: (number: number) => Record<string, unknown>;
     if (group === "performerCards") {
       query = "query DirtyStatsDashboardPerformerCards($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id death_date}}}";
-      root = "findPerformers"; field = "performers";
+      root = "findPerformers";
       variables = function () { return { filter: Object.assign({ sort: "name", direction: "ASC" }, savedFilter.find, { page: 1, per_page: limit }), performerFilter: savedFilter.object }; };
     } else if (group === "performers") {
       query = "query DirtyStatsDashboardPerformers($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name country rating100 scene_count birthdate death_date image_path}}}";
-      root = "findPerformers"; field = "performers";
+      root = "findPerformers";
       variables = function (number: number) { return { filter: Object.assign({}, savedFilter.find, { page: number, per_page: 500, sort: "id", direction: "ASC" }), performerFilter: savedFilter.object }; };
     } else if (group === "scenes") {
       query = "query DirtyStatsDashboardScenes($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title rating100 play_count o_counter studio{id name image_path} files{id size duration}}}}";
-      root = "findScenes"; field = "scenes";
+      root = "findScenes";
       variables = function (number: number) { return { filter: Object.assign({}, savedFilter.find, { page: number, per_page: 500, sort: "id", direction: "ASC" }), sceneFilter: savedFilter.object }; };
     } else if (group === "tags") {
       query = "query DirtyStatsDashboardTags($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id rating100 play_count tags{id name}}}}";
-      root = "findScenes"; field = "scenes";
+      root = "findScenes";
       variables = function (number: number) { return { filter: Object.assign({}, savedFilter.find, { page: number, per_page: 500, sort: "id", direction: "ASC" }), sceneFilter: savedFilter.object }; };
     } else if (group === "growth") {
       query = "query DirtyStatsDashboardGrowth($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id created_at date files{id size mod_time}}}}";
-      root = "findScenes"; field = "scenes";
+      root = "findScenes";
       variables = function (number: number) { return { filter: Object.assign({}, savedFilter.find, { page: number, per_page: 500, sort: "id", direction: "ASC" }), sceneFilter: savedFilter.object }; };
     } else {
       query = "query DirtyStatsDashboardCast($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id date performers{id name gender birthdate}}}}";
-      root = "findScenes"; field = "scenes";
+      root = "findScenes";
       variables = function (number: number) { return { filter: Object.assign({}, savedFilter.find, { page: number, per_page: 500, sort: "id", direction: "ASC" }), sceneFilter: savedFilter.object }; };
     }
     return fetchAllPages<StatsScene & StatsPerformer>({
@@ -168,6 +168,6 @@ export function createDashboardDomain(runtime: Pick<Runtime, "hub">) {
     if (!normalized.count) return "All " + entity;
     return normalized.count + " active " + (normalized.count === 1 ? "filter" : "filters");
   }
-  return { clone, allowed, normalizeOptions, normalizeFilter, normalizeTitle, widgetTitle, widgetHeightUnits, normalizeWidgets, dashboardNeedsInitialSave, nextWidgetId, requiredGroups, resourceKey, requiredResources, reorderWidgets, fetchPages, filterSummary, SIZES, SIZE_LABELS, DASHBOARD_VERSION, MAX_WIDGETS, MAX_CARD_COUNT, FREE_COUNT, EMPTY_FILTER, DEFAULT_WIDGETS, WIDGETS, WIDGET_ORDER };
+  return { clone, allowed, normalizeOptions, normalizeFilter, normalizeTitle, widgetTitle, widgetHeightUnits, normalizeWidgets, dashboardNeedsInitialSave, nextWidgetId, requiredGroups, resourceKey, requiredResources, reorderWidgets, fetchPages, filterSummary, SIZES, SIZE_LABELS, DASHBOARD_VERSION, MAX_WIDGETS, MAX_CARD_COUNT, FREE_COUNT, DEFAULT_WIDGETS, WIDGETS, WIDGET_ORDER };
 }
 export type DashboardDomain = ReturnType<typeof createDashboardDomain>;

@@ -3,7 +3,7 @@ import { pickerPathLabel } from "./domain/selection";
 import type { Directory, OpenEvent, Picker, PickerDependencies } from "./types";
 
 export function createPicker({ state, hubApi, getSettings, notify, pluginId }: PickerDependencies) {
-  const captureEnabled = () => Boolean(hubApi.captureEnabled?.(window.location.search));
+  const captureEnabled = () => Boolean(hubApi.captureEnabled(window.location.search));
   const active = (picker: Picker) => !state.destroyed && state.picker === picker;
   function setPickerStatus(picker: Picker, message: string, isError: boolean) {
     picker.status.textContent = isError && captureEnabled() ? "Folder unavailable during documentation capture." : message;
@@ -55,7 +55,7 @@ export function createPicker({ state, hubApi, getSettings, notify, pluginId }: P
       if (!active(picker)) return;
       await hubApi.configurePlugin(pluginId, { ...settings, destinationFolder });
       // A completed save must never close a newer dialog or notify after teardown.
-      if (!state.destroyed) hubApi.notifyConfigurationChanged?.(pluginId);
+      if (!state.destroyed) hubApi.notifyConfigurationChanged(pluginId);
       if (active(picker)) { closeFolderPicker(); notify("Destination folder saved.", false); }
     } catch (error) {
       if (active(picker)) { setPickerStatus(picker, error instanceof Error ? error.message : String(error), true); picker.useButton.disabled = false; }

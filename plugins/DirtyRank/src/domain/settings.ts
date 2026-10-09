@@ -215,8 +215,6 @@ export function createSettings(dependencies: RankSettingsDependencies) {
   }
   function parseEnabledCohorts(value: unknown, fallback: string[]) {
     value = parseMaybeJson(value);
-    if (typeof value === "string")
-      value = value.split(",");
     var requested = new Set(Array.isArray(value) ? value.map(function (item) {
       return String(item || "").trim().toUpperCase();
     }) : []);
@@ -229,7 +227,7 @@ export function createSettings(dependencies: RankSettingsDependencies) {
     // Floor and provisional threshold are bounded by the other deviations, not only their static limits.
     var deviationFloor = number(source.deviationFloor, defaults.deviationFloor, limits.deviationFloor.min, initialDeviation);
     var cohort = String(source.defaultCohort || defaults.defaultCohort).toUpperCase();
-    var genderBoxes = parseGenderBoxes(source.genderBoxes, parseEnabledCohorts(source.enabledCohorts, [cohort]));
+    var genderBoxes = parseGenderBoxes(source.genderBoxes, [cohort]);
     var enabledCohorts = genderBoxes.filter(function (box) { return box.enabled; }).map(function (box) { return box.id; });
     if (enabledCohorts.indexOf(cohort) === -1)
       cohort = enabledCohorts[0];
@@ -365,13 +363,13 @@ export function createSettings(dependencies: RankSettingsDependencies) {
   }
   return {
     validateSettings: validateSettings, CATEGORY_PREFERENCE_STORAGE_KEY: CATEGORY_PREFERENCE_STORAGE_KEY, CONFIGURATION_CHANGED_EVENT: CONFIGURATION_CHANGED_EVENT, COHORTS: COHORTS, DEFAULT_CATEGORY_DEFINITIONS: DEFAULT_CATEGORY_DEFINITIONS,
-    defaultCategoriesByCohort: defaultCategoriesByCohort, OVERALL_SCORE_STRATEGIES: OVERALL_SCORE_STRATEGIES, OVERALL_SCORE_PARAMETERS: OVERALL_SCORE_PARAMETERS, overallScoreStrategy: overallScoreStrategy,
+    OVERALL_SCORE_STRATEGIES: OVERALL_SCORE_STRATEGIES, OVERALL_SCORE_PARAMETERS: OVERALL_SCORE_PARAMETERS, overallScoreStrategy: overallScoreStrategy,
     overallScoreParameterError: overallScoreParameterError, DEFAULT_SETTINGS: DEFAULT_SETTINGS, RATING_PRESETS: RATING_PRESETS, ratingPresetFor: ratingPresetFor,
     ratingParameters: ratingParameters, asObject: asObject, parseMaybeJson: parseMaybeJson, number: number,
-    integer: integer, slug: slug, uniqueCategoryId: uniqueCategoryId, parseGenderBoxes: parseGenderBoxes,
+    integer: integer, slug: slug, uniqueCategoryId: uniqueCategoryId,
     boxFor: boxFor, boxOptions: boxOptions, boxGenders: boxGenders, boxGendersLabel: boxGendersLabel,
     categoryIncludes: categoryIncludes, categoryById: categoryById, categoriesForPerformer: categoriesForPerformer, battleCohortFor: battleCohortFor,
-    parseCategoryList: parseCategoryList, parseCategoriesByCohort: parseCategoriesByCohort, categoriesFor: categoriesFor, categoryPreferences: categoryPreferences,
+    categoriesFor: categoriesFor,
     rememberCategory: rememberCategory, preferredCategoryId: preferredCategoryId, parseEnabledCohorts: parseEnabledCohorts, settingsFromConfiguration: settingsFromConfiguration,
     serializedSettings: serializedSettings, comparableSettings: comparableSettings
   };

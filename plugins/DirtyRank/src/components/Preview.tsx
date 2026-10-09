@@ -1,8 +1,8 @@
 import type * as R from "react";
 import type { PreviewMedia } from "../types";
 import type { ViewDependencies } from "../view";
-export function createPreview(dependencies: Pick<ViewDependencies, "React" | "Fragment" | "PluginApi" | "useState" | "useEffect" | "useRef" | "useCallback">) {
-  const { React, Fragment, PluginApi, useState, useEffect, useRef, useCallback } = dependencies;
+export function createPreview(dependencies: Pick<ViewDependencies, "React" | "PluginApi" | "useState" | "useEffect" | "useRef" | "useCallback">) {
+  const { React, PluginApi, useState, useEffect, useRef, useCallback } = dependencies;
   function NativePreviewPlayer(props: { media: PreviewMedia }): R.JSX.Element | null {
     var query = PluginApi.utils!.StashService!.useFindScene(props.media.id);
     if (query.loading) return (<div className="dirty-rank-scene-loading" role="status">

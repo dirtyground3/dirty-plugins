@@ -26,8 +26,8 @@ class Node {
   getBoundingClientRect() {return {width: 100, height: 30, left: 30, right: 130, top: 30, bottom: 60};}
 }
 function createExtractorHarness(options = {}) {
-  const patches = [], requests = [], notifications = [], writes = [], observers = [], errors = [], frames = new Map(), timers = new Map();
-  let owner, fieldAction, nextId = 0, dialogReleases = 0, configurationEvents = 0;
+  const patches = [], requests = [], notifications = [], writes = [], observers = [], errors = [];
+  let owner, fieldAction, dialogReleases = 0, configurationEvents = 0;
   let settings = {destinationFolder: "/exports", unknown: "preserved", ...options.settings};
   const body = new Node("body"); body.connected = true;
   const menu = new Node(), toggle = new Node("button"), toolbar = new Node(), root = new Node();
@@ -44,16 +44,14 @@ function createExtractorHarness(options = {}) {
       return query.includes("Directory") ? {directory: {path: variables.path || "/home", parent: "/", directories: ["/exports/subfolder"]}} : {runPluginTask: "job-1"};
     },
     configurePlugin: async (id, value) => {writes.push(value); if (options.save) await options.save(value); settings = value; return {revision: writes.length};},
-    registerFieldAction: options.fallback ? undefined : (id, name, action) => {fieldAction = action; options.register?.();},
+    registerFieldAction: (id, name, action) => {fieldAction = action; options.register?.();},
     unregisterFieldAction: (id, name, action) => {if (fieldAction === action) fieldAction = null;},
-    captureEnabled: () => Boolean(options.capture), notifyConfigurationChanged: () => configurationEvents++,
+    captureEnabled: () => Boolean(options.capture), notifyConfigurationChanged: () => configurationEvents++, debugLog() {},
     ui: {notify: (...args) => notifications.push(args), manageDialog: ({opener, initialFocus}) => {
       initialFocus.focus(); let released = false; return () => {if (!released) {released = true; dialogReleases++; opener?.focus();}};
     }},
   };
   const window = events({innerHeight: 900, location: {pathname: "/performers/12", search: options.capture ? "?docsCapture=1" : ""}, DirtyPlugins: hub,
-    requestAnimationFrame: fn => {const id = ++nextId; frames.set(id, fn); return id;}, cancelAnimationFrame: id => frames.delete(id),
-    setTimeout: fn => {const id = ++nextId; timers.set(id, fn); return id;}, clearTimeout: id => timers.delete(id),
     PluginApi: {React: {...hooks, Fragment: "fragment", createElement: element}, ReactDOM: {createPortal: (content, target) => ({type: "portal", content, target})},
       patch: {after: (name, handler) => {patches.push({name, handler}); if (options.failPatch === patches.length) throw Error("patch failure");}}},
   });
@@ -77,13 +75,11 @@ function createExtractorHarness(options = {}) {
     render();
     return {tree, native, render, unmount: () => item.slots.forEach(slot => slot?.cleanup?.())};
   }
-  return {window, hub, context, body, menu, toolbar, root, toggle, patches, requests, writes, errors, notifications, observers, frames, timers, document,
+  return {window, hub, context, body, menu, toolbar, root, toggle, patches, requests, writes, errors, notifications, observers, document,
     load, flush, mount, get fieldAction() {return fieldAction;}, get dialogReleases() {return dialogReleases;}, get configurationEvents() {return configurationEvents;},
-    frame() {const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn());},
-    timer() {const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn());},
     select(value) {toolbar.className = value ? "has-selection" : ""; observers.filter(observer => !observer.disconnected).forEach(observer => observer.callback([]));},
     open() {fieldAction.onClick({preventDefault() {}, currentTarget: document.activeElement});},
     pickerNode(className) {function search(node) {if (node.classList.contains(className)) return node; return node.children.map(search).find(Boolean);} return search(body);},
   };
 }
-module.exports = {createExtractorHarness, Node};
+module.exports = {createExtractorHarness};

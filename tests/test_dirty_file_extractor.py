@@ -52,7 +52,7 @@ class DirtyFileExtractorTests(unittest.TestCase):
                 {
                     "scene_ids": [1, "1"],
                     "marker_ids": [" 2 "],
-                    "image_id": 3,
+                    "image_ids": [3],
                 }
             ),
             {"scene": ["1"], "marker": ["2"], "image": ["3"]},

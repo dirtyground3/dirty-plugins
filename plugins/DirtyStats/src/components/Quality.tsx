@@ -3,7 +3,7 @@ import type { PageProps } from "../props";
 import type { ChartInstance, StatsPerformer, StatsScene } from "../types";
 import type { ViewDependencies } from "../view";
 export function createQuality(dependencies: ViewDependencies) {
-  const { useChartTheme, StatsState, pageToolbar, exportButton, chartImage, sceneVariables, SceneCards, aggregateQualityEfficiency, React, chartLifecycle, chartOptions, dataLoader, charts, growth, formatBytes } = dependencies;
+  const { useChartTheme, StatsState, pageToolbar, exportButton, chartImage, sceneVariables, SceneCards, aggregateQualityEfficiency, React, chartLifecycle, chartOptions, dataLoader, charts, formatBytes } = dependencies;
   function QualityEfficiencyPage(props: PageProps): R.ReactElement | null {
     var chartTheme = useChartTheme();
     var pageData = dataLoader.usePageData<StatsScene & StatsPerformer>(), scenes = pageData.rows, loading = pageData.loading, error = pageData.error;

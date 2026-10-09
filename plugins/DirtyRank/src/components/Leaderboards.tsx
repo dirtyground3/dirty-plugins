@@ -2,8 +2,8 @@ import type * as R from "react";
 import { LEADERBOARD_TOP_OPTIONS, OVERALL_LEADERBOARD_ID, PLUGIN_ID, ROUTE_PATH } from "../constants";
 import type { LeaderboardProps, PerformerFilter, PerformerFilterModel, RankPerformer, RankSettings } from "../types";
 import type { ViewDependencies } from "../view";
-export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" | "Fragment" | "DirtyPlugins" | "PluginApi" | "Router" | "NavLink" | "useState" | "useEffect" | "useMemo" | "useRef" | "useCallback" | "documentationCapture" | "StateView" | "SharedPagination" | "SharedDialog" | "CONFIGURATION_CHANGED_EVENT" | "boxOptions" | "categoriesFor" | "settingsFromConfiguration" | "loadRatingIndex" | "loadNativePerformerCard" | "queryPerformers" | "leaderboardPoolFor" | "leaderboardData" | "leaderboardFeaturedCount" | "leaderboardPageSize" | "overallCategoryScoresTitle" | "leaderboardRatingText" | "leaderboardEntries" | "filteredLeaderboardEntries" | "serializeLeaderboardPerformerFilter" | "queryLeaderboardPerformerIds" | "leaderboardStandingEntries" | "filteredLeaderboardPanelProps" | "paginatedLeaderboard" | "leaderboardTopCount" | "leaderboardPerformerCount" | "battleCategoryPath" | "leaderboardStatPath" | "leaderboardIdFromPath" | "RankButton" | "Leaderboard" | "ConfidenceIndicator" | "LeaderboardStat" | "OverallConfidence" | "Field" | "RankStatisticSelector" | "LeaderboardInfoPopover" | "PerformerCard">) {
-  const { React, Fragment, DirtyPlugins, PluginApi, Router, NavLink, useState, useEffect, useMemo, useRef, useCallback, documentationCapture, StateView, SharedPagination, SharedDialog, CONFIGURATION_CHANGED_EVENT, boxOptions, categoriesFor, settingsFromConfiguration, loadRatingIndex, loadNativePerformerCard, queryPerformers, leaderboardPoolFor, leaderboardData, leaderboardFeaturedCount, leaderboardPageSize, overallCategoryScoresTitle, leaderboardRatingText, leaderboardEntries, filteredLeaderboardEntries, serializeLeaderboardPerformerFilter, queryLeaderboardPerformerIds, leaderboardStandingEntries, filteredLeaderboardPanelProps, paginatedLeaderboard, leaderboardTopCount, leaderboardPerformerCount, battleCategoryPath, leaderboardStatPath, leaderboardIdFromPath, RankButton, Leaderboard, ConfidenceIndicator, LeaderboardStat, OverallConfidence, Field, RankStatisticSelector, LeaderboardInfoPopover, PerformerCard } = dependencies;
+export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" | "Fragment" | "DirtyPlugins" | "PluginApi" | "Router" | "NavLink" | "useState" | "useEffect" | "useMemo" | "useRef" | "useCallback" | "documentationCapture" | "StateView" | "SharedPagination" | "SharedDialog" | "CONFIGURATION_CHANGED_EVENT" | "boxOptions" | "categoriesFor" | "settingsFromConfiguration" | "loadRatingIndex" | "loadNativePerformerCard" | "queryPerformers" | "leaderboardPoolFor" | "leaderboardData" | "leaderboardFeaturedCount" | "leaderboardPageSize" | "overallCategoryScoresTitle" | "leaderboardRatingText" | "leaderboardEntries" | "filteredLeaderboardEntries" | "serializeLeaderboardPerformerFilter" | "queryLeaderboardPerformerIds" | "leaderboardStandingEntries" | "filteredLeaderboardPanelProps" | "paginatedLeaderboard" | "leaderboardTopCount" | "battleCategoryPath" | "leaderboardStatPath" | "leaderboardIdFromPath" | "RankButton" | "ConfidenceIndicator" | "LeaderboardStat" | "OverallConfidence" | "Field" | "RankStatisticSelector" | "LeaderboardInfoPopover">) {
+  const { React, Fragment, DirtyPlugins, PluginApi, Router, NavLink, useState, useEffect, useMemo, useRef, useCallback, documentationCapture, StateView, SharedPagination, SharedDialog, CONFIGURATION_CHANGED_EVENT, boxOptions, categoriesFor, settingsFromConfiguration, loadRatingIndex, loadNativePerformerCard, queryPerformers, leaderboardPoolFor, leaderboardData, leaderboardFeaturedCount, leaderboardPageSize, overallCategoryScoresTitle, leaderboardRatingText, leaderboardEntries, filteredLeaderboardEntries, serializeLeaderboardPerformerFilter, queryLeaderboardPerformerIds, leaderboardStandingEntries, filteredLeaderboardPanelProps, paginatedLeaderboard, leaderboardTopCount, battleCategoryPath, leaderboardStatPath, leaderboardIdFromPath, RankButton, ConfidenceIndicator, LeaderboardStat, OverallConfidence, Field, RankStatisticSelector, LeaderboardInfoPopover } = dependencies;
   let leaderboardFilterListener: ((model: PerformerFilterModel) => void) | null = null;
   function LeaderboardPodium(props: LeaderboardProps): R.JSX.Element | null {
     var NativePerformerCard = PluginApi.components && PluginApi.components.PerformerCard;
@@ -71,35 +71,13 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
     var summary = "Page " + props.page.toLocaleString() + " of " +
       props.totalPages.toLocaleString() + " · ranks " +
       props.firstRank.toLocaleString() + "–" + props.lastRank.toLocaleString();
-    if (SharedPagination) return (<SharedPagination
+    return (<SharedPagination
       ariaLabel="Leaderboard pages"
       className="dirty-rank-pagination"
       onPageChange={props.onPageChange!}
       page={props.page}
       summary={summary}
       totalPages={props.totalPages} />);
-    return (<nav
-      aria-label="Leaderboard pages"
-      className="dirty-rank-pagination d-flex align-items-center justify-content-between">
-      <button
-        className="btn btn-sm btn-secondary"
-        disabled={props.page <= 1}
-        onClick={function () { props.onPageChange(props.page - 1); }}
-        type="button">
-        {"Previous"}
-      </button>
-      <span className="dirty-rank-pagination-summary">
-        {"Page " + props.page.toLocaleString() + " of " + props.totalPages.toLocaleString() +
-          " · ranks " + props.firstRank.toLocaleString() + "–" + props.lastRank.toLocaleString()}
-      </span>
-      <button
-        className="btn btn-sm btn-secondary"
-        disabled={props.page >= props.totalPages}
-        onClick={function () { props.onPageChange(props.page + 1); }}
-        type="button">
-        {"Next"}
-      </button>
-    </nav>);
   }
 
   function DirtyRankLeaderboardFilterCapture(props: { filter: PerformerFilter }): R.JSX.Element | null {
@@ -311,13 +289,9 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
     useEffect(function () {
       var active = true;
       leaderboardFilterListener = function (model) { if (active) setFilterModel(model); };
-      if (DirtyPlugins.native && DirtyPlugins.native.ensureComponents) {
-        DirtyPlugins.native.ensureComponents("Performers", ["FilteredPerformerList"])
-          .then(function () { if (active) setNativeReady(true); })
-          .catch(function (caught) { if (active) setNativeError(caught.message || String(caught)); });
-      } else {
-        setNativeError("Stash performer filters are unavailable.");
-      }
+      DirtyPlugins.native.ensureComponents("Performers", ["FilteredPerformerList"])
+        .then(function () { if (active) setNativeReady(true); })
+        .catch(function (caught) { if (active) setNativeError(caught.message || String(caught)); });
       return function () {
         active = false;
         leaderboardFilterListener = null;
@@ -410,7 +384,6 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
     }
 
     var stats = data.stats;
-    var leaderboardName = selectedCategory ? selectedCategory.name : "Overall";
     var censorMedia = documentationCapture();
     return (<main
       className={"dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide dirty-rank-leaderboards-route" + (censorMedia ? " dirty-rank-censored-media" : "")}>
@@ -486,7 +459,7 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
             </NavLink>
           </div>
         </header>
-        {SharedDialog && (<SharedDialog
+        <SharedDialog
           open={filterOpen}
           id="dirty-rank-performer-filter-dialog"
           backdropClassName="dirty-ui-native-filter-overlay"
@@ -513,7 +486,7 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
               var nextBox = event.target.value;
               var nextId = categoriesFor(settings!, nextBox).some(function (category) { return category.enabled && category.id === leaderboardId; }) ? leaderboardId : OVERALL_LEADERBOARD_ID;
               var path = leaderboardStatPath(nextId, nextBox);
-              history.push(DirtyPlugins.captureUrl ? DirtyPlugins.captureUrl(path) : path);
+              history.push(DirtyPlugins.captureUrl(path));
             }} value={cohort}>
               {availableCohorts.map(function (item) {
                 return (<option key={item[0]} value={item[0]}>
@@ -530,7 +503,7 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
                 : (<PluginApi.components.FilteredPerformerList
                   alterQuery={false}
                   extraCriteria={{ dirtyRankLeaderboardFilter: true }} />)}
-        </SharedDialog>)}
+        </SharedDialog>
         {filterError ? (<StateView title="Could not filter performers" detail={filterError} />)
           : filterActive && (filterBusy || resolvedFilterKey !== filterKey)
             ? (<StateView title="Filtering performers…" />)
@@ -552,7 +525,7 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
                   topCount: topCount,
                   showFeatured: !filterActive,
                   settings: settings,
-                }, filterActive ? filteredLeaderboardPanelProps(standingEntries) : {})} />)
+                }, filterActive ? filteredLeaderboardPanelProps() : {})} />)
                 : (<LeaderboardTable {...Object.assign({
                   cohort: cohort,
                   entries: standingEntries,
@@ -563,7 +536,7 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
                   topCount: topCount,
                   showFeatured: !filterActive,
                   settings: settings,
-                }, filterActive ? filteredLeaderboardPanelProps(standingEntries) : {})} />)}
+                }, filterActive ? filteredLeaderboardPanelProps() : {})} />)}
             </Fragment>)}
       </div>
     </main>);

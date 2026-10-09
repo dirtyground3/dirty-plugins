@@ -3,7 +3,6 @@ export interface ExtractionDependencies {
   getSettings(): Promise<Record<string, unknown>>;
   queueCopy(selection: Selection): Promise<string>;
   notify(message: string, isError: boolean): void;
-  scheduleRender(): void;
   reportError(error: unknown): void;
 }
 /** Queue ownership is local; Stash retains ownership of already queued jobs. */
@@ -13,8 +12,7 @@ export function createExtractionController(dependencies: ExtractionDependencies)
   async function startCopy(selection: Selection): Promise<void> {
     if (state.destroyed || state.busy) return;
     if (!selection.kind || !selection.ids.length) {
-      dependencies.notify("No selected scenes, markers, or images were found on this page.", true);
-      dependencies.scheduleRender(); return;
+      dependencies.notify("No selected scenes, markers, or images were found on this page.", true); return;
     }
     state.busy = true; publish();
     try {

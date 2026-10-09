@@ -1,13 +1,11 @@
 import type * as R from "react";
-import type { completedJob, createJobHook, createReplayTracker } from "./jobs";
+import type { createJobHook } from "./jobs";
 import type { metadata } from "./metadata";
 import type { createSaveController } from "./save";
 import type * as Values from "./values";
 
 // Stash owns patch argument shapes and loadable component props. Keep their
 // permissive compatibility types confined to this host boundary.
-/** The deprecated public HTM tag (`react.html`), kept for feature plugins that predate the TSX ports. */
-export type HtmlRenderer = (strings: TemplateStringsArray, ...values: any[]) => any;
 export type NativeProps = Record<string, any>;
 export type NativeComponent = R.ComponentType<NativeProps>;
 export type NativePatchArguments = any[];
@@ -77,7 +75,7 @@ export interface NativeFilter {
 export interface FilterProps { open: boolean; value?: SceneCondition; onChange(value: SceneCondition): void; onClose(): void; }
 export interface ThemeApi {
   defaultKey: string; currentKey: string; normalizeKey(value: unknown): string;
-  subscribe(listener: (key: string) => void): () => void; load(): Promise<string>;
+  subscribe(listener: (key: string) => void): () => void;
   ready: Promise<string>; readRole(root: Element | null, propertyName: string): string;
 }
 export interface DebugEntry { elapsedMs: number; scope: string; message: string; path: string; data: unknown; }
@@ -88,25 +86,20 @@ export interface DebugMethods {
   debugElapsed(): number;
 }
 export interface HubApi {
-  settingsMetadata: typeof metadata; fieldActions: FieldActions; settingsPanels: Panels;
+  settingsMetadata: typeof metadata;
   graphql<T = Record<string, unknown>>(query: string, variables?: Record<string, unknown>, options?: { signal?: AbortSignal; }): Promise<T>;
   runPluginOperation<T = Record<string, unknown>>(id: string, args: Record<string, unknown>): Promise<T>;
-  runSharedOperation<T = Record<string, unknown>>(args: Record<string, unknown>): Promise<T>;
   getPluginSettings(id: string): Promise<Record<string, unknown>>;
   configurePlugin(id: string, settings: Record<string, unknown>, expectedRevision?: number): Promise<{ revision: number; settings?: Record<string, unknown>; }>;
-  createSaveController: typeof createSaveController; completedJob: typeof completedJob;
-  fieldDefinition: typeof import("./settings").fieldDefinition;
-  createReplayTracker: typeof createReplayTracker; createJobHook: typeof createJobHook;
-  isInternalScan(id: string, startTime: string): Promise<boolean>; values: Pick<typeof Values, "asObject" | "parseMaybeJson" | "clampInteger" | "coerceBoolean">;
-  ui: Pick<typeof import("./dialogs"), "notify" | "trapDialogTab" | "lockBodyScroll" | "manageDialog">;
+  createSaveController: typeof createSaveController; createJobHook: typeof createJobHook;
+  values: Pick<typeof Values, "asObject" | "parseMaybeJson" | "clampInteger" | "coerceBoolean">;
+  ui: Pick<typeof import("./dialogs"), "notify" | "manageDialog">;
   react: typeof import("./components/Controls") & typeof import("./components/Settings") & typeof import("./components/Navigation") & typeof import("./components/Dialog") & {
-    html: HtmlRenderer; usePageTitle: typeof import("./title").usePageTitle;
+    usePageTitle: typeof import("./title").usePageTitle;
     useSettingsDraft: typeof import("./settingsDraft").useSettingsDraft;
-    SettingsField: typeof import("./components/SettingsField").SettingsField;
     SceneFilterEditor: R.ComponentType<FilterProps>;
   };
   native: { loadComponent(name: string): Promise<NativeComponent>; ensureComponents(name: string, required?: string[]): Promise<NativeComponent[]>; };
-  serializeSceneFilter(filter: NativeFilter): SceneCondition;
   captureEnabled(search?: string): boolean; captureUrl(to: string, search?: string): string;
   theme: ThemeApi;
   registerFieldAction(id: string, name: string, action: FieldAction): void;
@@ -116,9 +109,7 @@ export interface HubApi {
   unregisterSettingsPanel(id: string, component: R.ComponentType<PanelProps>): void;
   registerSettingsAddon(id: string, component: R.ComponentType<PanelProps>): void;
   unregisterSettingsAddon(id: string, component: R.ComponentType<PanelProps>): void;
-  debugLog: DebugMethods["debugLog"]; debugLogThrottled: DebugMethods["debugLogThrottled"];
-  debugElapsed: DebugMethods["debugElapsed"]; debugDescribe: DebugMethods["debugDescribe"];
-  debugEnabled(): boolean; dumpDebugLogs(): DebugEntry[];
+  debugLog: DebugMethods["debugLog"]; debugElapsed: DebugMethods["debugElapsed"]; dumpDebugLogs(): DebugEntry[];
 }
 export interface HubDebugDependencies { PluginApi: Host; hubApi: HubApi; }
 export interface HubTransportDependencies extends DebugMethods {
@@ -127,7 +118,7 @@ export interface HubTransportDependencies extends DebugMethods {
   pluginResult: typeof Values.pluginResult; asObject: typeof Values.asObject; applyVisualTheme(value: unknown): string;
 }
 export interface HubThemeDependencies {
-  hubApi: HubApi; DEFAULT_VISUAL_THEME: string; VISUAL_THEME_KEYS: string[]; getPluginSettings: HubApi["getPluginSettings"]; asObject: typeof Values.asObject;
+  hubApi: HubApi; DEFAULT_VISUAL_THEME: string; VISUAL_THEME_KEYS: string[]; getPluginSettings: HubApi["getPluginSettings"];
 }
 export interface HubNativeDependencies {
   hubApi: HubApi; PluginApi: Host; Dialog: R.ComponentType<DialogProps>; StateView: R.ComponentType<SharedProps>; Button: R.ComponentType<SharedProps>;

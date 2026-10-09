@@ -1,7 +1,6 @@
 "use strict";
 const { testModulePath } = require("./plugin_paths");
 const assert = require("node:assert/strict");
-const htm = { bind: () => undefined };
 const element = (type, props, ...children) => ({ type, props: { ...props, children } });
 const effects = [], timers = new Map(), listeners = new Map(), calls = [];
 let id = 0;
@@ -27,7 +26,7 @@ original.criteria = [criterion("performers", ["158"]), criterion("custom_fields"
 const intl = { messages: {} };
 assert.equal(api.installNativeFilters(original, intl), true);
 api.installNativeFilters(original, intl);
-assert.equal(options.criterionOptions.length, 5, "Only one caption option replaces the old separate options");
+assert.equal(options.criterionOptions.length, 5, "One caption option joins the native options");
 const captionOption = options.criterionOptions.find(o => o.type === "dirty_captions");
 assert.equal(JSON.stringify(captionOption.options), JSON.stringify(["Any captions", "Text captions", "Bitmap / other", "None", "Verified", "Unverified"]));
 assert.equal(JSON.stringify(captionOption.modifierOptions), '["EQUALS"]', "Caption categories have no ordering or range operators");
@@ -130,7 +129,7 @@ assert.equal(api.installNativeFilters(performerFilter, intl), false);
 performerFilter.criteria = [criterion("custom_fields", [personal])];
 assert.equal(performerFilter.makeFilter().custom_fields[0], personal);
 const ui = api.createIndexUi({ api: { React, libraries: { Intl: { useIntl: () => intl } } },
-  hub: { ...window.DirtyPlugins, react: { html: htm.bind(element), SettingsSection: "section", Button: "button" },
+  hub: { ...window.DirtyPlugins, react: { SettingsSection: "section", Button: "button" },
     runPluginOperation: (_pluginId, args) => { calls.push(args); return Promise.resolve({ status: "Finished" }); } } });
 const nativeOps = element("native-operations", {});
 const nativeToolbar = element("native-toolbar", { filter: original, setFilter() { throw new Error("Equivalent URLs do not update native filter state"); },
@@ -172,7 +171,7 @@ function browser() {
   };
   const monitor = api.createIndexUi({
     api: { React: hooks, GQL: { useJobsSubscribeSubscription: () => ({ data: { jobsSubscribe: event } }) } },
-    hub: { ...window.DirtyPlugins, react: {}, runPluginOperation: async (_plugin, args) => {
+    hub: { ...window.DirtyPlugins, react: {}, debugLog() {}, runPluginOperation: async (_plugin, args) => {
       calls.push(args);
       if (fail && args.mode === "indexAfterScan") throw new Error("queue unavailable");
       return {};

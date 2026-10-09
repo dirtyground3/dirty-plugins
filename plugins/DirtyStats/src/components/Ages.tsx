@@ -3,7 +3,7 @@ import type { PageProps } from "../props";
 import type { ChartInstance, StatsPerformer, StatsScene } from "../types";
 import type { ViewDependencies } from "../view";
 export function createAges(dependencies: ViewDependencies) {
-  const { themeColor, useChartTheme, StatsState, pageToolbar, exportButton, chartImage, useAgePerformerFilter, filterAgeScenes, sceneVariables, performerVariables, PerformerCards, React, chartLifecycle, chartOptions, dataLoader, charts, ages, aggregateAges, performersAtAge, growth } = dependencies;
+  const { themeColor, useChartTheme, StatsState, pageToolbar, exportButton, chartImage, useAgePerformerFilter, filterAgeScenes, sceneVariables, performerVariables, PerformerCards, React, chartLifecycle, chartOptions, dataLoader, charts, aggregateAges, performersAtAge } = dependencies;
   function AgePage(props: PageProps): R.ReactElement | null {
     var chartTheme = useChartTheme();
     var pageData = dataLoader.usePageData<StatsScene & StatsPerformer>(), scenes = pageData.rows, sceneLoading = pageData.loading, error = pageData.error;

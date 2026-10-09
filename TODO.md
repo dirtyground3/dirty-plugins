@@ -6,7 +6,8 @@ suite passes, so most items below are latent and untested. Items marked
 "verified" were reproduced or confirmed by direct reading of the code; the
 rest come from per-plugin deep dives and should be re-checked when picked up.
 
-All remaining items are open.
+All remaining items are open unless checked. The 2026-10-09 dead-code cleanup
+closed or narrowed the items marked below (see docs/build-migration-status.md).
 
 ## Remaining UI acceptance checks
 
@@ -28,11 +29,9 @@ carried forward from the retired harmony report and implementation plan:
 
 ## Compatibility follow-up
 
-- [ ] Recheck legacy flat-array `categories` normalization in DirtyRank.
-  The completed readability refactor found that browser normalization creates
-  an extra numeric-key category pool, while the backend falls back to defaults.
-  The refactors preserved this existing difference; any fix needs explicit
-  browser/backend parity coverage and a separate behavior change.
+- [x] Recheck legacy flat-array `categories` normalization in DirtyRank.
+  Checked 2026-10-09: the TS browser code and the backend now both fall back to
+  the default categories for a flat array; no numeric-key pool is created.
 
 ## High / Medium bugs
 
@@ -68,7 +67,8 @@ carried forward from the retired harmony report and implementation plan:
   - `closeRoute` uses `history.back()` whenever `history.length > 1`, which
     can navigate out of Stash entirely.
 
-- [ ] **11. DirtyRank screenshot mode uses the wrong query param** (verified)
+- [x] **11. DirtyRank screenshot mode uses the wrong query param** (resolved
+  2026-10-09: Rank uses the hub's `captureEnabled`; the `censorMedia` alias is gone)
   - File: `plugins/DirtyRank/dirtyRank.js:1894, 2024`
   - It reads `censorMedia=1`; the repo convention (AGENTS.md, hub,
     multiscreen) is `docsCapture=1`. DirtyRank fails to blur in documented
@@ -130,7 +130,7 @@ carried forward from the retired harmony report and implementation plan:
 
 ## Performance
 
-- [ ] **P1. DirtyStats constellation is O(scenes x cast^2) with uncapped links** (verified `sceneIds` dead)
+- [ ] **P1. DirtyStats constellation is O(scenes x cast^2) with uncapped links** (dead `sceneIds` removed 2026-10-09; the link cap remains)
   - File: `plugins/DirtyStats/dirtyStats.js:474-481, 547`
   - `sceneIds` is written but never read (dead memory); every link is fed to
     a force layout, which can freeze the main thread at the 1000-performer
@@ -209,14 +209,18 @@ carried forward from the retired harmony report and implementation plan:
 
 ## Refactoring
 
-- [ ] **R2. DirtyTidy dead code/contracts**
+- [ ] **R2. DirtyTidy dead code/contracts** (2026-10-09: backend paging, `PREVIEW_STATUSES`
+  and `excludeVideo` removed; `sourceJobId` is now used by the automation claim;
+  `render_template` stays as an internal helper)
   - Files: `plugins/DirtyTidy/dirty_tidy.py:106-108, 185, 829-870,
     941-987`; `plugins/DirtyTidy/dirtyTidy.js:138`
   - Backend pagination/`MAX_PAGE_SIZE`/`PREVIEW_STATUSES` is unreachable
     from the only client; `excludeVideo` fetched but unused; `sourceJobId`
     ignored; `render_template` is a thin wrapper.
 
-- [ ] **R3. DirtyRank duplicated defaults/taxonomy and dead state**
+- [ ] **R3. DirtyRank duplicated defaults/taxonomy and dead state** (2026-10-09: defaults
+  come from the schema, `busy` guards are gone and the always-zero `failed`/`failures`
+  fields were removed; the stored `recentBattleIds` column remains)
   - Files: `plugins/DirtyRank/dirtyRank.js:48-91, 196-227, 2046-2066`;
     `plugins/DirtyRank/dirty_rank.py:22-76, 230-278, 845`;
     `plugins/DirtyRank/dirtyRank.yml:19-95`

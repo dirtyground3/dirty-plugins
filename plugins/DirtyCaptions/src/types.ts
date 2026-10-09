@@ -1,5 +1,5 @@
 import type * as R from "react";
-import type { HubApi, PanelProps } from "../../DirtyPlugins/src/types";
+import type { HubApi } from "../../DirtyPlugins/src/types";
 import type { StashJobEvent } from "../../DirtyPlugins/src/jobs";
 export interface SceneFile { id?: string | number; size?: number; mod_time?: string; }
 export interface Scene { id: string | number; files?: SceneFile[]; }
@@ -45,9 +45,7 @@ export interface Host {
   GQL?: { useJobsSubscribeSubscription?: () => { data?: { jobsSubscribe?: StashJobEvent } } };
   libraries?: { Intl?: { useIntl?(): IntlContext } };
 }
-export type Hub = Pick<HubApi, "values" | "react" | "getPluginSettings" | "runPluginOperation" | "createJobHook" | "registerSettingsAddon" | "captureEnabled"> &
-  Partial<Pick<HubApi, "unregisterSettingsAddon" | "debugLog">>;
+export type Hub = Pick<HubApi, "values" | "react" | "getPluginSettings" | "runPluginOperation" | "createJobHook" | "registerSettingsAddon" | "unregisterSettingsAddon" | "captureEnabled" | "debugLog">;
 export interface Lifetime { active: boolean; effects: Set<() => void>; }
 export interface Dependencies { api: Host; hub: Hub; lifetime: Lifetime; }
 export interface IndexStatus { status?: string; checked?: number; probed?: number; forceRun?: boolean; skipped?: number; errors?: number; lastFullScan?: number; }
-export type AddonProps = PanelProps;

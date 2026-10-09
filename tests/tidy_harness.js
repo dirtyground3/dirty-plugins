@@ -23,7 +23,7 @@ function createTidyHarness(options = {}) {
     };},
     graphql: async (query, variables) => {requests.push({query, variables: copy(variables)}); return options.queue ? options.queue(variables) : {runPluginTask: "10"};},
     registerSettingsPanel(id, component) {registrations.push(id); panel = component; options.register?.();},
-    unregisterSettingsPanel(id, component) {if (panel === component) {panel = null; changed = true;}},
+    unregisterSettingsPanel(id, component) {if (panel === component) {panel = null; changed = true;}}, debugLog() {},
   };
   const window = {location: {search: options.capture ? "?docsCapture=1" : ""}, DirtyPlugins: hub,
     PluginApi: {React, GQL: {useJobsSubscribeSubscription: () => ({data: {jobsSubscribe: event}})},

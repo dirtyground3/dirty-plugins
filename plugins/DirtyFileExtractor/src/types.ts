@@ -3,8 +3,7 @@ import type { HubApi, FieldAction } from "../../DirtyPlugins/src/types";
 export type Kind = "scene" | "marker" | "image";
 export interface Selection { kind: Kind; ids: string[]; singular: Kind; plural: string; }
 export interface Directory { path: string; parent?: string | null; directories?: string[]; }
-export type Hub = Pick<HubApi, "graphql" | "getPluginSettings" | "configurePlugin" | "ui"> &
-  Partial<Pick<HubApi, "registerFieldAction" | "unregisterFieldAction" | "captureEnabled" | "notifyConfigurationChanged" | "debugLog" | "debugElapsed">>;
+export type Hub = Pick<HubApi, "graphql" | "getPluginSettings" | "configurePlugin" | "ui" | "registerFieldAction" | "unregisterFieldAction" | "captureEnabled" | "notifyConfigurationChanged" | "debugLog">;
 // Stash owns patch arguments; narrow only the native selection prop we consume.
 export interface Host {
   React: typeof R;

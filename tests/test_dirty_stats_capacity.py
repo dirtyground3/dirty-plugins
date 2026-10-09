@@ -1,6 +1,5 @@
 from plugin_paths import runtime_path
 import importlib.util
-from pathlib import Path
 from types import SimpleNamespace
 import unittest
 

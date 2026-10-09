@@ -10,7 +10,7 @@ const assert = require("node:assert/strict"), {createTidyHarness} = require("./t
   const menu = h.nodes(node => node.type === "ActionMenu" && node.props.ariaLabel === "Insert variable into folder level 1")[0];
   const inserted = menu.props.items.find(item => item.key === "year"); inserted.onSelect(); await h.flush();
   assert.equal(h.nodes(node => node.type === "input" && node.props["aria-label"] === "Folder level 1")[0].props.value, "{title}{year}");
-  await h.click("Preview"); assert.equal(h.calls[0].mode, "preview"); assert.equal(h.calls[0].includeAll, true); assert.equal(h.writes.length, 0);
+  await h.click("Preview"); assert.equal(h.calls[0].mode, "preview"); assert.equal(h.writes.length, 0);
   await h.click("Show files"); assert.match(text(h.tree), /\/old\/a.mp4/);
   await h.click("Run 1 operation…"); assert.equal(h.nodes(node => node.type === "Dialog")[0].props.ariaLabel, "Confirm DirtyTidy plan");
   await h.click("Cancel"); assert.equal(h.requests.length, 0); assert.equal(h.writes.length, 0);

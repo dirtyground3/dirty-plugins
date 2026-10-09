@@ -34,7 +34,7 @@ import type { Runtime } from "./runtime";
 import { createSettings } from "./settings";
 import type { StatsViews, ViewDependencies } from "./view";
 export function createViews(runtime: Runtime) {
-  const { React, api, hub, charts, world } = runtime; const settings = createSettings(runtime); const analytics = createAnalytics({ ...settings, world }); const filters = createFilters({ ...settings, hub }); const registry = createRegistry();
+  const { React, hub, charts, world } = runtime; const settings = createSettings(runtime); const analytics = createAnalytics({ ...settings, world }); const filters = createFilters({ ...settings, hub }); const registry = createRegistry();
   const initStatsChart = (node: HTMLElement, options?: import("./types").ChartOption) => { const chart = charts.init(node, null, options || { renderer: "canvas" }), setOption = chart.setOption.bind(chart), getDataURL = chart.getDataURL.bind(chart); chart.setOption = (option, replace) => { if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) option.animation = false; setOption(option, replace); }; chart.getDataURL = options => getDataURL({ ...options, backgroundColor: settings.themeColor("background") }); return chart; };
   const chartLifecycle = createLifecycle({ React, init: initStatsChart, events: window, own: runtime.own, Observer: typeof ResizeObserver === "function" ? ResizeObserver : undefined }); const chartOptions = createBuilders({ ...analytics, themeColor: settings.themeColor, formatBytes: growth.formatBytes }); const dataLoader = createLoader({ React, graphql: hub.graphql, own: runtime.own });
   const views = {} as StatsViews; const dependencies = { ...runtime, ...settings, ...analytics, ...filters, ...growth, ...ages, registry, growth, ages, BIRTHDAY_MONTHS: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"], views, StateView: hub.react.StateView, chartLifecycle, chartOptions, dataLoader, performerFilterEvent: "dirty-stats:performer-filter", statsSettingsReady: Promise.resolve() } as ViewDependencies;
@@ -73,5 +73,5 @@ export function createDashboardViews(runtime: Runtime, algorithms: DashboardDepe
   Object.assign(dashViews, createDashboardWidget(dashDependencies)); Object.assign(dashDependencies, dashViews);
   Object.assign(dashViews, createDashboardPage(dashDependencies)); Object.assign(dashDependencies, dashViews);
 
-  return { Component: dashViews.DashboardPage, Widget: dashViews.DashboardWidget, FilterChooser: dashViews.DashboardFilterChooser, widgetOptions: dashViews.WidgetOptions, algorithms: dashDomain, registry: dashDomain.WIDGETS, defaults: dashDomain.DEFAULT_WIDGETS, maxWidgets: dashDomain.MAX_WIDGETS };
+  return { Component: dashViews.DashboardPage, Widget: dashViews.DashboardWidget, FilterChooser: dashViews.DashboardFilterChooser, widgetOptions: dashViews.WidgetOptions, algorithms: dashDomain, registry: dashDomain.WIDGETS, defaults: dashDomain.DEFAULT_WIDGETS };
 }

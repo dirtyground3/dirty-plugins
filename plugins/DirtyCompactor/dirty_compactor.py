@@ -413,10 +413,7 @@ def measure_quality(ffmpeg, run, op, encoder):
 
 def same_file(completed, op):
     """Whether a remembered outcome belongs to this exact source file."""
-    if completed.get("quickHash"):
-        return completed["quickHash"] == op["quickHash"]
-    # Records from before quick fingerprints hold only the full hash.
-    return bool(completed.get("hash")) and completed["hash"] == file_hash(op["source"])
+    return bool(completed.get("quickHash")) and completed["quickHash"] == op["quickHash"]
 
 
 def revalidate(client, run, op):

@@ -3,7 +3,7 @@ import type { PageProps } from "../props";
 import type { ChartInstance, StatsPerformer, StatsScene } from "../types";
 import type { ViewDependencies } from "../view";
 export function createStudios(dependencies: ViewDependencies) {
-  const { useStatsSetting, useChartTheme, docsCaptureEnabled, StatsState, pageToolbar, exportButton, chartImage, sceneVariables, SceneCards, loadStudioImage, studioSeriesData, aggregateStudios, React, chartLifecycle, chartOptions, dataLoader, STATS_SETTING_SPECS, charts, growth, formatBytes } = dependencies;
+  const { useStatsSetting, useChartTheme, docsCaptureEnabled, StatsState, pageToolbar, exportButton, chartImage, sceneVariables, SceneCards, loadStudioImage, studioSeriesData, aggregateStudios, React, chartLifecycle, chartOptions, dataLoader, STATS_SETTING_SPECS, charts, formatBytes } = dependencies;
   function StudioValuePage(props: PageProps): R.ReactElement | null {
     var chartTheme = useChartTheme();
     var pageData = dataLoader.usePageData<StatsScene & StatsPerformer>(), scenes = pageData.rows, loading = pageData.loading, error = pageData.error;

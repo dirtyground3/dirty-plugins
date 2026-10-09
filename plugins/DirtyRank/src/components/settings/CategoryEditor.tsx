@@ -50,42 +50,21 @@ export function createCategoryEditor(dependencies: Pick<RankSettingsPanelDepende
                     onClick={function () { resetCategoryPool(editingCohort, category); }}>
                     {"Reset ratings"}
                   </RankButton>
-                  {SharedIconButton ? (<SharedIconButton
+                  <SharedIconButton
                     ariaLabel="Move category up"
                     disabled={index === 0}
                     fallback="↑"
-                    onClick={function () { moveCategory(index, -1); }} />) : (<button
-                      aria-label="Move category up"
-                      className="dirty-ui-icon-button"
-                      disabled={index === 0}
-                      onClick={function () { moveCategory(index, -1); }}
-                      type="button">
-                      {"↑"}
-                    </button>)}
-                  {SharedIconButton ? (<SharedIconButton
+                    onClick={function () { moveCategory(index, -1); }} />
+                  <SharedIconButton
                     ariaLabel="Move category down"
                     disabled={index === editingCategories.length - 1}
                     fallback="↓"
-                    onClick={function () { moveCategory(index, 1); }} />) : (<button
-                      aria-label="Move category down"
-                      className="dirty-ui-icon-button"
-                      disabled={index === editingCategories.length - 1}
-                      onClick={function () { moveCategory(index, 1); }}
-                      type="button">
-                      {"↓"}
-                    </button>)}
-                  {SharedIconButton ? (<SharedIconButton
+                    onClick={function () { moveCategory(index, 1); }} />
+                  <SharedIconButton
                     ariaLabel="Remove category"
                     disabled={editingCategories.length <= 1}
                     fallback="×"
-                    onClick={function () { removeCategory(index); }} />) : (<button
-                      aria-label="Remove category"
-                      className="dirty-ui-icon-button"
-                      disabled={editingCategories.length <= 1}
-                      onClick={function () { removeCategory(index); }}
-                      type="button">
-                      {"×"}
-                    </button>)}
+                    onClick={function () { removeCategory(index); }} />
                 </div>
               </div>
               <div className="dirty-rank-category-basics">

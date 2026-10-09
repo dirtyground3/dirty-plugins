@@ -14,9 +14,8 @@ export function createNative(dependencies: HubNativeDependencies) {
   var nativeComponentLoads: Record<string, Promise<NativeComponent>> = {};
   var nativeBundleLoads: Record<string, Promise<unknown>> = {};
   var filters = createSceneFilter({ hubApi: hubApi, PluginApi: PluginApi, Dialog: Dialog, StateView: StateView, Button: Button });
-  var serializeSceneFilter = filters.serialize, SharedSceneFilterCapture = filters.Capture, SceneFilterEditor = filters.Editor;
+  var SharedSceneFilterCapture = filters.Capture, SceneFilterEditor = filters.Editor;
   hubApi.react.SceneFilterEditor = SceneFilterEditor;
-  hubApi.serializeSceneFilter = serializeSceneFilter;
   function sceneListPatch(...args: NativePatchArguments) {
     var next = args.pop() as NativePatchHandler, props = args[0];
     var owner = props && props.extraCriteria && props.extraCriteria.dirtySharedFilter;
@@ -81,11 +80,11 @@ export function createNative(dependencies: HubNativeDependencies) {
       var currentSearch = window.location && window.location.search || "";
       var query = new URLSearchParams(search == null ? currentSearch : search);
       var currentLocation = search == null || search === currentSearch;
-      if (query.get("docsCapture") === "0" || query.get("censorMedia") === "0") {
+      if (query.get("docsCapture") === "0") {
         if (currentLocation) captureInThisPage = false;
         return false;
       }
-      if (query.get("docsCapture") === "1" || query.get("censorMedia") === "1") {
+      if (query.get("docsCapture") === "1") {
         if (currentLocation) captureInThisPage = true;
         return true;
       }
@@ -96,7 +95,7 @@ export function createNative(dependencies: HubNativeDependencies) {
   };
   hubApi.captureUrl = function(to, search) {
     if (typeof to !== "string" || !hubApi.captureEnabled(search == null ? undefined : search)) return to;
-    if (/[?&](docsCapture|censorMedia)=1(?:&|#|$)/.test(to)) return to;
+    if (/[?&]docsCapture=1(?:&|#|$)/.test(to)) return to;
     if (/[?&]docsCapture=/.test(to)) return to.replace(/([?&]docsCapture=)[^&#]*/, function(_match, prefix) { return prefix + "1"; });
     var hash = to.indexOf("#"), beforeHash = hash < 0 ? to : to.slice(0, hash), afterHash = hash < 0 ? "" : to.slice(hash);
     return beforeHash + (beforeHash.indexOf("?") < 0 ? "?" : "&") + "docsCapture=1" + afterHash;

@@ -2,7 +2,6 @@
 const { testModulePath } = require("./plugin_paths");
 
 const assert = require("assert");
-const path = require("path");
 
 function parseMaybeJson(value) {
   if (typeof value !== "string") return value;
@@ -14,6 +13,8 @@ function parseMaybeJson(value) {
 }
 
 const noop = function () {};
+const registrations = [];
+const record = function () { registrations.push(Array.from(arguments)); };
 const React = {
   Fragment: "fragment",
   createElement: noop,
@@ -44,16 +45,18 @@ global.window = {
       Intl: { useIntl: function () { return { messages: {} }; } },
       ReactRouterDOM: { NavLink: noop },
     },
-    patch: { after: noop, before: noop, instead: noop },
-    register: { route: noop },
+    patch: { after: record, before: record, instead: record },
+    register: { route: record },
   },
-  addEventListener: noop,
+  addEventListener: record,
   location: { pathname: "/plugins/dirty-rank" },
 };
 
 const algorithms = require(testModulePath("DirtyRank", "rank.cjs")).createRankDomain({
   DirtyPlugins: global.window.DirtyPlugins, PluginApi: global.window.PluginApi,
 });
+assert.strictEqual(global.window.__dirtyRankPlugin, undefined, "domain factories install no route, patch, listener or instance guard");
+assert.deepStrictEqual(registrations, [], "import and construction own no host integrations");
 algorithms.ratingPresets = algorithms.RATING_PRESETS;
 const baseSettings = algorithms.settingsFromConfiguration({});
 const category = { id: "appearance", name: "Appearance", enabled: true, weight: 1 };
@@ -95,7 +98,7 @@ const ratingStates = {};
   ] } });
   const mixed = mixedSettings.categoriesByCohort["BOX-1"][0];
   assert.strictEqual(mixedSettings.genderBoxes[0].genders.join(","), "FEMALE,MALE,NON_BINARY", "genders are normalized, ordered, and deduplicated");
-  assert.strictEqual(baseSettings.genderBoxes.find(box => box.id === "MALE").genders.join(","), "MALE", "legacy groups become boxes with the same gender and ID");
+  assert.strictEqual(baseSettings.genderBoxes.find(box => box.id === "MALE").genders.join(","), "MALE", "default boxes cover one gender with the same ID");
   const people = ["FEMALE", "MALE", "NON_BINARY", "TRANSGENDER_FEMALE"].map((gender, index) => ({
     id: "mixed-" + index, gender, name: gender, image_path: "/portrait.svg",
   }));
@@ -706,6 +709,15 @@ function performer(id, rating, deviation, matches) {
   near(overall(people[1], powerSettings), algorithms.overallCategoryScoreFor(people[1], "appearance", "FEMALE", balanced).rating,
     "identical category scores are unchanged by the power mean");
   near(overall(target, Object.assign({}, powerSettings, { categoriesByCohort: { FEMALE: [] } })), 50, "empty category sets remain neutral");
+}
+
+{
+  const stored = new Map();
+  global.window.localStorage = { getItem: key => stored.has(key) ? stored.get(key) : null, setItem: (key, value) => stored.set(key, value) };
+  algorithms.rememberCategory("FEMALE", "performance");
+  assert.strictEqual(algorithms.preferredCategoryId(algorithms.settingsFromConfiguration({}), "FEMALE"), "performance",
+    "the last chosen category is remembered per gender box");
+  delete global.window.localStorage;
 }
 
 console.log("DirtyRank information-gain and overall scoring algorithm tests passed");

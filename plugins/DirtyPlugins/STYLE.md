@@ -15,7 +15,6 @@ reusing save/error colours.
 | Icon action | `IconButton` with an accessible label | The plugin-specific glyph |
 | Labelled setting | `Field` and a native input/select/textarea | Parsing, validation, and the user's uncommitted value |
 | Boolean setting | `SettingsToggle` | The setting key and help text |
-| Ordinary setting control | `fieldDefinition(pluginId, setting)` and `react.SettingsField` | Specialized editors, invalid raw input and domain validation |
 | Settings draft lifecycle | `react.useSettingsDraft` | Serialization, revision/conflict policy, preview/run state |
 | Page state | `StateView`, `SaveStatus`, `ui.notify` | Retry operation and data loading |
 | Data summary | `Metric`, `Badge`, `Pagination`, `.dirty-ui-table` | Page size, columns, and domain meaning |
@@ -57,12 +56,11 @@ theme stylesheet from another origin. Stats' category palettes and ECharts
 options stay in Stats. Chart presentation reads CSS roles when options are
 built; literal white and black remain available for data outlines and labels.
 The General settings tab stores `visualTheme` for all suite-owned surfaces.
-`DirtyPlugins.theme.defaultKey` is `classic` (Midnight). When no suite theme is
-saved, a valid legacy DirtyStats theme applies to the suite; unknown values
-display Midnight without rewriting storage. `theme.currentKey` and
-`theme.subscribe` let chart adapters react to a change. The selected class sits
-on the document root, including portals; native Stash cards and players keep
-their host theme.
+`DirtyPlugins.theme.defaultKey` is `classic` (Midnight). Without a saved suite
+theme, or with an unknown value, the suite displays Midnight without rewriting
+storage. `theme.currentKey` and `theme.subscribe` let chart adapters react to a
+change. The selected class sits on the document root, including portals;
+native Stash cards and players keep their host theme.
 
 The hub uses a few `#root`-scoped `!important` declarations for suite-owned
 buttons, fields, and settings tabs. They counter later Stash theme rules so
@@ -130,15 +128,15 @@ layout when Stash's component is unavailable. Capture rules cover both paths.
 
 ## Capture and review
 
-`?docsCapture=1` is the suite capture mode, and Rank still accepts
-`?censorMedia=1`. Use `captureEnabled` and `captureUrl` for detection and
-navigation. Capture stays active during Stash's in-page filter URL rewrites;
-`?docsCapture=0` turns it off, and a full reload without the flag starts a
-normal page. Replace or cover every performer image, video, canvas, and private
-path with an opaque placeholder, including content inside body portals and
-content added after initial render. The synthetic fixtures in `tests/fixtures/`
-are safe to inspect without Stash data. Check every real screenshot before
-committing it; no uncensored adult media belongs in this repository.
+`?docsCapture=1` is the suite capture mode. Use `captureEnabled` and
+`captureUrl` for detection and navigation. Capture stays active during Stash's
+in-page filter URL rewrites; `?docsCapture=0` turns it off, and a full reload
+without the flag starts a normal page. Replace or cover every performer image,
+video, canvas, and private path with an opaque placeholder, including content
+inside body portals and content added after initial render. The synthetic
+fixtures in `tests/fixtures/` are safe to inspect without Stash data. Check
+every real screenshot before committing it; no uncensored adult media belongs
+in this repository.
 
 Check keyboard focus, Escape/Tab in dialogs and nested native popups, reduced
 motion, 360px width, and all suite themes.
@@ -148,8 +146,7 @@ installable files in `.build/plugins/`; each plugin's TS/TSX compiles to one
 guarded browser IIFE. Release builds carry
 no source map; `npm run build:dev` adds an inline map for debugging. Components
 use the same shared primitives and tokens through typed runtime adapters.
-Write TSX; `DirtyPlugins.react.html` (HTM) is deprecated and kept only for
-feature plugins that predate the TSX versions.
+Write TSX.
 Keep a plugin's one-time route and PluginApi patch registrations behind its
 instance guard: Stash cannot unregister those integrations when it
 reloads an asset. Component effects are different; disconnect their observers
@@ -171,11 +168,6 @@ the registry declares as `bundledPackages`; their license and notice files ship
 under `vendor/`. Natural Earth map data (`vendor/world.js`, public domain) is
 also bundled. No other plugin should acquire these assets simply to share a
 control or colour token.
-
-The shared hub bundles HTM 3.1.1 (`vendor/htm.umd.js`, Apache-2.0) for the
-deprecated `react.html` tag. The completion audit found no consumer among the
-current plugins; keep it and its license for older feature plugins until a
-deliberate breaking hub release removes both.
 
 Build-only dependencies are pinned in `package-lock.json`: TypeScript 5.9.3
 (Apache-2.0), esbuild 0.28.2 (MIT), YAML 2.9.1 (ISC), and React 17 type definitions

@@ -11,10 +11,10 @@ import time
 import unicodedata
 import uuid
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Defaults, bounds and default categories are generated from schemas/dirtyRank.settings.json.
@@ -59,12 +59,11 @@ def _load_shared_storage():
 
 
 shared_storage = _load_shared_storage()
-from dirty_plugins_client import StashClient as BaseClient
 from dirty_plugins_protocol import Reporter, StashReporter
 import dirty_plugins_protocol as protocol
 
 
-from dirty_rank_rating import PluginError, Rating, _g, _expected, glicko2_update
+from dirty_rank_rating import PluginError, Rating, glicko2_update
 
 
 
@@ -213,7 +212,7 @@ def _parse_enabled_cohorts(value: Any, fallback: list[str]) -> list[str]:
         try:
             value = json.loads(value)
         except (TypeError, ValueError):
-            value = value.split(",")
+            value = None
     requested = (
         {str(item or "").strip().upper() for item in value}
         if isinstance(value, list)
@@ -226,7 +225,7 @@ def _parse_enabled_cohorts(value: Any, fallback: list[str]) -> list[str]:
 def normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
     source = raw if isinstance(raw, dict) else {}
     cohort = str(source.get("defaultCohort") or DEFAULTS["defaultCohort"]).upper()
-    boxes = _parse_gender_boxes(source.get("genderBoxes"), _parse_enabled_cohorts(source.get("enabledCohorts"), [cohort]))
+    boxes = _parse_gender_boxes(source.get("genderBoxes"), [cohort])
     enabled_cohorts = [box["id"] for box in boxes if box["enabled"]]
     if cohort not in enabled_cohorts:
         cohort = enabled_cohorts[0]
@@ -551,7 +550,7 @@ class RatingRepository:
 
 
 def _category_settings_with_label_ids(raw_settings: dict[str, Any]) -> tuple[dict[str, Any], dict[str, dict[str, str]]]:
-    """Canonicalize category IDs while retaining each category's previous ID for migration."""
+    """Canonicalize category IDs while retaining each category's previous ID to move its ratings."""
     result = dict(raw_settings)
     raw_categories = raw_settings.get("categories")
     if isinstance(raw_categories, str):
@@ -620,38 +619,6 @@ def _move_category_rating_ids(connection: Any, remaps: dict[str, dict[str, str]]
                 )
         changed = True
     return changed
-
-
-def _category_ids_differ(current: dict[str, Any], canonical: dict[str, Any]) -> bool:
-    try:
-        return json.loads(current["categories"]) != json.loads(canonical["categories"])
-    except (KeyError, TypeError, ValueError):
-        return current.get("categories") != canonical.get("categories")
-
-
-def _ensure_category_ids(repository: RatingRepository, connection: Any) -> None:
-    current = shared_storage.get_plugin_settings(PLUGIN_ID, connection=connection)
-    if not current or "categories" not in current:
-        return
-    canonical, _ = _category_settings_with_label_ids(current)
-    if not _category_ids_differ(current, canonical):
-        return
-    shared_storage.backup_database(path=repository.path)
-    connection.execute("BEGIN IMMEDIATE")
-    try:
-        current = shared_storage.get_plugin_settings(PLUGIN_ID, connection=connection)
-        canonical, remaps = _category_settings_with_label_ids(current)
-        if _category_ids_differ(current, canonical):
-            if _move_category_rating_ids(connection, remaps):
-                repository.increment_revision(connection)
-            shared_storage.set_plugin_settings_on_connection(
-                PLUGIN_ID, canonical, connection,
-                shared_storage.get_plugin_revision(PLUGIN_ID, connection=connection),
-            )
-        connection.commit()
-    except Exception:
-        connection.rollback()
-        raise
 
 
 def save_settings(repository: RatingRepository, connection: Any, args: dict[str, Any]) -> dict[str, Any]:
@@ -884,7 +851,7 @@ def reset_pool(
         repository.increment_revision(connection)
         connection.commit()
     reporter.progress(1.0)
-    return {"reset": int(reset), "failed": 0, "failures": []}
+    return {"reset": int(reset)}
 
 
 def read_payload(stream=None):
@@ -911,7 +878,6 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
     try:
         repository = RatingRepository(connection=connection)
         mode = str(args.get("mode") or "record")
-        _ensure_category_ids(repository, connection)
         if mode == "getSettings":
             return {
                 "revision": shared_storage.get_plugin_revision(PLUGIN_ID, connection=connection),

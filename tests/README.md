@@ -39,8 +39,8 @@ all other Python checks execute normally.
 
 # Test helpers
 
-- `load_plugin_scripts.js` loads real manifests in dependency order. Use its
-  `loadPluginScripts` for VM contexts or `sourceFor` for aggregated assets.
+- `load_plugin_scripts.js` reads real manifests. Use its `sourceFor` for a
+  plugin's aggregated staged assets.
 - `plugin_paths.js` and `plugin_paths.py` distinguish `runtimePath`/`runtime_path`
   under `.build/plugins/` from `sourcePath`/`source_path` under authored `plugins/`.
   Missing/stale staging produces an error asking for `npm run build`. Runtime
@@ -90,8 +90,8 @@ all other Python checks execute normally.
   dirty reports, before-unload protection and rejected tab navigation.
 - `test_dirty_plugins_stash_integration.py` extends the controlled Stash fixture
   to all eight plugins and verifies the exact hub bundle (and its TSX maps with `--development`).
-- Extractor's `test_dirty_file_extractor.js` imports typed selection, filtered
-  mutations and queue modules; `test_dirty_file_extractor_ui.js` renders its
+- Extractor's `test_dirty_file_extractor.js` imports typed selection and queue
+  modules; `test_dirty_file_extractor_ui.js` renders its
   compiled TSX through `extractor_harness.js` and exercises the real picker DOM,
   registration, async races, capture masking and cleanup. Its opt-in fixture is
   `python -B tests/test_dirty_file_extractor_stash_integration.py --binary
@@ -132,16 +132,14 @@ all other Python checks execute normally.
   Add `--serve --stop-file <path>` for browser acceptance and graceful cleanup.
 
 - Rank's seven selected CJS modules test domains and UI/session behavior.
-  The seeded domain fixture compares 405 combinations with the pre-port
-  0.7.68 implementation. Registration tests execute the sole compiled IIFE,
+  Registration tests execute the sole compiled IIFE,
   including missing dependencies, duplicate/partial registration and cleanup.
   `python -B tests/test_dirty_rank_stash_integration.py --binary /path/to/stash`
   verifies synthetic portraits/media/markers, rating/undo, HTTP seeking and
   the exact served bundle. Add `--serve --stop-file <path>` for browser review.
 
 - Stats' twelve selected CJS modules test registry, data/chart lifetimes,
-  settings, analytics, native filters and dashboard components. Its seeded
-  fixture compares 331 growth/age/registry scenarios against pre-port 0.6.41.
+  settings, analytics, native filters and dashboard components.
   Registration tests run the sole compiled IIFE with its modular ECharts and
   map inputs (every configured series type must be registered in
   `src/echarts.ts`), a map-free release bundle, partial-registration guards and

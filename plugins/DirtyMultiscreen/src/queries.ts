@@ -1,6 +1,4 @@
-import { isMarkerLaunchContext } from "./domain/context";
-import { getSceneStreamUrl, orderSelected } from "./domain/items";
-import type { Hub, Settings, LaunchContext, QueryVariables, QueryResult, Scene, Marker } from "./types";
+import type { Hub, Settings, LaunchContext, QueryVariables, QueryResult } from "./types";
 import type { createSettingsDomain } from "./domain/settings";
 export function createQueries(DirtyPlugins: Hub, settingsDomain: ReturnType<typeof createSettingsDomain>) {
   const { defaults: DEFAULT_SETTINGS, nonRandomSort: NON_RANDOM_SCENE_SORT, getSceneSort, getSceneLimit } = settingsDomain;

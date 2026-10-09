@@ -85,10 +85,6 @@
         "output": "selection.cjs"
       },
       {
-        "entry": "src/domain/mutations.ts",
-        "output": "mutations.cjs"
-      },
-      {
         "entry": "src/extraction.ts",
         "output": "extraction.cjs"
       }
@@ -190,6 +186,10 @@
       {
         "entry": "src/theme.ts",
         "output": "theme.cjs"
+      },
+      {
+        "entry": "src/components/SceneFilter.tsx",
+        "output": "scenefilter.cjs"
       }
     ],
     "files": [
@@ -200,9 +200,6 @@
       "dirty_plugins_client.py",
       "dirty_plugins_protocol.py",
       "dirty_plugins_storage.py",
-      "vendor/htm.umd.js",
-      "vendor/HTM-LICENSE",
-      "vendor/HTM-NOTICE",
       "README.md",
       "LICENSE"
     ]

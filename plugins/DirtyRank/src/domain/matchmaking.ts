@@ -416,10 +416,10 @@ export function createMatchmaker(dependencies: RankMatchmakerDependencies) {
   }
   return {
     representativeOpponent: representativeOpponent, estimatedMatchesToConfidence: estimatedMatchesToConfidence,
-    freshCategoryBattleEstimate: freshCategoryBattleEstimate, confidenceGoalLabel: confidenceGoalLabel,
-    confidenceProgress: confidenceProgress, categoryEntries: categoryEntries, orderBoundary: orderBoundary,
-    confidenceBoundaries: confidenceBoundaries, categoryConfidence: categoryConfidence, selectPair: selectPair,
-    selectGauntletPair: selectGauntletPair, kingsOrder: kingsOrder, takeKingsChallenger: takeKingsChallenger,
+    freshCategoryBattleEstimate: freshCategoryBattleEstimate,
+    confidenceProgress: confidenceProgress, categoryEntries: categoryEntries,
+    categoryConfidence: categoryConfidence, selectPair: selectPair,
+    selectGauntletPair: selectGauntletPair,
     selectKingsStartingPair: selectKingsStartingPair, selectKingsPair: selectKingsPair
   };
 }

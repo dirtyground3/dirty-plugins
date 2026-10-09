@@ -28,11 +28,6 @@
   margin: 0;
 }
 
-.dirty-rank-subtitle {
-  color: var(--dirty-ui-muted);
-  margin: 0.3rem 0 0;
-}
-
 .dirty-rank-header-controls {
   gap: 0.65rem;
 }
@@ -1124,30 +1119,12 @@
   padding: 0.9rem 1rem;
 }
 
-.dirty-rank-stat-label {
-  color: var(--dirty-ui-muted);
-  font-size: 0.7rem;
-  font-weight: 750;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.dirty-rank-stat-value {
-  color: var(--dirty-rank-accent-strong);
-  font-size: clamp(1.25rem, 2.3vw, 1.8rem);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .dirty-rank-stat .dirty-ui-metric-value {
   color: var(--dirty-rank-accent-strong);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.dirty-rank-stat-detail,
 .dirty-rank-panel-summary {
   color: var(--dirty-ui-muted);
   font-size: 0.72rem;
@@ -1595,13 +1572,6 @@
   padding: 0.8rem 1rem;
 }
 
-.dirty-rank-pagination-summary {
-  color: var(--dirty-ui-muted);
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-
 .dirty-rank-gallery-grid {
   display: grid;
   align-items: start;
@@ -1754,28 +1724,10 @@
   position: absolute;
 }
 
-.dirty-rank-gallery-rank {
-  background: rgba(0, 0, 0, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
-  color: #fff;
-  font-size: 0.8rem;
-  font-weight: 800;
-  left: 0.7rem;
-  padding: 0.3rem 0.55rem;
-  position: absolute;
-  top: 0.7rem;
-}
-
 .dirty-rank-gallery-copy {
   display: grid;
   gap: 0.25rem;
   padding: 0.35rem 0.5rem 0.4rem;
-}
-
-.dirty-rank-gallery-heading {
-  gap: 0.7rem;
-  min-width: 0;
 }
 
 .dirty-rank-gallery-name {
@@ -1789,10 +1741,6 @@
 .dirty-rank-gallery-name:hover {
   color: var(--dirty-rank-accent-strong);
   text-decoration: none;
-}
-
-.dirty-rank-gallery-heading .badge {
-  flex: 0 0 auto;
 }
 
 .dirty-rank-gallery-rating-row {
@@ -1880,22 +1828,6 @@
     margin-left: 0;
     text-align: left;
   }
-}
-
-.dirty-rank-field {
-  display: grid;
-  gap: 0.3rem;
-}
-
-.dirty-rank-field label {
-  font-weight: 650;
-  margin: 0;
-}
-
-.dirty-rank-field-help {
-  color: var(--dirty-ui-muted);
-  font-size: 0.8rem;
-  margin: 0;
 }
 
 .dirty-rank-category-editor {
@@ -2125,10 +2057,6 @@
 
   .dirty-rank-gallery-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dirty-rank-pagination-summary {
-    font-size: 0.7rem;
   }
 
   .dirty-rank-versus {

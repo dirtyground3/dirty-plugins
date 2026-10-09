@@ -79,9 +79,9 @@ children: <React.Fragment>
       const configurationChanged = (event: Event) => { if (active && (event as CustomEvent<{ pluginId: string }>).detail?.pluginId === "dirtyStats") void settings.loadStatsSettings(); };
       window.addEventListener("dirty-plugins:configuration-changed", configurationChanged);
       effects.add(() => window.removeEventListener("dirty-plugins:configuration-changed", configurationChanged));
-      if (hub.theme?.subscribe) effects.add(hub.theme.subscribe(settings.syncSuiteTheme));
+      effects.add(hub.theme.subscribe(settings.syncSuiteTheme));
       void app.start(); instance.status = "active";
-      hub.debugLog?.("dirtyStats", "script finished registering");
+      hub.debugLog("dirtyStats", "script finished registering");
     } catch (error) { destroy(); instance.status = "failed"; if (!registrationAttempted) delete globals[INSTANCE_KEY]; console.error("[DirtyStats] registration failed", error); }
     finally { globals.__dirtyCurrentPluginId = null; }
   }

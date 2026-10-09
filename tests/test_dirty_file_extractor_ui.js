@@ -34,7 +34,7 @@ const deferred = () => {let resolve, reject; const promise = new Promise((yes, n
   assert.equal(h.configurationEvents, 1); assert.equal(h.body.children.length, 0); assert.equal(h.dialogReleases, 1);
   assert.equal(h.document.activeElement.focused, true);
   h.open(); await h.flush(); h.window.__extractScenesFloatingAction.destroy();
-  assert.equal(h.fieldAction, null); assert.equal(h.frames.size, 0); assert.equal(h.body.children.length, 0);
+  assert.equal(h.fieldAction, null); assert.equal(h.body.children.length, 0);
   assert.ok(h.observers.every(observer => observer.disconnected)); assert.ok([...h.window.handlers.values()].every(set => !set.size));
   assert.equal(h.toolbar.style.minWidth, ""); h.load(); assert.equal(h.patches.length, 3);
   const native = {type: "native"}; assert.equal(h.patches[0].handler({selectedIds: new Set(["1"])}, native), native);
@@ -78,9 +78,5 @@ const deferred = () => {let resolve, reject; const promise = new Promise((yes, n
   assert.equal(use.disabled, false); assert.equal(capture.body.textContent.includes("/private"), false);
   assert.equal(capture.pickerNode("dirty-file-extractor-picker-status").textContent, "Folder unavailable during documentation capture.");
   capture.window.__extractScenesFloatingAction.destroy();
-  const oldHub = createExtractorHarness({fallback: true}); oldHub.load(); oldHub.frame();
-  const relevant = {nodeType: 1, matches: () => true}; oldHub.observers[0].callback([{addedNodes: [], removedNodes: [relevant]}]);
-  oldHub.observers[0].callback([{addedNodes: [relevant], removedNodes: []}]); assert.equal(oldHub.timers.size, 1);
-  oldHub.window.__extractScenesFloatingAction.destroy(); assert.equal(oldHub.timers.size, 0); assert.equal(oldHub.body.children.length, 0);
   console.log("DirtyFileExtractor bundle selection, queueing, picker, races, masking, guards and cleanup passed");
 })().catch(error => {console.error(error); process.exitCode = 1;});

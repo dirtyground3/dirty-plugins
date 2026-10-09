@@ -18,7 +18,7 @@ const defaults = {
 assert.deepEqual(clean(a.settingsFromConfiguration(undefined)), defaults, "missing configuration uses the shared defaults");
 
 const canonical = a.settingsFromConfiguration({
-  hierarchyLevels: ["  {studio} ", "", { template: "{year}" }],
+  hierarchyLevels: ["  {studio} ", "", " {year}"],
   renamePattern: "  {title}  ",
   maxFilenameLength: "250",
   multiValueSeparator: "abcdefghijklmnop",
@@ -54,7 +54,7 @@ assert.deepEqual(
 // Adopting the server's normalized settings and normalizing again is a no-op.
 assert.deepEqual(clean(a.settingsFromConfiguration(canonical)), clean(canonical));
 assert.deepEqual(clean(a.settingsFromConfiguration(empties)), clean(empties));
-assert.deepEqual(a.settingsFromConfiguration(JSON.stringify(canonical)), canonical);
+assert.deepEqual(clean(a.settingsFromConfiguration(JSON.stringify(canonical))), defaults, "pre-1.0 JSON-string configurations are not parsed");
 
 
 const {groupVariables, previewSlice} = require(testModulePath("DirtyTidy", "preview.cjs"));
@@ -65,7 +65,8 @@ const page = previewSlice({operations}, "ready", 2);
 assert.equal(page.total, 65); assert.equal(page.pages, 2); assert.equal(page.visible.length, 15); assert.equal(page.visible[0].file_id, "50");
 assert.equal(previewSlice({operations}, "move", 1).total, 60);
 assert.equal(previewSlice(null, "all", 1).pages, 1);
-assert.deepEqual(a.parseLevels('[{"template":" {year} "},null,"",0," {title} "]'), ["{year}", "{title}"]);
+assert.deepEqual(a.parseLevels([" {year} ", null, "", 0, { template: "{studio}" }, " {title} "]), ["{year}", "{title}"]);
+assert.deepEqual(a.parseLevels('["{title}"]'), defaults.hierarchyLevels, "pre-1.0 JSON-string levels are not parsed");
 for (const [value, expected] of [[15,16],[256,255], [123.7,123],["123.7",180], [Infinity,180], [" -20 ",16]]) assert.equal(a.parseMaxFilenameLength(value), expected);
 for (const [value, expected] of [["no",false],["OFF",false],["yes",true],["unknown",true],[null,false],[0,false]]) assert.equal(a.parseBoolean(value,false), expected);
 assert.equal(a.settingsFromConfiguration({approvedStrategyHash:"A".repeat(64), approvedPlanDigest:"invalid"}).approvedStrategyHash, "a".repeat(64));

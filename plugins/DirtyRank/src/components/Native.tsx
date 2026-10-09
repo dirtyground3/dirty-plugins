@@ -87,21 +87,13 @@ export function createNative(dependencies: Pick<ViewDependencies, "React" | "get
   }
 
   function DirtyRankBattleNavLink(): R.JSX.Element | null {
-    if (SharedNavAction) return (<SharedNavAction
+    return (<SharedNavAction
       as={NavLink}
       className="dirty-rank-nav-link dirty-rank-nav-button"
       exact={false}
       icon={RankNavGlyph("battle")}
       label="DirtyRank performer battles"
       to={ROUTE_PATH} />);
-    return (<NavLink className="nav-utility dirty-rank-nav-link" exact={false} to={ROUTE_PATH}>
-      <button
-        className="minimal d-flex align-items-center h-100 dirty-rank-nav-button"
-        title="DirtyRank performer battles"
-        type="button">
-        {RankNavGlyph("battle")}
-      </button>
-    </NavLink>);
   }
 
   function DirtyRankGauntletLaunch(props: { performer: RankPerformer }): R.JSX.Element | null {
@@ -145,24 +137,13 @@ export function createNative(dependencies: Pick<ViewDependencies, "React" | "get
   }
 
   function DirtyRankLeaderboardsNavLink(): R.JSX.Element | null {
-    if (SharedNavAction) return (<SharedNavAction
+    return (<SharedNavAction
       as={NavLink}
       className="dirty-rank-nav-link dirty-rank-leaderboards-nav-link dirty-rank-nav-button"
       exact={true}
       icon={RankNavGlyph("leaderboard")}
       label="DirtyRank leaderboards"
       to={LEADERBOARDS_ROUTE_PATH} />);
-    return (<NavLink
-      className="nav-utility dirty-rank-nav-link dirty-rank-leaderboards-nav-link"
-      exact={true}
-      to={LEADERBOARDS_ROUTE_PATH}>
-      <button
-        className="minimal d-flex align-items-center h-100 dirty-rank-nav-button"
-        title="DirtyRank leaderboards"
-        type="button">
-        {RankNavGlyph("leaderboard")}
-      </button>
-    </NavLink>);
   }
 
   function DirtyRankNavLinks(): R.JSX.Element | null {
@@ -195,5 +176,5 @@ export function createNative(dependencies: Pick<ViewDependencies, "React" | "get
       {navigation && navigation.showLeaderboardsInMenu && (<DirtyRankLeaderboardsNavLink />)}
     </Fragment>);
   }
-  return { isPerformerListRoute, addOverallSortOption, applyOverallPerformerFilter, defaultOverallPerformerFilterHook, overallPerformerFilterHook, DirtyRankPerformerListShell, DirtyRankSortedPerformerList, DirtyRankBattleNavLink, DirtyRankGauntletLaunch, RankNavGlyph, DirtyRankLeaderboardsNavLink, DirtyRankNavLinks };
+  return { isPerformerListRoute, overallPerformerFilterHook, DirtyRankPerformerListShell, DirtyRankSortedPerformerList, DirtyRankBattleNavLink, DirtyRankGauntletLaunch, DirtyRankLeaderboardsNavLink, DirtyRankNavLinks };
 }
