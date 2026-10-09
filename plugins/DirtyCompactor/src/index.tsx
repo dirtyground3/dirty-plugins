@@ -1,6 +1,7 @@
 import { React, ID, bindRuntime, readRuntime, operation } from "./runtime";
 import { Settings } from "./components/Settings";
 import { createAutomationMonitor } from "./automation";
+import type { ReactNode } from "react";
 
 const INSTANCE_KEY = "__dirtyCompactorPlugin";
 type Instance = { state: "registering" | "registered" | "failed" };
@@ -21,7 +22,7 @@ if (runtime) {
     if (runtime.api.patch?.after) {
       patchAttempted = true;
       runtime.api.patch.after("App", (...args) => <React.Fragment>
-        {args[args.length - 1] as import("react").ReactNode}<AutomationMonitor />
+        {args[args.length - 1] as ReactNode}<AutomationMonitor />
       </React.Fragment>);
     }
     instance.state = "registered";

@@ -24,8 +24,7 @@ from extract_scenes_destinations import (
 )
 
 
-
-from extract_scenes_plan import ExtractionOptions, ExtractionPlan, PlannedOperation, ExtractionProgress
+from extract_scenes_plan import ExtractionOptions, ExtractionPlan, ExtractionProgress
 
 PLUGIN_ID = "extractScenes"
 VALID_COLLISION_POLICIES = {"rename", "skip", "overwrite"}
@@ -33,17 +32,14 @@ COPY_CHUNK_SIZE = 4 * 1024 * 1024
 PROGRESS_INTERVAL_SECONDS = 0.5
 
 
-def _load_shared_storage():
-    plugin_root = Path(__file__).resolve().parent.parent
-    for folder in ("dirtyPlugins", "DirtyPlugins"):
-        path = plugin_root / folder / "dirty_plugins_storage.py"
-        if path.is_file():
-            sys.path.insert(0, str(path.parent))
-            return __import__("dirty_plugins_storage")
+for folder in ("dirtyPlugins", "DirtyPlugins"):  # installed plugin ID, then source directory
+    shared = Path(__file__).resolve().parent.parent / folder
+    if (shared / "dirty_plugins_storage.py").is_file():
+        sys.path.insert(0, str(shared))
+        break
+else:
     raise RuntimeError("DirtyPlugins shared storage is not installed")
-
-
-shared_storage = _load_shared_storage()
+import dirty_plugins_storage as shared_storage
 from dirty_plugins_client import StashClient as BaseClient
 from dirty_plugins_protocol import Reporter, StashReporter
 import dirty_plugins_protocol as protocol
@@ -53,14 +49,9 @@ class PluginError(RuntimeError):
     """An error that should be reported cleanly to Stash."""
 
 
-
-
-
-
 class StashClient(BaseClient):
     def __init__(self, server_connection):
         super().__init__(server_connection, timeout=60, error_type=PluginError)
-
 
     def scene(self, scene_id: str) -> dict[str, Any] | None:
         query = """
@@ -113,19 +104,8 @@ class StashClient(BaseClient):
         return result.get("images") or []
 
     def ffmpeg_path(self) -> str:
-        data = self.call(
-            """
-            query DirtyFileExtractorFFmpegPath {
-              configuration { general { ffmpegPath } }
-            }
-            """
-        )
-        configured = str(
-            ((data.get("configuration") or {}).get("general") or {}).get(
-                "ffmpegPath"
-            )
-            or ""
-        ).strip()
+        data = self.call("query DirtyFileExtractorFFmpegPath { configuration { general { ffmpegPath } } }")
+        configured = str(((data.get("configuration") or {}).get("general") or {}).get("ffmpegPath") or "").strip()
         executable = configured or shutil.which("ffmpeg")
         if not executable:
             raise PluginError(
@@ -134,22 +114,8 @@ class StashClient(BaseClient):
             )
         return executable
 
-    def extract_marker_clip(
-        self,
-        source: Path,
-        destination: Path,
-        start_seconds: float,
-        end_seconds: float,
-        on_progress: Any,
-    ) -> None:
-        extract_marker_clip(
-            self.ffmpeg_path(),
-            source,
-            destination,
-            start_seconds,
-            end_seconds,
-            on_progress,
-        )
+    def extract_marker_clip(self, source: Path, destination: Path, start_seconds: float, end_seconds: float, on_progress: Any) -> None:
+        extract_marker_clip(self.ffmpeg_path(), source, destination, start_seconds, end_seconds, on_progress)
 
 
 def read_payload(stream=None):
@@ -206,26 +172,23 @@ def _unique_ids(raw_ids: Any) -> list[str]:
 
 
 def selections_from_args(args: dict[str, Any]) -> dict[str, list[str]]:
-    selections: dict[str, list[str]] = {}
-    for kind in ("scene", "marker", "image"):
-        selections[kind] = _unique_ids(args.get(f"{kind}_ids"))
+    selections = {kind: _unique_ids(args.get(f"{kind}_ids")) for kind in ("scene", "marker", "image")}
     if not any(selections.values()):
-        raise PluginError(
-            "Select at least one scene, marker, or image before starting the copy"
-        )
+        raise PluginError("Select at least one scene, marker, or image before starting the copy")
     return selections
 
 
-def copy_file_chunked(
-    source: Path,
-    destination: Path,
-    on_chunk: Any,
-    max_bytes_per_second: float = 0,
-) -> None:
+def _discard_partial(path: Path) -> None:
+    """Best-effort removal of an unfinished temporary output."""
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def copy_file_chunked(source: Path, destination: Path, on_chunk: Any, max_bytes_per_second: float = 0) -> None:
     """Copy through a temporary sibling while reporting transferred bytes."""
-    temporary = destination.with_name(
-        f".{destination.name}.extract-scenes-{uuid.uuid4().hex}.part"
-    )
+    temporary = destination.with_name(f".{destination.name}.extract-scenes-{uuid.uuid4().hex}.part")
     started = time.monotonic()
     transferred = 0
     try:
@@ -245,10 +208,7 @@ def copy_file_chunked(
         shutil.copystat(source, temporary)
         os.replace(temporary, destination)
     except BaseException:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
+        _discard_partial(temporary)
         raise
 
 
@@ -264,68 +224,21 @@ def _parse_ffmpeg_time(value: str) -> float:
         return 0.0
 
 
-def extract_marker_clip(
-    ffmpeg_path: str,
-    source: Path,
-    destination: Path,
-    start_seconds: float,
-    end_seconds: float,
-    on_progress: Any,
-) -> None:
+def extract_marker_clip(ffmpeg_path: str, source: Path, destination: Path, start_seconds: float, end_seconds: float, on_progress: Any) -> None:
     """Create an accurate MP4 clip for one marker through FFmpeg."""
     duration = float(end_seconds) - float(start_seconds)
     if start_seconds < 0 or duration <= 0:
-        raise PluginError(
-            f"Invalid marker interval: {start_seconds!r} to {end_seconds!r}"
-        )
-    temporary = destination.with_name(
-        f".{destination.stem}.extract-scenes-{uuid.uuid4().hex}.part.mp4"
-    )
+        raise PluginError(f"Invalid marker interval: {start_seconds!r} to {end_seconds!r}")
+    temporary = destination.with_name(f".{destination.stem}.extract-scenes-{uuid.uuid4().hex}.part.mp4")
     command = [
-        ffmpeg_path,
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-nostdin",
-        "-ss",
-        _ffmpeg_timestamp(start_seconds),
-        "-i",
-        str(source),
-        "-t",
-        _ffmpeg_timestamp(duration),
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a?",
-        "-map_metadata",
-        "0",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "18",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
-        "-movflags",
-        "+faststart",
-        "-progress",
-        "pipe:1",
-        "-nostats",
-        "-y",
-        str(temporary),
+        ffmpeg_path, "-hide_banner", "-loglevel", "error", "-nostdin",
+        "-ss", _ffmpeg_timestamp(start_seconds), "-i", str(source), "-t", _ffmpeg_timestamp(duration),
+        "-map", "0:v:0", "-map", "0:a?", "-map_metadata", "0",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-b:a", "192k",
+        "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", "-y", str(temporary),
     ]
     try:
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
         output_lines: list[str] = []
         assert process.stdout is not None
         for raw_line in process.stdout:
@@ -340,19 +253,13 @@ def extract_marker_clip(
         return_code = process.wait()
         if return_code != 0:
             detail = "\n".join(output_lines).strip()
-            raise PluginError(
-                f"FFmpeg marker extraction failed with exit code {return_code}"
-                + (f": {detail}" if detail else "")
-            )
+            raise PluginError(f"FFmpeg marker extraction failed with exit code {return_code}" + (f": {detail}" if detail else ""))
         os.replace(temporary, destination)
         on_progress(1.0)
     except FileNotFoundError as exc:
         raise PluginError(f"FFmpeg executable was not found: {ffmpeg_path}") from exc
     except BaseException:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
+        _discard_partial(temporary)
         raise
 
 
@@ -393,24 +300,12 @@ def resolve_selected_items(
             continue
         scene = marker.get("scene")
         if not scene:
-            missing.append(
-                {"marker_id": marker_id, "reason": "marker has no parent scene"}
-            )
+            missing.append({"marker_id": marker_id, "reason": "marker has no parent scene"})
             continue
-        scene_id = str(scene.get("id") or "")
-        items.append(
-            {
-                "kind": "marker",
-                "id": marker_id,
-                "title": scene.get("title"),
-                "marker_title": marker.get("title"),
-                "seconds": marker.get("seconds"),
-                "end_seconds": marker.get("end_seconds"),
-                "folder_kind": "scene",
-                "folder_id": scene_id,
-                "files": scene.get("files") or [],
-            }
-        )
+        items.append({
+            **_scene_item(scene), "kind": "marker", "id": marker_id, "marker_title": marker.get("title"),
+            "seconds": marker.get("seconds"), "end_seconds": marker.get("end_seconds"),
+        })
 
     image_ids = selections.get("image", [])
     images_by_id = {
@@ -421,16 +316,8 @@ def resolve_selected_items(
         if not image:
             missing.append({"image_id": image_id, "reason": "image not found"})
             continue
-        items.append(
-            {
-                "kind": "image",
-                "id": image_id,
-                "title": image.get("title"),
-                "folder_kind": "image",
-                "folder_id": image_id,
-                "files": image.get("visual_files") or [],
-            }
-        )
+        items.append({"kind": "image", "id": image_id, "title": image.get("title"), "folder_kind": "image",
+                      "folder_id": image_id, "files": image.get("visual_files") or []})
 
     return items, missing
 
@@ -438,9 +325,7 @@ def resolve_selected_items(
 def _normalize_extraction_settings(settings: dict[str, Any]) -> ExtractionOptions:
     destination_value = str(settings.get("destinationFolder") or "").strip()
     if not destination_value:
-        raise PluginError(
-            "Set Destination folder under Settings > Plugins > DirtyFileExtractor first"
-        )
+        raise PluginError("Set Destination folder under Settings > Plugins > DirtyFileExtractor first")
 
     destination_root = Path(os.path.expandvars(os.path.expanduser(destination_value)))
     if destination_root.exists() and not destination_root.is_dir():
@@ -448,61 +333,33 @@ def _normalize_extraction_settings(settings: dict[str, Any]) -> ExtractionOption
 
     policy = str(settings.get("collisionPolicy") or "rename").strip().lower()
     if policy not in VALID_COLLISION_POLICIES:
-        raise PluginError(
-            "File collision policy must be rename, skip, or overwrite "
-            f"(received {policy!r})"
-        )
-
-    create_item_folders = as_bool(settings.get("createSceneFolders"))
-    dry_run = as_bool(settings.get("dryRun"))
-    max_copy_speed_mib = as_nonnegative_float(
-        settings.get("maxCopySpeedMBps"), 20.0
-    )
-    return ExtractionOptions(destination_root, policy, create_item_folders, dry_run, max_copy_speed_mib)
+        raise PluginError(f"File collision policy must be rename, skip, or overwrite (received {policy!r})")
+    return ExtractionOptions(destination_root, policy, as_bool(settings.get("createSceneFolders")), as_bool(settings.get("dryRun")),
+                             as_nonnegative_float(settings.get("maxCopySpeedMBps"), 20.0))
 
 
 def _plan_extraction_items(items, options: ExtractionOptions, initial_missing=()) -> ExtractionPlan:
-    destination_root = options.destination_root
-    create_item_folders = options.create_item_folders
-    dry_run = options.dry_run
-    policy = options.policy
-    pending: list[PlannedOperation] = []
-    skipped: list[dict[str, str]] = []
-    missing: list[dict[str, str]] = list(initial_missing)
+    plan = ExtractionPlan(operations=[], skipped=[], missing=list(initial_missing), destinations=set(), folders=[options.destination_root])
     seen_sources: set[str] = set()
-    planned_destinations: set[str] = set()
-    folders = [destination_root]
-    resolved_items = list(items)
-    plan = ExtractionPlan(pending, skipped, missing, planned_destinations, folders)
-    for item in resolved_items:
+    for item in items:
         _plan_extraction_item(item, options, plan, seen_sources)
     return plan
 
 
 def _plan_extraction_item(item, options: ExtractionOptions, plan: ExtractionPlan, seen_sources: set[str]) -> None:
-    destination_root = options.destination_root
-    create_item_folders = options.create_item_folders
-    dry_run = options.dry_run
-    policy = options.policy
-    pending, skipped, missing = plan.operations, plan.skipped, plan.missing
-    planned_destinations, folders = plan.destinations, plan.folders
+    dry_run, policy = options.dry_run, options.policy
+    pending, skipped, missing, planned_destinations = plan.operations, plan.skipped, plan.missing, plan.destinations
     kind = str(item.get("kind") or "item")
     item_id = str(item.get("id") or "")
-    item_destination = destination_root
-    if create_item_folders:
-        folder_name = sanitize_folder_name(
-            item.get("title"),
-            str(item.get("folder_id") or item_id),
-            str(item.get("folder_kind") or kind),
-        )
-        item_destination = destination_root / folder_name
-        folders.append(item_destination)
+    item_destination = options.destination_root
+    if options.create_item_folders:
+        folder_name = sanitize_folder_name(item.get("title"), str(item.get("folder_id") or item_id), str(item.get("folder_kind") or kind))
+        item_destination = options.destination_root / folder_name
+        plan.folders.append(item_destination)
 
     files = item.get("files") or []
     if not files:
-        missing.append(
-            {f"{kind}_id": item_id, "reason": f"{kind} has no files"}
-        )
+        missing.append({f"{kind}_id": item_id, "reason": f"{kind} has no files"})
         return
 
     if kind == "marker":
@@ -510,57 +367,26 @@ def _plan_extraction_item(item, options: ExtractionOptions, plan: ExtractionPlan
             start_seconds = float(item.get("seconds"))
             end_seconds = float(item.get("end_seconds"))
         except (TypeError, ValueError):
-            missing.append(
-                {"marker_id": item_id, "reason": "marker has no valid end time"}
-            )
+            missing.append({"marker_id": item_id, "reason": "marker has no valid end time"})
             return
         if start_seconds < 0 or end_seconds <= start_seconds:
-            missing.append(
-                {"marker_id": item_id, "reason": "marker interval is invalid"}
-            )
+            missing.append({"marker_id": item_id, "reason": "marker interval is invalid"})
             return
         source_info = files[0]
         source = Path(str(source_info.get("path") or ""))
         if not source.is_file():
-            missing.append(
-                {
-                    "marker_id": item_id,
-                    "source": str(source),
-                    "reason": "source file not found",
-                }
-            )
+            missing.append({"marker_id": item_id, "source": str(source), "reason": "source file not found"})
             return
-        basename = marker_clip_basename(
-            str(source_info.get("basename") or source.name),
-            item.get("marker_title"),
-            item_id,
-        )
-        requested_destination = item_destination / basename
-        final_destination, action = resolve_generated_destination(
-            requested_destination, policy, planned_destinations
-        )
+        basename = marker_clip_basename(str(source_info.get("basename") or source.name), item.get("marker_title"), item_id)
+        final_destination, action = resolve_generated_destination(item_destination / basename, policy, planned_destinations)
         if action == "skip":
-            skipped.append(
-                {
-                    "marker_id": item_id,
-                    "source": str(source),
-                    "reason": action,
-                }
-            )
+            skipped.append({"marker_id": item_id, "source": str(source), "reason": action})
             return
         planned_destinations.add(destination_key(final_destination))
-        pending.append(
-            {
-                "kind": "marker",
-                "marker_id": item_id,
-                "source_path": source,
-                "seconds": start_seconds,
-                "end_seconds": end_seconds,
-                "destination_path": final_destination,
-                "action": "dry-run" if dry_run else action,
-                "size": 0,
-            }
-        )
+        pending.append({
+            "kind": "marker", "marker_id": item_id, "source_path": source, "seconds": start_seconds, "end_seconds": end_seconds,
+            "destination_path": final_destination, "action": "dry-run" if dry_run else action, "size": 0,
+        })
         return
 
     for file_info in files:
@@ -576,37 +402,20 @@ def _plan_extraction_item(item, options: ExtractionOptions, plan: ExtractionPlan
             continue
 
         basename = str(file_info.get("basename") or source.name)
-        requested_destination = item_destination / basename
-        final_destination, action = resolve_destination(
-            source, requested_destination, policy, planned_destinations
-        )
-
+        final_destination, action = resolve_destination(source, item_destination / basename, policy, planned_destinations)
         if action in {"skip", "same-file"}:
             skipped.append({"source": str(source), "reason": action})
             continue
-
         planned_destinations.add(destination_key(final_destination))
-        pending.append(
-            {
-                "kind": kind,
-                "source_path": source,
-                "destination_path": final_destination,
-                "action": "dry-run" if dry_run else action,
-                "size": source.stat().st_size,
-            }
-        )
-
-
-
+        pending.append({
+            "kind": kind, "source_path": source, "destination_path": final_destination,
+            "action": "dry-run" if dry_run else action, "size": source.stat().st_size,
+        })
 
 
 def _execute_extraction_plan(plan: ExtractionPlan, options: ExtractionOptions, reporter, marker_clip_extractor):
-    pending = plan.operations
-    planned_destinations = plan.destinations
-    skipped = plan.skipped
-    policy = options.policy
-    dry_run = options.dry_run
-    max_copy_speed_bytes = options.max_copy_speed_bytes
+    pending, planned_destinations, skipped = plan.operations, plan.destinations, plan.skipped
+    policy, dry_run = options.policy, options.dry_run
     copied: list[dict[str, str]] = []
     failed: list[dict[str, str]] = []
     if not dry_run:
@@ -626,13 +435,9 @@ def _execute_extraction_plan(plan: ExtractionPlan, options: ExtractionOptions, r
                 # Release our reservation and resolve a fresh collision.
                 planned_destinations.discard(destination_key(final_destination))
                 if item["kind"] == "marker":
-                    final_destination, action = resolve_generated_destination(
-                        final_destination, policy, planned_destinations
-                    )
+                    final_destination, action = resolve_generated_destination(final_destination, policy, planned_destinations)
                 else:
-                    final_destination, action = resolve_destination(
-                        source, final_destination, policy, planned_destinations
-                    )
+                    final_destination, action = resolve_destination(source, final_destination, policy, planned_destinations)
                 if action in {"skip", "same-file"}:
                     skipped.append({"source": str(source), "reason": action})
                     continue
@@ -661,24 +466,11 @@ def _execute_extraction_plan(plan: ExtractionPlan, options: ExtractionOptions, r
             try:
                 if item["kind"] == "marker" and marker_clip_extractor is None:
                     raise PluginError("Marker clip extraction is unavailable")
-                on_chunk = progress.copy_callback()
                 if item["kind"] == "marker":
-                    on_marker_progress = progress.marker_callback(index)
-
-                    marker_clip_extractor(
-                        source,
-                        final_destination,
-                        float(item["seconds"]),
-                        float(item["end_seconds"]),
-                        on_marker_progress,
-                    )
+                    marker_clip_extractor(source, final_destination, float(item["seconds"]), float(item["end_seconds"]),
+                                          progress.marker_callback(index))
                 else:
-                    copy_file_chunked(
-                        source,
-                        final_destination,
-                        on_chunk,
-                        max_copy_speed_bytes,
-                    )
+                    copy_file_chunked(source, final_destination, progress.copy_callback(), options.max_copy_speed_bytes)
             except BaseException as exc:
                 if claimed:
                     try:
@@ -692,26 +484,12 @@ def _execute_extraction_plan(plan: ExtractionPlan, options: ExtractionOptions, r
                 # A single unreadable source or failed copy must not discard the
                 # items already completed in this run.
                 reporter.error(f"[{index}/{len(pending)}] Failed {source}: {exc}")
-                failed.append(
-                    {
-                        "source": str(source),
-                        "destination": str(final_destination),
-                        "kind": str(item["kind"]),
-                        "error": str(exc),
-                    }
-                )
+                failed.append({"source": str(source), "destination": str(final_destination), "kind": str(item["kind"]), "error": str(exc)})
                 continue
 
         progress.complete(index, file_size)
         reporter.info(f"[{index}/{len(pending)}] Finished {final_destination}")
-        copied.append(
-            {
-                "source": str(source),
-                "destination": str(final_destination),
-                "action": str(item["action"]),
-                "kind": str(item["kind"]),
-            }
-        )
+        copied.append({"source": str(source), "destination": str(final_destination), "action": str(item["action"]), "kind": str(item["kind"])})
 
     return copied, failed
 
@@ -724,9 +502,7 @@ def _extraction_result(options, requested_counts, copied, skipped, missing, fail
         "markers_requested": requested_counts.get("marker", 0),
         "images_requested": requested_counts.get("image", 0),
         "files_copied": len(copied),
-        "marker_clips_extracted": sum(
-            1 for item in copied if item.get("kind") == "marker"
-        ),
+        "marker_clips_extracted": sum(1 for item in copied if item.get("kind") == "marker"),
         "files_skipped": len(skipped),
         "files_missing": len(missing),
         "files_failed": len(failed),
@@ -735,7 +511,6 @@ def _extraction_result(options, requested_counts, copied, skipped, missing, fail
         "missing": missing,
         "failed": failed,
     }
-
 
 
 def _copy_resolved_items(
@@ -753,22 +528,13 @@ def _copy_resolved_items(
     reporter.progress(0.0)
     plan = _plan_extraction_items(items, options, initial_missing)
     pending = plan.operations
-    destination_root = options.destination_root
-    max_copy_speed_mib = options.max_copy_speed_mib
-    total_bytes = sum(int(item["size"]) for item in pending)
+    size_description = format_bytes(sum(int(item["size"]) for item in pending))
     marker_clip_count = sum(1 for item in pending if item["kind"] == "marker")
-    size_description = format_bytes(total_bytes)
     if marker_clip_count:
-        size_description += (
-            f" plus {marker_clip_count} marker clip"
-            f"{'s' if marker_clip_count != 1 else ''}"
-        )
-    reporter.info(
-        f"Resolved {len(pending)} file{'s' if len(pending) != 1 else ''} "
-        f"({size_description}) for destination {destination_root}"
-    )
-    if max_copy_speed_mib > 0:
-        reporter.info(f"Copy speed limited to {max_copy_speed_mib:g} MiB/s")
+        size_description += f" plus {marker_clip_count} marker clip{'s' if marker_clip_count != 1 else ''}"
+    reporter.info(f"Resolved {len(pending)} file{'s' if len(pending) != 1 else ''} ({size_description}) for destination {options.destination_root}")
+    if options.max_copy_speed_mib > 0:
+        reporter.info(f"Copy speed limited to {options.max_copy_speed_mib:g} MiB/s")
     else:
         reporter.info("Copy speed is unlimited")
 
@@ -789,14 +555,7 @@ def copy_selected(
 ) -> dict[str, Any]:
     items, missing = resolve_selected_items(client, selections)
     counts = {kind: len(selections.get(kind, [])) for kind in selections}
-    return _copy_resolved_items(
-        items,
-        counts,
-        settings,
-        reporter,
-        missing,
-        getattr(client, "extract_marker_clip", None),
-    )
+    return _copy_resolved_items(items, counts, settings, reporter, missing, getattr(client, "extract_marker_clip", None))
 
 
 def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, Any]:

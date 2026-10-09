@@ -4,20 +4,20 @@ import type { CardWidgetProps } from "../props";
 export function createDashboardCards(dependencies: DashboardDependencies) {
   const { State, api, hub, React, algorithms } = dependencies;
   function PerformerCardWidget(props: CardWidgetProps): R.ReactElement | null {
-    var rows = props.rows, ids = rows.map(function (performer) { return String(performer.id); });
-    var docsCapture = algorithms.docsCaptureEnabled(window.location.search);
-    var readyState = React.useState(Boolean(api.components.PerformerCard)), ready = readyState[0], setReady = readyState[1];
-    var errorState = React.useState(""), error = errorState[0], setError = errorState[1];
-    React.useEffect(function () {
+    const rows = props.rows, ids = rows.map(performer => String(performer.id));
+    const docsCapture = algorithms.docsCaptureEnabled(window.location.search);
+    const [ready, setReady] = React.useState(Boolean(api.components.PerformerCard));
+    const [error, setError] = React.useState("");
+    React.useEffect(() => {
       if (docsCapture || !ids.length) return;
       if (api.components.PerformerCard) { setReady(true); return; }
-      var active = true;
-      hub.native.ensureComponents("Performers", ["PerformerCard"]).then(function () {
+      let active = true;
+      hub.native.ensureComponents("Performers", ["PerformerCard"]).then(() => {
         if (active) setReady(true);
-      }).catch(function (loadError) { if (active) setError(loadError.message || String(loadError)); });
-      return function () { active = false; };
+      }).catch(loadError => { if (active) setError(loadError.message || String(loadError)); });
+      return () => { active = false; };
     }, [docsCapture, ids.length]);
-    var query = api.GQL.useFindPerformersQuery({
+    const query = api.GQL.useFindPerformersQuery({
       variables: { performer_ids: ids, filter: { page: 1, per_page: props.widget.options.cardCount }, performer_filter: {} },
       skip: docsCapture || !ready || !ids.length
     });
@@ -26,35 +26,23 @@ export function createDashboardCards(dependencies: DashboardDependencies) {
     if (error) return (<State title="Could not load performer cards" detail={error} role="alert" />);
     if (!ready || query.loading) return (<State title="Loading performer cards…" />);
     if (query.error) return (<State title="Could not load performer cards" detail={query.error.message} role="alert" />);
-    var cards = algorithms.orderedCards(query.data && query.data.findPerformers ? query.data.findPerformers.performers : [], ids);
-    var deceasedIds = new Set(rows.filter(function (performer) { return performer.death_date; }).map(function (performer) { return String(performer.id); }));
+    const cards = algorithms.orderedCards(query.data && query.data.findPerformers ? query.data.findPerformers.performers : [], ids);
+    const deceasedIds = new Set(rows.filter(performer => performer.death_date).map(performer => String(performer.id)));
     return (<div className="dirty-stats-dashboard-performer-cards">
-
       {props.widget.options.showHeader === false ? null : (<p className="dirty-stats-dashboard-card-count">
-
         {"Showing " + cards.length + " performer" + (cards.length === 1 ? "" : "s")}
-
       </p>)}
-
       <div className="dirty-stats-dashboard-card-grid">
-
-        {cards.map(function (performer) {
-          var deceased = deceasedIds.has(String(performer.id));
+        {cards.map(performer => {
+          const deceased = deceasedIds.has(String(performer.id));
           return (<div key={performer.id} className={"dirty-stats-performer-column" + (deceased ? " is-deceased" : "")}>
-
             {deceased ? (<span className="dirty-stats-memorial-label">
-
-              {"In memoriam"}
-
+              In memoriam
             </span>) : null}
-
             <api.components.PerformerCard performer={performer} />
-
           </div>);
         })}
-
       </div>
-
     </div>);
   }
   return { PerformerCardWidget };

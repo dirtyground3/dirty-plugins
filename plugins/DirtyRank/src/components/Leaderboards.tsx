@@ -1,17 +1,18 @@
 import type * as R from "react";
 import { LEADERBOARD_TOP_OPTIONS, OVERALL_LEADERBOARD_ID, PLUGIN_ID, ROUTE_PATH } from "../constants";
-import type { LeaderboardProps, PerformerFilter, PerformerFilterModel, RankPerformer, RankSettings } from "../types";
+import { linkedBox } from "../domain/navigation";
+import type { ConfigurationEvent, LeaderboardProps, PerformerFilter, PerformerFilterModel, RankPerformer, RankSettings } from "../types";
 import type { ViewDependencies } from "../view";
 export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" | "Fragment" | "DirtyPlugins" | "PluginApi" | "Router" | "NavLink" | "useState" | "useEffect" | "useMemo" | "useRef" | "useCallback" | "documentationCapture" | "StateView" | "SharedPagination" | "SharedDialog" | "CONFIGURATION_CHANGED_EVENT" | "boxOptions" | "categoriesFor" | "settingsFromConfiguration" | "loadRatingIndex" | "loadNativePerformerCard" | "queryPerformers" | "leaderboardPoolFor" | "leaderboardData" | "leaderboardFeaturedCount" | "leaderboardPageSize" | "overallCategoryScoresTitle" | "leaderboardRatingText" | "leaderboardEntries" | "filteredLeaderboardEntries" | "serializeLeaderboardPerformerFilter" | "queryLeaderboardPerformerIds" | "leaderboardStandingEntries" | "filteredLeaderboardPanelProps" | "paginatedLeaderboard" | "leaderboardTopCount" | "battleCategoryPath" | "leaderboardStatPath" | "leaderboardIdFromPath" | "RankButton" | "ConfidenceIndicator" | "LeaderboardStat" | "OverallConfidence" | "Field" | "RankStatisticSelector" | "LeaderboardInfoPopover">) {
   const { React, Fragment, DirtyPlugins, PluginApi, Router, NavLink, useState, useEffect, useMemo, useRef, useCallback, documentationCapture, StateView, SharedPagination, SharedDialog, CONFIGURATION_CHANGED_EVENT, boxOptions, categoriesFor, settingsFromConfiguration, loadRatingIndex, loadNativePerformerCard, queryPerformers, leaderboardPoolFor, leaderboardData, leaderboardFeaturedCount, leaderboardPageSize, overallCategoryScoresTitle, leaderboardRatingText, leaderboardEntries, filteredLeaderboardEntries, serializeLeaderboardPerformerFilter, queryLeaderboardPerformerIds, leaderboardStandingEntries, filteredLeaderboardPanelProps, paginatedLeaderboard, leaderboardTopCount, battleCategoryPath, leaderboardStatPath, leaderboardIdFromPath, RankButton, ConfidenceIndicator, LeaderboardStat, OverallConfidence, Field, RankStatisticSelector, LeaderboardInfoPopover } = dependencies;
   let leaderboardFilterListener: ((model: PerformerFilterModel) => void) | null = null;
   function LeaderboardPodium(props: LeaderboardProps): R.JSX.Element | null {
-    var NativePerformerCard = PluginApi.components && PluginApi.components.PerformerCard;
-    var topCount = leaderboardTopCount(props.topCount);
-    var showcase = LEADERBOARD_TOP_OPTIONS.filter(function (option) { return option.count === topCount; })[0];
-    var top = props.ranked.slice(0, topCount);
-    var podiumOrder = [1, 0, 2];
-    var displayOrder = topCount === 3 ? podiumOrder : top.map(function (_performer, index) { return index; });
+    const NativePerformerCard = PluginApi.components && PluginApi.components.PerformerCard;
+    const topCount = leaderboardTopCount(props.topCount);
+    const showcase = LEADERBOARD_TOP_OPTIONS.filter(option => option.count === topCount)[0];
+    const top = props.ranked.slice(0, topCount);
+    const podiumOrder = [1, 0, 2];
+    const displayOrder = topCount === 3 ? podiumOrder : top.map((_performer, index) => index);
     if (!top.length) {
       return (<StateView
         title="No rated performers"
@@ -21,9 +22,9 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
       aria-label={showcase.name}
       className={"dirty-rank-podium" + (topCount > 3 ? " dirty-rank-podium-expanded dirty-rank-showcase dirty-rank-showcase-" + showcase.theme : "")}
       style={{ "--dirty-rank-top-count": topCount } as R.CSSProperties}>
-      {displayOrder.filter(function (index) { return top[index]; }).map(function (index) {
-        var performer = top[index];
-        var pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
+      {displayOrder.filter(index => top[index]).map(index => {
+        const performer = top[index];
+        const pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
         return (<article
           className={"dirty-rank-podium-place d-flex flex-column dirty-rank-podium-" + (index + 1)}
           key={performer.id}>
@@ -32,7 +33,7 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
               {performer.image_path
                 ? (<img alt="" className="dirty-rank-podium-image" loading="lazy" src={performer.image_path} />)
                 : (<div className="dirty-rank-podium-placeholder d-flex align-items-center justify-content-center">
-                  {"◇"}
+                  ◇
                 </div>)}
             </NavLink>)}
             <div className="dirty-rank-podium-copy text-center">
@@ -68,7 +69,7 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
 
   function LeaderboardPagination(props: { totalPages: number; page: number; firstRank: number; lastRank: number; onPageChange(page: number): void }): R.JSX.Element | null {
     if (props.totalPages <= 1) return null;
-    var summary = "Page " + props.page.toLocaleString() + " of " +
+    const summary = "Page " + props.page.toLocaleString() + " of " +
       props.totalPages.toLocaleString() + " · ranks " +
       props.firstRank.toLocaleString() + "–" + props.lastRank.toLocaleString();
     return (<SharedPagination
@@ -81,93 +82,100 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
   }
 
   function DirtyRankLeaderboardFilterCapture(props: { filter: PerformerFilter }): R.JSX.Element | null {
-    var model = serializeLeaderboardPerformerFilter(props.filter);
-    var key = JSON.stringify(model);
-    useEffect(function () {
+    const model = serializeLeaderboardPerformerFilter(props.filter);
+    const key = JSON.stringify(model);
+    useEffect(() => {
       if (leaderboardFilterListener) leaderboardFilterListener(model);
     }, [key]);
     return null;
   }
 
-  function LeaderboardTable(props: LeaderboardProps): R.JSX.Element | null {
-    var entries = leaderboardStandingEntries(props);
-    var ranked = props.ranked || entries.map(function (entry) { return entry.performer; });
-    var topCount = leaderboardFeaturedCount(props);
-    var pageSize = leaderboardPageSize(props.settings, topCount, props.showFeatured === false ? 0 : Math.min(topCount, ranked.length));
-    var page = paginatedLeaderboard(entries, props.page || 1, pageSize);
+  /** The standings below the featured performers, paged in whole featured rows. */
+  function standingsPage(props: LeaderboardProps) {
+    const entries = leaderboardStandingEntries(props);
+    const ranked = props.ranked || entries.map(entry => entry.performer);
+    const topCount = leaderboardFeaturedCount(props);
+    const pageSize = leaderboardPageSize(props.settings, topCount, props.showFeatured === false ? 0 : Math.min(topCount, ranked.length));
+    return { ranked, topCount, page: paginatedLeaderboard(entries, props.page || 1, pageSize) };
+  }
+
+  /** Shared empty state and pagination around a standings page (a render helper the tests call shallowly). */
+  function standingsPanel(props: LeaderboardProps, standings: ReturnType<typeof standingsPage>, children: R.ReactNode, wrapClassName?: string) {
+    const page = standings.page;
+    const content = (<Fragment>
+      {children}
+      <LeaderboardPagination
+        firstRank={page.firstRank}
+        lastRank={page.lastRank}
+        onPageChange={props.onPageChange!}
+        page={page.currentPage}
+        totalPages={page.totalPages} />
+    </Fragment>);
     return (<section className="dirty-rank-standings-panel dirty-ui-feature-card">
       {!page.total
         ? (<div className="dirty-rank-empty-standings">
-          {props.emptyMessage || (ranked.length ? "Every rated performer is featured above." : "No standings yet.")}
+          {props.emptyMessage || (standings.ranked.length ? "Every rated performer is featured above." : "No standings yet.")}
         </div>)
-        : (<div className="dirty-rank-table-wrap dirty-ui-table-wrap">
-          <table className="table table-hover mb-0 dirty-ui-table dirty-rank-standings-table">
-            <thead>
-              <tr>
-                <th scope="col">
-                  {"Rank"}
-                </th>
-                <th scope="col">
-                  {"Performer"}
-                </th>
-                <th scope="col">
-                  {props.leaderboardId === OVERALL_LEADERBOARD_ID ? "Score" : "Rating"}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {page.items.map(function (entry) {
-                var performer = entry.performer;
-                var rank = entry.rank;
-                var pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
-                return (<tr key={performer.id}>
-                  <td className="dirty-rank-table-rank">
-                    {"#" + rank}
-                  </td>
-                  <td>
-                    <NavLink
-                      className="dirty-rank-table-performer d-inline-flex align-items-center"
-                      to={"/performers/" + performer.id}>
-                      {performer.image_path
-                        ? (<img alt="" className="rounded-circle" loading="lazy" src={performer.image_path} />)
-                        : (<span
-                          className="dirty-rank-table-avatar-placeholder d-inline-flex align-items-center justify-content-center rounded-circle">
-                          {"◇"}
-                        </span>)}
-                      <span className="text-truncate">
-                        {performer.name}
-                      </span>
-                    </NavLink>
-                  </td>
-                  <td
-                    className="dirty-rank-table-rating"
-                    title={overallCategoryScoresTitle(performer, props.leaderboardId, props.cohort, props.settings)}>
-                    {leaderboardRatingText(pool, props.settings)}
-                  </td>
-                </tr>);
-              })}
-            </tbody>
-          </table>
-          <LeaderboardPagination
-            firstRank={page.firstRank}
-            lastRank={page.lastRank}
-            onPageChange={props.onPageChange!}
-            page={page.currentPage}
-            totalPages={page.totalPages} />
-        </div>)}
+        : wrapClassName ? <div className={wrapClassName}>{content}</div> : content}
     </section>);
   }
 
+  function LeaderboardTable(props: LeaderboardProps): R.JSX.Element | null {
+    const standings = standingsPage(props);
+    return standingsPanel(props, standings, (<table className="table table-hover mb-0 dirty-ui-table dirty-rank-standings-table">
+      <thead>
+        <tr>
+          <th scope="col">
+            Rank
+          </th>
+          <th scope="col">
+            Performer
+          </th>
+          <th scope="col">
+            {props.leaderboardId === OVERALL_LEADERBOARD_ID ? "Score" : "Rating"}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {standings.page.items.map(entry => {
+          const performer = entry.performer;
+          const pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
+          return (<tr key={performer.id}>
+            <td className="dirty-rank-table-rank">
+              {"#" + entry.rank}
+            </td>
+            <td>
+              <NavLink
+                className="dirty-rank-table-performer d-inline-flex align-items-center"
+                to={"/performers/" + performer.id}>
+                {performer.image_path
+                  ? (<img alt="" className="rounded-circle" loading="lazy" src={performer.image_path} />)
+                  : (<span
+                    className="dirty-rank-table-avatar-placeholder d-inline-flex align-items-center justify-content-center rounded-circle">
+                    ◇
+                  </span>)}
+                <span className="text-truncate">
+                  {performer.name}
+                </span>
+              </NavLink>
+            </td>
+            <td
+              className="dirty-rank-table-rating"
+              title={overallCategoryScoresTitle(performer, props.leaderboardId, props.cohort, props.settings)}>
+              {leaderboardRatingText(pool, props.settings)}
+            </td>
+          </tr>);
+        })}
+      </tbody>
+    </table>), "dirty-rank-table-wrap dirty-ui-table-wrap");
+  }
+
   function LeaderboardGalleryCard(props: { performer: RankPerformer; leaderboardId: string; cohort: string; settings: RankSettings; rank: number }): R.JSX.Element | null {
-    var NativePerformerCard = PluginApi.components && PluginApi.components.PerformerCard;
-    var performer = props.performer;
-    var pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
-    var imageState = useState(!performer.image_path);
-    var imageReady = imageState[0];
-    var setImageReady = imageState[1];
-    var failedState = useState(false);
-    var imageFailed = failedState[0];
-    var setImageFailed = failedState[1];
+    const NativePerformerCard = PluginApi.components && PluginApi.components.PerformerCard;
+    const performer = props.performer;
+    const pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
+    const [imageReady, setImageReady] = useState(!performer.image_path);
+    const [imageFailed, setImageFailed] = useState(false);
     return (<article className={NativePerformerCard ? "dirty-rank-native-card" : "dirty-rank-gallery-card"}>
       {NativePerformerCard ? (<NativePerformerCard performer={performer} />) : (<NavLink className="dirty-rank-gallery-image-link" to={"/performers/" + performer.id}>
         {performer.image_path && !imageFailed
@@ -175,11 +183,11 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
             alt=""
             className={imageReady ? "dirty-rank-gallery-image dirty-rank-gallery-image-ready" : "dirty-rank-gallery-image"}
             loading="lazy"
-            onError={function () { setImageFailed(true); setImageReady(true); }}
-            onLoad={function () { setImageReady(true); }}
+            onError={() => { setImageFailed(true); setImageReady(true); }}
+            onLoad={() => { setImageReady(true); }}
             src={performer.image_path} />)
           : (<div className="dirty-rank-gallery-placeholder d-flex align-items-center justify-content-center">
-            {"◇"}
+            ◇
           </div>)}
         {performer.image_path && !imageFailed && !imageReady && (<span aria-hidden="true" className="dirty-rank-gallery-loading" />)}
       </NavLink>)}
@@ -203,104 +211,58 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
   }
 
   function LeaderboardGallery(props: LeaderboardProps): R.JSX.Element | null {
-    var entries = leaderboardStandingEntries(props);
-    var ranked = props.ranked || entries.map(function (entry) { return entry.performer; });
-    var topCount = leaderboardFeaturedCount(props);
-    var pageSize = leaderboardPageSize(props.settings, topCount, props.showFeatured === false ? 0 : Math.min(topCount, ranked.length));
-    var page = paginatedLeaderboard(entries, props.page!, pageSize);
-    return (<section className="dirty-rank-standings-panel dirty-ui-feature-card">
-      {!page.total
-        ? (<div className="dirty-rank-empty-standings">
-          {props.emptyMessage || (ranked.length ? "Every rated performer is featured above." : "No standings yet.")}
-        </div>)
-        : (<Fragment>
-          <div
-            className="dirty-rank-gallery-grid"
-            style={{ "--dirty-rank-gallery-columns": topCount } as R.CSSProperties}>
-            {page.items.map(function (entry) {
-              return (<LeaderboardGalleryCard
-                cohort={props.cohort}
-                key={entry.performer.id}
-                leaderboardId={props.leaderboardId}
-                performer={entry.performer}
-                rank={entry.rank}
-                settings={props.settings} />);
-            })}
-          </div>
-          <LeaderboardPagination
-            firstRank={page.firstRank}
-            lastRank={page.lastRank}
-            onPageChange={props.onPageChange!}
-            page={page.currentPage}
-            totalPages={page.totalPages} />
-        </Fragment>)}
-    </section>);
+    const standings = standingsPage(props);
+    return standingsPanel(props, standings, (<div
+      className="dirty-rank-gallery-grid"
+      style={{ "--dirty-rank-gallery-columns": standings.topCount } as R.CSSProperties}>
+      {standings.page.items.map(entry => (<LeaderboardGalleryCard
+        cohort={props.cohort}
+        key={entry.performer.id}
+        leaderboardId={props.leaderboardId}
+        performer={entry.performer}
+        rank={entry.rank}
+        settings={props.settings} />))}
+    </div>));
   }
 
   function DirtyRankLeaderboardsRoute(): R.JSX.Element | null {
     DirtyPlugins.react.usePageTitle("DirtyRank", "Leaderboard");
-    var settingsState = useState<RankSettings | null>(null);
-    var settings = settingsState[0];
-    var setSettings = settingsState[1];
-    var performersState = useState<RankPerformer[]>([]);
-    var performers = performersState[0];
-    var setPerformers = performersState[1];
-    var location = Router.useLocation();
-    var history = Router.useHistory();
-    var requestedBox = new URLSearchParams(location.search).get("box") || new URLSearchParams(location.search).get("cohort") || "";
-    var cohort = settings && settings.enabledCohorts.indexOf(requestedBox) !== -1 ? requestedBox : settings ? settings.defaultCohort : "";
-    var requestedLeaderboardId = leaderboardIdFromPath(location.pathname);
-    var loadingState = useState(true);
-    var loading = loadingState[0];
-    var setLoading = loadingState[1];
-    var errorState = useState("");
-    var error = errorState[0];
-    var setError = errorState[1];
-    var pageState = useState(1);
-    var page = pageState[0];
-    var setPage = pageState[1];
-    var filterOpenState = useState(false);
-    var filterOpen = filterOpenState[0];
-    var setFilterOpen = filterOpenState[1];
-    var filterModelState = useState<PerformerFilterModel | null>(null);
-    var filterModel = filterModelState[0];
-    var setFilterModel = filterModelState[1];
-    var filterIdsState = useState<Set<string> | null>(null);
-    var filterIds = filterIdsState[0];
-    var setFilterIds = filterIdsState[1];
-    var resolvedFilterKeyState = useState("");
-    var resolvedFilterKey = resolvedFilterKeyState[0];
-    var setResolvedFilterKey = resolvedFilterKeyState[1];
-    var filterBusyState = useState(false);
-    var filterBusy = filterBusyState[0];
-    var setFilterBusy = filterBusyState[1];
-    var filterErrorState = useState("");
-    var filterError = filterErrorState[0];
-    var setFilterError = filterErrorState[1];
-    var nativeReadyState = useState(false);
-    var nativeReady = nativeReadyState[0];
-    var setNativeReady = nativeReadyState[1];
-    var nativeErrorState = useState("");
-    var nativeError = nativeErrorState[0];
-    var setNativeError = nativeErrorState[1];
-    var filterTrigger = useRef<HTMLButtonElement>(null);
-    var filterClose = useRef<HTMLButtonElement>(null);
+    const [settings, setSettings] = useState<RankSettings | null>(null);
+    const [performers, setPerformers] = useState<RankPerformer[]>([]);
+    const location = Router.useLocation();
+    const history = Router.useHistory();
+    const query = new URLSearchParams(location.search), requestedBox = query.get("box") || query.get("cohort") || "";
+    const cohort = settings && settings.enabledCohorts.indexOf(requestedBox) !== -1 ? requestedBox : settings ? settings.defaultCohort : "";
+    const requestedLeaderboardId = leaderboardIdFromPath(location.pathname);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [page, setPage] = useState(1);
+    const [filterOpen, setFilterOpen] = useState(false);
+    const [filterModel, setFilterModel] = useState<PerformerFilterModel | null>(null);
+    const [filterIds, setFilterIds] = useState<Set<string> | null>(null);
+    const [resolvedFilterKey, setResolvedFilterKey] = useState("");
+    const [filterBusy, setFilterBusy] = useState(false);
+    const [filterError, setFilterError] = useState("");
+    const [nativeReady, setNativeReady] = useState(false);
+    const [nativeError, setNativeError] = useState("");
+    const filterTrigger = useRef<HTMLButtonElement>(null);
+    const filterClose = useRef<HTMLButtonElement>(null);
 
-    useEffect(function () {
-      var active = true;
-      leaderboardFilterListener = function (model) { if (active) setFilterModel(model); };
+    useEffect(() => {
+      let active = true;
+      leaderboardFilterListener = model => { if (active) setFilterModel(model); };
       DirtyPlugins.native.ensureComponents("Performers", ["FilteredPerformerList"])
-        .then(function () { if (active) setNativeReady(true); })
-        .catch(function (caught) { if (active) setNativeError(caught.message || String(caught)); });
-      return function () {
+        .then(() => { if (active) setNativeReady(true); })
+        .catch(caught => { if (active) setNativeError(caught.message || String(caught)); });
+      return () => {
         active = false;
         leaderboardFilterListener = null;
       };
     }, []);
 
-    var filterKey = filterModel ? JSON.stringify(filterModel) : "";
-    var filterActive = Boolean(filterModel && filterModel!.count > 0);
-    useEffect(function () {
+    const filterKey = filterModel ? JSON.stringify(filterModel) : "";
+    const filterActive = Boolean(filterModel && filterModel!.count > 0);
+    useEffect(() => {
       if (!filterActive) {
         setFilterIds(null);
         setResolvedFilterKey("");
@@ -308,64 +270,60 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
         setFilterError("");
         return undefined;
       }
-      var controller = new AbortController();
-      var active = true;
+      const controller = new AbortController();
+      let active = true;
       setFilterBusy(true);
       setFilterError("");
       queryLeaderboardPerformerIds(filterModel!, controller.signal)
-        .then(function (ids) { if (active) { setFilterIds(ids); setResolvedFilterKey(filterKey); } })
-        .catch(function (caught) { if (active && caught.name !== "AbortError") setFilterError(caught.message || String(caught)); })
-        .finally(function () { if (active) setFilterBusy(false); });
-      return function () { active = false; controller.abort(); };
+        .then(ids => { if (active) { setFilterIds(ids); setResolvedFilterKey(filterKey); } })
+        .catch(caught => { if (active && caught.name !== "AbortError") setFilterError(caught.message || String(caught)); })
+        .finally(() => { if (active) setFilterBusy(false); });
+      return () => { active = false; controller.abort(); };
     }, [filterKey]);
 
     const loadRequest = useRef(0), mounted = useRef(true);
-    var load = useCallback(function () {
+    const load = useCallback(() => {
       const request = ++loadRequest.current;
       setLoading(true);
       setError("");
       return Promise.all([DirtyPlugins.getPluginSettings(PLUGIN_ID), queryPerformers(true), loadRatingIndex(), loadNativePerformerCard()])
-        .then(function (values) {
+        .then(values => {
           if (!mounted.current || request !== loadRequest.current) return;
-          var nextSettings = settingsFromConfiguration(values[0]);
+          const nextSettings = settingsFromConfiguration(values[0]);
           setSettings(nextSettings);
           setPerformers(values[1]);
         })
-        .catch(function (caught) { if (mounted.current && request === loadRequest.current) setError(caught.message || String(caught)); })
-        .finally(function () { if (mounted.current && request === loadRequest.current) setLoading(false); });
+        .catch(caught => { if (mounted.current && request === loadRequest.current) setError(caught.message || String(caught)); })
+        .finally(() => { if (mounted.current && request === loadRequest.current) setLoading(false); });
     }, []);
 
-    useEffect(function () {
+    useEffect(() => {
       mounted.current = true;
       void load();
-      function changed(event: import("../types").ConfigurationEvent) {
+      function changed(event: ConfigurationEvent) {
         if (!event.detail || event.detail.pluginId === PLUGIN_ID) void load();
       }
       window.addEventListener(CONFIGURATION_CHANGED_EVENT, changed);
-      return function () { mounted.current = false; loadRequest.current += 1; window.removeEventListener(CONFIGURATION_CHANGED_EVENT, changed); };
+      return () => { mounted.current = false; loadRequest.current += 1; window.removeEventListener(CONFIGURATION_CHANGED_EVENT, changed); };
     }, [load]);
 
-    var availableCohorts = settings ? boxOptions(settings!, true) : [];
-    var enabledCategories = settings ? categoriesFor(settings!, cohort).filter(function (category) { return category.enabled; }) : [];
-    var leaderboardId = requestedLeaderboardId === OVERALL_LEADERBOARD_ID || enabledCategories.some(function (category) { return category.id === requestedLeaderboardId; })
+    const availableCohorts = settings ? boxOptions(settings!, true) : [];
+    const enabledCategories = settings ? categoriesFor(settings!, cohort).filter(category => category.enabled) : [];
+    const leaderboardId = requestedLeaderboardId === OVERALL_LEADERBOARD_ID || enabledCategories.some(category => category.id === requestedLeaderboardId)
       ? requestedLeaderboardId : OVERALL_LEADERBOARD_ID;
-    var viewMode = settings ? settings.leaderboardView : "gallery";
-    var topCount = settings ? settings.leaderboardTopCount : 3;
-    var selectedCategory = enabledCategories.find(function (category) { return category.id === leaderboardId; }) || null;
-    var data = useMemo(function () {
-      return settings ? leaderboardData(performers, leaderboardId, cohort, settings) : null;
-    }, [cohort, leaderboardId, performers, settings]);
-    var allEntries = useMemo(function () {
-      return data ? leaderboardEntries(data.ranked) : [];
-    }, [data]);
-    var standingEntries = useMemo(function () {
+    const viewMode = settings ? settings.leaderboardView : "gallery";
+    const topCount = settings ? settings.leaderboardTopCount : 3;
+    const selectedCategory = enabledCategories.find(category => category.id === leaderboardId) || null;
+    const data = useMemo(() => settings ? leaderboardData(performers, leaderboardId, cohort, settings) : null, [cohort, leaderboardId, performers, settings]);
+    const allEntries = useMemo(() => data ? leaderboardEntries(data.ranked) : [], [data]);
+    const standingEntries = useMemo(() => {
       if (filterActive) return filteredLeaderboardEntries(allEntries, filterIds);
       return allEntries.slice(leaderboardTopCount(topCount));
     }, [allEntries, filterActive, filterIds, topCount]);
-    useEffect(function () { setPage(1); }, [cohort, leaderboardId, viewMode, filterKey, topCount, settings && settings.leaderboardPerformerCount]);
-    var pageSize = settings ? leaderboardPageSize(settings, topCount, filterActive ? 0 : Math.min(topCount, data ? data.ranked.length : 0)) : 15;
-    var totalPages = Math.max(1, Math.ceil(standingEntries.length / pageSize));
-    useEffect(function () {
+    useEffect(() => { setPage(1); }, [cohort, leaderboardId, viewMode, filterKey, topCount, settings && settings.leaderboardPerformerCount]);
+    const pageSize = settings ? leaderboardPageSize(settings, topCount, filterActive ? 0 : Math.min(topCount, data ? data.ranked.length : 0)) : 15;
+    const totalPages = Math.max(1, Math.ceil(standingEntries.length / pageSize));
+    useEffect(() => {
       if (page > totalPages) setPage(totalPages);
     }, [page, totalPages]);
 
@@ -378,32 +336,34 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
           title="Could not load DirtyRank leaderboards"
           detail={error || "DirtyRank settings are unavailable."}
           actions={(<RankButton onClick={load}>
-            {"Retry"}
+            Retry
           </RankButton>)} />
       </main>);
     }
 
-    var stats = data.stats;
-    var censorMedia = documentationCapture();
+    const stats = data.stats;
+    const censorMedia = documentationCapture();
+    const box = linkedBox(settings.defaultCohort, cohort);
+    const Standings = viewMode === "gallery" ? LeaderboardGallery : LeaderboardTable;
     return (<main
       className={"dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide dirty-rank-leaderboards-route" + (censorMedia ? " dirty-rank-censored-media" : "")}>
       <div className="dirty-rank-leaderboards-shell">
         <header className="dirty-rank-leaderboards-header dirty-ui-page-header dirty-ui-feature-card">
           <h1 className="dirty-rank-leaderboards-page-title">
-            {"Leaderboards"}
+            Leaderboards
           </h1>
           <div className="dirty-rank-leaderboards-controls dirty-ui-control-row">
             <RankStatisticSelector
               value={leaderboardId}
               categories={enabledCategories}
-              boxId={cohort === settings.defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : cohort} />
+              boxId={box} />
             <button
               ref={filterTrigger}
               className="btn btn-secondary dirty-ui-button dirty-ui-control"
               type="button"
               aria-haspopup="dialog"
               aria-expanded={filterOpen}
-              onClick={function () { setFilterOpen(true); }}>
+              onClick={() => { setFilterOpen(true); }}>
               {"Filter"}
               {filterActive ? " (" + filterModel!.count + ")" : ""}
             </button>
@@ -449,13 +409,13 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
             </LeaderboardInfoPopover>
             <NavLink
               className="btn btn-secondary dirty-ui-button dirty-ui-control dirty-rank-leaderboards-battles"
-              to={selectedCategory ? battleCategoryPath(selectedCategory.id, false, "", cohort === settings.defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : cohort) : ROUTE_PATH + (cohort === settings.defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : "?box=" + encodeURIComponent(cohort))}>
-              {"Battles"}
+              to={selectedCategory ? battleCategoryPath(selectedCategory.id, false, "", box) : ROUTE_PATH + (box ? "?box=" + encodeURIComponent(box) : "")}>
+              Battles
             </NavLink>
             <NavLink
               className="btn btn-secondary dirty-ui-button dirty-ui-control dirty-rank-leaderboards-options"
               to="/plugins/dirty-plugins?plugin=dirtyRank">
-              {"Options"}
+              Options
             </NavLink>
           </div>
         </header>
@@ -468,27 +428,27 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
           initialFocusRef={filterClose}
           openerRef={filterTrigger}
           allowNativePopup={true}
-          onClose={function () { setFilterOpen(false); }}>
+          onClose={() => { setFilterOpen(false); }}>
           <div className="dirty-rank-filter-dialog-heading">
             <h2>
-              {"Performer filters"}
+              Performer filters
             </h2>
             <button
               ref={filterClose}
               className="btn btn-secondary dirty-ui-button"
-              onClick={function () { setFilterOpen(false); }}
+              onClick={() => { setFilterOpen(false); }}
               type="button">
-              {"Done"}
+              Done
             </button>
           </div>
           {availableCohorts.length > 1 && (<Field className="dirty-rank-control" id="dirty-rank-leaderboard-cohort" label="Gender box">
-            <select className="form-control" id="dirty-rank-leaderboard-cohort" onChange={function (event) {
-              var nextBox = event.target.value;
-              var nextId = categoriesFor(settings!, nextBox).some(function (category) { return category.enabled && category.id === leaderboardId; }) ? leaderboardId : OVERALL_LEADERBOARD_ID;
-              var path = leaderboardStatPath(nextId, nextBox);
+            <select className="form-control" id="dirty-rank-leaderboard-cohort" onChange={event => {
+              const nextBox = event.target.value;
+              const nextId = categoriesFor(settings!, nextBox).some(category => category.enabled && category.id === leaderboardId) ? leaderboardId : OVERALL_LEADERBOARD_ID;
+              const path = leaderboardStatPath(nextId, nextBox);
               history.push(DirtyPlugins.captureUrl(path));
             }} value={cohort}>
-              {availableCohorts.map(function (item) {
+              {availableCohorts.map(item => {
                 return (<option key={item[0]} value={item[0]}>
                   {item[1]}
                 </option>);
@@ -498,7 +458,7 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
           {nativeError ? (<StateView title="Stash filters unavailable" detail={nativeError} />)
             : !nativeReady ? (<StateView title="Loading Stash filters…" />)
               : censorMedia ? (<p role="note">
-                {"Native filter results are hidden while capturing documentation."}
+                Native filter results are hidden while capturing documentation.
               </p>)
                 : (<PluginApi.components.FilteredPerformerList
                   alterQuery={false}
@@ -514,29 +474,17 @@ export function createLeaderboards(dependencies: Pick<ViewDependencies, "React" 
                 ranked={data.ranked}
                 settings={settings}
                 topCount={topCount} />)}
-              {viewMode === "gallery"
-                ? (<LeaderboardGallery {...Object.assign({
-                  cohort: cohort,
-                  entries: standingEntries,
-                  leaderboardId: leaderboardId,
-                  onPageChange: setPage,
-                  page: page,
-                  ranked: data.ranked,
-                  topCount: topCount,
-                  showFeatured: !filterActive,
-                  settings: settings,
-                }, filterActive ? filteredLeaderboardPanelProps() : {})} />)
-                : (<LeaderboardTable {...Object.assign({
-                  cohort: cohort,
-                  entries: standingEntries,
-                  leaderboardId: leaderboardId,
-                  onPageChange: setPage,
-                  page: page,
-                  ranked: data.ranked,
-                  topCount: topCount,
-                  showFeatured: !filterActive,
-                  settings: settings,
-                }, filterActive ? filteredLeaderboardPanelProps() : {})} />)}
+              <Standings
+                cohort={cohort}
+                entries={standingEntries}
+                leaderboardId={leaderboardId}
+                onPageChange={setPage}
+                page={page}
+                ranked={data.ranked}
+                topCount={topCount}
+                showFeatured={!filterActive}
+                settings={settings}
+                {...(filterActive ? filteredLeaderboardPanelProps() : {})} />
             </Fragment>)}
       </div>
     </main>);

@@ -1,4 +1,4 @@
-import type { StatsDataDependencies, StatsEntityLoad, StatsPageEffect, StatsPageRequest } from "../types";
+import type { EntityResponse, StatsDataDependencies, StatsEntityLoad, StatsPageEffect, StatsPageRequest, StatsPerformer, StatsScene } from "../types";
 
 
 /**
@@ -7,12 +7,12 @@ import type { StatsDataDependencies, StatsEntityLoad, StatsPageEffect, StatsPage
  * @returns {Promise<T[]>}
  */
 export async function fetchAllPages<T>(request: StatsPageRequest<T>) {
-  var rows: T[] = [], page = 1, total = 0;
+  let rows: T[] = [], page = 1, total = 0;
   do {
     if (request.signal.aborted) return [];
-    var response = await request.graphql(request.query, request.variables(page), { signal: request.signal });
+    const response = await request.graphql(request.query, request.variables(page), { signal: request.signal });
     if (request.signal.aborted) return [];
-    var collection = request.collection(response);
+    const collection = request.collection(response);
     total = collection.count;
     if (!collection.rows.length && rows.length < total) throw new Error(request.failureLabel);
     rows = rows.concat(collection.rows);
@@ -31,8 +31,8 @@ export function createLoader(dependencies: StatsDataDependencies) {
    * @param {unknown[]} keys
    */
   function usePageLoad<T>(options: StatsPageEffect<T>, keys: unknown[]) {
-    dependencies.React.useEffect(function () {
-      var controller = new AbortController();
+    dependencies.React.useEffect(() => {
+      const controller = new AbortController();
       options.setError("");
       if (options.enabled === false) {
         if (options.onDisabled) options.onDisabled();
@@ -41,12 +41,12 @@ export function createLoader(dependencies: StatsDataDependencies) {
       }
       options.setLoading(true);
       if (options.onStart) options.onStart();
-      fetchAllPages(Object.assign({}, options, { graphql: (query: string, variables: Record<string, unknown>, config: { signal: AbortSignal }) => dependencies.graphql<import("../types").EntityResponse<T>>(query, variables, config), signal: controller.signal }))
-        .then(function (rows) {
+      fetchAllPages(Object.assign({}, options, { graphql: (query: string, variables: Record<string, unknown>, config: { signal: AbortSignal }) => dependencies.graphql<EntityResponse<T>>(query, variables, config), signal: controller.signal }))
+        .then(rows => {
           if (controller.signal.aborted) return;
           options.publish(rows);
           options.setLoading(false);
-        }).catch(function (error) {
+        }).catch(error => {
           if (controller.signal.aborted) return;
           if (options.onError) options.onError();
           options.setError(error.message);
@@ -58,22 +58,20 @@ export function createLoader(dependencies: StatsDataDependencies) {
     }, keys);
   }
   /** Ordinary entity pages share state; refresh and selection stay with their views. */
-  function usePageData<T = import("../types").StatsScene & import("../types").StatsPerformer>() {
-    var rows = dependencies.React.useState<T[]>([]), loading = dependencies.React.useState(true), error = dependencies.React.useState("");
+  function usePageData<T = StatsScene & StatsPerformer>() {
+    const rows = dependencies.React.useState<T[]>([]), loading = dependencies.React.useState(true), error = dependencies.React.useState("");
     return {
       rows: rows[0], loading: loading[0], error: error[0], setError: error[1],
       /** @param {StatsEntityLoad} options @param {unknown[]} keys */
-      useLoad: function (options: StatsEntityLoad<T>, keys: unknown[]) {
+      useLoad: (options: StatsEntityLoad<T>, keys: unknown[]) => {
         usePageLoad(Object.assign({}, options, {
-          collection: function (response: import("../types").EntityResponse<T>) {
-            return options.entity === "performers" ? { count: response.findPerformers!.count, rows: response.findPerformers!.performers } : { count: response.findScenes!.count, rows: response.findScenes!.scenes };
-          },
+          collection: (response: EntityResponse<T>) => options.entity === "performers" ? { count: response.findPerformers!.count, rows: response.findPerformers!.performers } : { count: response.findScenes!.count, rows: response.findScenes!.scenes },
           failureLabel: options.failureLabel || "The " + (options.entity === "performers" ? "performer" : "scene") + " list changed while loading. Refresh to try again.",
           setLoading: loading[1], setError: error[1],
-          publish: function (result: T[]) { rows[1](result); if (options.onLoaded) options.onLoaded(result); }
+          publish: (result: T[]) => { rows[1](result); if (options.onLoaded) options.onLoaded(result); }
         }), keys);
       }
     };
   }
-  return { usePageLoad: usePageLoad, usePageData: usePageData };
+  return { usePageLoad, usePageData };
 }

@@ -19,7 +19,7 @@ export interface DashboardViews {
   originWidget: (arg0: StatsPerformer[], arg1: DashboardWidgetModel) => R.ReactElement | null;
   growthWidget: (arg0: StatsScene[], arg1: Capacity | null, arg2: DashboardWidgetModel) => R.ReactElement | null;
   ageWidget: (arg0: StatsScene[], arg1: DashboardWidgetModel) => R.ReactElement | null;
-  scatterWidget: (arg0: import("./types").ChartOption[], arg1: DashboardWidgetModel, arg2: string[], arg3: number | null) => R.ReactElement | null;
+  scatterWidget: (arg0: ChartOption[], arg1: DashboardWidgetModel, arg2: string[], arg3: number | null) => R.ReactElement | null;
   performerScatterWidget: (arg0: StatsPerformer[], arg1: DashboardWidgetModel) => R.ReactElement | null;
   countRatingWidget: (arg0: StatsScene[], arg1: DashboardWidgetModel) => R.ReactElement | null;
   repeatOffenderWidget: (arg0: StatsScene[], arg1: DashboardWidgetModel) => R.ReactElement | null;

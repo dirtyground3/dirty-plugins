@@ -1,122 +1,74 @@
+import { linkedBox } from "./domain/navigation";
 import type { ConfigurationEvent, Decision, DefeatedKing, Feedback, PreparedPair, RankBattleSessionDependencies, RankCategory, RankOperationResult, RankPairResult, RankPerformer, RankSettings, UndoEntry } from "./types";
 export function createBattleSession(dependencies: RankBattleSessionDependencies) {
-  var CONFIGURATION_CHANGED_EVENT = dependencies.CONFIGURATION_CHANGED_EVENT;
-  var DirtyPlugins = dependencies.DirtyPlugins;
-  var PLUGIN_ID = dependencies.PLUGIN_ID;
-  var Router = dependencies.Router;
-  var UNDO_HISTORY_LIMIT = dependencies.UNDO_HISTORY_LIMIT;
-  var battleCategoryPath = dependencies.battleCategoryPath;
-  var battleCohortFor = dependencies.battleCohortFor;
-  var battleId = dependencies.battleId;
-  var categoriesForPerformer = dependencies.categoriesForPerformer;
-  var categoryConfidence = dependencies.categoryConfidence;
-  var cohortLabel = dependencies.cohortLabel;
-  var documentationCapture = dependencies.documentationCapture;
-  var loadNativePerformerCard = dependencies.loadNativePerformerCard;
-  var loadRatingIndex = dependencies.loadRatingIndex;
-  var pairToken = dependencies.pairToken;
-  var poolFor = dependencies.poolFor;
-  var preferredCategoryId = dependencies.preferredCategoryId;
-  var queryPerformers = dependencies.queryPerformers;
-  var ratingDelta = dependencies.ratingDelta;
-  var rememberCategory = dependencies.rememberCategory;
-  var runOperation = dependencies.runOperation;
-  var selectGauntletPair = dependencies.selectGauntletPair;
-  var selectKingsPair = dependencies.selectKingsPair;
-  var selectKingsStartingPair = dependencies.selectKingsStartingPair;
-  var selectPair = dependencies.selectPair;
-  var settingsFromConfiguration = dependencies.settingsFromConfiguration;
-  var updatePerformerState = dependencies.updatePerformerState;
-  var useCallback = dependencies.useCallback;
-  var useEffect = dependencies.useEffect;
-  var useMemo = dependencies.useMemo;
-  var useRef = dependencies.useRef;
-  var useState = dependencies.useState;
-  var getRatingIndexRevision = dependencies.getRatingIndexRevision;
+  const {
+    CONFIGURATION_CHANGED_EVENT, DirtyPlugins, PLUGIN_ID, Router, UNDO_HISTORY_LIMIT, battleCategoryPath, battleCohortFor,
+    battleId, categoriesForPerformer, categoryConfidence, cohortLabel, documentationCapture, loadNativePerformerCard,
+    loadRatingIndex, pairToken, poolFor, preferredCategoryId, queryPerformers, ratingDelta, rememberCategory, runOperation,
+    selectGauntletPair, selectKingsPair, selectKingsStartingPair, selectPair, settingsFromConfiguration, updatePerformerState,
+    useCallback, useEffect, useMemo, useRef, useState, getRatingIndexRevision,
+  } = dependencies;
 
   /** @param {{routeDetails: {categoryId?: string, kingsMode?: boolean}, routeTargetId?: string}} props */
   function useBattleSession(props: { routeDetails: { categoryId?: string, kingsMode?: boolean }, routeTargetId?: string }) {
-    var routeDetails = props.routeDetails;
-    var routeTargetId = props.routeTargetId;
-    var requestedCategoryId = routeDetails.categoryId;
-    var history = Router.useHistory();
-    var location = Router.useLocation();
-    var requestedCohort = new URLSearchParams(location.search).get("box") || new URLSearchParams(location.search).get("cohort") || "";
-    var gauntletTargetId = routeTargetId;
-    var gauntletMode = Boolean(gauntletTargetId);
-    var censorMedia = documentationCapture();
-    var kingsMode = !gauntletMode && Boolean(routeDetails.kingsMode);
+    const routeDetails = props.routeDetails;
+    const requestedCategoryId = routeDetails.categoryId;
+    const history = Router.useHistory();
+    const location = Router.useLocation();
+    const query = new URLSearchParams(location.search), requestedCohort = query.get("box") || query.get("cohort") || "";
+    const gauntletTargetId = props.routeTargetId;
+    const gauntletMode = Boolean(gauntletTargetId);
+    const findTarget = (list: RankPerformer[]) => gauntletMode ? list.find(performer => String(performer.id) === gauntletTargetId) || null : null;
+    const censorMedia = documentationCapture();
+    const kingsMode = !gauntletMode && Boolean(routeDetails.kingsMode);
     DirtyPlugins.react.usePageTitle("DirtyRank", gauntletMode ? "Gauntlet" : kingsMode ? "King of the Hill" : "Battles");
-    var settingsState = useState<RankSettings | null>(null);
-    var settings = settingsState[0];
-    var setSettings = settingsState[1];
-    var performersState = useState<RankPerformer[]>([]);
-    var performers = performersState[0];
-    var setPerformers = performersState[1];
-    var cohort = settings ? battleCohortFor(settings!, gauntletMode ? performers.find(function (performer) {
-      return String(performer.id) === gauntletTargetId;
-    }) : null, requestedCohort) : "";
-    var requestedContextRef = useRef<{ cohort: string; categoryId?: string }>({ cohort: "" });
+    const [settings, setSettings] = useState<RankSettings | null>(null);
+    const [performers, setPerformers] = useState<RankPerformer[]>([]);
+    const gauntletTarget = useMemo(() => findTarget(performers), [gauntletMode, gauntletTargetId, performers]);
+    const cohort = settings ? battleCohortFor(settings, gauntletTarget, requestedCohort) : "";
+    const requestedContextRef = useRef<{ cohort: string; categoryId?: string }>({ cohort: "" });
     requestedContextRef.current = { cohort: requestedCohort, categoryId: requestedCategoryId };
-    var categoryState = useState("");
-    var categoryId = categoryState[0];
-    var setCategoryId = categoryState[1];
-    var pairState = useState<RankPairResult | null>(null);
-    var pairInfo = pairState[0];
-    var setPairInfo = pairState[1];
-    var loadingState = useState(true);
-    var loading = loadingState[0];
-    var setLoading = loadingState[1];
-    var errorState = useState("");
-    var error = errorState[0];
-    var setError = errorState[1];
-    var feedbackState = useState<Feedback | null>(null);
-    var feedback = feedbackState[0];
-    var setFeedback = feedbackState[1];
-    var decisionState = useState<Decision | null>(null);
-    var decision = decisionState[0];
-    var setDecision = decisionState[1];
-    var undoHistoryState = useState<UndoEntry[]>([]);
-    var undoHistory = undoHistoryState[0];
-    var setUndoHistory = undoHistoryState[1];
-    var pendingState = useState(0);
-    var pendingVotes = pendingState[0];
-    var setPendingVotes = pendingState[1];
-    var recentPairs = useRef<string[]>([]);
-    var submittedPairRef = useRef("");
-    var pendingVotesRef = useRef(0);
-    var voteQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-    var mountedRef = useRef(true);
-    var loadRequestRef = useRef(0);
-    var undoHistoryRef = useRef<UndoEntry[]>([]);
-    var defeatedKingsRef = useRef<DefeatedKing[]>([]);
-    var operationStatusRef = useRef(new Map<string, { recordFailed: boolean; undone: boolean }>());
-    var preparedPairRef = useRef<PreparedPair | null>(null);
-    var preparedImagesRef = useRef<HTMLImageElement[]>([]);
+    const [categoryId, setCategoryId] = useState("");
+    const [pairInfo, setPairInfo] = useState<RankPairResult | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [feedback, setFeedback] = useState<Feedback | null>(null);
+    const [decision, setDecision] = useState<Decision | null>(null);
+    const [undoHistory, setUndoHistory] = useState<UndoEntry[]>([]);
+    const [pendingVotes, setPendingVotes] = useState(0);
+    const recentPairs = useRef<string[]>([]);
+    const submittedPairRef = useRef("");
+    const pendingVotesRef = useRef(0);
+    const voteQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+    const mountedRef = useRef(true);
+    const loadRequestRef = useRef(0);
+    const undoHistoryRef = useRef<UndoEntry[]>([]);
+    const defeatedKingsRef = useRef<DefeatedKing[]>([]);
+    const operationStatusRef = useRef(new Map<string, { recordFailed: boolean; undone: boolean }>());
+    const preparedPairRef = useRef<PreparedPair | null>(null);
+    const preparedImagesRef = useRef<HTMLImageElement[]>([]);
 
-    var load = useCallback(function () {
+    const load = useCallback(() => {
       const request = ++loadRequestRef.current;
       setLoading(true);
       setError("");
       return Promise.all([DirtyPlugins.getPluginSettings(PLUGIN_ID), queryPerformers(true), loadRatingIndex(), loadNativePerformerCard()])
-        .then(function (values) {
+        .then(values => {
           if (!mountedRef.current || request !== loadRequestRef.current) return;
-          var nextSettings = settingsFromConfiguration(values[0]);
-          var gauntletTarget = gauntletMode
-            ? values[1].find(function (performer) { return String(performer.id) === gauntletTargetId; })
-            : null;
+          const nextSettings = settingsFromConfiguration(values[0]);
+          const gauntletTarget = findTarget(values[1]);
           if (gauntletMode && !gauntletTarget) throw new Error("The selected Gauntlet performer could not be found.");
-          var requestedContext = requestedContextRef.current;
-          var nextCohort = battleCohortFor(nextSettings, gauntletTarget, requestedContext.cohort);
+          const requestedContext = requestedContextRef.current;
+          const nextCohort = battleCohortFor(nextSettings, gauntletTarget, requestedContext.cohort);
           if (!nextCohort) {
             throw new Error("Enable a category that includes " + cohortLabel(gauntletTarget ? gauntletTarget.gender : nextSettings.defaultCohort) + " performers in DirtyRank settings.");
           }
-          var enabled = categoriesForPerformer(nextSettings, nextCohort, gauntletTarget);
+          const enabled = categoriesForPerformer(nextSettings, nextCohort, gauntletTarget);
           if (!enabled.length) throw new Error("Enable at least one DirtyRank category for the selected performer cohort.");
           setSettings(nextSettings);
           setPerformers(values[1]);
-          setCategoryId(function (current) {
-            if (enabled.some(function (item) { return item.id === requestedContext.categoryId; })) return requestedContext.categoryId!;
+          setCategoryId(current => {
+            if (enabled.some(item => item.id === requestedContext.categoryId)) return requestedContext.categoryId!;
             return preferredCategoryId(nextSettings, nextCohort, current);
           });
           setPairInfo(null);
@@ -125,30 +77,29 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
           defeatedKingsRef.current = [];
           setUndoHistory([]);
         })
-        .catch(function (caught) { if (mountedRef.current && request === loadRequestRef.current) setError(caught.message || String(caught)); })
-        .finally(function () { if (mountedRef.current && request === loadRequestRef.current) setLoading(false); });
+        .catch(caught => { if (mountedRef.current && request === loadRequestRef.current) setError(caught.message || String(caught)); })
+        .finally(() => { if (mountedRef.current && request === loadRequestRef.current) setLoading(false); });
     }, [gauntletMode, gauntletTargetId]);
 
-    useEffect(function () {
+    useEffect(() => {
       mountedRef.current = true;
       void load();
       function changed(event: ConfigurationEvent) {
         if (!event.detail || event.detail.pluginId === PLUGIN_ID) void load();
       }
       window.addEventListener(CONFIGURATION_CHANGED_EVENT, changed);
-      return function () {
+      return () => {
         mountedRef.current = false; loadRequestRef.current += 1;
         window.removeEventListener(CONFIGURATION_CHANGED_EVENT, changed);
       };
     }, [load]);
 
-    var category = useMemo(function () {
+    const category = useMemo(() => {
       if (!settings) return null;
-      var target = gauntletMode ? performers.find(function (performer) { return String(performer.id) === gauntletTargetId; }) : null;
-      var cohortCategories = categoriesForPerformer(settings!, cohort, target);
-      return cohortCategories.find(function (item) { return item.id === (requestedCategoryId || categoryId); }) ||
+      const cohortCategories = categoriesForPerformer(settings, cohort, gauntletTarget);
+      return cohortCategories.find(item => item.id === (requestedCategoryId || categoryId)) ||
         cohortCategories[0] || null;
-    }, [categoryId, cohort, settings, requestedCategoryId, gauntletMode, gauntletTargetId, performers]);
+    }, [categoryId, cohort, settings, requestedCategoryId, gauntletTarget]);
 
     function resetPair() {
       setPairInfo(null);
@@ -160,29 +111,24 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
       setDecision(null);
     }
 
-    useEffect(function () {
+    useEffect(() => {
       resetPair();
       preparedImagesRef.current = [];
       recentPairs.current = [];
     }, [requestedCategoryId, requestedCohort, kingsMode]);
 
-    useEffect(function () {
+    useEffect(() => {
       if (loading || !settings || !category) return;
-      var targetPath = categoryPath(category!.id, kingsMode, cohort);
+      const targetPath = categoryPath(category!.id, kingsMode, cohort);
       rememberCategory(cohort, category!.id);
       if (location.pathname !== targetPath.split("?")[0] || requestedCohort !== (targetPath.indexOf("?") !== -1 ? cohort : "")) {
         history.replace(DirtyPlugins.captureUrl(targetPath));
       }
     }, [category, cohort, gauntletTargetId, history, kingsMode, loading, location.pathname, requestedCohort, settings]);
 
-    var gauntletTarget = useMemo(function () {
-      if (!gauntletMode) return null;
-      return performers.find(function (performer) { return String(performer.id) === gauntletTargetId; }) || null;
-    }, [gauntletMode, gauntletTargetId, performers]);
-
     function categoryPath(nextCategoryId: string, nextKingsMode: boolean, nextCohort: string) {
-      var defaultCohort = battleCohortFor(settings!, gauntletTarget, "");
-      return battleCategoryPath(nextCategoryId, nextKingsMode, gauntletTargetId, nextCohort === defaultCohort && nextCohort.indexOf("BOX-") !== 0 ? "" : nextCohort);
+      const defaultCohort = battleCohortFor(settings!, gauntletTarget, "");
+      return battleCategoryPath(nextCategoryId, nextKingsMode, gauntletTargetId, linkedBox(defaultCohort, nextCohort));
     }
 
     /** @param {string} nextCategoryId */
@@ -200,9 +146,9 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
 
     /** @param {string} nextCohort */
     function selectCohort(nextCohort: string) {
-      var nextCategories = categoriesForPerformer(settings!, nextCohort, gauntletTarget);
-      var preferredId = preferredCategoryId(settings!, nextCohort, category!.id);
-      var nextCategoryId = nextCategories.some(function (item) { return item.id === preferredId; }) ? preferredId : nextCategories[0].id;
+      const nextCategories = categoriesForPerformer(settings!, nextCohort, gauntletTarget);
+      const preferredId = preferredCategoryId(settings!, nextCohort, category!.id);
+      const nextCategoryId = nextCategories.some(item => item.id === preferredId) ? preferredId : nextCategories[0].id;
       setCategoryId(nextCategoryId);
       rememberCategory(nextCohort, nextCategoryId);
       navigate(nextCategoryId, kingsMode, nextCohort);
@@ -210,36 +156,28 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
 
     /** @param {string} nextCategoryId @param {boolean} nextKingsMode @param {string} nextCohort */
     function navigate(nextCategoryId: string, nextKingsMode: boolean, nextCohort: string) {
-      var nextPath = categoryPath(nextCategoryId, nextKingsMode, nextCohort);
+      const nextPath = categoryPath(nextCategoryId, nextKingsMode, nextCohort);
       history.push(DirtyPlugins.captureUrl(nextPath));
       resetPair();
     }
 
-    var refinementConfidence = useMemo(function () {
+    const refinementConfidence = useMemo(() => {
       return !gauntletMode && settings && category ? categoryConfidence(
         performers, category, cohort, Object.assign({}, settings, { confidenceGoal: "all" })
       ) : null;
     }, [category, cohort, gauntletMode, performers, settings, getRatingIndexRevision()]);
 
-    var selectModePair = useCallback(function (sourcePerformers: RankPerformer[], sourceCategory: RankCategory, sourceCohort: string, sourceSettings: RankSettings, sourceRecentPairs: string[]) {
+    const selectModePair = useCallback((sourcePerformers: RankPerformer[], sourceCategory: RankCategory, sourceCohort: string, sourceSettings: RankSettings, sourceRecentPairs: string[]) => {
       if (kingsMode) return selectKingsStartingPair(sourcePerformers, sourceCategory, sourceCohort, sourceSettings);
-      var target = gauntletMode
-        ? sourcePerformers.find(function (performer) { return String(performer.id) === gauntletTargetId; })
-        : null;
+      const target = findTarget(sourcePerformers);
       return target
         ? selectGauntletPair(sourcePerformers, target, sourceCategory, sourceCohort, sourceSettings, sourceRecentPairs)
         : selectPair(sourcePerformers, sourceCategory, sourceCohort, sourceSettings, sourceRecentPairs);
     }, [gauntletMode, gauntletTargetId, kingsMode]);
 
-    var pickNext = useCallback(function (sourcePerformers: RankPerformer[], sourceSettings: RankSettings | null, sourceCategory: RankCategory | null, sourceCohort: string) {
+    const pickNext = useCallback((sourcePerformers: RankPerformer[], sourceSettings: RankSettings | null, sourceCategory: RankCategory | null, sourceCohort: string) => {
       if (!sourceSettings || !sourceCategory) return;
-      var selected = selectModePair(
-        sourcePerformers,
-        sourceCategory,
-        sourceCohort,
-        sourceSettings,
-        recentPairs.current
-      );
+      const selected = selectModePair(sourcePerformers, sourceCategory, sourceCohort, sourceSettings, recentPairs.current);
       selected.instanceId = battleId();
       setPairInfo(selected);
       setFeedback(null);
@@ -252,9 +190,9 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
     function preloadPairImages(selected: RankPairResult | null) {
       preparedImagesRef.current = [];
       if (!selected || !selected.pair || settings!.hidePerformerImages || typeof window.Image !== "function") return;
-      selected.pair.forEach(function (performer) {
+      selected.pair.forEach(performer => {
         if (!performer.image_path) return;
-        var image = new window.Image();
+        const image = new window.Image();
         image.decoding = "async";
         image.src = performer.image_path;
         preparedImagesRef.current.push(image);
@@ -264,10 +202,8 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
     function showPreparedOrPickNext(outcome: string) {
       if (kingsMode) {
         if (outcome === "left" || outcome === "right") {
-          var winner = pairInfo!.pair![outcome === "left" ? 0 : 1];
-          var selected = selectKingsPair(performers, winner, outcome, defeatedKingsRef.current.map(function (entry) {
-            return entry.performerId;
-          }), category!, cohort, settings!);
+          const winner = pairInfo!.pair![outcome === "left" ? 0 : 1];
+          const selected = selectKingsPair(performers, winner, outcome, defeatedKingsRef.current.map(entry => entry.performerId), category!, cohort, settings!);
           selected.instanceId = battleId();
           setPairInfo(selected);
           setFeedback(null);
@@ -276,8 +212,8 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
         }
         return;
       }
-      var prepared = preparedPairRef.current;
-      var contextKey = category ? preparedPairKey(category!, cohort) : "";
+      const prepared = preparedPairRef.current;
+      const contextKey = category ? preparedPairKey(category!, cohort) : "";
       if (prepared && pairInfo && prepared.sourceInstanceId === pairInfo.instanceId && prepared.contextKey === contextKey) {
         preparedPairRef.current = null;
         preparedImagesRef.current = [];
@@ -288,24 +224,24 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
       pickNext(performers, settings, category, cohort);
     }
 
-    useEffect(function () {
+    useEffect(() => {
       if (!loading && !error && settings && category && !pairInfo && performers.length) {
         pickNext(performers, settings, category, cohort);
       }
     }, [category, cohort, error, loading, pairInfo, performers, pickNext, settings]);
 
-    useEffect(function () {
+    useEffect(() => {
       preparedPairRef.current = null;
       preparedImagesRef.current = [];
       if (loading || error || kingsMode || !settings || !category || !pairInfo || !pairInfo!.pair! || performers.length < 2) return undefined;
 
-      var cancelled = false;
-      var idleHandle: number | null = null;
-      var timeoutHandle: number | null = null;
+      let cancelled = false;
+      let idleHandle: number | null = null;
+      let timeoutHandle: number | null = null;
       function prepareNextPair() {
         if (cancelled) return;
-        var simulatedRecentPairs = recentPairs.current.concat([pairToken(pairInfo!.pair![0], pairInfo!.pair![1])]);
-        var selected = selectModePair(performers, category!, cohort, settings!, simulatedRecentPairs);
+        const simulatedRecentPairs = recentPairs.current.concat([pairToken(pairInfo!.pair![0], pairInfo!.pair![1])]);
+        const selected = selectModePair(performers, category!, cohort, settings!, simulatedRecentPairs);
         selected.instanceId = battleId();
         if (cancelled) return;
         preparedPairRef.current = {
@@ -321,15 +257,31 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
       } else {
         timeoutHandle = window.setTimeout(prepareNextPair, 0);
       }
-      return function () {
+      return () => {
         cancelled = true;
         if (idleHandle !== null && typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idleHandle);
         if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
       };
     }, [category, cohort, error, kingsMode, loading, pairInfo, performers, selectModePair, settings]);
 
+    /** Avoid repeating a pair that was just shown, voted on or skipped. */
+    function rememberPair(left: RankPerformer, right: RankPerformer) {
+      recentPairs.current.push(pairToken(left, right));
+      recentPairs.current = recentPairs.current.slice(-Math.max(50, settings!.avoidRepeatWindow));
+    }
+
+    /** Persist operations one at a time, after the UI has already moved on. */
+    function enqueue(operation: () => Promise<RankOperationResult> | null, saved: (result: RankOperationResult | null) => void, failed: (caught: Error) => void) {
+      pendingVotesRef.current += 1;
+      setPendingVotes(pendingVotesRef.current);
+      voteQueueRef.current = voteQueueRef.current.then(operation).then(saved).catch(failed).finally(() => {
+        pendingVotesRef.current = Math.max(0, pendingVotesRef.current - 1);
+        if (mountedRef.current) setPendingVotes(pendingVotesRef.current);
+      });
+    }
+
     function replaceStates(result: RankOperationResult, source: RankPerformer[]) {
-      return source.map(function (performer) {
+      return source.map(performer => {
         if (result.left && performer.id === result.left.id) return updatePerformerState(performer, result.left!.state);
         if (result.right && performer.id === result.right.id) return updatePerformerState(performer, result.right!.state);
         return performer;
@@ -340,158 +292,102 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
       if (!pairInfo || !pairInfo!.pair! || !category) return;
       if (kingsMode && outcome === "draw") return;
       if (submittedPairRef.current === pairInfo.instanceId) return;
-      var left = pairInfo!.pair![0];
-      var right = pairInfo!.pair![1];
-      var beforeLeft = poolFor(left, category!.id, cohort, settings!);
-      var beforeRight = poolFor(right, category!.id, cohort, settings!);
-      var id = battleId();
-      var queuedBattle = {
-        id: id,
-        categoryId: category!.id,
-        category: category,
-        cohort: cohort,
-        left: left,
-        right: right,
-        outcome: outcome,
-        pairInfo: pairInfo,
-        beforeLeft: beforeLeft,
-        beforeRight: beforeRight,
-        settings: settings!,
-      };
-      var historyEntry = {
-        id: queuedBattle.id,
-        categoryId: queuedBattle.categoryId,
-        cohort: queuedBattle.cohort,
-        leftId: queuedBattle.left.id,
-        rightId: queuedBattle.right.id,
-        pairInfo: queuedBattle.pairInfo,
-      };
-      var operationStatus = { recordFailed: false, undone: false };
-      var leftTone = outcome === "draw" ? "draw" : outcome === "left" ? "winner" : "loser";
-      var rightTone = outcome === "draw" ? "draw" : outcome === "right" ? "winner" : "loser";
+      const left = pairInfo!.pair![0];
+      const right = pairInfo!.pair![1];
+      const beforeLeft = poolFor(left, category!.id, cohort, settings!);
+      const beforeRight = poolFor(right, category!.id, cohort, settings!);
+      const id = battleId(), battleCategoryId = category.id, battleSettings = settings!;
+      const historyEntry = { id, categoryId: battleCategoryId, cohort, leftId: left.id, rightId: right.id, pairInfo };
+      const operationStatus = { recordFailed: false, undone: false };
+      const leftTone = outcome === "draw" ? "draw" : outcome === "left" ? "winner" : "loser";
+      const rightTone = outcome === "draw" ? "draw" : outcome === "right" ? "winner" : "loser";
       submittedPairRef.current = pairInfo.instanceId || "";
       setError("");
-      setDecision({
-        id: id,
-        left: { name: left.name, tone: leftTone },
-        right: { name: right.name, tone: rightTone },
-      });
-      recentPairs.current.push(pairToken(left, right));
-      recentPairs.current = recentPairs.current.slice(-Math.max(50, settings!.avoidRepeatWindow));
-      var combinedUndoHistory = undoHistoryRef.current.concat([historyEntry]);
-      combinedUndoHistory.slice(0, Math.max(0, combinedUndoHistory.length - UNDO_HISTORY_LIMIT)).forEach(function (entry) {
+      setDecision({ id, left: { name: left.name, tone: leftTone }, right: { name: right.name, tone: rightTone } });
+      rememberPair(left, right);
+      const combinedUndoHistory = undoHistoryRef.current.concat([historyEntry]);
+      combinedUndoHistory.slice(0, Math.max(0, combinedUndoHistory.length - UNDO_HISTORY_LIMIT)).forEach(entry => {
         operationStatusRef.current.delete(entry.id);
       });
-      var nextUndoHistory = combinedUndoHistory.slice(-UNDO_HISTORY_LIMIT);
+      const nextUndoHistory = combinedUndoHistory.slice(-UNDO_HISTORY_LIMIT);
       undoHistoryRef.current = nextUndoHistory;
       setUndoHistory(nextUndoHistory);
-      operationStatusRef.current.set(queuedBattle.id, operationStatus);
+      operationStatusRef.current.set(id, operationStatus);
       if (kingsMode) {
         defeatedKingsRef.current.push({ battleId: id, performerId: String(outcome === "left" ? right.id : left.id) });
       }
       showPreparedOrPickNext(outcome);
       setFeedback({ text: "Vote queued" });
 
-      pendingVotesRef.current += 1;
-      setPendingVotes(pendingVotesRef.current);
-      voteQueueRef.current = voteQueueRef.current.then(function () {
-        return runOperation({
-          mode: "record",
-          battleId: queuedBattle.id,
-          categoryId: queuedBattle.categoryId,
-          cohort: queuedBattle.cohort,
-          leftId: queuedBattle.left.id,
-          rightId: queuedBattle.right.id,
-          outcome: queuedBattle.outcome,
-        });
-      }).then(function (result) {
+      enqueue(() => runOperation({ mode: "record", battleId: id, categoryId: battleCategoryId, cohort, leftId: left.id, rightId: right.id, outcome }), saved => {
+        const result = saved!;
         if (!mountedRef.current || operationStatus.undone) return;
-        var afterLeft = poolFor(updatePerformerState(queuedBattle.left, result.left!.state), queuedBattle.categoryId, queuedBattle.cohort, queuedBattle.settings);
-        var afterRight = poolFor(updatePerformerState(queuedBattle.right, result.right!.state), queuedBattle.categoryId, queuedBattle.cohort, queuedBattle.settings);
-        setPerformers(function (current) { return replaceStates(result, current); });
+        const afterLeft = poolFor(updatePerformerState(left, result.left!.state), battleCategoryId, cohort, battleSettings);
+        const afterRight = poolFor(updatePerformerState(right, result.right!.state), battleCategoryId, cohort, battleSettings);
+        setPerformers(current => replaceStates(result, current));
         setFeedback({
-          text: queuedBattle.left.name + " " + ratingDelta(afterLeft.rating, queuedBattle.beforeLeft.rating) + " · " +
-            queuedBattle.right.name + " " + ratingDelta(afterRight.rating, queuedBattle.beforeRight.rating),
+          text: left.name + " " + ratingDelta(afterLeft.rating, beforeLeft.rating) + " · " +
+            right.name + " " + ratingDelta(afterRight.rating, beforeRight.rating),
         });
-      }).catch(function (caught) {
+      }, caught => {
         if (!mountedRef.current) return;
         operationStatus.recordFailed = true;
         if (!operationStatus.undone) {
-          undoHistoryRef.current = undoHistoryRef.current.filter(function (entry) { return entry.id !== queuedBattle.id; });
+          undoHistoryRef.current = undoHistoryRef.current.filter(entry => entry.id !== id);
           setUndoHistory(undoHistoryRef.current.slice());
-          setDecision(function (current) { return current && current.id === queuedBattle.id ? null : current; });
+          setDecision(current => current && current.id === id ? null : current);
         }
         setError("A queued vote could not be saved: " + (caught.message || String(caught)));
-      }).finally(function () {
-        pendingVotesRef.current = Math.max(0, pendingVotesRef.current - 1);
-        if (mountedRef.current) setPendingVotes(pendingVotesRef.current);
       });
     }
 
     function skip() {
       if (kingsMode) return;
       if (!pairInfo || !pairInfo!.pair! || !category) return;
-      recentPairs.current.push(pairToken(pairInfo!.pair![0], pairInfo!.pair![1]));
-      recentPairs.current = recentPairs.current.slice(-Math.max(50, settings!.avoidRepeatWindow));
+      rememberPair(pairInfo.pair[0], pairInfo.pair[1]);
       setDecision(null);
       showPreparedOrPickNext("skip");
     }
 
     function undo() {
-      var lastBattle = undoHistoryRef.current[undoHistoryRef.current.length - 1];
+      const lastBattle = undoHistoryRef.current[undoHistoryRef.current.length - 1];
       if (!lastBattle) return;
-      var operationStatus = operationStatusRef.current.get(lastBattle.id) || { recordFailed: false, undone: false };
+      const operationStatus = operationStatusRef.current.get(lastBattle.id) || { recordFailed: false, undone: false };
       operationStatus.undone = true;
       operationStatusRef.current.set(lastBattle.id, operationStatus);
       undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
-      defeatedKingsRef.current = defeatedKingsRef.current.filter(function (entry) { return entry.battleId !== lastBattle.id; });
+      defeatedKingsRef.current = defeatedKingsRef.current.filter(entry => entry.battleId !== lastBattle.id);
       setUndoHistory(undoHistoryRef.current.slice());
       setError("");
       setPairInfo(Object.assign({}, lastBattle.pairInfo, { instanceId: battleId() }));
       setDecision(null);
       setFeedback({ text: "Undo queued" });
 
-      pendingVotesRef.current += 1;
-      setPendingVotes(pendingVotesRef.current);
-      voteQueueRef.current = voteQueueRef.current.then(function () {
-        if (operationStatus.recordFailed) return null;
-        return runOperation({
-          mode: "undo",
-          battleId: lastBattle.id,
-          categoryId: lastBattle.categoryId,
-          cohort: lastBattle.cohort,
-          leftId: lastBattle.leftId,
-          rightId: lastBattle.rightId,
-        });
-      }).then(function (result) {
+      // A vote that failed to record has nothing to undo on the server.
+      enqueue(() => operationStatus.recordFailed ? null : runOperation({
+        mode: "undo", battleId: lastBattle.id, categoryId: lastBattle.categoryId,
+        cohort: lastBattle.cohort, leftId: lastBattle.leftId, rightId: lastBattle.rightId,
+      }), result => {
         operationStatusRef.current.delete(lastBattle.id);
         if (!mountedRef.current || !result) return;
-        setPerformers(function (current) { return replaceStates(result, current); });
+        setPerformers(current => replaceStates(result, current));
         setFeedback({ text: "Battle undone." });
-      }).catch(function (caught) {
+      }, caught => {
         if (!mountedRef.current) return;
         setError("A queued undo could not be saved: " + (caught.message || String(caught)) + ". Reload DirtyRank to reconcile the session.");
-      }).finally(function () {
-        pendingVotesRef.current = Math.max(0, pendingVotesRef.current - 1);
-        if (mountedRef.current) setPendingVotes(pendingVotesRef.current);
       });
     }
 
     function restartKings() {
       if (pendingVotesRef.current > 0) return;
-      defeatedKingsRef.current = [];
-      undoHistoryRef.current = [];
+      resetPair();
       recentPairs.current = [];
-      setUndoHistory([]);
-      setPairInfo(null);
-      setDecision(null);
-      setFeedback(null);
     }
 
-    useEffect(function () {
+    useEffect(() => {
       function onKeyDown(event: KeyboardEvent) {
         if (event.defaultPrevented || !pairInfo || !pairInfo!.pair!) return;
-        var tagName = document.activeElement && document.activeElement.tagName;
+        const tagName = document.activeElement && document.activeElement.tagName;
         if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return;
         if (event.key === "ArrowLeft") { event.preventDefault(); submit("left"); }
         if (event.key === "ArrowRight") { event.preventDefault(); submit("right"); }
@@ -501,10 +397,10 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
         if (!kingsMode && event.key.toLowerCase() === "s") { event.preventDefault(); skip(); }
       }
       document.addEventListener("keydown", onKeyDown);
-      return function () { document.removeEventListener("keydown", onKeyDown); };
+      return () => { document.removeEventListener("keydown", onKeyDown); };
     });
 
-    useEffect(function () {
+    useEffect(() => {
       if (pendingVotes <= 0) return undefined;
       function preventPendingOperationExit(event: BeforeUnloadEvent) {
         event.preventDefault();
@@ -512,36 +408,14 @@ export function createBattleSession(dependencies: RankBattleSessionDependencies)
         return "";
       }
       window.addEventListener("beforeunload", preventPendingOperationExit);
-      return function () { window.removeEventListener("beforeunload", preventPendingOperationExit); };
+      return () => { window.removeEventListener("beforeunload", preventPendingOperationExit); };
     }, [pendingVotes]);
 
 
     return {
-      loading: loading,
-      error: error,
-      settings: settings,
-      category: category,
-      gauntletMode: gauntletMode,
-      kingsMode: kingsMode,
-      censorMedia: censorMedia,
-      pairInfo: pairInfo,
-      performers: performers,
-      cohort: cohort,
-      defeatedCount: defeatedKingsRef.current.length,
-      selectCategory: selectCategory,
-      toggleBattleMode: toggleBattleMode,
-      selectCohort: selectCohort,
-      pendingVotes: pendingVotes,
-      feedback: feedback,
-      decision: decision,
-      undoHistory: undoHistory,
-      refinementConfidence: refinementConfidence,
-      gauntletTarget: gauntletTarget,
-      load: load,
-      submit: submit,
-      skip: skip,
-      undo: undo,
-      restartKings: restartKings,
+      loading, error, settings, category, gauntletMode, kingsMode, censorMedia, pairInfo, performers, cohort,
+      defeatedCount: defeatedKingsRef.current.length, selectCategory, toggleBattleMode, selectCohort, pendingVotes,
+      feedback, decision, undoHistory, refinementConfidence, gauntletTarget, load, submit, skip, undo, restartKings,
     };
   }
   return useBattleSession;

@@ -1,37 +1,25 @@
-import { React, hubApi, transport } from "../runtime";
+import { captureEnabled } from "../capture";
+import { React } from "../runtime";
+import { runSharedOperation } from "../transport";
 import { Button } from "./Controls";
 export function DatabaseBackupControl() {
-  var busyState = React.useState(false);
-  var busy = busyState[0];
-  var setBusy = busyState[1];
-  var resultState = React.useState<{ error: boolean; message: string; } | null>(null);
-  var result = resultState[0];
-  var setResult = resultState[1];
+  const [busy, setBusy] = React.useState(false);
+  const [result, setResult] = React.useState<{ error: boolean; message: string; } | null>(null);
   function createBackup() {
     if (busy) return;
     setBusy(true);
     setResult(null);
-    transport.runSharedOperation<{ path?: string; }>({ mode: "backupDatabase" }).then(function(response) {
+    runSharedOperation<{ path?: string; }>({ mode: "backupDatabase" }).then(response => {
       setResult({ error: false, message: response && response.path || "Backup created." });
-    }).catch(function(error) {
+    }).catch(error => {
       setResult({ error: true, message: error.message || String(error) });
-    }).then(function() { setBusy(false); });
+    }).then(() => setBusy(false));
   }
-  var capture = hubApi.captureEnabled(window.location && window.location.search);
-  return (<section
-    className="dirty-plugins-backup dirty-ui-settings-section"
-    aria-labelledby="dirty-plugins-backup-title">
-    <h3
-      id="dirty-plugins-backup-title">
-      {"Database backup"}
-    </h3>
-    <p>
-      {"Create a copy of the shared Dirty Plugins database in the installed DirtyPlugins folder."}
-    </p>
-    <Button
-      busy={busy}
-      disabled={busy}
-      onClick={createBackup}>
+  const capture = captureEnabled(window.location && window.location.search);
+  return (<section className="dirty-plugins-backup dirty-ui-settings-section" aria-labelledby="dirty-plugins-backup-title">
+    <h3 id="dirty-plugins-backup-title">Database backup</h3>
+    <p>Create a copy of the shared Dirty Plugins database in the installed DirtyPlugins folder.</p>
+    <Button busy={busy} disabled={busy} onClick={createBackup}>
       {busy ? "Creating backup…" : "Create backup"}
     </Button>
     {result && (<p

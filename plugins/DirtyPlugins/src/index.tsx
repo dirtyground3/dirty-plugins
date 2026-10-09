@@ -1,26 +1,29 @@
+import { captureEnabled, captureUrl } from "./capture";
 import * as controls from "./components/Controls";
 import { Dialog } from "./components/Dialog";
 import * as navigation from "./components/Navigation";
 import { DirtyPluginsRoute } from "./components/Route";
+import { SceneFilterEditor, sceneListPatch } from "./components/SceneFilter";
 import * as settings from "./components/Settings";
 import { SettingsLink } from "./components/SettingsLink";
-import { CONFIGURATION_CHANGED_EVENT, DEFAULT_VISUAL_THEME, FIELD_ACTIONS_CHANGED_EVENT, MAIN_PAGE_PLUGIN_ID_SET, ROUTE_PATH, SETTINGS_PANELS_CHANGED_EVENT, VISUAL_THEME_KEYS } from "./constants";
-import { createDebug } from "./debug";
-import * as dialogs from "./dialogs";
+import { MANAGED_PLUGIN_ID_SET, ROUTE_PATH } from "./constants";
+import { debugElapsed, debugLog, dumpDebugLogs, installDebug } from "./debug";
+import { manageDialog, notify } from "./dialogs";
 import { createJobHook } from "./jobs";
 import { metadata } from "./metadata";
-import { createNative } from "./native";
-import { bindHost, bindServices, fieldActions, hubApi, PluginApi, React, readHost, settingsPanels } from "./runtime";
+import { ensureComponents, loadComponent } from "./native";
+import { bindHost, hubApi, PluginApi, React, readHost } from "./runtime";
 import { createSaveController } from "./save";
+import { notifyConfigurationChanged, registerFieldAction, registerSettingsAddon, registerSettingsPanel, unregisterFieldAction, unregisterSettingsAddon, unregisterSettingsPanel } from "./settings";
 import { useSettingsDraft } from "./settingsDraft";
-import { createTheme } from "./theme";
+import { loadVisualTheme, theme } from "./theme";
 import { usePageTitle } from "./title";
-import { createTransport } from "./transport";
+import { configurePlugin, getPluginSettings, loggedGraphql, runPluginOperation } from "./transport";
 import type { HubApi } from "./types";
-import * as values from "./values";
+import { asObject, clampInteger, coerceBoolean, parseMaybeJson } from "./values";
 
 const INSTANCE_KEY = "__dirtyPluginsSettingsHub";
-const owner = window as unknown as { [INSTANCE_KEY]?: { route: string; status: "registering" | "registered" | "failed"; }; __dirtyCurrentPluginId?: string | null; };
+const owner = window as unknown as { [INSTANCE_KEY]?: { route: string; status: "registering" | "registered" | "failed"; }; __dirtyCurrentPluginId?: string | null; DirtyPlugins?: HubApi; };
 const api = readHost();
 if (api && !owner[INSTANCE_KEY]) {
   // Stash cannot remove these patches/routes. Keep the guard even if registration
@@ -30,38 +33,43 @@ if (api && !owner[INSTANCE_KEY]) {
   try {
     bindHost(api);
     hubApi.settingsMetadata = metadata;
-    const debug = createDebug({ PluginApi, hubApi });
-    releaseDebug = debug.dispose;
-    const transport = createTransport({
-      pluginRevisionCache: Object.create(null), hubApi, fieldActions, settingsPanels,
-      FIELD_ACTIONS_CHANGED_EVENT, CONFIGURATION_CHANGED_EVENT, SETTINGS_PANELS_CHANGED_EVENT,
-      ...debug, pluginResult: values.pluginResult, asObject: values.asObject,
-      applyVisualTheme: value => theme.applyVisualTheme(value),
-    });
-    hubApi.graphql = transport.loggedGraphql;
-    hubApi.runPluginOperation = transport.runPluginOperation;
-    hubApi.getPluginSettings = transport.getPluginSettings;
-    hubApi.configurePlugin = transport.configurePlugin;
+    releaseDebug = installDebug(api);
+    hubApi.debugLog = debugLog;
+    hubApi.debugElapsed = debugElapsed;
+    hubApi.dumpDebugLogs = dumpDebugLogs;
+    hubApi.registerFieldAction = registerFieldAction;
+    hubApi.unregisterFieldAction = unregisterFieldAction;
+    hubApi.notifyConfigurationChanged = notifyConfigurationChanged;
+    hubApi.registerSettingsPanel = registerSettingsPanel;
+    hubApi.unregisterSettingsPanel = unregisterSettingsPanel;
+    hubApi.registerSettingsAddon = registerSettingsAddon;
+    hubApi.unregisterSettingsAddon = unregisterSettingsAddon;
+    owner.DirtyPlugins = hubApi;
+    hubApi.graphql = loggedGraphql;
+    hubApi.runPluginOperation = runPluginOperation;
+    hubApi.getPluginSettings = getPluginSettings;
+    hubApi.configurePlugin = configurePlugin;
     hubApi.createSaveController = createSaveController;
     hubApi.createJobHook = createJobHook;
-    hubApi.values = { asObject: values.asObject, parseMaybeJson: values.parseMaybeJson,
-      clampInteger: values.clampInteger, coerceBoolean: values.coerceBoolean };
-    hubApi.ui = { notify: dialogs.notify, manageDialog: dialogs.manageDialog };
-    const theme = createTheme({ hubApi, DEFAULT_VISUAL_THEME, VISUAL_THEME_KEYS, getPluginSettings: transport.getPluginSettings });
-    bindServices(transport);
-    hubApi.react = { ...controls, ...settings, ...navigation, Dialog, usePageTitle, useSettingsDraft } as HubApi["react"];
-    const native = createNative({ hubApi, PluginApi, Dialog, StateView: controls.StateView, Button: controls.Button });
+    hubApi.values = { asObject, parseMaybeJson, clampInteger, coerceBoolean };
+    hubApi.ui = { notify, manageDialog };
+    hubApi.theme = theme;
+    theme.ready = loadVisualTheme(() => getPluginSettings("dirtyPlugins"));
+    hubApi.react = { ...controls, ...settings, ...navigation, Dialog, usePageTitle, useSettingsDraft, SceneFilterEditor };
+    hubApi.native = { loadComponent, ensureComponents };
+    hubApi.captureEnabled = captureEnabled;
+    hubApi.captureUrl = captureUrl;
     owner.__dirtyCurrentPluginId = "dirtyPlugins";
-    PluginApi.patch.instead("SceneList", native.sceneListPatch);
+    PluginApi.patch.instead("SceneList", sceneListPatch);
     PluginApi.patch.instead("PluginSettings", (...args) => {
       const next = args.pop(), props = args[0];
       const pluginId = props && (props.pluginID || props.pluginId || props.id);
-      if (!MAIN_PAGE_PLUGIN_ID_SET.has(pluginId)) return next.apply(null, args);
+      if (!MANAGED_PLUGIN_ID_SET.has(pluginId)) return next.apply(null, args);
       return <SettingsLink pluginId={pluginId} />;
     });
     PluginApi.register.route(ROUTE_PATH, DirtyPluginsRoute);
     instance.status = "registered";
-    debug.debugLog("dirtyPlugins", "hub script finished registering", { route: ROUTE_PATH, elapsedMs: debug.debugElapsed() });
+    debugLog("dirtyPlugins", "hub script finished registering", { route: ROUTE_PATH, elapsedMs: debugElapsed() });
   } catch (error) {
     releaseDebug?.();
     instance.status = "failed";

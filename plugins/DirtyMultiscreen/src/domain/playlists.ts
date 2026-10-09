@@ -10,8 +10,8 @@ export function shuffleMultiscreenItems<T>(items: T[], random: () => number = Ma
 }
 
 export function splitMultiscreenItemsByIndex<T>(items: T[], total: number): T[][] {
-  const groups = Array.from({ length: Math.max(0, total) }, function() { return [] as T[]; });
-  items.forEach(function(item, index) {
+  const groups = Array.from({ length: Math.max(0, total) }, () => [] as T[]);
+  items.forEach((item, index) => {
     const group = groups[index % total];
     if (group) group.push(item);
   });
@@ -20,14 +20,11 @@ export function splitMultiscreenItemsByIndex<T>(items: T[], total: number): T[][
 
 export function createMultiscreenPlaylists<T>(items: T[], totalScreens: number, randomize: boolean, splitItems: boolean, random: () => number = Math.random): T[][] {
   if (items.length === 0) {
-    return Array.from({ length: Math.max(0, totalScreens) }, function() { return [] as T[]; });
+    return Array.from({ length: Math.max(0, totalScreens) }, () => [] as T[]);
   }
   if (splitItems) {
     const sourceItems = randomize ? shuffleMultiscreenItems(items, random) : items.slice();
     return splitMultiscreenItemsByIndex(sourceItems, totalScreens);
   }
-  return Array.from(
-    { length: Math.max(0, totalScreens) },
-    function() { return randomize ? shuffleMultiscreenItems(items, random) : items.slice(); }
-  );
+  return Array.from({ length: Math.max(0, totalScreens) }, () => randomize ? shuffleMultiscreenItems(items, random) : items.slice());
 }

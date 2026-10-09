@@ -1,4 +1,6 @@
 import type * as R from "react";
+import type { HubApi } from "../../DirtyPlugins/src/types";
+import type { SavedFilter } from "./runtime";
 export type NativeReactHooks = Pick<typeof R, "useEffect" | "useState" | "useRef" | "useMemo" | "useCallback">;
 export interface StatsPageCollection<T> { count: number; rows: T[]; }
 export interface StatsDefinition {
@@ -28,7 +30,7 @@ export interface StatsPageEffect<T> extends StatsPageOptions<T> {
 }
 export interface StatsDataDependencies {
   React: Pick<NativeReactHooks, "useEffect" | "useState">;
-  graphql: import("../../DirtyPlugins/src/types").HubApi["graphql"];
+  graphql: HubApi["graphql"];
   own?(cleanup: () => void): () => void;
 }
 export interface StatsEntityLoad<T> extends Omit<StatsPageOptions<T>, "collection" | "failureLabel"> {
@@ -109,8 +111,8 @@ export interface StatsSettings extends Record<string, SettingValue> {
 export interface Capacity { total: number; free: number; errors: string[]; }
 export interface TagRow { id: string; name: string; scenes: number; rated: number; unrated: number; rating: number | null; plays: number; playsPerScene: number; }
 export interface ConstellationSelection { ids: string[]; label: string; type: string; key: string; }
-export interface DashboardWidgetModel { id: string; statistic: string; title: string; size: string; options: WidgetOptions; filter: import("./runtime").SavedFilter; }
-export interface DashboardResource { key: string; group: string; filter: import("./runtime").SavedFilter; limit: number; }
+export interface DashboardWidgetModel { id: string; statistic: string; title: string; size: string; options: WidgetOptions; filter: SavedFilter; }
+export interface DashboardResource { key: string; group: string; filter: SavedFilter; limit: number; }
 export interface ResourceState { loading: boolean; error: string; rows: Array<StatsScene & StatsPerformer>; capacity: Capacity | null; }
 
 export interface BirthdaySelection { month: number; day: number; today?: boolean; }

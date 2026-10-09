@@ -8,14 +8,12 @@ export function OperationTable(props: Pick<ResultsProps, "record" | "capture" | 
     <React.Fragment>
       <div className="dirty-ui-table-wrap">
         <table className="dirty-ui-table dirty-compactor-table">
-          <thead><tr>{["Scene", "Action", "Saving", "Status"].map(function(label) {
-            return (<th key={label} scope="col">{label}</th>);
-          })}</tr></thead>
-          <tbody>{(record.operations || []).map(function(op) {
+          <thead><tr>{["Scene", "Action", "Saving", "Status"].map(label => (<th key={label} scope="col">{label}</th>))}</tr></thead>
+          <tbody>{(record.operations || []).map(op => {
             return (
               <tr key={op.id}>
                 <td>
-                  {props.onExclude && (<ui.SettingsToggle checked={(props.excluded || []).indexOf(op.sceneId) < 0} label={hidden("Include scene " + op.sceneId)} onChange={function(value) { props.onExclude!(op.sceneId, !value); }} />)}
+                  {props.onExclude && (<ui.SettingsToggle checked={(props.excluded || []).indexOf(op.sceneId) < 0} label={hidden("Include scene " + op.sceneId)} onChange={value => { props.onExclude!(op.sceneId, !value); }} />)}
                   <a href={"/scenes/" + op.sceneId}>{props.capture ? "Scene hidden" : op.title}</a>
                   <details>
                     <summary>File details</summary>

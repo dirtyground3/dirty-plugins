@@ -31,8 +31,8 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
   }
 
   function PrecisionBadge(props: { pool: DisplayPool; settings: RankSettings }): R.JSX.Element | null {
-    var tier = props.pool.precision || precisionTier(props.pool, props.settings);
-    var title = props.pool.overallScore
+    const tier = props.pool.precision || precisionTier(props.pool, props.settings);
+    let title = props.pool.overallScore
       ? tier.label + " category precision · " + props.pool.ratedCategories + "/" + props.pool.totalCategories +
       " categories rated · mean category RD " + props.pool.deviation.toFixed(1)
       : tier.label + " precision · RD " + props.pool.deviation.toFixed(1);
@@ -43,7 +43,7 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
   }
 
   function Leaderboard(props: ConfidenceProps): R.JSX.Element | null {
-    var ranked = leaderboardData(
+    const ranked = leaderboardData(
       props.performers,
       props.category.id,
       props.cohort,
@@ -58,14 +58,14 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
           {props.category.name + " standings"}
         </h2>
         <div className="dirty-rank-leaderboard-note">
-          {"Current battle category · top 12"}
+          Current battle category · top 12
         </div>
       </div>
       {!ranked.length && (<div className="dirty-rank-empty-standings">
-        {"Complete a battle to start this leaderboard."}
+        Complete a battle to start this leaderboard.
       </div>)}
-      {ranked.map(function (performer, index) {
-        var pool = leaderboardPoolFor(performer, props.category.id, props.cohort, props.settings);
+      {ranked.map((performer, index) => {
+        const pool = leaderboardPoolFor(performer, props.category.id, props.cohort, props.settings);
         return (<div className="dirty-rank-standing" key={performer.id}>
           <span className="dirty-rank-standing-position">
             {index + 1}
@@ -82,12 +82,12 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
   }
 
   function ConfidenceIndicator(props: ConfidenceProps): R.JSX.Element | null {
-    var confidence = categoryConfidence(props.performers, props.category, props.cohort, props.settings);
-    var target = props.settings.provisionalDeviation;
-    var battlePurpose = props.settings.confidenceGoal === "all"
+    const confidence = categoryConfidence(props.performers, props.category, props.cohort, props.settings);
+    const target = props.settings.provisionalDeviation;
+    const battlePurpose = props.settings.confidenceGoal === "all"
       ? "rating-refinement"
       : props.settings.confidenceGoal === "top" ? "top-list" : "order-separating";
-    var remaining = confidence.remainingBattles > 0
+    const remaining = confidence.remainingBattles > 0
       ? "≈" + confidence.remainingBattles.toLocaleString() + " more " + battlePurpose + " battles estimated"
       : "Selected confidence goal is statistically established";
     return (<section
@@ -121,27 +121,23 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
   }
 
   function GauntletConfidenceIndicator(props: ConfidenceProps & { performer: RankPerformer }): R.JSX.Element | null {
-    var pool = poolFor(props.performer, props.category.id, props.cohort, props.settings);
-    var opponents = categoryEntries(props.performers, props.category, props.cohort, props.settings).filter(function (entry) {
-      return String(entry.performer.id) !== String(props.performer.id);
-    });
-    var deviations = opponents.map(function (entry) { return entry.pool.deviation; }).sort(function (left, right) { return left - right; });
-    var opponentDeviation = deviations[Math.floor(deviations.length / 2)] || props.settings.initialDeviation;
-    var remaining = estimatedMatchesToConfidence(
+    const pool = poolFor(props.performer, props.category.id, props.cohort, props.settings);
+    const opponents = categoryEntries(props.performers, props.category, props.cohort, props.settings).filter(entry => String(entry.performer.id) !== String(props.performer.id));
+    const deviations = opponents.map(entry => entry.pool.deviation).sort((left, right) => left - right);
+    const opponentDeviation = deviations[Math.floor(deviations.length / 2)] || props.settings.initialDeviation;
+    const remaining = estimatedMatchesToConfidence(
       pool,
       props.settings.provisionalDeviation,
       representativeOpponent(pool, opponentDeviation, props.settings),
       props.settings
     );
-    var ranked = rankPerformers(props.performers.filter(function (performer) {
-      return categoryEligible(performer, props.category, props.settings, props.cohort);
-    }), props.category.id, props.cohort, props.settings);
-    var rank = ranked.findIndex(function (performer) { return String(performer.id) === String(props.performer.id); }) + 1;
-    var progress = pool.matches > 0
+    const ranked = rankPerformers(props.performers.filter(performer => categoryEligible(performer, props.category, props.settings, props.cohort)), props.category.id, props.cohort, props.settings);
+    const rank = ranked.findIndex(performer => String(performer.id) === String(props.performer.id)) + 1;
+    const progress = pool.matches > 0
       ? Math.min(100, props.settings.provisionalDeviation / Math.max(props.settings.provisionalDeviation, pool.deviation) * 100)
       : 0;
-    var tier = precisionTier(pool, props.settings);
-    var status = remaining > 0
+    const tier = precisionTier(pool, props.settings);
+    const status = remaining > 0
       ? "≈" + remaining.toLocaleString() + " more target battles estimated"
       : "Target rating precision is " + tier.label.toLowerCase();
     return (<section className={"dirty-rank-confidence dirty-rank-gauntlet-confidence" +
@@ -180,29 +176,25 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
   }
 
   function OverallConfidence(props: Omit<ConfidenceProps, "category">): R.JSX.Element | null {
-    var categories = categoriesFor(props.settings, props.cohort).filter(function (category) {
-      return category.enabled && Number(category.weight) > 0;
-    });
-    var rows = categories.map(function (category) {
+    const categories = categoriesFor(props.settings, props.cohort).filter(category => category.enabled && Number(category.weight) > 0);
+    const rows = categories.map(category => {
       return {
-        category: category,
+        category,
         confidence: categoryConfidence(props.performers, category, props.cohort, props.settings),
       };
     });
-    var totalWeight = rows.reduce(function (sum, row) { return sum + Number(row.category.weight); }, 0);
-    var progress = totalWeight ? rows.reduce(function (sum, row) {
-      return sum + row.confidence.progress * Number(row.category.weight);
-    }, 0) / totalWeight : 0;
-    var remaining = rows.reduce(function (sum, row) { return sum + row.confidence.remainingBattles; }, 0);
-    var complete = rows.filter(function (row) { return row.confidence.remainingBattles === 0; }).length;
+    const totalWeight = rows.reduce((sum, row) => sum + Number(row.category.weight), 0);
+    const progress = totalWeight ? rows.reduce((sum, row) => sum + row.confidence.progress * Number(row.category.weight), 0) / totalWeight : 0;
+    const remaining = rows.reduce((sum, row) => sum + row.confidence.remainingBattles, 0);
+    const complete = rows.filter(row => row.confidence.remainingBattles === 0).length;
     return (<section className="dirty-rank-overall-confidence dirty-ui-feature-card">
       <div className="dirty-rank-panel-heading d-flex align-items-end justify-content-between">
         <div>
           <div className="dirty-rank-eyebrow">
-            {"Weighted category confidence"}
+            Weighted category confidence
           </div>
           <h2>
-            {"Overall confidence"}
+            Overall confidence
           </h2>
         </div>
         <div className="dirty-rank-panel-summary">
@@ -219,8 +211,8 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
         <span style={{ width: Math.max(0, Math.min(100, progress)) + "%" } as R.CSSProperties} />
       </div>
       <div className="dirty-rank-confidence-categories">
-        {rows.map(function (row) {
-          var confidence = row.confidence;
+        {rows.map(row => {
+          const confidence = row.confidence;
           return (<article className="dirty-rank-confidence-category" key={row.category.id}>
             <div className="dirty-rank-confidence-category-heading">
               <strong>
@@ -249,16 +241,16 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
   }
 
   function RankStatisticSelector(props: { value: string; categories: RankCategory[]; boxId?: string }): R.JSX.Element | null {
-    var history = Router.useHistory();
+    const history = Router.useHistory();
     return (<SharedStatisticSelector
       id="dirty-rank-statistic"
       value={props.value}
-      options={[{ value: OVERALL_LEADERBOARD_ID, label: "Overall" }].concat(props.categories.map(function (category) { return { value: category.id, label: category.name }; }))}
-      onSelect={function (id: string) { history.push(DirtyPlugins.captureUrl(leaderboardStatPath(id, props.boxId))); }} />);
+      options={[{ value: OVERALL_LEADERBOARD_ID, label: "Overall" }].concat(props.categories.map(category => ({ value: category.id, label: category.name })))}
+      onSelect={(id: string) => { history.push(DirtyPlugins.captureUrl(leaderboardStatPath(id, props.boxId))); }} />);
   }
 
   function LeaderboardInfoPopover(props: SharedProps): R.JSX.Element | null {
-    var Dropdown = PluginApi.libraries.Bootstrap.Dropdown;
+    const Dropdown = PluginApi.libraries.Bootstrap.Dropdown;
     return (<Dropdown className="dirty-rank-info-dropdown">
       <Dropdown.Toggle id={props.id} variant="secondary" className="dirty-ui-button dirty-ui-control">
         {props.label}
@@ -274,10 +266,10 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
   }
 
   function DecisionIndicator(props: { decision: Decision | null }): R.JSX.Element | null {
-    var decision = props.decision;
+    const decision = props.decision;
     if (!decision) return null;
     function result(person: Decision["left"]) {
-      var label = person.tone === "winner" ? "Winner" : person.tone === "loser" ? "Loser" : "Tie";
+      const label = person.tone === "winner" ? "Winner" : person.tone === "loser" ? "Loser" : "Tie";
       return (<span className={"dirty-rank-decision-person dirty-rank-decision-" + person.tone}>
         <span className="dirty-rank-decision-label">
           {label}
@@ -289,7 +281,7 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
     }
     return (<div aria-live="polite" className="dirty-rank-decision d-flex flex-wrap align-items-center">
       <span className="dirty-rank-decision-title">
-        {"Last decision"}
+        Last decision
       </span>
       {result(decision.left)}
       {result(decision.right)}
@@ -297,15 +289,15 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
   }
 
   function hillFireworks() {
-    var colors = ["#ffe6a3", "#65e8ff", "#d4a2ff", "#ff8ea8", "#a8ffc5"];
-    var bursts = [];
-    var confetti = [];
-    for (var burst = 0;burst < 18;burst += 1) {
-      var sparks = [];
-      var finale = burst >= 12;
-      for (var spark = 0;spark < 32;spark += 1) {
-        var angle = spark * Math.PI * 2 / 32;
-        var radius = (finale ? 12 : 8) * (spark % 2 ? 0.65 : 1);
+    const colors = ["#ffe6a3", "#65e8ff", "#d4a2ff", "#ff8ea8", "#a8ffc5"];
+    const bursts = [];
+    const confetti = [];
+    for (let burst = 0;burst < 18;burst += 1) {
+      const sparks = [];
+      const finale = burst >= 12;
+      for (let spark = 0;spark < 32;spark += 1) {
+        const angle = spark * Math.PI * 2 / 32;
+        const radius = (finale ? 12 : 8) * (spark % 2 ? 0.65 : 1);
         sparks.push((<span className="dirty-rank-firework-spark" key={spark} style={{
           "--spark-x": (Math.cos(angle) * radius).toFixed(3) + "rem",
           "--spark-y": (Math.sin(angle) * radius).toFixed(3) + "rem",
@@ -321,7 +313,7 @@ export function createPrimitives(dependencies: Pick<ViewDependencies, "React" | 
         {sparks}
       </span>));
     }
-    for (var piece = 0;piece < 64;piece += 1) {
+    for (let piece = 0;piece < 64;piece += 1) {
       confetti.push((<span className="dirty-rank-victory-confetti" key={"confetti-" + piece} style={{
         left: (piece * 37 % 100) + "%",
         "--confetti-color": colors[piece % colors.length],

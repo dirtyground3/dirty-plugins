@@ -3,8 +3,8 @@ import { manageDialog } from "../dialogs";
 import { PluginApi, React } from "../runtime";
 import type { DialogProps } from "../types";
 export function Dialog(props: DialogProps) {
-  var dialog = React.useRef<HTMLElement | null>(null);
-  React.useEffect(function() {
+  const dialog = React.useRef<HTMLElement | null>(null);
+  React.useEffect(() => {
     if (props.open === false) return;
     return manageDialog({
       dialog: dialog.current,
@@ -17,7 +17,7 @@ export function Dialog(props: DialogProps) {
   function closeFromBackdrop(event: R.MouseEvent<HTMLDivElement>) {
     if (event.target === event.currentTarget && props.onClose) props.onClose();
   }
-  var content = (<div
+  const content = (<div
     className={props.backdropClassName || "dirty-ui-backdrop"}
     style={props.open === false ? { display: "none" } : undefined}
     onMouseDown={closeFromBackdrop}>

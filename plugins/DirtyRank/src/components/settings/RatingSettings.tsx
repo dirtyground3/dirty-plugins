@@ -3,20 +3,20 @@ import type { RankSettingsDraft, RankSettingsPanelDependencies, RankSettingsSect
 export function createRatingSettings(dependencies: Pick<RankSettingsPanelDependencies, "React" | "Fragment" | "Field" | "RATING_PRESETS" | "RankButton" | "ratingPresetFor">) {
   const { React, Fragment, Field, RATING_PRESETS, RankButton, ratingPresetFor } = dependencies;
   function RatingSettings(props: RankSettingsSectionProps) {
-    var draft = props.draft;
-    var changed = props.changed!;
-    var busy = props.busy;
-    var currentParameters = props.currentParameters!;
-    var presetEstimate = props.presetEstimate;
-    var estimateError = props.estimateError;
+    const draft = props.draft;
+    const changed = props.changed!;
+    const busy = props.busy;
+    const currentParameters = props.currentParameters!;
+    const presetEstimate = props.presetEstimate;
+    const estimateError = props.estimateError;
     return (<Fragment>
       <details className="dirty-rank-advanced">
         <summary className="dirty-rank-advanced-summary">
           <span>
-            {"Advanced configuration"}
+            Advanced configuration
           </span>
           <span className="dirty-rank-advanced-hint">
-            {"Matchmaking and Glicko-2 parameters"}
+            Matchmaking and Glicko-2 parameters
           </span>
         </summary>
         <div className="dirty-rank-advanced-body">
@@ -30,17 +30,17 @@ export function createRatingSettings(dependencies: Pick<RankSettingsPanelDepende
                 disabled={busy}
                 tone="primary"
                 title="Restore advanced values from when this settings page was opened"
-                onClick={function () { changed(currentParameters); }}>
-                {"Current"}
+                onClick={() => { changed(currentParameters); }}>
+                Current
               </RankButton>
-              {RATING_PRESETS.map(function (preset) {
-                var selected = ratingPresetFor(draft) === preset;
+              {RATING_PRESETS.map(preset => {
+                const selected = ratingPresetFor(draft) === preset;
                 return (<RankButton
                   key={preset.id}
                   disabled={busy}
                   pressed={selected}
                   tone={selected ? "primary" : "secondary"}
-                  onClick={function () { changed(preset.settings); }}>
+                  onClick={() => { changed(preset.settings); }}>
                   {preset.name}
                 </RankButton>);
               })}
@@ -60,7 +60,7 @@ export function createRatingSettings(dependencies: Pick<RankSettingsPanelDepende
               : "Custom configuration. Choose a preset or adjust the values below."}
           </p>
           <p className="dirty-rank-advanced-copy">
-            {"Presets save automatically and apply to future battles. Existing ratings and history are kept; starting values apply to unrated performers. Battle weight drives faster refinement; lower tau limits volatility changes. Recent-pair avoidance and calibration are soft matchmaking preferences. DirtyRank does not inflate uncertainty during inactivity."}
+            Presets save automatically and apply to future battles. Existing ratings and history are kept; starting values apply to unrated performers. Battle weight drives faster refinement; lower tau limits volatility changes. Recent-pair avoidance and calibration are soft matchmaking preferences. DirtyRank does not inflate uncertainty during inactivity.
           </p>
           <div className="dirty-rank-settings-grid">
             {[
@@ -82,8 +82,8 @@ export function createRatingSettings(dependencies: Pick<RankSettingsPanelDepende
               { key: "tau", label: "Tau", ...limits.tau },
               { key: "deviationFloor", label: "Deviation floor", ...limits.deviationFloor },
               { key: "provisionalDeviation", label: "Provisional threshold", ...limits.provisionalDeviation },
-            ].map(function (definition: { key: string; id?: string; label: string; help?: string; min: number; max: number; step?: number }) {
-              var id = definition.id || "dirty-rank-" + definition.key;
+            ].map((definition: { key: string; id?: string; label: string; help?: string; min: number; max: number; step?: number }) => {
+              const id = definition.id || "dirty-rank-" + definition.key;
               return (<Field id={id} key={definition.key} label={definition.label} help={definition.help}>
                 <input
                   className="form-control"
@@ -91,7 +91,7 @@ export function createRatingSettings(dependencies: Pick<RankSettingsPanelDepende
                   min={definition.min}
                   max={definition.max}
                   step={definition.step}
-                  onChange={function (event) { var update: Partial<RankSettingsDraft> = {}; Object.assign(update, { [definition.key]: Number(event.target.value) }); changed(update); }}
+                  onChange={event => { const update: Partial<RankSettingsDraft> = {}; Object.assign(update, { [definition.key]: Number(event.target.value) }); changed(update); }}
                   type="number"
                   value={draft[definition.key as keyof RankSettingsDraft] as number | string} />
               </Field>);

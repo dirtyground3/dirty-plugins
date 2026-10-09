@@ -57,12 +57,12 @@ export function parseLevels(value: unknown): string[] {
   if (!Array.isArray(value)) return DEFAULT_SETTINGS.hierarchyLevels.slice();
   // An explicit all-empty list stays empty rather than reverting to the
   // defaults the server would never plan with.
-  return value.map(function (item: unknown) { return typeof item === "string" ? item.trim() : ""; }).filter(Boolean);
+  return value.map((item: unknown) => typeof item === "string" ? item.trim() : "").filter(Boolean);
 }
 
 /** @param {*} value @returns {number} */
 export function parseMaxFilenameLength(value: unknown): number {
-  var number;
+  let number;
   if (typeof value === "number" && Number.isFinite(value)) number = Math.trunc(value);
   else if (typeof value === "string" && /^[+-]?\d+$/.test(value.trim())) number = parseInt(value.trim(), 10);
   else return DEFAULT_SETTINGS.maxFilenameLength;
@@ -70,7 +70,7 @@ export function parseMaxFilenameLength(value: unknown): number {
 }
 
 export function parseSeparator(value: unknown): string {
-  var separator = value == null ? DEFAULT_SETTINGS.multiValueSeparator : String(value);
+  let separator = value == null ? DEFAULT_SETTINGS.multiValueSeparator : String(value);
   if (!separator) separator = DEFAULT_SETTINGS.multiValueSeparator;
   return separator.slice(0, 10);
 }
@@ -86,7 +86,7 @@ export function parseRenamePattern(source: Record<string, unknown>): string {
 export function parseBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
-    var normalized = value.trim().toLowerCase();
+    const normalized = value.trim().toLowerCase();
     if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") return true;
     if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") return false;
     return Boolean(value);
@@ -97,12 +97,12 @@ export function parseBoolean(value: unknown, fallback: boolean): boolean {
 }
 
 export function parseAutomationMode(value: unknown): AutomationMode {
-  var mode = String(value == null ? "" : value).trim().toLowerCase();
+  const mode = String(value == null ? "" : value).trim().toLowerCase();
   return ["manual", "scan", "generate"].indexOf(mode) >= 0 ? mode as AutomationMode : "manual";
 }
 
 export function parseApprovalHash(value: unknown): string {
-  var hash = String(value == null ? "" : value).trim().toLowerCase();
+  const hash = String(value == null ? "" : value).trim().toLowerCase();
   return /^[0-9a-f]{64}$/.test(hash) ? hash : "";
 }
 

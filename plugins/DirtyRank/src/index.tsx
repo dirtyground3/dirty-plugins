@@ -2,6 +2,8 @@ import { BATTLE_CATEGORY_ROUTE_PATH, GAUNTLET_ROUTE_PATH, LEADERBOARDS_ROUTE_PAT
 import { readRuntime } from "./host";
 import { createLifecycle } from "./lifecycle";
 import { createViews } from "./views";
+import type { ComponentType } from "react";
+import type { ConfigurationEvent } from "./types";
 const INSTANCE_KEY = "__dirtyRankPlugin", globals = window as unknown as Record<string, unknown>;
 if (!globals[INSTANCE_KEY]) {
   const runtime = readRuntime();
@@ -17,7 +19,7 @@ if (!globals[INSTANCE_KEY]) {
     try {
       const views = createViews({ ...runtime, isActive: life.isActive, useEffect: life.useOwnedEffect });
       life.own(views.dispose);
-      function owned<P extends object>(Component: import("react").ComponentType<P>) {
+      function owned<P extends object>(Component: ComponentType<P>) {
         return function OwnedRankComponent(props: P) { return life.useActive() ? <Component {...props} /> : null; };
       }
       const Route = owned(views.DirtyRankRoute), Boards = owned(views.DirtyRankLeaderboardsRoute);
@@ -33,7 +35,7 @@ if (!globals[INSTANCE_KEY]) {
       life.own(() => DirtyPlugins.unregisterSettingsPanel(PLUGIN_ID, Settings));
       DirtyPlugins.registerSettingsPanel(PLUGIN_ID, Settings);
       void views.refreshOverallSortSettings();
-      const changed = (event: import("./types").ConfigurationEvent) => {
+      const changed = (event: ConfigurationEvent) => {
         if (life.isActive() && (!event.detail || event.detail.pluginId === PLUGIN_ID)) void views.refreshOverallSortSettings();
       };
       window.addEventListener(views.CONFIGURATION_CHANGED_EVENT, changed);

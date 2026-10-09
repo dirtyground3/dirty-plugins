@@ -30,13 +30,7 @@ React: typeof R; register: { route(path: string, component: R.ComponentType): vo
   libraries: { ReactRouterDOM: { NavLink: R.ComponentType<Record<string, unknown>>; useLocation(): { pathname: string } }; FontAwesomeSolid?: Record<string, unknown> }; components?: { ScenePlayer?: NativePlayer }; utils?: { StashService?: { useFindScene: UseFindScene } };
 }
 export interface Lifetime { active: boolean; effects: Set<() => void>; }
-export interface Dependencies { api: Host; hub: Hub; life: Lifetime; }
 export interface LoadedPlayerProps { audioState: AudioState; item: Item; nativePlayer: NativePlayer; nextItem(): void; previousItem(): void; onAudioStateChange(value: AudioState): void; playback: PlaybackSettings; scene: Scene; }
 export interface TileProps { item: Item; nativePlayer: NativePlayer; nextItem(): void; previousItem(): void; playback: PlaybackSettings; useFindScene: UseFindScene; }
 export interface GridProps { columns: number; rows: number; totalScreens: number; nativePlayer: NativePlayer; onVisibleSceneIdsChange(ids: string[]): void; playback: PlaybackSettings; playlists: Item[][]; useFindScene: UseFindScene; }
 export interface CounterAction { busy: boolean; done: boolean; pendingIds: string[] | null; }
-export interface ComponentDependencies extends Dependencies {  
-React: typeof R; contexts: ReturnType<typeof import("./contexts").createContexts>; queries: ReturnType<typeof import("./queries").createQueries>; settingsDomain: ReturnType<typeof import("./domain/settings").createSettingsDomain>;
-  controls: ReturnType<typeof import("./components/Controls").createControls>; counts: ReturnType<typeof import("./counts").createCounts>; observeSubtree: typeof import("./lifecycle").observeSubtree; useOwnedEffect: typeof R.useEffect; useActive(): boolean;
-  LoadedNativePlayer?: R.ComponentType<LoadedPlayerProps>; NativePlayerTile?: R.ComponentType<TileProps>; Grid?: R.ComponentType<GridProps>; Counter?: R.ComponentType<{ sceneIds: string[] }>; hooks?: ReturnType<typeof import("./hooks").createHooks>;
-}

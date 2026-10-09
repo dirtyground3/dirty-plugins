@@ -14,8 +14,8 @@ export function createSettingsDomain(DirtyPlugins: Hub) {
       // The CSS grid only has rows x columns cells; extra tiles would play
       // off-screen while being clipped by the viewport.
       totalScreens: Math.min(clampInteger(rawSettings.totalScreens, DEFAULT_SETTINGS.totalScreens, LIMITS.totalScreens.min, LIMITS.totalScreens.max), rows * columns),
-      rows: rows,
-      columns: columns,
+      rows,
+      columns,
       randomize: coerceBoolean(rawSettings.randomize, DEFAULT_SETTINGS.randomize),
       splitScenes: coerceBoolean(rawSettings.splitScenes, DEFAULT_SETTINGS.splitScenes),
       startMuted: coerceBoolean(rawSettings.startMuted, DEFAULT_SETTINGS.startMuted),

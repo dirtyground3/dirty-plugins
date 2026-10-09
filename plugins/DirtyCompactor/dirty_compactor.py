@@ -26,8 +26,8 @@ from dirty_compactor_rules import (
     quick_hash, container_video_bitrate,
 )
 import dirty_compactor_quality as quality
-
 from dirty_compactor_workflow import Run, OperationJournal, transition_run
+import dirty_plugins_protocol as protocol
 
 PLUGIN_ID = "dirtyCompactor"
 ROOT = Path(__file__).resolve().parent
@@ -35,7 +35,7 @@ PREVIEWS = ROOT / "runtime" / "previews"
 PRIVATE = ROOT / "runtime" / "private"
 TERMINAL = {"completed", "cancelled", "failed"}
 FIELDS = "id title files{id path size width height duration video_codec bit_rate}"
-import dirty_plugins_protocol as protocol
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # Windows: no console flash for tools
 
 
 def settings():
@@ -88,7 +88,7 @@ class Client(BaseClient):
 
 def probe(executable, path):
     result = subprocess.run([executable, "-v", "error", "-show_streams", "-show_format", "-show_chapters", "-of", "json", str(path)],
-                            capture_output=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                            capture_output=True, timeout=120, creationflags=NO_WINDOW)
     if result.returncode:
         raise PluginError("Could not probe media: " + result.stderr.decode(errors="replace")[-1000:])
     data = json.loads(result.stdout)
@@ -113,8 +113,7 @@ def probe(executable, path):
         # Matroska often omits stream bitrate. Sum compressed packet bytes,
         # not container bitrate (which includes audio and attachments).
         packet_process = subprocess.Popen([executable, "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=size", "-of", "csv=p=0", str(path)],
-                                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
         try:
             total = 0
             for line in packet_process.stdout:
@@ -204,8 +203,7 @@ def run_process(command, run_id, stage, duration=1):
     events = queue.Queue()
     try:
         with log_path.open("wb") as errors:
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors, stdin=subprocess.DEVNULL,
-                                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors, stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
             close_job = contain_child_process(process)
             def read():
                 for line in process.stdout:
@@ -249,7 +247,7 @@ def encoder_usable(ffmpeg, codec, kind):
     command = [ffmpeg, "-hide_banner", "-v", "error", "-f", "lavfi", "-i", "color=size=320x240:rate=25",
                "-t", "0.2", "-pix_fmt", "yuv420p", "-c:v", ENCODERS[codec][kind], "-b:v", "500000", "-f", "null", "-"]
     try:
-        result = subprocess.run(command, capture_output=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        result = subprocess.run(command, capture_output=True, timeout=20, creationflags=NO_WINDOW)
         return result.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -328,7 +326,7 @@ def build_preview(client, preview):
                             op.update(destination=str(Path(op["source"]).with_suffix(suffix)), muxer=muxer)
                             if op["destination"] != op["source"] and Path(op["destination"]).exists():
                                 raise PluginError("Destination already exists")
-                            completed = storage.compactor_get("completed", digest([op["fileId"], rule["id"]]))
+                            completed = storage.compactor_get("completed", completed_key(op))
                             action_key = digest({k: v for k, v in rule.items() if k not in ("name", "mode", "enabled", "condition")})
                             op["actionKey"] = action_key
                             if completed and completed.get("actionKey") == action_key and same_file(completed, op):
@@ -369,6 +367,11 @@ def build_preview(client, preview):
     preview.update(status="ready", operations=operations)
     save("preview", preview)
     return preview
+
+
+def completed_key(op):
+    """Remembers a file's outcome under one rule, so unchanged files are skipped later."""
+    return digest([op["fileId"], op["rule"]["id"]])
 
 
 def search_key(op, rule, encoder):
@@ -514,7 +517,7 @@ def encode(client, run, op):
     if not converting and output.stat().st_size >= op["identity"]["size"]:
         # Constant-quality sizes are only known after encoding; remember the
         # outcome so later previews skip this file with the same settings.
-        storage.compactor_put("completed", digest([op["fileId"], op["rule"]["id"]]),
+        storage.compactor_put("completed", completed_key(op),
                               {"hash": op["sourceHash"], "quickHash": op.get("quickHash"), "actionKey": op["actionKey"], "notSmaller": True})
         raise PluginError("Output is not smaller; original retained")
     if not converting and op["rule"]["action"] == "reencode" and (not result["bitrate"] or result["bitrate"] >= original["bitrate"]):
@@ -542,6 +545,13 @@ def cleanup_output(op):
         if op["id"] not in path.name:
             raise PluginError("Unrecognized temporary output")
         path.unlink(missing_ok=True)
+
+
+def discard_outputs(op):
+    """Remove an unfinished operation's outputs and staged copy; the original stays."""
+    cleanup_output(op)
+    if op.get("staged"):
+        Path(op["staged"]).unlink(missing_ok=True)
 
 
 def commit(client, run: Run, op: OperationJournal):
@@ -634,18 +644,14 @@ def worker(client, run_id, accept=False) -> Run:
                 if op["status"] == "awaitingReview":
                     transition_run(run, "awaitingReview", save)
                     return run
-                cleanup_output(op)
-                if op.get("staged"):
-                    Path(op["staged"]).unlink(missing_ok=True)
+                discard_outputs(op)
                 op["status"] = "failed"
                 save("run", run)
         complete_run(client, run)
     except Cancelled as error:
         for op in run["operations"]:
             if op["status"] in ("ready", "encoding", "validated", "awaitingReview", "staging"):
-                cleanup_output(op)
-                if op.get("staged"):
-                    Path(op["staged"]).unlink(missing_ok=True)
+                discard_outputs(op)
                 op.update(status="cancelled", reason=str(error))
         complete_run(client, run, "cancelled")
     return run
@@ -668,7 +674,7 @@ def finalize(client, run_id):
             raise PluginError("Stash resolution is not reconciled yet")
         if not restoring:
             Path(op["backup"]).unlink(missing_ok=True)
-            storage.compactor_put("completed", digest([op["fileId"], op["rule"]["id"]]),
+            storage.compactor_put("completed", completed_key(op),
                                   {"hash": op["outputHash"], "quickHash": quick_hash(target), "actionKey": op["actionKey"]})
         cleanup_output(op)
         op.update(status="restored" if restoring else "completed", actualSavings=0 if restoring else op["identity"]["size"] - op["outputSize"])

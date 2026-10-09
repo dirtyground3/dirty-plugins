@@ -1,7 +1,7 @@
 import type * as R from "react";
 import type { NativeProps } from "../../../DirtyPlugins/src/types";
 import { GAUNTLET_ROUTE_PATH, LEADERBOARDS_ROUTE_PATH, OVERALL_SORT_ACTIVE, OVERALL_SORT_DIRECTION, OVERALL_SORT_LABEL, OVERALL_SORT_MESSAGE_ID, OVERALL_SORT_PAGE, OVERALL_SORT_PAGE_SIZE, OVERALL_SORT_VALUE, PERFORMERS_ROUTE_PATH, PLUGIN_ID, ROUTE_PATH } from "../constants";
-import type { RankPerformer, RankSettings } from "../types";
+import type { ConfigurationEvent, RankPerformer, RankSettings } from "../types";
 import type { ViewDependencies } from "../view";
 export function createNative(dependencies: Pick<ViewDependencies, "React" | "getOverallSortSettings" | "getOverallSortRevision" | "Fragment" | "DirtyPlugins" | "NavLink" | "useIntl" | "useState" | "useEffect" | "useMemo" | "SharedNavAction" | "CONFIGURATION_CHANGED_EVENT" | "settingsFromConfiguration" | "subscribeToOverallSortSettings" | "sortPerformersByOverall">) {
   const { React, getOverallSortSettings, getOverallSortRevision, Fragment, DirtyPlugins, NavLink, useIntl, useState, useEffect, useMemo, SharedNavAction, CONFIGURATION_CHANGED_EVENT, settingsFromConfiguration, subscribeToOverallSortSettings, sortPerformersByOverall } = dependencies;
@@ -11,9 +11,9 @@ export function createNative(dependencies: Pick<ViewDependencies, "React" | "get
   }
 
   function addOverallSortOption(filter: NativeProps) {
-    var options = filter && filter.options && filter.options.sortByOptions;
+    const options = filter && filter.options && filter.options.sortByOptions;
     if (!Array.isArray(options)) return;
-    if (options.some(function (option) { return option.value === OVERALL_SORT_VALUE; })) return;
+    if (options.some(option => option.value === OVERALL_SORT_VALUE)) return;
     options.push({
       messageID: OVERALL_SORT_MESSAGE_ID,
       value: OVERALL_SORT_VALUE,
@@ -22,11 +22,11 @@ export function createNative(dependencies: Pick<ViewDependencies, "React" | "get
 
   function applyOverallPerformerFilter(filter: NativeProps, originalHook?: (filter: NativeProps) => NativeProps) {
     addOverallSortOption(filter);
-    var effective = originalHook ? originalHook(filter) : filter;
+    let effective = originalHook ? originalHook(filter) : filter;
     if (!effective) effective = filter;
     if (filter.sortBy !== OVERALL_SORT_VALUE) return effective;
 
-    var queryFilter = effective.clone();
+    const queryFilter = effective.clone();
     queryFilter.sortBy = "name";
     queryFilter.sortDirection = "ASC";
     queryFilter.currentPage = 1;
@@ -45,15 +45,13 @@ export function createNative(dependencies: Pick<ViewDependencies, "React" | "get
   function overallPerformerFilterHook(originalHook?: (filter: NativeProps) => NativeProps) {
     if (typeof originalHook !== "function") return defaultOverallPerformerFilterHook;
     if (!overallFilterHookCache.has(originalHook)) {
-      overallFilterHookCache.set(originalHook, function (filter: NativeProps) {
-        return applyOverallPerformerFilter(filter, originalHook);
-      });
+      overallFilterHookCache.set(originalHook, (filter: NativeProps) => applyOverallPerformerFilter(filter, originalHook));
     }
     return overallFilterHookCache.get(originalHook);
   }
 
   function DirtyRankPerformerListShell(props: { children?: R.ReactNode }): R.JSX.Element {
-    var intl = useIntl();
+    const intl = useIntl();
     if (intl.messages && !Object.prototype.hasOwnProperty.call(intl.messages, OVERALL_SORT_MESSAGE_ID)) {
       intl.messages[OVERALL_SORT_MESSAGE_ID] = OVERALL_SORT_LABEL;
     }
@@ -63,23 +61,21 @@ export function createNative(dependencies: Pick<ViewDependencies, "React" | "get
   }
 
   function DirtyRankSortedPerformerList(props: NativeProps): R.JSX.Element | null {
-    var revisionState = useState(getOverallSortRevision());
-    var revision = revisionState[0];
-    var setRevision = revisionState[1];
-    useEffect(function () { return subscribeToOverallSortSettings(setRevision); }, []);
+    const [revision, setRevision] = useState(getOverallSortRevision());
+    useEffect(() => subscribeToOverallSortSettings(setRevision), []);
 
-    var listProps = props.listProps;
-    var filter = listProps.filter;
-    var currentPage = Number(filter[OVERALL_SORT_PAGE]) || 1;
-    var pageSize = Number(filter[OVERALL_SORT_PAGE_SIZE]) || 40;
-    var direction = filter[OVERALL_SORT_DIRECTION] || "ASC";
-    var pagePerformers = useMemo(function () {
-      var sorted = sortPerformersByOverall(
+    const listProps = props.listProps;
+    const filter = listProps.filter;
+    const currentPage = Number(filter[OVERALL_SORT_PAGE]) || 1;
+    const pageSize = Number(filter[OVERALL_SORT_PAGE_SIZE]) || 40;
+    const direction = filter[OVERALL_SORT_DIRECTION] || "ASC";
+    const pagePerformers = useMemo(() => {
+      const sorted = sortPerformersByOverall(
         Array.isArray(listProps.performers) ? listProps.performers : [],
         direction,
         getOverallSortSettings()
       );
-      var start = Math.max(0, (currentPage - 1) * pageSize);
+      const start = Math.max(0, (currentPage - 1) * pageSize);
       return sorted.slice(start, start + pageSize);
     }, [currentPage, direction, listProps.performers, pageSize, revision]);
 
@@ -103,7 +99,7 @@ export function createNative(dependencies: Pick<ViewDependencies, "React" | "get
         title="Refine this performer's category ratings through focused DirtyRank battles"
         to={GAUNTLET_ROUTE_PATH.replace(":performerId", props.performer.id)}>
         <span aria-hidden="true">
-          {"⚔"}
+          ⚔
         </span>
         {" Start Gauntlet"}
       </NavLink>
@@ -114,7 +110,7 @@ export function createNative(dependencies: Pick<ViewDependencies, "React" | "get
     return (<i aria-hidden="true" className="dirty-rank-nav-icon">
       <svg viewBox="0 0 24 24" fill="none" stroke="var(--dirty-ui-icon-white)" strokeWidth="1.8">
         {kind === "battle"
-          ? ["red", "blue"].map(function (color, index) {
+          ? ["red", "blue"].map((color, index) => {
             return (<g
               key={color}
               transform={index ? "translate(24 0) scale(-1 1)" : undefined}
@@ -147,25 +143,23 @@ export function createNative(dependencies: Pick<ViewDependencies, "React" | "get
   }
 
   function DirtyRankNavLinks(): R.JSX.Element | null {
-    var navigationState = useState<RankSettings | null>(null);
-    var navigation = navigationState[0];
-    var setNavigation = navigationState[1];
+    const [navigation, setNavigation] = useState<RankSettings | null>(null);
 
-    useEffect(function () {
-      var active = true;
+    useEffect(() => {
+      let active = true;
       function refreshNavigation() {
-        DirtyPlugins.getPluginSettings(PLUGIN_ID).then(function (configuration) {
+        DirtyPlugins.getPluginSettings(PLUGIN_ID).then(configuration => {
           if (active) setNavigation(settingsFromConfiguration(configuration));
-        }).catch(function (error) {
+        }).catch(error => {
           console.error("DirtyRank could not refresh navigation settings", error);
         });
       }
-      function configurationChanged(event: import("../types").ConfigurationEvent) {
+      function configurationChanged(event: ConfigurationEvent) {
         if (!event.detail || event.detail.pluginId === PLUGIN_ID) refreshNavigation();
       }
       refreshNavigation();
       window.addEventListener(CONFIGURATION_CHANGED_EVENT, configurationChanged);
-      return function () {
+      return () => {
         active = false;
         window.removeEventListener(CONFIGURATION_CHANGED_EVENT, configurationChanged);
       };

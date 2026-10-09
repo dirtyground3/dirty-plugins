@@ -31,3 +31,7 @@ export function coerceBoolean(value: unknown, fallback: boolean): boolean {
   }
   return fallback;
 }
+/** Append an optional caller class to a component's own classes. */
+export function withClass(base: string, extra?: string) {
+  return extra ? base + " " + extra : base;
+}

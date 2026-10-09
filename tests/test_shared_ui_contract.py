@@ -152,7 +152,7 @@ class SharedUIContractTests(unittest.TestCase):
             self.assertIn(export, hub)
         for component in ("IconButton", "SettingsCard", "SettingsSection", "SettingsToggle", "StateView"):
             self.assertIn("export function " + component, hub)
-        self.assertIn("hubApi.react.SceneFilterEditor = SceneFilterEditor", hub)
+        self.assertRegex(hub, r"hubApi\.react = \{[^\n]*\bSceneFilterEditor\b")
         # StateView forwards optional ARIA roles so callers keep accessible alerts.
         self.assertIn("role={props.role}", hub)
         self.assertIn("aria-live={props.ariaLive}", hub)
@@ -226,13 +226,13 @@ class SharedUIContractTests(unittest.TestCase):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
 
         self.assertIn(
-            'export const MAIN_PAGE_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor", "dirtyCaptions"]',
+            'export const MANAGED_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor", "dirtyCaptions"]',
             hub,
         )
         self.assertIn("data-dirty-plugin-id={props.pluginId}", hub)
         self.assertIn("orderMainPluginSettingsGroups", hub)
         self.assertIn("document.createComment", hub)
-        self.assertIn("MAIN_PAGE_PLUGIN_ID_SET.has(pluginId)", hub)
+        self.assertIn("MANAGED_PLUGIN_ID_SET.has(pluginId)", hub)
 
     def test_captions_use_native_tracks_and_shared_hub(self):
         script = read("plugins/DirtyCaptions/dirtyCaptions.js")
@@ -354,7 +354,7 @@ class SharedUIContractTests(unittest.TestCase):
         hub = read("plugins/DirtyPlugins/dirtyPlugins.js")
         backend = read("plugins/DirtyPlugins/dirty_plugins.py")
 
-        self.assertIn('var PLUGIN_ID = "dirtyStats"', script)
+        self.assertIn('const PLUGIN_ID = "dirtyStats"', script)
         self.assertIn("useStatsSetting", script)
         self.assertIn("hub.getPluginSettings(PLUGIN_ID)", script)
         self.assertIn("statsSettingsSaveController = hub.createSaveController", script)
@@ -362,7 +362,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn("Promise<R | null | void> = Promise.resolve()", shared_save)
         self.assertIn("chain.catch", shared_save)
         self.assertIn("hub.configurePlugin(PLUGIN_ID, request.snapshot)", script)
-        self.assertIn("request.names.forEach(function (name) { merged[name] = request.snapshot[name]; })", script)
+        self.assertIn("request.names.forEach(name => { merged[name] = request.snapshot[name]; })", script)
         self.assertIn('"dirtyStats"', backend)
         hub_manifest = read("plugins/DirtyPlugins/dirtyPlugins.yml")
         hub_styles = read("plugins/DirtyPlugins/dirtyPlugins.css")
@@ -371,14 +371,14 @@ class SharedUIContractTests(unittest.TestCase):
         theme_setting = schema("dirtyPlugins")["settings"]["visualTheme"]
         self.assertIn('"dirtyPlugins", "extractScenes"', hub)
         # The suite theme is read only from DirtyPlugins; the pre-1.0 Stats fallback was removed.
-        self.assertIn('return getPluginSettings("dirtyPlugins").then', hub)
+        self.assertIn('loadVisualTheme(() => getPluginSettings("dirtyPlugins"))', hub)
         self.assertNotIn('getPluginSettings("dirtyStats")', hub)
         self.assertIn('mode: "backupDatabase"', hub)
         self.assertEqual(theme_setting["default"], "classic")
         self.assertIn("export const DEFAULT_VISUAL_THEME = hubSettings.defaults.visualTheme", hub)
-        self.assertIn("export const PLUGIN_DEFAULTS = standardTable(function(settings) { return settings.defaults; })", hub)
-        self.assertIn('hubApi.theme.defaultKey = DEFAULT_VISUAL_THEME', hub)
-        self.assertIn("var DEFAULT_THEME = hub.theme.defaultKey", script)
+        self.assertIn("export const PLUGIN_DEFAULTS = standardTable(settings => settings.defaults)", hub)
+        self.assertIn('defaultKey: DEFAULT_VISUAL_THEME', hub)
+        self.assertIn("const DEFAULT_THEME = hub.theme.defaultKey", script)
         self.assertIn({"value": "paper", "label": "Paper Picnic"}, theme_setting["options"])
         self.assertIn({"value": "destijl", "label": "De Stijl"}, theme_setting["options"])
         self.assertIn({"value": "destijl-dark", "label": "De Stijl Dark"}, theme_setting["options"])
@@ -491,9 +491,9 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertRegex(manifest, r"javascript:\s*\n\s*- dirtyStats\.js\s*\n\s*css:")
         self.assertNotIn("dirtyStatsDashboard.js", manifest)
         self.assertIn('core.setSettingExtra("dashboardWidgets", widgets)', dashboard)
-        self.assertIn('var SIZES = ["small", "medium", "large"]', dashboard)
+        self.assertIn('const SIZES = ["small", "medium", "large"]', dashboard)
         self.assertIn("WIDGETS = registry.widgets", dashboard)
-        self.assertIn("var entries: Record<string, Required<StatsDefinition>>", registry)
+        self.assertIn("const entries: Record<string, Required<StatsDefinition>>", registry)
         self.assertNotIn("dirty-stats-dashboard-size-label", dashboard)
         self.assertIn("dirty-stats-dashboard-open-link", dashboard)
         self.assertIn("dirty-stats-dashboard-visually-hidden", dashboard)
@@ -568,9 +568,9 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('label={definition.label}', settings_ui)
         evidence = schema("dirtyRank")["settings"]["evidenceWeight"]
         self.assertEqual((evidence["default"], evidence.get("integer", False)), (2, False))
-        self.assertIn("number(source.evidenceWeight, defaults.evidenceWeight", script)
+        self.assertIn('evidenceWeight: bounded("evidenceWeight")', script)
         self.assertIn('"evidenceWeight": _bounded(source, "evidenceWeight")', backend)
-        self.assertIn('{"Advanced configuration"}', script)
+        self.assertRegex(script, r">\s*Advanced configuration\s*<")
         self.assertNotIn("Eligibility tag IDs", script)
         self.assertNotIn("ratingPeriodDays", script)
         self.assertNotIn("ratingPeriodDays", backend)
@@ -579,7 +579,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertNotIn("Export ratings", battle_ui)
         self.assertNotIn('"Export ratings"', settings_ui)
         self.assertNotIn('"Reset current pool"', settings_ui)
-        self.assertIn('{"Reset ratings"}', settings_ui)
+        self.assertRegex(settings_ui, r">\s*Reset ratings\s*<")
         self.assertIn('resetCategoryPool(editingCohort, category)', settings_ui)
 
     def test_standard_and_dirty_rank_settings_save_automatically(self):
@@ -604,14 +604,16 @@ class SharedUIContractTests(unittest.TestCase):
         script = read("plugins/DirtyRank/dirtyRank.js")
         backend = read("plugins/DirtyRank/dirty_rank.py")
         submit = script.split("function submit(outcome:", 1)[1].split("function skip()", 1)[0]
+        enqueue = script.split("function enqueue(", 1)[1].split("function replaceStates(", 1)[0]
 
-        self.assertIn("voteQueueRef.current", submit)
-        self.assertIn("pendingVotesRef.current += 1", submit)
+        # Votes and undos share one serialized queue; the vote advances first.
+        self.assertIn("voteQueueRef.current = voteQueueRef.current.then(operation)", enqueue)
+        self.assertIn("pendingVotesRef.current += 1", enqueue)
         self.assertLess(
             submit.index("showPreparedOrPickNext(outcome)"),
-            submit.index("voteQueueRef.current"),
+            submit.index("enqueue("),
         )
-        self.assertNotIn("setTimeout", submit)
+        self.assertNotIn("setTimeout", submit + enqueue)
         self.assertIn('pendingVotes + " queued operation"', script)
         self.assertNotIn("performerUpdate", backend)
         self.assertIn('connection.execute("BEGIN IMMEDIATE")', backend)
@@ -664,7 +666,7 @@ class SharedUIContractTests(unittest.TestCase):
         self.assertIn('PluginApi.patch.after("FilteredPerformerList"', script)
         self.assertIn('PluginApi.patch.instead("PerformerList"', script)
         self.assertIn("function sortPerformersByOverall", script)
-        self.assertIn('var cohort = battleCohortFor(settings, performer, "")', script)
+        self.assertIn('const cohort = battleCohortFor(settings, performer, "")', script)
         self.assertIn('boxGenders(settings, cohort).indexOf(String(performer.gender || "").toUpperCase())', script)
         self.assertRegex(script, r"if \(left\.rated !== right\.rated\)\s+return left\.rated \? -1 : 1")
         self.assertIn("queryFilter.itemsPerPage = -1", script)

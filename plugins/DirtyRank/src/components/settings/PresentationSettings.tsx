@@ -5,18 +5,18 @@ import type { RankSettingsDraft, RankSettingsPanelDependencies, RankSettingsSect
 export function createPresentationSettings(dependencies: Pick<RankSettingsPanelDependencies, "React" | "Fragment" | "leaderboardPerformerCountError" | "Field" | "LEADERBOARD_TOP_OPTIONS" | "OVERALL_SCORE_PARAMETERS" | "OVERALL_SCORE_STRATEGIES" | "Section" | "Toggle" | "leaderboardPerformerCount" | "leaderboardTopCount" | "overallScoreParameterError" | "overallScoreStrategy">) {
   const { React, Fragment, leaderboardPerformerCountError, Field, LEADERBOARD_TOP_OPTIONS, OVERALL_SCORE_PARAMETERS, OVERALL_SCORE_STRATEGIES, Section, Toggle, leaderboardPerformerCount, leaderboardTopCount, overallScoreParameterError, overallScoreStrategy } = dependencies;
   function presentationToggles(definitions: Array<[keyof RankSettingsDraft, R.ReactNode]>, draft: RankSettingsDraft, changed: (update: Partial<RankSettingsDraft>) => void) {
-    return definitions.map(function (definition) {
-      var key = definition[0];
+    return definitions.map(definition => {
+      const key = definition[0];
       return (<Toggle
         key={key}
         checked={draft[key as keyof RankSettingsDraft] as boolean}
         label={definition[1]}
-        onChange={function (value: boolean) { var update: Partial<RankSettingsDraft> = {}; Object.assign(update, { [key]: value }); changed(update); }} />);
+        onChange={(value: boolean) => { const update: Partial<RankSettingsDraft> = {}; Object.assign(update, { [key]: value }); changed(update); }} />);
     });
   }
   function PresentationSettings(props: RankSettingsSectionProps) {
-    var draft = props.draft;
-    var changed = props.changed!;
+    const draft = props.draft;
+    const changed = props.changed!;
     return (<Fragment>
       <Section
         title="Navigation"
@@ -33,11 +33,11 @@ export function createPresentationSettings(dependencies: Pick<RankSettingsPanelD
         description="Choose the featured layout and standings view. Changes save automatically and apply to every leaderboard statistic.">
         <div className="dirty-rank-settings-grid dirty-rank-leaderboard-settings">
           <Field id="dirty-rank-leaderboard-top-count" label="Featured performers">
-            <select className="form-control" id="dirty-rank-leaderboard-top-count" onChange={function (event) {
-              var topCount = leaderboardTopCount(event.target.value);
+            <select className="form-control" id="dirty-rank-leaderboard-top-count" onChange={event => {
+              const topCount = leaderboardTopCount(event.target.value);
               changed({ leaderboardTopCount: topCount, leaderboardPerformerCount: leaderboardPerformerCount(draft.leaderboardPerformerCount, topCount) });
             }} value={draft.leaderboardTopCount}>
-              {LEADERBOARD_TOP_OPTIONS.map(function (option) {
+              {LEADERBOARD_TOP_OPTIONS.map(option => {
                 return (<option key={option.count} value={option.count}>
                   {option.name}
                 </option>);
@@ -57,19 +57,19 @@ export function createPresentationSettings(dependencies: Pick<RankSettingsPanelD
               max={leaderboardPerformerCountMaximum(Number(draft.leaderboardTopCount))}
               step={draft.leaderboardTopCount}
               value={draft.leaderboardPerformerCount}
-              onChange={function (event) { changed({ leaderboardPerformerCount: event.target.value }); }} />
+              onChange={event => { changed({ leaderboardPerformerCount: event.target.value }); }} />
           </Field>
           <Field id="dirty-rank-leaderboard-view" label="Standings view">
             <select
               className="form-control"
               id="dirty-rank-leaderboard-view"
-              onChange={function (event) { changed({ leaderboardView: event.target.value }); }}
+              onChange={event => { changed({ leaderboardView: event.target.value }); }}
               value={draft.leaderboardView}>
               <option value="gallery">
-                {"Gallery"}
+                Gallery
               </option>
               <option value="table">
-                {"Table"}
+                Table
               </option>
             </select>
           </Field>
@@ -85,7 +85,7 @@ export function createPresentationSettings(dependencies: Pick<RankSettingsPanelD
             ["hideBattleStandings", "Hide standings during battles"],
             ["autoPlayTopScenes", (<span
               title="Automatic previews play each performer's highest-rated full scene, muted, from a random point between 30% and 70%. Photos remain clickable for voting unless hidden above.">
-              {"Automatically play top scenes"}
+              Automatically play top scenes
             </span>)],
             ["includePerformersWithoutImages", "Include performers without profile images"]
           ], draft, changed)}
@@ -99,16 +99,16 @@ export function createPresentationSettings(dependencies: Pick<RankSettingsPanelD
             <select
               className="form-control"
               id="dirty-rank-confidence-goal"
-              onChange={function (event) { changed({ confidenceGoal: event.target.value }); }}
+              onChange={event => { changed({ confidenceGoal: event.target.value }); }}
               value={draft.confidenceGoal}>
               <option value="ranking">
-                {"Leaderboard order (recommended)"}
+                Leaderboard order (recommended)
               </option>
               <option value="top">
-                {"Top performers"}
+                Top performers
               </option>
               <option value="all">
-                {"Every performer rating"}
+                Every performer rating
               </option>
             </select>
           </Field>
@@ -123,7 +123,7 @@ export function createPresentationSettings(dependencies: Pick<RankSettingsPanelD
               id="dirty-rank-confidence-top-n"
               max={limits.confidenceTopN.max}
               min={limits.confidenceTopN.min}
-              onChange={function (event) { changed({ confidenceTopN: event.target.value }); }}
+              onChange={event => { changed({ confidenceTopN: event.target.value }); }}
               step={limits.confidenceTopN.step}
               type="number"
               value={draft.confidenceTopN} />
@@ -141,8 +141,8 @@ export function createPresentationSettings(dependencies: Pick<RankSettingsPanelD
             className="form-control"
             id="dirty-rank-overall-strategy"
             value={draft.overallScoreStrategy}
-            onChange={function (event) { changed({ overallScoreStrategy: event.target.value }); }}>
-            {OVERALL_SCORE_STRATEGIES.map(function (strategy) {
+            onChange={event => { changed({ overallScoreStrategy: event.target.value }); }}>
+            {OVERALL_SCORE_STRATEGIES.map(strategy => {
               return (<option key={strategy.id} value={strategy.id}>
                 {strategy.name}
               </option>);
@@ -150,10 +150,8 @@ export function createPresentationSettings(dependencies: Pick<RankSettingsPanelD
           </select>
         </Field>
         {draft.overallScoreStrategy === "power" && (<div className="dirty-rank-settings-grid">
-          {OVERALL_SCORE_PARAMETERS.filter(function (definition) {
-            return definition.strategy === draft.overallScoreStrategy;
-          }).map(function (definition) {
-            var id = "dirty-rank-" + definition.key;
+          {OVERALL_SCORE_PARAMETERS.filter(definition => definition.strategy === draft.overallScoreStrategy).map(definition => {
+            const id = "dirty-rank-" + definition.key;
             return (<Field
               key={definition.key}
               id={id}
@@ -168,8 +166,8 @@ export function createPresentationSettings(dependencies: Pick<RankSettingsPanelD
                 max={definition.max}
                 step={definition.step}
                 value={draft[definition.key as keyof RankSettingsDraft] as number | string}
-                onChange={function (event) {
-                  var update: Partial<RankSettingsDraft> = {};
+                onChange={event => {
+                  const update: Partial<RankSettingsDraft> = {};
                   Object.assign(update, { [definition.key]: event.target.value });
                   changed(update);
                 }} />

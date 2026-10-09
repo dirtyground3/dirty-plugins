@@ -103,6 +103,52 @@ verified and installed live: A (release builds without inline maps), B
 
 ## Current work / next action
 
+### Simplification pass (review checkpoint, 9 October 2026)
+
+- User: simplify the code while keeping features the same. Uncommitted, not
+  installed or pushed; port 9999 untouched. Pre-work snapshot of every tracked
+  file was kept outside the repository and used for the per-line CRLF/LF
+  restoration at the end.
+- **Hub wiring.** `transport`, `theme`, `native`, `debug` and `SceneFilter` are
+  plain modules that import each other; the `create*`/`Hub*Dependencies`
+  factories and `bindServices` are gone. Docs capture moved to `capture.ts`,
+  settings-panel registries to `settings.ts`; `index.tsx` assembles the same
+  public `window.DirtyPlugins` members. `MAIN_PAGE_PLUGIN_IDS` merged into the
+  identical `MANAGED_PLUGIN_IDS`.
+- **Multiscreen wiring.** Components import a bound `runtime.ts` (and
+  `lifecycle.ts` owned effects) instead of `ComponentDependencies`; launch
+  contexts, query variables and context validation are table-driven. Domain
+  factories (`createContexts`, `createQueries`, `createSettingsDomain`) remain
+  the test seams.
+- **Codemod (all TS/TSX, typecheck-verified).** `var` -> `const`/`let` with
+  write-reference analysis, safe `function` -> arrows, `{"text"}` JSX children
+  -> text, empty JSX elements self-closing, whitespace-only JSX lines removed,
+  hook tuple index triples (`useState`, `useStatsSetting`) and `x = obj.x` runs
+  destructured, object shorthand, blank lines inside JSX text removed, inline
+  `import("...").Type` references hoisted into `import type` lines.
+  `tsc --noUnusedLocals` is clean. Source contracts that quoted the old
+  spellings were updated to the new ones.
+- **Logic.** Rank: shared standings paging/panel, `linkedBox`, one vote/undo
+  queue (`enqueue`), `findTarget`, matchmaking `finishScore`/`rankIndex`/shared
+  confidence summary, `scoredCategories`, schema-driven `flag`/`bounded`
+  settings readers mirroring the backend. Stats: view-factory loop,
+  `uniqueById`/`countValue` in aggregations; unreachable `StateView` fallback
+  and chart-library checks removed. Python: `protocol.requested_mode`, one
+  `for/else` shared-folder discovery, storage metadata/borrowed-connection
+  helpers, DirtyPlugins `main()` on `run_logged_backend`, Compactor
+  `NO_WINDOW`/`completed_key`/`discard_outputs`, Rank `_maybe_json`,
+  `pair_result` and `flag`, Extractor `_discard_partial` and a planner without
+  dead unpacking, Tidy shared move-result entries and one automation `skip`.
+  The Captions index worker was reviewed and left as is (lease/claim code).
+- Registry: test modules no test loads were removed (hub theme, Captions
+  filterView, Rank rating/matchmaking/navigation, Stats registry/growth/ages/
+  chartOptions/filters/dashboard). Bundle budgets tightened after every bundle
+  shrank (1,468,966 -> 1,442,609 bytes).
+- Versions: DirtyStats 1.0.4, the other seven 1.0.3; README table and release
+  notes updated. `npm test`: typecheck, 37 JavaScript suites, 283 Python tests
+  (2 intentional skips); `git diff --check` clean. Not run: opt-in isolated
+  Stash integration scripts, live browser checks.
+
 ### Dead-code cleanup (review checkpoint, 9 October 2026)
 
 - User: clean up dead code now that the migration is complete. Decision:

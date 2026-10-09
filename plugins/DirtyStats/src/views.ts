@@ -33,28 +33,19 @@ import { createRegistry } from "./domain/registry";
 import type { Runtime } from "./runtime";
 import { createSettings } from "./settings";
 import type { StatsViews, ViewDependencies } from "./view";
+import type { ChartOption } from "./types";
 export function createViews(runtime: Runtime) {
   const { React, hub, charts, world } = runtime; const settings = createSettings(runtime); const analytics = createAnalytics({ ...settings, world }); const filters = createFilters({ ...settings, hub }); const registry = createRegistry();
-  const initStatsChart = (node: HTMLElement, options?: import("./types").ChartOption) => { const chart = charts.init(node, null, options || { renderer: "canvas" }), setOption = chart.setOption.bind(chart), getDataURL = chart.getDataURL.bind(chart); chart.setOption = (option, replace) => { if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) option.animation = false; setOption(option, replace); }; chart.getDataURL = options => getDataURL({ ...options, backgroundColor: settings.themeColor("background") }); return chart; };
+  const initStatsChart = (node: HTMLElement, options?: ChartOption) => { const chart = charts.init(node, null, options || { renderer: "canvas" }), setOption = chart.setOption.bind(chart), getDataURL = chart.getDataURL.bind(chart); chart.setOption = (option, replace) => { if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) option.animation = false; setOption(option, replace); }; chart.getDataURL = options => getDataURL({ ...options, backgroundColor: settings.themeColor("background") }); return chart; };
   const chartLifecycle = createLifecycle({ React, init: initStatsChart, events: window, own: runtime.own, Observer: typeof ResizeObserver === "function" ? ResizeObserver : undefined }); const chartOptions = createBuilders({ ...analytics, themeColor: settings.themeColor, formatBytes: growth.formatBytes }); const dataLoader = createLoader({ React, graphql: hub.graphql, own: runtime.own });
   const views = {} as StatsViews; const dependencies = { ...runtime, ...settings, ...analytics, ...filters, ...growth, ...ages, registry, growth, ages, BIRTHDAY_MONTHS: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"], views, StateView: hub.react.StateView, chartLifecycle, chartOptions, dataLoader, performerFilterEvent: "dirty-stats:performer-filter", statsSettingsReady: Promise.resolve() } as ViewDependencies;
   const routes: Record<string, string> = { route: "origin", dashboardRoute: "dashboard", growthRoute: "growth", ageRoute: "ages", ratingRoute: "ratings", performerRatingRoute: "performerRatings", performerScatterRoute: "performerScatter", countRatingRoute: "countRating", repeatOffenderRoute: "repeatOffenders", qualityEfficiencyRoute: "qualityEfficiency", constellationRoute: "constellation", studioRoute: "studios", tagDnaRoute: "tags", birthdayRoute: "birthdays" }; for (const [name, key] of Object.entries(routes)) (dependencies as unknown as Record<string, unknown>)[name] = registry.entries[key].route;
   dependencies.STATISTIC_ORDER = registry.statisticOrder; dependencies.STATISTIC_ROUTES = {}; dependencies.STATISTIC_LABELS = {}; registry.statisticOrder.forEach(key => { dependencies.STATISTIC_ROUTES[key] = registry.entries[key].route; dependencies.STATISTIC_LABELS[key] = registry.entries[key].label; });
-  Object.assign(views, createPrimitives(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createFilterViews(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createCards(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createOrigin(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createConstellation(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createGrowth(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createAges(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createBirthdays(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createRatings(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createScatter(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createCounters(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createQuality(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createStudios(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createTags(dependencies)); Object.assign(dependencies, views);
-  Object.assign(views, createRoute(dependencies)); Object.assign(dependencies, views);
+  // Each view module may use the views created before it.
+  for (const create of [createPrimitives, createFilterViews, createCards, createOrigin, createConstellation, createGrowth, createAges,
+    createBirthdays, createRatings, createScatter, createCounters, createQuality, createStudios, createTags, createRoute]) {
+    Object.assign(dependencies, Object.assign(views, create(dependencies)));
+  }
   const algorithms = { ...analytics, ...filters, ...settings, ...growth, ...ages, initStatsChart };
   const core = { settingsReady: dependencies.statsSettingsReady, getSettingExtra: settings.getStatsSettingExtra, setSettingExtra: settings.setStatsSettingExtra };
   const dashboard = createDashboardViews(runtime, algorithms, core);
@@ -65,13 +56,8 @@ export function createViews(runtime: Runtime) {
 export function createDashboardViews(runtime: Runtime, algorithms: DashboardDependencies["algorithms"], core: DashboardDependencies["core"]) {
   const { api, hub } = runtime;
   const dashDomain = createDashboardDomain(runtime); const dashViews = {} as DashboardViews; const dashDependencies = { ...runtime, ...dashDomain, algorithms, core, sharedReact: hub.react, StateView: hub.react.StateView, Field: hub.react.Field, Toggle: hub.react.SettingsToggle, Link: api.libraries.ReactRouterDOM.Link } as DashboardDependencies;
-  Object.assign(dashViews, createDashboardChart(dashDependencies)); Object.assign(dashDependencies, dashViews);
-  Object.assign(dashViews, createDashboardCards(dashDependencies)); Object.assign(dashDependencies, dashViews);
-  Object.assign(dashViews, createDashboardCharts(dashDependencies)); Object.assign(dashDependencies, dashViews);
-  Object.assign(dashViews, createDashboardControls(dashDependencies)); Object.assign(dashDependencies, dashViews);
-  Object.assign(dashViews, createDashboardFilter(dashDependencies)); Object.assign(dashDependencies, dashViews);
-  Object.assign(dashViews, createDashboardWidget(dashDependencies)); Object.assign(dashDependencies, dashViews);
-  Object.assign(dashViews, createDashboardPage(dashDependencies)); Object.assign(dashDependencies, dashViews);
-
+  for (const create of [createDashboardChart, createDashboardCards, createDashboardCharts, createDashboardControls, createDashboardFilter, createDashboardWidget, createDashboardPage]) {
+    Object.assign(dashDependencies, Object.assign(dashViews, create(dashDependencies)));
+  }
   return { Component: dashViews.DashboardPage, Widget: dashViews.DashboardWidget, FilterChooser: dashViews.DashboardFilterChooser, widgetOptions: dashViews.WidgetOptions, algorithms: dashDomain, registry: dashDomain.WIDGETS, defaults: dashDomain.DEFAULT_WIDGETS };
 }

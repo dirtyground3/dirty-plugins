@@ -81,6 +81,14 @@ def configure_standard_streams(*, errors=None) -> None:
                 pass
 
 
+def requested_mode(default):
+    """Read args.mode for log lines; "unknown" when the payload has no args object."""
+    def mode(payload):
+        args = payload.get("args") if isinstance(payload, dict) else None
+        return str(args.get("mode") or default) if isinstance(args, dict) else "unknown"
+    return mode
+
+
 def run_logged_backend(name, run, read, emit, fail, reporter, clock, *, requested_mode=None, exit_code=None):
     """Keep timing and protocol handling shared; callers retain dispatch and envelopes."""
     started = clock()

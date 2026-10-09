@@ -14,8 +14,6 @@ for folder in ("dirtyPlugins", "DirtyPlugins"):
         break
 
 
-
-
 from dirty_plugins_protocol import StashReporter
 import dirty_plugins_protocol as protocol
 

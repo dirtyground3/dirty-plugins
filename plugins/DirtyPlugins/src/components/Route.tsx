@@ -1,125 +1,50 @@
+import type * as R from "react";
+import { captureEnabled } from "../capture";
 import { CONFIGURATION_CHANGED_EVENT, FIELD_ACTIONS_CHANGED_EVENT, SETTINGS_PANELS_CHANGED_EVENT, UNSAVED_SETTINGS_MESSAGE } from "../constants";
-import { React, hubApi, settingsPanels, transport } from "../runtime";
-import type { SaveController } from "../save";
-import { createDrafts, loadSettingsSnapshot, requestedPluginId, serializeFieldValue, standardDraftsAreDirty } from "../settings";
+import { React } from "../runtime";
+import { createSaveController, type SaveController } from "../save";
+import { createDrafts, loadSettingsSnapshot, notifyConfigurationChanged, requestedPluginId, serializeFieldValue, settingsPanels, standardDraftsAreDirty } from "../settings";
 import { usePageTitle } from "../title";
+import { configurePlugin } from "../transport";
 import type { Drafts, FieldValue, Plugin, Snapshot, Statuses } from "../types";
 import { asObject } from "../values";
 import { StateView } from "./Controls";
 import { PluginCard } from "./PluginCard";
-export function DirtyPluginsRoute() {
-  var snapshotState = React.useState<Snapshot | null>(null);
-  var snapshot = snapshotState[0];
-  var setSnapshot = snapshotState[1];
-  var draftsState = React.useState<Drafts>({});
-  var drafts = draftsState[0];
-  var setDrafts = draftsState[1];
-  var savedDraftsState = React.useState<Drafts>({});
-  var savedDrafts = savedDraftsState[0];
-  var setSavedDrafts = savedDraftsState[1];
-  var customDirtyState = React.useState<Record<string, boolean>>({});
-  var customDirty = customDirtyState[0];
-  var setCustomDirty = customDirtyState[1];
-  var loadingState = React.useState(true);
-  var loading = loadingState[0];
-  var setLoading = loadingState[1];
-  var errorState = React.useState<string | null>(null);
-  var error = errorState[0];
-  var setError = errorState[1];
-  var statusesState = React.useState<Statuses>({});
-  var statuses = statusesState[0];
-  var setStatuses = statusesState[1];
-  var actionRevisionState = React.useState(0);
-  var actionRevision = actionRevisionState[0];
-  var setActionRevision = actionRevisionState[1];
-  var settingsPanelRevisionState = React.useState(0);
-  var setSettingsPanelRevision = settingsPanelRevisionState[1];
-  var saveControllersRef = React.useRef<Record<string, SaveController<Record<string, FieldValue>, { input: Record<string, unknown>; revision: number; }>>>({});
-  var snapshotRef = React.useRef(snapshot);
-  snapshotRef.current = snapshot;
-  var activePluginState = React.useState(requestedPluginId);
-  var activePluginId = activePluginState[0];
-  var setActivePluginId = activePluginState[1];
-  var standardDirty = React.useMemo(function() {
-    return standardDraftsAreDirty(snapshot, drafts, savedDrafts);
-  }, [snapshot, drafts, savedDrafts]);
-  var hasUnsavedChanges = standardDirty || Object.keys(customDirty).some(function(pluginId) {
-    return Boolean(customDirty[pluginId]);
-  });
-  var reportCustomDirty = React.useCallback(function(pluginId: string, dirty: boolean) {
-    setCustomDirty(function(current) {
-      if (Boolean(current[pluginId]) === Boolean(dirty)) return current;
-      var next = Object.assign({}, current);
-      if (dirty) next[pluginId] = true;
-      else delete next[pluginId];
-      return next;
-    });
-  }, []);
 
-  var reload = React.useCallback(function() {
-    setLoading(true);
-    setError(null);
-    return loadSettingsSnapshot()
-      .then(function(nextSnapshot) {
-        var nextDrafts = createDrafts(nextSnapshot);
-        setSnapshot(nextSnapshot);
-        setDrafts(nextDrafts);
-        setSavedDrafts(nextDrafts);
-        setCustomDirty({});
-        setActivePluginId(function(currentPluginId) {
-          var currentIsInstalled = nextSnapshot.plugins.some(function(plugin) {
-            return plugin.id === currentPluginId;
-          });
-          return currentIsInstalled
-            ? currentPluginId
-            : (nextSnapshot.plugins[0] && nextSnapshot.plugins[0].id);
-        });
-      })
-      .catch(function(loadError) {
-        setError(loadError.message || String(loadError));
-      })
-      .then(function() { setLoading(false); });
-  }, []);
+type PluginSaveController = SaveController<Record<string, FieldValue>, { input: Record<string, unknown>; revision: number; }>;
+const SAVE_MESSAGES: Record<string, string> = {
+  pending: "Waiting to save automatically…", saving: "Saving automatically…", saved: "Saved automatically.",
+};
 
-  React.useEffect(function() {
-    reload();
-  }, [reload]);
+function pluginInput(plugin: Plugin, draft: Record<string, FieldValue>, snapshot: Snapshot) {
+  const input = Object.assign({}, asObject(snapshot.configuration[plugin.id]));
+  (plugin.settings || []).forEach(setting => { input[setting.name] = serializeFieldValue(setting, draft[setting.name]); });
+  return input;
+}
 
-  React.useEffect(function() {
-    function onConfigurationChanged(event: Event) {
-      if ((event as CustomEvent<{ preserveSettingsPage?: boolean; }>).detail?.preserveSettingsPage) return;
-      reload();
-    }
-    function onFieldActionsChanged() {
-      setActionRevision(function(revision) { return revision + 1; });
-    }
-    function onSettingsPanelsChanged() {
-      setSettingsPanelRevision(function(revision) { return revision + 1; });
-    }
-    window.addEventListener(CONFIGURATION_CHANGED_EVENT, onConfigurationChanged);
-    window.addEventListener(FIELD_ACTIONS_CHANGED_EVENT, onFieldActionsChanged);
-    window.addEventListener(SETTINGS_PANELS_CHANGED_EVENT, onSettingsPanelsChanged);
-    return function() {
-      window.removeEventListener(CONFIGURATION_CHANGED_EVENT, onConfigurationChanged);
-      window.removeEventListener(FIELD_ACTIONS_CHANGED_EVENT, onFieldActionsChanged);
-      window.removeEventListener(SETTINGS_PANELS_CHANGED_EVENT, onSettingsPanelsChanged);
-    };
-  }, [reload]);
+function replaceUrlPlugin(pluginId: string) {
+  try {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set("plugin", pluginId);
+    window.history.replaceState(window.history.state, "", nextUrl.pathname + nextUrl.search + nextUrl.hash);
+  } catch (_error) {
+    // The selected tab still works if the browser URL cannot be updated.
+  }
+}
 
-  React.useEffect(function() {
+/** Warn before a reload or a link click would discard unsaved settings. */
+function useLeaveProtection(hasUnsavedChanges: boolean) {
+  React.useEffect(() => {
     if (!hasUnsavedChanges) return undefined;
-
     function beforeUnload(event: BeforeUnloadEvent) {
       event.preventDefault();
       event.returnValue = "";
     }
-
     function confirmLinkNavigation(event: MouseEvent) {
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey ||
-        event.shiftKey || event.altKey) return;
-      var anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
       if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
-      var destination;
+      let destination;
       try {
         destination = new URL(anchor.href, window.location.href);
       } catch (_error) {
@@ -130,67 +55,123 @@ export function DirtyPluginsRoute() {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
-
     window.addEventListener("beforeunload", beforeUnload);
     document.addEventListener("click", confirmLinkNavigation, true);
-    return function() {
+    return () => {
       window.removeEventListener("beforeunload", beforeUnload);
       document.removeEventListener("click", confirmLinkNavigation, true);
     };
   }, [hasUnsavedChanges]);
+}
 
-  React.useEffect(function() {
-    return function() {
-      Object.keys(saveControllersRef.current).forEach(function(id) { saveControllersRef.current[id].dispose(); });
+export function DirtyPluginsRoute() {
+  const [snapshot, setSnapshot] = React.useState<Snapshot | null>(null);
+  const [drafts, setDrafts] = React.useState<Drafts>({});
+  const [savedDrafts, setSavedDrafts] = React.useState<Drafts>({});
+  const [customDirty, setCustomDirty] = React.useState<Record<string, boolean>>({});
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [statuses, setStatuses] = React.useState<Statuses>({});
+  const [actionRevision, setActionRevision] = React.useState(0);
+  const [, setSettingsPanelRevision] = React.useState(0);
+  const saveControllersRef = React.useRef<Record<string, PluginSaveController>>({});
+  const snapshotRef = React.useRef(snapshot);
+  snapshotRef.current = snapshot;
+  const [activePluginId, setActivePluginId] = React.useState(requestedPluginId);
+  const standardDirty = React.useMemo(() => standardDraftsAreDirty(snapshot, drafts, savedDrafts), [snapshot, drafts, savedDrafts]);
+  const hasUnsavedChanges = standardDirty || Object.keys(customDirty).some(pluginId => Boolean(customDirty[pluginId]));
+  const reportCustomDirty = React.useCallback((pluginId: string, dirty: boolean) => {
+    setCustomDirty(current => {
+      if (Boolean(current[pluginId]) === Boolean(dirty)) return current;
+      const next = Object.assign({}, current);
+      if (dirty) next[pluginId] = true;
+      else delete next[pluginId];
+      return next;
+    });
+  }, []);
+
+  const reload = React.useCallback(() => {
+    setLoading(true);
+    setError(null);
+    return loadSettingsSnapshot().then(nextSnapshot => {
+      const nextDrafts = createDrafts(nextSnapshot);
+      setSnapshot(nextSnapshot);
+      setDrafts(nextDrafts);
+      setSavedDrafts(nextDrafts);
+      setCustomDirty({});
+      setActivePluginId(currentPluginId => nextSnapshot.plugins.some(plugin => plugin.id === currentPluginId)
+        ? currentPluginId
+        : nextSnapshot.plugins[0] && nextSnapshot.plugins[0].id);
+    }).catch(loadError => {
+      setError(loadError.message || String(loadError));
+    }).then(() => setLoading(false));
+  }, []);
+
+  React.useEffect(() => {
+    reload();
+  }, [reload]);
+
+  React.useEffect(() => {
+    function onConfigurationChanged(event: Event) {
+      if ((event as CustomEvent<{ preserveSettingsPage?: boolean; }>).detail?.preserveSettingsPage) return;
+      reload();
+    }
+    const onFieldActionsChanged = () => setActionRevision(revision => revision + 1);
+    const onSettingsPanelsChanged = () => setSettingsPanelRevision(revision => revision + 1);
+    window.addEventListener(CONFIGURATION_CHANGED_EVENT, onConfigurationChanged);
+    window.addEventListener(FIELD_ACTIONS_CHANGED_EVENT, onFieldActionsChanged);
+    window.addEventListener(SETTINGS_PANELS_CHANGED_EVENT, onSettingsPanelsChanged);
+    return () => {
+      window.removeEventListener(CONFIGURATION_CHANGED_EVENT, onConfigurationChanged);
+      window.removeEventListener(FIELD_ACTIONS_CHANGED_EVENT, onFieldActionsChanged);
+      window.removeEventListener(SETTINGS_PANELS_CHANGED_EVENT, onSettingsPanelsChanged);
+    };
+  }, [reload]);
+
+  useLeaveProtection(hasUnsavedChanges);
+
+  React.useEffect(() => {
+    return () => {
+      Object.keys(saveControllersRef.current).forEach(id => saveControllersRef.current[id].dispose());
     };
   }, []);
 
-  function pluginInput(plugin: Plugin, draft: Record<string, FieldValue>, snapshotValue: Snapshot) {
-    var input = Object.assign({}, asObject(snapshotValue.configuration[plugin.id]));
-    (plugin.settings || []).forEach(function(setting) { input[setting.name] = serializeFieldValue(setting, draft[setting.name]); });
-    return input;
-  }
-
   function saveController(plugin: Plugin) {
-    if (!saveControllersRef.current[plugin.id]) saveControllersRef.current[plugin.id] = hubApi.createSaveController({
+    if (!saveControllersRef.current[plugin.id]) saveControllersRef.current[plugin.id] = createSaveController({
       delay: 350,
-      validate: function(draft) {
+      validate: draft => {
         try { pluginInput(plugin, draft, snapshotRef.current!); return ""; }
         catch (error) { return (error as Error).message; }
       },
-      save: function(draft) {
-        var current = snapshotRef.current!;
-        var input = pluginInput(plugin, draft, current);
-        var expected = current.pluginRevisions && current.pluginRevisions[plugin.id];
-        return transport.configurePlugin(plugin.id, input, expected).then(function(result) { return { input: input, revision: result.revision }; });
+      save: draft => {
+        const current = snapshotRef.current!;
+        const input = pluginInput(plugin, draft, current);
+        const expected = current.pluginRevisions && current.pluginRevisions[plugin.id];
+        return configurePlugin(plugin.id, input, expected).then(result => ({ input, revision: result.revision }));
       },
-      onSaved: function(draft, result, current) {
-        var nextSnapshot = Object.assign({}, snapshotRef.current!, {
-          configuration: Object.assign({}, snapshotRef.current!.configuration),
-          pluginRevisions: Object.assign({}, snapshotRef.current!.pluginRevisions),
-        });
-        nextSnapshot.configuration[plugin.id] = result.input;
-        nextSnapshot.pluginRevisions[plugin.id] = result.revision;
+      onSaved: (draft, result, current) => {
+        const nextSnapshot = {
+          ...snapshotRef.current!,
+          configuration: { ...snapshotRef.current!.configuration, [plugin.id]: result.input },
+          pluginRevisions: { ...snapshotRef.current!.pluginRevisions, [plugin.id]: result.revision },
+        };
         snapshotRef.current = nextSnapshot;
         setSnapshot(nextSnapshot);
-        setSavedDrafts(function(saved) { var next = Object.assign({}, saved); next[plugin.id] = Object.assign({}, draft); return next; });
-        if (current) hubApi.notifyConfigurationChanged(plugin.id, { preserveSettingsPage: true });
+        setSavedDrafts(saved => ({ ...saved, [plugin.id]: { ...draft } }));
+        if (current) notifyConfigurationChanged(plugin.id, { preserveSettingsPage: true });
       },
-      onStatus: function(status) {
-        var message = status.state === "pending" ? "Waiting to save automatically…"
-          : status.state === "saving" ? "Saving automatically…"
-            : status.state === "saved" ? "Saved automatically." : status.message;
-        setStatuses(function(current) { var next = Object.assign({}, current); next[plugin.id] = { error: status.state === "error" || status.state === "invalid", message: message }; return next; });
+      onStatus: status => {
+        const message = SAVE_MESSAGES[status.state] || status.message;
+        setStatuses(current => ({ ...current, [plugin.id]: { error: status.state === "error" || status.state === "invalid", message } }));
       },
     });
     return saveControllersRef.current[plugin.id];
   }
 
   function updateField(pluginId: string, settingName: string, value: FieldValue) {
-    var plugin = snapshot && snapshot.plugins.find(function(item) { return item.id === pluginId; });
-    var nextPluginDraft = Object.assign({}, drafts[pluginId] || {});
-    nextPluginDraft[settingName] = value;
-    setDrafts(function(current) { var next = Object.assign({}, current); next[pluginId] = nextPluginDraft; return next; });
+    const plugin = snapshot && snapshot.plugins.find(item => item.id === pluginId);
+    const nextPluginDraft = { ...drafts[pluginId], [settingName]: value };
+    setDrafts(current => ({ ...current, [pluginId]: nextPluginDraft }));
     if (plugin) saveController(plugin).schedule(nextPluginDraft);
   }
 
@@ -200,104 +181,53 @@ export function DirtyPluginsRoute() {
       reportCustomDirty(activePluginId, false);
     }
     setActivePluginId(pluginId);
-    try {
-      var nextUrl = new URL(window.location.href);
-      nextUrl.searchParams.set("plugin", pluginId);
-      window.history.replaceState(
-        window.history.state,
-        "",
-        nextUrl.pathname + nextUrl.search + nextUrl.hash
-      );
-    } catch (_error) {
-      // The selected tab still works if the browser URL cannot be updated.
-    }
+    replaceUrlPlugin(pluginId);
     return true;
   }
 
-  function onTabKeyDown(event: import("react").KeyboardEvent<HTMLButtonElement>, pluginIndex: number) {
+  function onTabKeyDown(event: R.KeyboardEvent<HTMLButtonElement>, pluginIndex: number) {
     if (!snapshot || !snapshot.plugins.length) return;
-    var nextIndex = pluginIndex;
-    if (event.key === "ArrowRight") {
-      nextIndex = (pluginIndex + 1) % snapshot.plugins.length;
-    } else if (event.key === "ArrowLeft") {
-      nextIndex = (pluginIndex - 1 + snapshot.plugins.length) % snapshot.plugins.length;
-    } else if (event.key === "Home") {
-      nextIndex = 0;
-    } else if (event.key === "End") {
-      nextIndex = snapshot.plugins.length - 1;
-    } else {
-      return;
-    }
-
+    const count = snapshot.plugins.length;
+    const nextIndex = event.key === "ArrowRight" ? (pluginIndex + 1) % count
+      : event.key === "ArrowLeft" ? (pluginIndex - 1 + count) % count
+        : event.key === "Home" ? 0
+          : event.key === "End" ? count - 1 : -1;
+    if (nextIndex < 0) return;
     event.preventDefault();
-    var nextPlugin = snapshot.plugins[nextIndex];
+    const nextPlugin = snapshot.plugins[nextIndex];
     if (!selectPlugin(nextPlugin.id)) return;
-    var nextTab = document.getElementById("dirty-plugins-tab-" + nextPlugin.id);
+    const nextTab = document.getElementById("dirty-plugins-tab-" + nextPlugin.id);
     if (nextTab) nextTab.focus();
   }
 
-  var activePlugin = snapshot && snapshot.plugins.find(function(plugin) {
-    return plugin.id === activePluginId;
-  });
-  var activeSettingsPanel = activePlugin && settingsPanels[activePlugin.id];
+  const activePlugin = snapshot && snapshot.plugins.find(plugin => plugin.id === activePluginId);
+  const activeSettingsPanel = activePlugin && settingsPanels[activePlugin.id];
   usePageTitle(activePlugin && activePlugin.id !== "dirtyPlugins"
     ? activePlugin.name : "Dirty Plugins", "Settings");
 
-  var ready = !loading && !error && snapshot;
-  var retryButton = (<button
-    type="button"
-    className="btn btn-secondary dirty-ui-button"
-    onClick={reload}>
-    {"Retry"}
-  </button>);
-  return (<main
-    className={"dirty-plugins-page" + (hubApi.captureEnabled(window.location.search) ? " dirty-plugins-docs-capture" : "")}>
-    <header
-      className="dirty-plugins-page-header">
-      <h1>
-        {"Dirty Plugins"}
-      </h1>
-      <p>
-        {"Settings are shown only for Dirty plugins installed in this Stash instance."}
-      </p>
-      <div
-        className="dirty-plugins-unsaved"
-        role="status">
-        {hasUnsavedChanges ? "Unsaved changes" : ""}
-      </div>
+  const ready = !loading && !error && snapshot;
+  const retryButton = <button type="button" className="btn btn-secondary dirty-ui-button" onClick={reload}>Retry</button>;
+  return (<main className={"dirty-plugins-page" + (captureEnabled(window.location.search) ? " dirty-plugins-docs-capture" : "")}>
+    <header className="dirty-plugins-page-header">
+      <h1>Dirty Plugins</h1>
+      <p>Settings are shown only for Dirty plugins installed in this Stash instance.</p>
+      <div className="dirty-plugins-unsaved" role="status">{hasUnsavedChanges ? "Unsaved changes" : ""}</div>
     </header>
-    {loading && (<StateView
-      className="dirty-plugins-state"
-      title="Loading settings…">
-
-    </StateView>)}
-    {!loading && error && (<StateView
-      className="dirty-plugins-state"
-      detail={error}
-      title="Could not load Dirty Plugins settings"
-      actions={retryButton}>
-
-    </StateView>)}
-    {ready && snapshot!.plugins.length === 0 && (<StateView
-      className="dirty-plugins-state"
-      title="No configurable Dirty plugins are installed.">
-
-    </StateView>)}
+    {loading && <StateView className="dirty-plugins-state" title="Loading settings…" />}
+    {!loading && error && <StateView className="dirty-plugins-state" detail={error} title="Could not load Dirty Plugins settings" actions={retryButton} />}
+    {ready && snapshot!.plugins.length === 0 && <StateView className="dirty-plugins-state" title="No configurable Dirty plugins are installed." />}
     {ready && snapshot!.plugins.length > 0 && (<React.Fragment>
-      <div
-        aria-label="Dirty plugin settings"
-        className="nav nav-tabs dirty-plugins-tabs"
-        role="tablist">
-        {snapshot!.plugins.map(function(plugin, pluginIndex) {
-          var selected = plugin.id === activePluginId;
+      <div aria-label="Dirty plugin settings" className="nav nav-tabs dirty-plugins-tabs" role="tablist">
+        {snapshot!.plugins.map((plugin, pluginIndex) => {
+          const selected = plugin.id === activePluginId;
           return (<button
             aria-controls={"dirty-plugins-panel-" + plugin.id}
             aria-selected={selected}
             className={"nav-link dirty-plugins-tab" + (selected ? " active" : "")}
             id={"dirty-plugins-tab-" + plugin.id}
             key={plugin.id}
-            onClick={function() { selectPlugin(plugin.id); }}
-            onKeyDown={function(event) { onTabKeyDown(event, pluginIndex); }}
+            onClick={() => selectPlugin(plugin.id)}
+            onKeyDown={event => onTabKeyDown(event, pluginIndex)}
             role="tab"
             tabIndex={selected ? 0 : -1}
             type="button">
@@ -311,15 +241,13 @@ export function DirtyPluginsRoute() {
         id={"dirty-plugins-panel-" + activePlugin.id}
         role="tabpanel">
         {activeSettingsPanel
-          ? (React.createElement(activeSettingsPanel, { "configuration": asObject(snapshot!.configuration[activePlugin.id]), "onDirtyChange": reportCustomDirty, "onConfigurationChanged": reload, "plugin": activePlugin }))
-          : (<PluginCard
+          ? React.createElement(activeSettingsPanel, { "configuration": asObject(snapshot!.configuration[activePlugin.id]), "onDirtyChange": reportCustomDirty, "onConfigurationChanged": reload, "plugin": activePlugin })
+          : <PluginCard
             actionRevision={actionRevision}
             draft={drafts[activePlugin.id]}
             plugin={activePlugin}
             status={statuses[activePlugin.id]}
-            onFieldChange={updateField}>
-
-          </PluginCard>)}
+            onFieldChange={updateField} />}
       </div>)}
     </React.Fragment>)}
   </main>);

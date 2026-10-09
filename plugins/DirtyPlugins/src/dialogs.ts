@@ -1,7 +1,8 @@
-var toastContainer: HTMLDivElement | null = null;
-var bodyScrollLocks = 0;
-var activeDialogs: { dialog: HTMLElement; }[] = [];
 import type { DialogOptions, NotifyOptions } from "./types";
+const FOCUSABLE = 'button, input, select, textarea, a[href], [tabindex="0"]';
+let toastContainer: HTMLDivElement | null = null;
+let bodyScrollLocks = 0;
+const activeDialogs: { dialog: HTMLElement; }[] = [];
 function ensureToastContainer() {
   if (toastContainer && toastContainer.isConnected) return toastContainer;
   toastContainer = document.createElement("div");
@@ -13,15 +14,15 @@ function ensureToastContainer() {
 }
 
 export function notify(message: string, options?: NotifyOptions | string) {
-  var settings = typeof options === "string" ? { tone: options } : (options || {});
-  var tone = settings.tone || "success";
-  var container = ensureToastContainer();
-  var toast = document.createElement("div");
+  const settings = typeof options === "string" ? { tone: options } : (options || {});
+  const tone = settings.tone || "success";
+  const container = ensureToastContainer();
+  const toast = document.createElement("div");
   toast.className = "dirty-ui-toast dirty-ui-tone-" + tone;
   toast.setAttribute("role", tone === "error" ? "alert" : "status");
   toast.textContent = message;
   container.appendChild(toast);
-  window.setTimeout(function() {
+  window.setTimeout(() => {
     if (toast.parentNode) toast.parentNode.removeChild(toast);
     if (container.childElementCount === 0 && container.parentNode) {
       container.parentNode.removeChild(container);
@@ -33,21 +34,21 @@ export function notify(message: string, options?: NotifyOptions | string) {
 
 export function trapDialogTab(event: Pick<KeyboardEvent, "key" | "shiftKey" | "preventDefault">, dialog: HTMLElement | null) {
   if (event.key !== "Tab" || !dialog) return;
-  var items = Array.from(dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex="0"]'))
-    .filter(function(item) { return !(item as HTMLButtonElement).disabled && item.getClientRects().length; });
+  const items = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE))
+    .filter(item => !(item as HTMLButtonElement).disabled && item.getClientRects().length);
   if (!items.length) { event.preventDefault(); dialog.focus(); return; }
-  var first = items[0], last = items[items.length - 1];
+  const first = items[0], last = items[items.length - 1];
   if (!dialog.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
   else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }
 
 export function lockBodyScroll() {
-  if (!document.body || !document.body.classList) return function() { };
+  if (!document.body || !document.body.classList) return () => { };
   bodyScrollLocks += 1;
   document.body.classList.add("dirty-ui-modal-open");
-  var released = false;
-  return function() {
+  let released = false;
+  return () => {
     if (released) return;
     released = true;
     bodyScrollLocks = Math.max(0, bodyScrollLocks - 1);
@@ -56,17 +57,17 @@ export function lockBodyScroll() {
 }
 
 export function manageDialog(options: DialogOptions) {
-  var dialog = options && options.dialog;
-  if (!dialog) return function() { };
-  var opener = options.opener || document.activeElement;
-  var unlockScroll = lockBodyScroll();
-  var entry = { dialog: dialog };
-  var released = false;
+  const dialog = options && options.dialog;
+  if (!dialog) return () => { };
+  const opener = options.opener || document.activeElement;
+  const unlockScroll = lockBodyScroll();
+  const entry = { dialog };
+  let released = false;
   activeDialogs.push(entry);
 
   function nativePopupIsActive() {
     if (!options.allowNativePopup || !document.querySelectorAll) return false;
-    return Array.prototype.some.call(document.querySelectorAll('.modal.show, .dropdown-menu.show, [role="dialog"][aria-modal="true"]'), function(popup) {
+    return Array.prototype.some.call(document.querySelectorAll('.modal.show, .dropdown-menu.show, [role="dialog"][aria-modal="true"]'), popup => {
       return popup !== dialog &&
         (popup.classList && popup.classList.contains("show") ||
           !dialog!.contains(popup) && popup.contains(document.activeElement));
@@ -82,16 +83,16 @@ export function manageDialog(options: DialogOptions) {
   }
 
   if (document.addEventListener) document.addEventListener("keydown", onKeydown, true);
-  var initial = options.initialFocus;
+  let initial = options.initialFocus;
   if (typeof initial === "function") initial = initial();
-  if (!initial && dialog.querySelector) initial = dialog.querySelector<HTMLElement>('button, input, select, textarea, a[href], [tabindex="0"]');
+  if (!initial && dialog.querySelector) initial = dialog.querySelector<HTMLElement>(FOCUSABLE);
   if (initial && typeof initial.focus === "function") initial.focus();
   else if (typeof dialog.focus === "function") dialog.focus();
-  return function() {
+  return () => {
     if (released) return;
     released = true;
     if (document.removeEventListener) document.removeEventListener("keydown", onKeydown, true);
-    var index = activeDialogs.indexOf(entry);
+    const index = activeDialogs.indexOf(entry);
     if (index !== -1) activeDialogs.splice(index, 1);
     unlockScroll();
     if (opener && opener.isConnected !== false && typeof (opener as HTMLElement).focus === "function") (opener as HTMLElement).focus();

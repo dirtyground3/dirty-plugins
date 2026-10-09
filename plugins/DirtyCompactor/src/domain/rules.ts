@@ -5,8 +5,8 @@ import type { Condition, Rule, SettingsValue, MediaFile, Sample, Option } from "
 // for a 1080p, 30 fps output.
 export const QUALITY_MBPS_1080P: Record<string, Record<string, number>> = constants.qualityMbps1080p;
 export const CRF: Record<string, Record<string, number>> = constants.crf;
-export const QUALITIES: Option[] = constants.qualities.map(function(item): Option { return [item.value, item.label]; });
-export const VMAF_TARGETS: Option[] = constants.vmafTargets.map(function(item): Option { return [String(item.value), item.label]; });
+export const QUALITIES: Option[] = constants.qualities.map((item): Option => [item.value, item.label]);
+export const VMAF_TARGETS: Option[] = constants.vmafTargets.map((item): Option => [String(item.value), item.label]);
 // Typical audio track, used only for the in-editor estimate; the planner
 // measures the real audio and subtitle streams.
 export const ESTIMATE_AUDIO_MBPS = 0.128;
@@ -46,7 +46,7 @@ export function fitQuality(rule: Rule): Rule {
 
 
 export function qualities(action: string): Option[] {
-  return action === "resize" ? QUALITIES.filter(function(item) { return item[0] !== "source"; }) : QUALITIES;
+  return action === "resize" ? QUALITIES.filter(item => item[0] !== "source") : QUALITIES;
 }
 
 
@@ -61,9 +61,9 @@ export function validation(value: SettingsValue): string {
     ids[r.id] = true;
     if (r.enabled && !r.name.trim()) return "Name each enabled rule.";
     if (r.enabled && !condition.all && !Object.keys(condition.scene || {}).length && !(condition.find || {}).q) return "Choose a filter or All scenes for “" + r.name + "”.";
-    if (r.action !== "delete" && r.quality === "visual" && !VMAF_TARGETS.some(function(item) { return Number(item[0]) === r.vmaf; })) return "Choose a visual quality target for “" + r.name + "”.";
+    if (r.action !== "delete" && r.quality === "visual" && !VMAF_TARGETS.some(item => Number(item[0]) === r.vmaf)) return "Choose a visual quality target for “" + r.name + "”.";
     if (r.action !== "delete" && quality(r) === "custom" && (!Number.isFinite(Number(r.mbps)) || Number(r.mbps) < 0.05 || Number(r.mbps) > 1000)) return "Target video bitrate must be 0.05–1000 Mbps.";
-    if (r.action === "resize" && [r.width, r.height].some(function(v) { return !Number.isInteger(Number(v)) || Number(v) < 2 || Number(v) > 16384; })) return "Dimensions must be whole numbers from 2 to 16384.";
+    if (r.action === "resize" && [r.width, r.height].some(v => !Number.isInteger(Number(v)) || Number(v) < 2 || Number(v) > 16384)) return "Dimensions must be whole numbers from 2 to 16384.";
   }
   return "";
 }
@@ -99,7 +99,7 @@ export function fileBitrates(rule: Rule, file: MediaFile): { source: number; tar
   let source = Number(file.bit_rate) / 1e6 - ESTIMATE_AUDIO_MBPS;
   // The planner never raises a bitrate; such files are skipped or converted as-is.
   if (source > 0 && source <= target) return null;
-  return { source: source, target: target };
+  return { source, target };
 }
 
 
@@ -113,8 +113,8 @@ export function fileSaving(rule: Rule, file: MediaFile): number {
 
 export function estimate(rule: Rule, sample: Sample) {
   let sampledBytes = 0, savedBytes = 0, seconds = 0, sourceBits = 0, targetBits = 0;
-  sample.scenes.forEach(function(scene) {
-    (scene.files || []).forEach(function(file) {
+  sample.scenes.forEach(scene => {
+    (scene.files || []).forEach(file => {
       let rates = fileBitrates(rule, file), duration = Number(file.duration) || 0;
       sampledBytes += Number(file.size) || 0;
       savedBytes += fileSaving(rule, file);
@@ -125,7 +125,7 @@ export function estimate(rule: Rule, sample: Sample) {
   let saved = rule.action === "delete" ? sample.filesize : exact ? savedBytes : sampledBytes ? sample.filesize * savedBytes / sampledBytes : 0;
   // Duration-weighted average video bitrate of the files that would shrink.
   return {
-    saved: saved, total: sample.filesize, sampled: sample.scenes.length, exact: exact,
+    saved, total: sample.filesize, sampled: sample.scenes.length, exact,
     sourceMbps: seconds ? sourceBits / seconds : 0, targetMbps: seconds ? targetBits / seconds : 0
   };
 }
@@ -137,7 +137,7 @@ export function qualityHint(rule: Rule): string {
   if (rule.quality === "source") return "Keeps each video's bitrate, so files stay about the same size; a better codec then looks better, not smaller. " +
     "For the same look in less space, choose Match visual quality. Videos already in " + CODECS[rule.codec] + " are skipped.";
   let width = rule.action === "resize" ? Number(rule.width) : 1920, height = rule.action === "resize" ? Number(rule.height) : 1080;
-  let label = (RESOLUTIONS.find(function(item) { return item[0] === width + "x" + height; }) || [0, width + "×" + height])[1];
+  let label = (RESOLUTIONS.find(item => item[0] === width + "x" + height) || [0, width + "×" + height])[1];
   return "Constant quality (CRF " + (CRF[rule.codec] || CRF.h264)[rule.quality || ""] + "): each scene gets the bits it needs, never more than the original. " +
     "Typically about " + targetMbps(rule, width, height) + " Mbps for " + label + " " + CODECS[rule.codec] + "; sizes vary with the content.";
 }
@@ -188,8 +188,8 @@ export function formatValue(type: string, value: unknown): string {
 
 
 export function names(items: unknown[], type: string, hideNames: boolean): string {
-  if (hideNames || items.some(function(item) { return !isRecord(item) || !item.label; })) return countLabel(type, items.length);
-  let labels = items.map(function(item) { return isRecord(item) ? String(item.label) : ""; });
+  if (hideNames || items.some(item => !isRecord(item) || !item.label)) return countLabel(type, items.length);
+  let labels = items.map(item => isRecord(item) ? String(item.label) : "");
   return labels.slice(0, 3).join(", ") + (labels.length > 3 ? " +" + (labels.length - 3) + " more" : "");
 }
 
@@ -239,16 +239,16 @@ export function braces(text: string): string {
 
 
 export function queryCriteria(query?: string): Criterion[] {
-  return String(query || "").split("&").filter(function(part) { return part.indexOf("c=") === 0; }).map(function(part) {
+  return String(query || "").split("&").filter(part => part.indexOf("c=") === 0).map(part => {
     try { return JSON.parse(braces(decodeURIComponent(part.slice(2).replace(/\+/g, " ")))); } catch (error) { return null; }
-  }).filter(function(criterion) { return criterion && typeof criterion.type === "string"; });
+  }).filter(criterion => criterion && typeof criterion.type === "string");
 }
 
 
 export function filterSummary(condition: Condition, hideNames?: boolean): string {
   if (condition.all) return "All scenes";
-  let labels = queryCriteria(condition.query).map(function(c) { return describeCriterion(c.type, c.modifier, c.value, Boolean(hideNames)); });
-  if (!labels.length) labels = Object.keys(condition.scene || {}).map(function(key) {
+  let labels = queryCriteria(condition.query).map(c => describeCriterion(c.type, c.modifier, c.value, Boolean(hideNames)));
+  if (!labels.length) labels = Object.keys(condition.scene || {}).map(key => {
     let entry = condition.scene![key], criterion = isRecord(entry) && "modifier" in entry ? entry : null;
     return describeCriterion(key, criterion ? String(criterion.modifier) : undefined, criterion ? ("value2" in criterion ? criterion : criterion.value) : entry, Boolean(hideNames));
   });
@@ -260,9 +260,9 @@ export function filterSummary(condition: Condition, hideNames?: boolean): string
 export function actionSummary(rule: Rule): string {
   if (rule.action === "delete") return "Delete scene and files";
   let parts = [ACTIONS[rule.action]];
-  if (rule.action === "resize") parts.push("max " + ((RESOLUTIONS.find(function(item) { return item[0] === rule.width + "x" + rule.height; }) || [0, rule.width + "×" + rule.height])[1]));
+  if (rule.action === "resize") parts.push("max " + ((RESOLUTIONS.find(item => item[0] === rule.width + "x" + rule.height) || [0, rule.width + "×" + rule.height])[1]));
   parts.push(CODECS[rule.codec] || rule.codec);
-  parts.push(quality(rule) === "custom" ? rule.mbps + " Mbps" : rule.quality === "source" ? "same bitrate" : rule.quality === "visual" ? "visual match VMAF " + rule.vmaf : (QUALITIES.find(function(item) { return item[0] === rule.quality; }) || ["", rule.quality || ""])[1].toLowerCase());
+  parts.push(quality(rule) === "custom" ? rule.mbps + " Mbps" : rule.quality === "source" ? "same bitrate" : rule.quality === "visual" ? "visual match VMAF " + rule.vmaf : (QUALITIES.find(item => item[0] === rule.quality) || ["", rule.quality || ""])[1].toLowerCase());
   return parts.join(" · ");
 }
 

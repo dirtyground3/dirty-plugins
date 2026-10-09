@@ -1,25 +1,20 @@
-import type { Dependencies } from "../types";
 import type { SharedProps } from "../../../DirtyPlugins/src/types";
-export function createControls({ api, hub: DirtyPlugins }: Dependencies) {
-  const React = api.React, icons = api.libraries.FontAwesomeSolid ?? {};
-  const ICONS = {    
-close: icons.faXmark ?? icons.faTimes, error: icons.faTriangleExclamation ?? icons.faExclamationTriangle, next: icons.faForwardStep ?? icons.faStepForward,
-    oCounter: icons.faDroplet ?? icons.faTint, previous: icons.faBackwardStep ?? icons.faStepBackward, reload: icons.faRotateRight ?? icons.faRedo, success: icons.faCheck  
+import { DirtyPlugins, PluginApi, React } from "../runtime";
+/** Current Font Awesome names first, then the names older Stash versions ship. */
+const ICON_NAMES = {
+  close: ["faXmark", "faTimes"], error: ["faTriangleExclamation", "faExclamationTriangle"], next: ["faForwardStep", "faStepForward"],
+  oCounter: ["faDroplet", "faTint"], previous: ["faBackwardStep", "faStepBackward"], reload: ["faRotateRight", "faRedo"], success: ["faCheck", "faCheck"],
 };
-  function PluginIconButton(props: SharedProps) { return <DirtyPlugins.react.IconButton {...props} className="ms-button" />; }
-  function StateView({ detail, onRetry, title }: { detail?: string; onRetry?: () => void; title: string }) {    
-return <DirtyPlugins.react.StateView
-      className="ms-state"
-      detail={detail}
-      title={title}
-
-      actions={onRetry ? <PluginIconButton
-        ariaLabel="Retry"
-        fallback="reload"
-        icon={ICONS.reload}
-        onClick={onRetry}
-      /> : null}
-    />;  
+export function icon(name: keyof typeof ICON_NAMES) {
+  const icons = PluginApi.libraries.FontAwesomeSolid ?? {}, [current, legacy] = ICON_NAMES[name];
+  return icons[current] ?? icons[legacy];
 }
-  return { PluginIconButton, StateView, ICONS };
+export function PluginIconButton(props: SharedProps) { return <DirtyPlugins.react.IconButton {...props} className="ms-button" />; }
+export function StateView({ detail, onRetry, title }: { detail?: string; onRetry?: () => void; title: string }) {
+  return <DirtyPlugins.react.StateView
+    className="ms-state"
+    detail={detail}
+    title={title}
+    actions={onRetry ? <PluginIconButton ariaLabel="Retry" fallback="reload" icon={icon("reload")} onClick={onRetry} /> : null}
+  />;
 }

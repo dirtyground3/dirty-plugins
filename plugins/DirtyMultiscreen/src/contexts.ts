@@ -1,146 +1,59 @@
 import { isMultiscreenLaunchContext } from "./domain/context";
-import type { Dependencies, ListContext, LaunchContext } from "./types";
-export function createContexts({ life }: Dependencies) {
-  const timers = new Set<number>(); life.effects.add(() => { timers.forEach(id => window.clearTimeout(id)); timers.clear(); contextChangeListeners.clear(); contextSignatures.clear(); });
-  const SCENES_ROUTE_PATH = "/scenes", MARKERS_ROUTE_PATH = "/scenes/markers", PERFORMERS_ROUTE_PATH = "/performers", STUDIOS_ROUTE_PATH = "/studios", LAUNCH_CONTEXT_STORAGE_KEY = "multiscreen.launchContext";
-  let latestSceneListContext: ListContext | null = null, latestMarkerListContext: ListContext | null = null, latestPerformerListContext: ListContext | null = null, latestStudioListContext: ListContext | null = null;
-  let latestPerformerDetailId: string | null = null, latestStudioDetailId: string | null = null;
-  const contextChangeListeners = /* @__PURE__ */ new Set<() => void>();
-  const contextSignatures = /* @__PURE__ */ new Map<string, string>();
-  const subscribeToContextChanges = (listener: () => void) => {
-    contextChangeListeners.add(listener);
-    return () => {
-      contextChangeListeners.delete(listener);
-    };
-  };
-  const notifyContextChange = (key: string, signature: string) => {
-    if (contextSignatures.get(key) === signature) return;
-    contextSignatures.set(key, signature);
+import type { LaunchContext, Lifetime, ListContext } from "./types";
+const LAUNCH_CONTEXT_STORAGE_KEY = "multiscreen.launchContext";
+/** Each native list route, its captured context, and the launch sources it produces. */
+const LISTS = new Map([
+  ["/scenes/markers", { key: "marker-list", selection: "marker-selection", filter: "marker-filter", filterKey: "markerFilter" }],
+  ["/scenes", { key: "scene-list", selection: "selection", filter: "filter", filterKey: "sceneFilter" }],
+  ["/performers", { key: "performer-list", selection: "performer-selection", filter: "performer-filter", filterKey: "performerFilter" }],
+  ["/studios", { key: "studio-list", selection: "studio-selection", filter: "studio-filter", filterKey: "studioFilter" }],
+]);
+const DETAILS = [
+  { pattern: /^\/performers\/([^/]+)/, key: "performer-detail", context: (performerId: string): LaunchContext => ({ source: "performer-detail", performerId }) },
+  { pattern: /^\/studios\/([^/]+)/, key: "studio-detail", context: (studioId: string): LaunchContext => ({ source: "studio-detail", studioId }) },
+];
+
+function unpaginated(filter: ListContext["filter"]) {
+  const { page: _page, per_page: _perPage, ...unpaginatedFilter } = filter.makeFindFilter();
+  return unpaginatedFilter;
+}
+
+export function createContexts({ life }: { life: Lifetime }) {
+  const timers = new Set<number>(), listeners = new Set<() => void>(), signatures = new Map<string, string>();
+  const lists = new Map<string, ListContext>(), details = new Map<string, string>();
+  life.effects.add(() => { timers.forEach(id => window.clearTimeout(id)); timers.clear(); listeners.clear(); signatures.clear(); });
+  function notifyContextChange(key: string, signature: string) {
+    if (signatures.get(key) === signature) return;
+    signatures.set(key, signature);
     const id = window.setTimeout(() => {
       timers.delete(id);
-      if (life.active) contextChangeListeners.forEach(listener => listener());
+      if (life.active) listeners.forEach(listener => listener());
     }, 0);
     timers.add(id);
-  };
-  const getUnpaginatedFindFilter = (filter: ListContext["filter"]) => {
-    const { page: _page, per_page: _perPage, ...unpaginatedFilter } = filter.makeFindFilter();
-    return unpaginatedFilter;
-  };
-  const getListContextSignature = (context: ListContext) => {
-    return JSON.stringify({
-      filter: getUnpaginatedFindFilter(context.filter),
-      objectFilter: context.filter.makeFilter(),
-      selectedIds: Array.from(context.selectedIds)
-    });
-  };
-  const updateListContext = (key: string, context: ListContext, update: (value: ListContext) => void) => {
-    update(context);
-    notifyContextChange(key, getListContextSignature(context));
-  };
-  const updateDetailContext = (key: string, id: string, update: (value: string) => void) => {
-    update(id);
-    notifyContextChange(key, id);
-  };
-  const getCurrentSceneLaunchContext: () => LaunchContext | null = () => {
-    if (!latestSceneListContext) return null;
-    const selectedIds = Array.from(latestSceneListContext.selectedIds);
-    if (selectedIds.length > 0) {
-      return {
-        source: "selection",
-        selectedIds
-      };
+  }
+  function getLaunchContextForPath(pathname: string): LaunchContext | null {
+    const list = LISTS.get(pathname);
+    if (list) {
+      const context = lists.get(list.key);
+      if (!context) return null;
+      const selectedIds = Array.from(context.selectedIds);
+      if (selectedIds.length > 0) return { source: list.selection, selectedIds } as LaunchContext;
+      return { source: list.filter, filter: unpaginated(context.filter), [list.filterKey]: context.filter.makeFilter() } as LaunchContext;
     }
-    return {
-      source: "filter",
-      filter: getUnpaginatedFindFilter(latestSceneListContext.filter),
-      sceneFilter: latestSceneListContext.filter.makeFilter()
-    };
-  };
-  const getCurrentMarkerLaunchContext: () => LaunchContext | null = () => {
-    if (!latestMarkerListContext) return null;
-    const selectedIds = Array.from(latestMarkerListContext.selectedIds);
-    if (selectedIds.length > 0) {
-      return {
-        source: "marker-selection",
-        selectedIds
-      };
-    }
-    return {
-      source: "marker-filter",
-      filter: getUnpaginatedFindFilter(latestMarkerListContext.filter),
-      markerFilter: latestMarkerListContext.filter.makeFilter()
-    };
-  };
-  const getCurrentPerformerLaunchContext: () => LaunchContext | null = () => {
-    if (!latestPerformerListContext) return null;
-    const selectedIds = Array.from(latestPerformerListContext.selectedIds);
-    if (selectedIds.length > 0) {
-      return {
-        source: "performer-selection",
-        selectedIds
-      };
-    }
-    return {
-      source: "performer-filter",
-      filter: getUnpaginatedFindFilter(latestPerformerListContext.filter),
-      performerFilter: latestPerformerListContext.filter.makeFilter()
-    };
-  };
-  const getCurrentStudioLaunchContext: () => LaunchContext | null = () => {
-    if (!latestStudioListContext) return null;
-    const selectedIds = Array.from(latestStudioListContext.selectedIds);
-    if (selectedIds.length > 0) {
-      return {
-        source: "studio-selection",
-        selectedIds
-      };
-    }
-    return {
-      source: "studio-filter",
-      filter: getUnpaginatedFindFilter(latestStudioListContext.filter),
-      studioFilter: latestStudioListContext.filter.makeFilter()
-    };
-  };
-  const getLaunchContextForPath = (pathname: string): LaunchContext | null => {
-    if (pathname === MARKERS_ROUTE_PATH) {
-      return getCurrentMarkerLaunchContext();
-    }
-    if (pathname === SCENES_ROUTE_PATH) {
-      return getCurrentSceneLaunchContext();
-    }
-    if (pathname === PERFORMERS_ROUTE_PATH) {
-      return getCurrentPerformerLaunchContext();
-    }
-    const performerPathId = pathname.match(/^\/performers\/([^/]+)/)?.[1];
-    if (performerPathId && performerPathId !== "new" && performerPathId === latestPerformerDetailId) {
-      return {
-        source: "performer-detail",
-        performerId: performerPathId
-      };
-    }
-    if (pathname === STUDIOS_ROUTE_PATH) {
-      return getCurrentStudioLaunchContext();
-    }
-    const studioPathId = pathname.match(/^\/studios\/([^/]+)/)?.[1];
-    if (studioPathId && studioPathId !== "new" && studioPathId === latestStudioDetailId) {
-      return {
-        source: "studio-detail",
-        studioId: studioPathId
-      };
+    for (const detail of DETAILS) {
+      const id = pathname.match(detail.pattern)?.[1];
+      if (id && id !== "new" && id === details.get(detail.key)) return detail.context(id);
     }
     return null;
-  };
-  const storeLaunchContext = (context: LaunchContext | null) => {
+  }
+  function storeLaunchContext(context: LaunchContext | null) {
     try {
-      if (context) {
-        window.sessionStorage.setItem(LAUNCH_CONTEXT_STORAGE_KEY, JSON.stringify(context));
-      } else {
-        window.sessionStorage.removeItem(LAUNCH_CONTEXT_STORAGE_KEY);
-      }
+      if (context) window.sessionStorage.setItem(LAUNCH_CONTEXT_STORAGE_KEY, JSON.stringify(context));
+      else window.sessionStorage.removeItem(LAUNCH_CONTEXT_STORAGE_KEY);
     } catch {
     }
-  };
-  const readLaunchContext = () => {
+  }
+  function readLaunchContext() {
     try {
       const storedContext = window.sessionStorage.getItem(LAUNCH_CONTEXT_STORAGE_KEY);
       if (!storedContext) return null;
@@ -149,6 +62,20 @@ export function createContexts({ life }: Dependencies) {
     } catch {
       return null;
     }
+  }
+  return {
+    getLaunchContextForPath, storeLaunchContext, readLaunchContext,
+    subscribeToContextChanges(listener: () => void) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    captureList(key: string, context: ListContext) {
+      lists.set(key, context);
+      notifyContextChange(key, JSON.stringify({ filter: unpaginated(context.filter), objectFilter: context.filter.makeFilter(), selectedIds: Array.from(context.selectedIds) }));
+    },
+    captureDetail(key: string, id: string) {
+      details.set(key, id);
+      notifyContextChange(key, id);
+    },
   };
-  return { getLaunchContextForPath, storeLaunchContext, readLaunchContext, subscribeToContextChanges, captureList(key: string, context: ListContext) { updateListContext(key, context, value => { if (key === "scene-list") latestSceneListContext = value; if (key === "marker-list") latestMarkerListContext = value; if (key === "performer-list") latestPerformerListContext = value; if (key === "studio-list") latestStudioListContext = value; }); }, captureDetail(key: string, id: string) { updateDetailContext(key, id, value => { if (key === "performer-detail") latestPerformerDetailId = value; else latestStudioDetailId = value; }); } };
 }

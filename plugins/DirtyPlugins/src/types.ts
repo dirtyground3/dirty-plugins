@@ -3,6 +3,8 @@ import type { createJobHook } from "./jobs";
 import type { metadata } from "./metadata";
 import type { createSaveController } from "./save";
 import type * as Values from "./values";
+import type { usePageTitle } from "./title";
+import type { useSettingsDraft } from "./settingsDraft";
 
 // Stash owns patch argument shapes and loadable component props. Keep their
 // permissive compatibility types confined to this host boundary.
@@ -33,9 +35,7 @@ export interface Snapshot { configuration: Record<string, Record<string, unknown
 export type Drafts = Record<string, Record<string, FieldValue>>;
 export type Statuses = Record<string, { error: boolean; message: string; }>;
 export interface FieldAction { label: R.ReactNode; onClick(event: R.MouseEvent<HTMLButtonElement>): void; }
-export type FieldActions = Record<string, Record<string, FieldAction>>;
 export interface PanelProps { plugin: Plugin; configuration: Record<string, unknown>; onDirtyChange?(id: string, dirty: boolean): void; onConfigurationChanged?(): void; }
-export type Panels = Record<string, R.ComponentType<PanelProps>>;
 export interface SettingInputProps { pluginId: string; setting: Setting; value: FieldValue; actionRevision: number; onChange(value: FieldValue): void; }
 export interface PluginCardProps { plugin: Plugin; draft?: Record<string, FieldValue>; status?: { error: boolean; message: string; }; actionRevision: number; onFieldChange(id: string, name: string, value: FieldValue): void; }
 
@@ -95,8 +95,8 @@ export interface HubApi {
   values: Pick<typeof Values, "asObject" | "parseMaybeJson" | "clampInteger" | "coerceBoolean">;
   ui: Pick<typeof import("./dialogs"), "notify" | "manageDialog">;
   react: typeof import("./components/Controls") & typeof import("./components/Settings") & typeof import("./components/Navigation") & typeof import("./components/Dialog") & {
-    usePageTitle: typeof import("./title").usePageTitle;
-    useSettingsDraft: typeof import("./settingsDraft").useSettingsDraft;
+    usePageTitle: typeof usePageTitle;
+    useSettingsDraft: typeof useSettingsDraft;
     SceneFilterEditor: R.ComponentType<FilterProps>;
   };
   native: { loadComponent(name: string): Promise<NativeComponent>; ensureComponents(name: string, required?: string[]): Promise<NativeComponent[]>; };
@@ -110,16 +110,4 @@ export interface HubApi {
   registerSettingsAddon(id: string, component: R.ComponentType<PanelProps>): void;
   unregisterSettingsAddon(id: string, component: R.ComponentType<PanelProps>): void;
   debugLog: DebugMethods["debugLog"]; debugElapsed: DebugMethods["debugElapsed"]; dumpDebugLogs(): DebugEntry[];
-}
-export interface HubDebugDependencies { PluginApi: Host; hubApi: HubApi; }
-export interface HubTransportDependencies extends DebugMethods {
-  pluginRevisionCache: Record<string, number>; hubApi: HubApi; fieldActions: FieldActions; settingsPanels: Panels;
-  FIELD_ACTIONS_CHANGED_EVENT: string; CONFIGURATION_CHANGED_EVENT: string; SETTINGS_PANELS_CHANGED_EVENT: string;
-  pluginResult: typeof Values.pluginResult; asObject: typeof Values.asObject; applyVisualTheme(value: unknown): string;
-}
-export interface HubThemeDependencies {
-  hubApi: HubApi; DEFAULT_VISUAL_THEME: string; VISUAL_THEME_KEYS: string[]; getPluginSettings: HubApi["getPluginSettings"];
-}
-export interface HubNativeDependencies {
-  hubApi: HubApi; PluginApi: Host; Dialog: R.ComponentType<DialogProps>; StateView: R.ComponentType<SharedProps>; Button: R.ComponentType<SharedProps>;
 }

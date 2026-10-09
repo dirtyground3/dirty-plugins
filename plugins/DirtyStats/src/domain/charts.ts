@@ -8,8 +8,8 @@ import type { ChartInstance, StatsChartDependencies, StatsChartDescriptor, Stats
  * @param {StatsChartDependencies} dependencies
  */
 export function mountChart(descriptor: StatsChartDescriptor, dependencies: StatsChartDependencies) {
-  var chart: ChartInstance | null = null, observer: ResizeObserver | null = null, disposed = false;
-  var unown: (() => void) | undefined;
+  let chart: ChartInstance | null = null, observer: ResizeObserver | null = null, disposed = false;
+  let unown: (() => void) | undefined;
   function resize() {
     if (!chart || chart.isDisposed()) return;
     chart.resize();
@@ -52,10 +52,10 @@ export function mountChart(descriptor: StatsChartDescriptor, dependencies: Stats
 export function createLifecycle(dependencies: StatsChartDependencies & { React: StatsDataDependencies['React'] }) {
   /** @param {() => StatsChartDescriptor | undefined} describe @param {unknown[]} keys */
   function useChart(describe: () => StatsChartDescriptor | undefined, keys: unknown[]) {
-    dependencies.React.useEffect(function () {
-      var descriptor = describe();
+    dependencies.React.useEffect(() => {
+      const descriptor = describe();
       if (descriptor) return mountChart(descriptor, dependencies);
     }, keys);
   }
-  return { useChart: useChart };
+  return { useChart };
 }

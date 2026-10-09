@@ -1,14 +1,14 @@
 {
-  "note": "Minified release bundle sizes in bytes (all remeasured 2026-10-09 after the dead-code cleanup). Budgets allow up to 5% growth rounded up to whole KiB (DirtyPlugins, DirtyFileExtractor and DirtyRank tightened on 2026-10-09 after they shrank), never above the pre-migration legacy JavaScript total; raise one only with a reason recorded in docs/build-migration-status.md.",
+  "note": "Minified release bundle sizes in bytes (all remeasured 2026-10-09 after the simplification pass). Budgets allow up to 5% growth rounded up to whole KiB (tightened on 2026-10-09 where the bundles shrank), never above the pre-migration legacy JavaScript total; raise one only with a reason recorded in docs/build-migration-status.md.",
   "plugins": {
     "DirtyCaptions": {
-      "measured": 16702,
-      "budget": 18432,
+      "measured": 16249,
+      "budget": 17408,
       "legacy": 29442
     },
     "DirtyCompactor": {
-      "measured": 36055,
-      "budget": 37888,
+      "measured": 35006,
+      "budget": 36864,
       "legacy": 58156
     },
     "DirtyFileExtractor": {
@@ -17,27 +17,27 @@
       "legacy": 24613
     },
     "DirtyMultiscreen": {
-      "measured": 28727,
-      "budget": 30720,
+      "measured": 25316,
+      "budget": 26624,
       "legacy": 55369
     },
     "DirtyPlugins": {
-      "measured": 47363,
-      "budget": 50176,
+      "measured": 43089,
+      "budget": 46080,
       "legacy": 95942
     },
     "DirtyRank": {
-      "measured": 129686,
-      "budget": 136192,
+      "measured": 122130,
+      "budget": 129024,
       "legacy": 248889
     },
     "DirtyStats": {
-      "measured": 1177160,
-      "budget": 1238016,
+      "measured": 1167563,
+      "budget": 1226752,
       "legacy": 1554684
     },
     "DirtyTidy": {
-      "measured": 22479,
+      "measured": 22462,
       "budget": 24576,
       "legacy": 37846
     }

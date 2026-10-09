@@ -68,7 +68,7 @@ async function main() {
   const patch = h.patches.find(item => item.name === "PluginSettings").callback;
   assert.equal(patch({ id: "unmanaged" }, () => "native settings"), "native settings");
   assert.equal(patch({ id: "multiscreen" }, () => "native settings").props.pluginId, "multiscreen");
-  const filter = require(testModulePath("DirtyPlugins", "scenefilter.cjs")).createSceneFilter({}).serialize({ makeFindFilter: () => ({ page: 2, per_page: 10, q: "fixture" }), makeQueryParameters: () => "page=2&per_page=10&q=fixture", makeFilter: () => ({ rating100: { value: 80 } }) });
+  const filter = require(testModulePath("DirtyPlugins", "scenefilter.cjs")).serializeSceneFilter({ makeFindFilter: () => ({ page: 2, per_page: 10, q: "fixture" }), makeQueryParameters: () => "page=2&per_page=10&q=fixture", makeFilter: () => ({ rating100: { value: 80 } }) });
   assert.deepEqual(JSON.parse(JSON.stringify(filter)), { all: false, find: { q: "fixture" }, query: "q=fixture", scene: { rating100: { value: 80 } } });
 
   await h.settle();

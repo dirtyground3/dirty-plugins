@@ -86,13 +86,35 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
                VALUES ('dirtyPlugins', ?, ?)
                ON CONFLICT(plugin_id) DO UPDATE SET
                  version=excluded.version, applied_at=excluded.applied_at""",
-            (
-                STORAGE_SCHEMA_VERSION,
-                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            ),
+            (STORAGE_SCHEMA_VERSION, _timestamp()),
         )
         connection.commit()
     return connection
+
+
+@contextmanager
+def _borrowed(connection: sqlite3.Connection | None, path: str | Path | None) -> Iterator[sqlite3.Connection]:
+    """Use the caller's connection as is, or open and close an owned one."""
+    if connection is not None:
+        yield connection
+        return
+    with closing(connect(path)) as owned:
+        yield owned
+
+
+def _metadata_value(connection: sqlite3.Connection, namespace: str, key: str) -> str | None:
+    row = connection.execute(
+        "SELECT value FROM dirty_metadata WHERE namespace=? AND key=?", (str(namespace), str(key))
+    ).fetchone()
+    return str(row[0]) if row else None
+
+
+def _put_metadata(connection: sqlite3.Connection, namespace: str, key: str, value: str) -> None:
+    connection.execute(
+        """INSERT INTO dirty_metadata(namespace, key, value) VALUES (?, ?, ?)
+           ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value""",
+        (str(namespace), str(key), str(value)),
+    )
 
 
 @contextmanager
@@ -140,25 +162,14 @@ def get_plugin_revision(
     path: str | Path | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> int:
-    current = connection or connect(path)
-    try:
-        row = current.execute(
-            "SELECT value FROM dirty_metadata WHERE namespace=? AND key=?",
-            (SETTINGS_NAMESPACE, _plugin_revision_key(str(plugin_id))),
-        ).fetchone()
-        return int(row[0]) if row else 0
-    finally:
-        if connection is None:
-            current.close()
+    with _borrowed(connection, path) as current:
+        value = _metadata_value(current, SETTINGS_NAMESPACE, _plugin_revision_key(str(plugin_id)))
+        return int(value) if value is not None else 0
 
 
 def get_metadata(namespace: str, key: str, path: str | Path | None = None) -> str | None:
     with closing(connect(path)) as connection:
-        row = connection.execute(
-            "SELECT value FROM dirty_metadata WHERE namespace=? AND key=?",
-            (str(namespace), str(key)),
-        ).fetchone()
-        return str(row["value"]) if row else None
+        return _metadata_value(connection, namespace, key)
 
 
 def set_metadata(
@@ -168,26 +179,15 @@ def set_metadata(
     path: str | Path | None = None,
 ) -> None:
     with transaction(path) as connection:
-        connection.execute(
-            """INSERT INTO dirty_metadata(namespace, key, value) VALUES (?, ?, ?)
-               ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value""",
-            (str(namespace), str(key), str(value)),
-        )
+        _put_metadata(connection, namespace, key, value)
 
 
 def update_json_metadata(namespace, key, update, path=None):
     """Atomically update a JSON record; callbacks must not perform external I/O."""
     with transaction(path) as connection:
-        row = connection.execute(
-            "SELECT value FROM dirty_metadata WHERE namespace=? AND key=?",
-            (str(namespace), str(key)),
-        ).fetchone()
-        value = update(json.loads(row[0]) if row else {})
-        connection.execute(
-            """INSERT INTO dirty_metadata(namespace, key, value) VALUES (?, ?, ?)
-               ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value""",
-            (str(namespace), str(key), json.dumps(value, ensure_ascii=True)),
-        )
+        stored = _metadata_value(connection, namespace, key)
+        value = update(json.loads(stored) if stored is not None else {})
+        _put_metadata(connection, namespace, key, json.dumps(value, ensure_ascii=True))
         return value
 
 
@@ -215,16 +215,12 @@ def get_plugin_settings(
     path: str | Path | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> dict:
-    current = connection or connect(path)
-    try:
+    with _borrowed(connection, path) as current:
         rows = current.execute(
             "SELECT setting_key, value_json FROM dirty_plugin_settings WHERE plugin_id=?",
             (str(plugin_id),),
         ).fetchall()
         return {str(row["setting_key"]): json.loads(row["value_json"]) for row in rows}
-    finally:
-        if connection is None:
-            current.close()
 
 
 def get_plugin_settings_snapshot(plugin_id: str, path: str | Path | None = None) -> dict:
@@ -263,13 +259,8 @@ def set_plugin_settings(
     path: str | Path | None = None,
     expected_revision: int | None = None,
 ) -> dict:
-    if not isinstance(values, dict):
-        raise TypeError("Plugin settings must be an object")
-    plugin_id = str(plugin_id)
     with transaction(path) as connection:
-        return set_plugin_settings_on_connection(
-            plugin_id, values, connection, expected_revision
-        )
+        return set_plugin_settings_on_connection(str(plugin_id), values, connection, expected_revision)
 
 
 def set_plugin_settings_on_connection(
@@ -296,11 +287,7 @@ def set_plugin_settings_on_connection(
         ],
     )
     revision = current_revision + 1
-    connection.execute(
-        """INSERT INTO dirty_metadata(namespace, key, value) VALUES (?, ?, ?)
-           ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value""",
-        (SETTINGS_NAMESPACE, _plugin_revision_key(plugin_id), str(revision)),
-    )
+    _put_metadata(connection, SETTINGS_NAMESPACE, _plugin_revision_key(plugin_id), str(revision))
     return {"pluginId": plugin_id, "revision": revision, "settings": values}
 
 

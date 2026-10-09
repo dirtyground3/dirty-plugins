@@ -5,58 +5,33 @@ import type { ViewDependencies } from "../view";
 export function createPrimitives(dependencies: ViewDependencies) {
   const { themeColor, scheduleStatsSettingsSave, hub, React, StateView, getSaveStatusRevision, getSaveStatus, subscribeSaveStatus } = dependencies;
   function StatsSaveStatus(): R.ReactElement | null {
-    var revisionState = React.useState(getSaveStatusRevision()), setRevision = revisionState[1];
-    React.useEffect(function () {
-      var listener = function () { setRevision(getSaveStatusRevision()); };
-      var unsubscribe = subscribeSaveStatus(listener);
-      return function () { unsubscribe(); };
+    const [, setRevision] = React.useState(getSaveStatusRevision());
+    React.useEffect(() => {
+      const listener = () => { setRevision(getSaveStatusRevision()); };
+      const unsubscribe = subscribeSaveStatus(listener);
+      return () => { unsubscribe(); };
     }, [setRevision]);
     if (!getSaveStatus().message) return null;
     return (<div className="dirty-stats-save-feedback">
-
       <hub.react.SaveStatus {...getSaveStatus()} />
-
       {getSaveStatus().state === "error" ? (<hub.react.Button compact={true} onClick={scheduleStatsSettingsSave}>
-
-        {"Retry"}
-
+        Retry
       </hub.react.Button>) : null}
-
     </div>);
   }
 
+  // The hub always provides StateView (the runtime check requires it).
   function StatsState(props: StateProps): R.ReactElement | null {
-    if (StateView) {
-      return (<StateView
-        actions={props.actions}
-        className={props.className}
-        detail={props.detail}
-        role={props.role}
-        title={props.title} />);
-    }
-    return (<div
-      className={"dirty-stats-alert" + (props.className ? " " + props.className : "")}
-      role={props.role || "status"}>
-
-      <strong>
-
-        {props.title}
-
-      </strong>
-
-      {props.detail ? (<p>
-
-        {props.detail}
-
-      </p>) : null}
-
-      {props.actions || null}
-
-    </div>);
+    return (<StateView
+      actions={props.actions}
+      className={props.className}
+      detail={props.detail}
+      role={props.role}
+      title={props.title} />);
   }
 
   function download(url: string, filename: string) {
-    var link = document.createElement("a");
+    const link = document.createElement("a");
     link.href = url;
     link.download = filename;
     document.body.appendChild(link);
@@ -66,23 +41,16 @@ export function createPrimitives(dependencies: ViewDependencies) {
 
   function refreshButton(loading: boolean, refresh: () => void) {
     return (<button className="btn btn-secondary dirty-ui-button" disabled={loading} onClick={refresh}>
-
-      {"Refresh"}
-
+      Refresh
     </button>);
   }
 
   function pageToolbar(summary: string, loading: boolean, refresh: () => void) {
     return (<div className="dirty-stats-toolbar">
-
       <span className="dirty-stats-summary" role="status">
-
         {summary}
-
       </span>
-
       {refreshButton(loading, refresh)}
-
     </div>);
   }
 
@@ -90,12 +58,10 @@ export function createPrimitives(dependencies: ViewDependencies) {
     return (<button
       className="btn btn-secondary dirty-ui-button dirty-stats-export"
       disabled={disabled}
-      onClick={function () {
+      onClick={() => {
         if (chartRef.current) download(chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeColor("background") }), filename);
       }}>
-
-      {"Export PNG"}
-
+      Export PNG
     </button>);
   }
 

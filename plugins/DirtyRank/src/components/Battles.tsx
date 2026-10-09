@@ -1,16 +1,17 @@
 import type * as R from "react";
 import type { NativeProps } from "../../../DirtyPlugins/src/types";
 import { LEADERBOARDS_ROUTE_PATH } from "../constants";
+import { linkedBox } from "../domain/navigation";
 import type { BattleProps } from "../types";
 import type { ViewDependencies } from "../view";
 export function createBattles(dependencies: Pick<ViewDependencies, "React" | "Fragment" | "NavLink" | "Prompt" | "StateView" | "SharedStatisticSelector" | "boxOptions" | "boxGendersLabel" | "categoriesForPerformer" | "poolFor" | "battleRouteFromPath" | "RankCrown" | "RankButton" | "Leaderboard" | "GauntletConfidenceIndicator" | "DecisionIndicator" | "hillFireworks" | "PerformerCard" | "useBattleSession">) {
   const { React, Fragment, NavLink, Prompt, StateView, SharedStatisticSelector, boxOptions, boxGendersLabel, categoriesForPerformer, poolFor, battleRouteFromPath, RankCrown, RankButton, Leaderboard, GauntletConfidenceIndicator, DecisionIndicator, hillFireworks, PerformerCard, useBattleSession } = dependencies;
   function DirtyRankRoute(props: NativeProps): R.JSX.Element | null {
-    var routeTargetId = props && props.match && props.match.params && props.match.params.performerId
+    const routeTargetId = props && props.match && props.match.params && props.match.params.performerId
       ? String(props.match.params.performerId)
       : "";
-    var routeDetails = battleRouteFromPath(window.location.pathname);
-    var gauntletPathActive = Boolean(routeDetails && routeDetails.performerId);
+    const routeDetails = battleRouteFromPath(window.location.pathname);
+    const gauntletPathActive = Boolean(routeDetails && routeDetails.performerId);
     if (gauntletPathActive && !routeTargetId) return null;
     if (!routeDetails || (routeDetails.categoryId && !(props && props.match && props.match.params && props.match.params.categoryId))) return null;
     // Stash can keep the prefix route mounted alongside a more specific route.
@@ -19,28 +20,11 @@ export function createBattles(dependencies: Pick<ViewDependencies, "React" | "Fr
   }
 
   function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
-    var session = useBattleSession(props);
-    var loading = session.loading;
-    var error = session.error;
-    var settings = session.settings;
-    var category = session.category;
-    var gauntletMode = session.gauntletMode;
-    var kingsMode = session.kingsMode;
-    var censorMedia = session.censorMedia;
-    var pairInfo = session.pairInfo;
-    var performers = session.performers;
-    var cohort = session.cohort;
-    var pendingVotes = session.pendingVotes;
-    var feedback = session.feedback;
-    var decision = session.decision;
-    var undoHistory = session.undoHistory;
-    var refinementConfidence = session.refinementConfidence;
-    var gauntletTarget = session.gauntletTarget;
-    var load = session.load;
-    var submit = session.submit;
-    var skip = session.skip;
-    var undo = session.undo;
-    var restartKings = session.restartKings;
+    const session = useBattleSession(props);
+    const {
+      loading, error, settings, category, gauntletMode, kingsMode, censorMedia, pairInfo, performers, cohort, pendingVotes,
+      feedback, decision, undoHistory, refinementConfidence, gauntletTarget, load, submit, skip, undo, restartKings,
+    } = session;
     if (loading) return (<main className="dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide">
       <StateView title={gauntletMode ? "Loading Gauntlet…" : "Loading DirtyRank…"} />
     </main>);
@@ -50,27 +34,25 @@ export function createBattles(dependencies: Pick<ViewDependencies, "React" | "Fr
           title="Could not load DirtyRank"
           detail={error}
           actions={(<RankButton onClick={load}>
-            {"Retry"}
+            Retry
           </RankButton>)} />
       </main>);
     }
     if (!settings || !category) return null;
 
-    var pair = pairInfo && pairInfo!.pair;
-    var hillWinner = kingsMode && pairInfo && pairInfo!.incumbentId && !pair
-      ? performers.find(function (performer) { return String(performer.id) === pairInfo!.incumbentId; })
+    const pair = pairInfo && pairInfo!.pair;
+    const hillWinner = kingsMode && pairInfo && pairInfo!.incumbentId && !pair
+      ? performers.find(performer => String(performer.id) === pairInfo!.incumbentId)
       : null;
-    var arenaLeft = pair ? pair[0] : hillWinner && pairInfo!.incumbentSide === "left" ? hillWinner : null;
-    var arenaRight = pair ? pair[1] : hillWinner && pairInfo!.incumbentSide === "right" ? hillWinner : null;
+    const arenaLeft = pair ? pair[0] : hillWinner && pairInfo!.incumbentSide === "left" ? hillWinner : null;
+    const arenaRight = pair ? pair[1] : hillWinner && pairInfo!.incumbentSide === "right" ? hillWinner : null;
     // Keep the same mounted card and player when this performer wins.
-    var arenaLeftKey = arenaLeft && (gauntletMode ? "gauntlet:" + arenaLeft.id : kingsMode ? "kings:" + cohort + ":" + category.id + ":" + arenaLeft.id : pairInfo!.instanceId + ":left");
-    var reveal = settings.showRatingsBeforeVote;
-    var hillDefeated = kingsMode ? session.defeatedCount : 0;
-    var hillTotal = kingsMode && pairInfo ? Math.max(0, pairInfo!.eligible - 1) : 0;
-    var hideStandings = kingsMode || settings.hideBattleStandings;
-    var availableCohorts = boxOptions(settings, true).filter(function (item) {
-      return settings!.enabledCohorts.indexOf(item[0]) !== -1 && categoriesForPerformer(settings!, item[0], gauntletTarget).length > 0;
-    });
+    const arenaLeftKey = arenaLeft && (gauntletMode ? "gauntlet:" + arenaLeft.id : kingsMode ? "kings:" + cohort + ":" + category.id + ":" + arenaLeft.id : pairInfo!.instanceId + ":left");
+    const reveal = settings.showRatingsBeforeVote;
+    const hillDefeated = kingsMode ? session.defeatedCount : 0;
+    const hillTotal = kingsMode && pairInfo ? Math.max(0, pairInfo!.eligible - 1) : 0;
+    const hideStandings = kingsMode || settings.hideBattleStandings;
+    const availableCohorts = boxOptions(settings, true).filter(item => settings!.enabledCohorts.indexOf(item[0]) !== -1 && categoriesForPerformer(settings!, item[0], gauntletTarget).length > 0);
     return (<Fragment>
       {Prompt && (<Prompt
         message="DirtyRank is still saving queued votes or undos. Wait for the queue to finish before leaving this page."
@@ -82,12 +64,12 @@ export function createBattles(dependencies: Pick<ViewDependencies, "React" | "Fr
             <header className="dirty-rank-header dirty-ui-page-header">
               <div className="dirty-rank-header-identity">
                 <h1 className="dirty-rank-title dirty-rank-leaderboards-page-title">
-                  {"DirtyRank"}
+                  DirtyRank
                 </h1>
                 {kingsMode && (<div className="dirty-rank-hill-crest">
                   <RankCrown />
                   <span>
-                    {"King of the hill"}
+                    King of the hill
                   </span>
                 </div>)}
                 <fieldset className="dirty-rank-category-picker" disabled={pendingVotes > 0}>
@@ -95,9 +77,7 @@ export function createBattles(dependencies: Pick<ViewDependencies, "React" | "Fr
                     id="dirty-rank-category"
                     ariaLabel="Category"
                     value={category.id}
-                    options={categoriesForPerformer(settings, cohort, gauntletTarget).map(function (item) {
-                      return { value: item.id, label: item.name };
-                    })}
+                    options={categoriesForPerformer(settings, cohort, gauntletTarget).map(item => ({ value: item.id, label: item.name }))}
                     onSelect={session.selectCategory} />
                 </fieldset>
               </div>
@@ -112,15 +92,15 @@ export function createBattles(dependencies: Pick<ViewDependencies, "React" | "Fr
                 </RankButton>)}
                 {availableCohorts.length > 1 && (<div className="dirty-rank-control dirty-ui-field">
                   <label htmlFor="dirty-rank-battle-cohort">
-                    {"Gender box"}
+                    Gender box
                   </label>
                   <select
                     className="form-control"
                     disabled={pendingVotes > 0}
                     id="dirty-rank-battle-cohort"
-                    onChange={function (event) { session.selectCohort(event.target.value); }}
+                    onChange={event => { session.selectCohort(event.target.value); }}
                     value={cohort}>
-                    {availableCohorts.map(function (item) {
+                    {availableCohorts.map(item => {
                       return (<option key={item[0]} value={item[0]}>
                         {item[1]}
                       </option>);
@@ -130,17 +110,17 @@ export function createBattles(dependencies: Pick<ViewDependencies, "React" | "Fr
                 {gauntletMode && gauntletTarget && (<NavLink
                   className="btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact dirty-rank-options-link"
                   to={"/performers/" + gauntletTarget.id}>
-                  {"Back to performer"}
+                  Back to performer
                 </NavLink>)}
                 <NavLink
                   className="btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact dirty-rank-options-link"
-                  to={LEADERBOARDS_ROUTE_PATH + (cohort === settings.defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : "?box=" + encodeURIComponent(cohort))}>
-                  {"Leaderboards"}
+                  to={LEADERBOARDS_ROUTE_PATH + (linkedBox(settings.defaultCohort, cohort) ? "?box=" + encodeURIComponent(cohort) : "")}>
+                  Leaderboards
                 </NavLink>
                 <NavLink
                   className="btn btn-sm btn-secondary dirty-ui-button dirty-ui-control dirty-ui-control-compact dirty-rank-options-link"
                   to="/plugins/dirty-plugins?plugin=dirtyRank">
-                  {"Options"}
+                  Options
                 </NavLink>
               </div>
             </header>
@@ -188,7 +168,7 @@ export function createBattles(dependencies: Pick<ViewDependencies, "React" | "Fr
               title="Not enough eligible performers"
               detail={"This category and cohort need at least two performers" + (settings.includePerformersWithoutImages ? "." : " with profile images.")}
               actions={(<NavLink className="btn btn-secondary dirty-ui-button" to="/plugins/dirty-plugins?plugin=dirtyRank">
-                {"Open settings"}
+                Open settings
               </NavLink>)} />)}
             {(pair || hillWinner) && (<Fragment>
               <div
@@ -201,7 +181,7 @@ export function createBattles(dependencies: Pick<ViewDependencies, "React" | "Fr
                   hillMode={kingsMode}
                   hillOpening={kingsMode && !pairInfo!.incumbentId}
                   kingTarget={kingsMode && pairInfo!.incumbentId === String(arenaLeft.id)}
-                  onChoose={function () { submit("left"); }}
+                  onChoose={() => { submit("left"); }}
                   performer={arenaLeft}
                   pool={poolFor(arenaLeft, category.id, cohort, settings)}
                   rank={pairInfo!.ranks[arenaLeft.id]}
@@ -215,7 +195,7 @@ export function createBattles(dependencies: Pick<ViewDependencies, "React" | "Fr
                   hillMode={kingsMode}
                   hillOpening={kingsMode && !pairInfo!.incumbentId}
                   kingTarget={kingsMode && pairInfo!.incumbentId === String(arenaRight.id)}
-                  onChoose={function () { submit("right"); }}
+                  onChoose={() => { submit("right"); }}
                   performer={arenaRight}
                   pool={poolFor(arenaRight, category.id, cohort, settings)}
                   rank={pairInfo!.ranks[arenaRight.id]}
@@ -224,11 +204,11 @@ export function createBattles(dependencies: Pick<ViewDependencies, "React" | "Fr
                 {hillWinner && hillFireworks()}
               </div>
               {pair && (<div className="dirty-rank-actions d-flex flex-wrap align-items-center justify-content-center">
-                {!kingsMode && (<RankButton disabled={false} onClick={function () { submit("draw"); }}>
-                  {"Tie"}
+                {!kingsMode && (<RankButton disabled={false} onClick={() => { submit("draw"); }}>
+                  Tie
                 </RankButton>)}
                 {!kingsMode && (<RankButton disabled={false} onClick={skip}>
-                  {"Skip"}
+                  Skip
                 </RankButton>)}
                 <RankButton disabled={!undoHistory.length} onClick={undo}>
                   {"Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")}
@@ -247,7 +227,7 @@ export function createBattles(dependencies: Pick<ViewDependencies, "React" | "Fr
                     {"Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")}
                   </RankButton>
                   <RankButton disabled={pendingVotes > 0} onClick={restartKings}>
-                    {"Start a new run"}
+                    Start a new run
                   </RankButton>
                 </Fragment>)} />)}
             </Fragment>)}

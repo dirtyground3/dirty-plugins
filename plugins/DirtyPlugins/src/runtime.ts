@@ -1,13 +1,10 @@
 import type * as R from "react";
-import type { createTransport } from "./transport";
-import type { FieldActions, Host, HubApi, Panels } from "./types";
+import type { Host, HubApi } from "./types";
 
 export let React: typeof R;
 export let PluginApi: Host;
-export let hubApi: HubApi;
-export let fieldActions: FieldActions;
-export let settingsPanels: Panels;
-export let transport: ReturnType<typeof createTransport>;
+/** The public hub; the entry fills it in and publishes it as window.DirtyPlugins. */
+export const hubApi = {} as HubApi;
 
 /** Validate the externally owned host before claiming any registration. */
 export function readHost(): Host | null {
@@ -21,10 +18,4 @@ export function readHost(): Host | null {
 export function bindHost(api: Host) {
   PluginApi = api;
   React = api.React;
-  hubApi = {} as HubApi;
-  fieldActions = Object.create(null);
-  settingsPanels = Object.create(null);
-}
-export function bindServices(nextTransport: typeof transport) {
-  transport = nextTransport;
 }

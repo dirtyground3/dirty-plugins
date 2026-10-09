@@ -4,34 +4,14 @@ import { createCategoryEditor } from "./components/settings/CategoryEditor";
 import { createGenderBoxEditor } from "./components/settings/GenderBoxEditor";
 import { createPresentationSettings } from "./components/settings/PresentationSettings";
 import { createRatingSettings } from "./components/settings/RatingSettings";
-import type { RankCategory, RankGenderBox, RankPerformer, RankSettingsDraft, RankSettingsPanelDependencies } from "./types";
+import type { RankCategory, RankGenderBox, RankOperationResult, RankPerformer, RankSettingsDraft, RankSettingsPanelDependencies } from "./types";
 export function createSettingsPanel(dependencies: RankSettingsPanelDependencies) {
-  const React = dependencies.React;
-  var DEFAULT_CATEGORY_DEFINITIONS = dependencies.DEFAULT_CATEGORY_DEFINITIONS;
-  var DirtyPlugins = dependencies.DirtyPlugins;
-  var PLUGIN_ID = dependencies.PLUGIN_ID;
-  var Section = dependencies.Section;
-  var SettingsCard = dependencies.SettingsCard;
-  var SharedSaveStatus = dependencies.SharedSaveStatus;
-  var Toggle = dependencies.Toggle;
-  var boxFor = dependencies.boxFor;
-  var categoriesFor = dependencies.categoriesFor;
-  var categoryEligible = dependencies.categoryEligible;
-  var comparableSettings = dependencies.comparableSettings;
-  var documentationCapture = dependencies.documentationCapture;
-  var freshCategoryBattleEstimate = dependencies.freshCategoryBattleEstimate;
-  var loadRatingIndex = dependencies.loadRatingIndex;
-  var queryPerformers = dependencies.queryPerformers;
-  var ratingParameters = dependencies.ratingParameters;
-  var runOperation = dependencies.runOperation;
-  var serializedSettings = dependencies.serializedSettings;
-  var settingsFromConfiguration = dependencies.settingsFromConfiguration;
-  var uniqueCategoryId = dependencies.uniqueCategoryId;
-  var useEffect = dependencies.useEffect;
-  var useMemo = dependencies.useMemo;
-  var useRef = dependencies.useRef;
-  var useState = dependencies.useState;
-  var validateSettings = dependencies.validateSettings;
+  const {
+    React, DEFAULT_CATEGORY_DEFINITIONS, DirtyPlugins, PLUGIN_ID, Section, SettingsCard, SharedSaveStatus, Toggle, boxFor,
+    categoriesFor, categoryEligible, comparableSettings, documentationCapture, freshCategoryBattleEstimate, loadRatingIndex,
+    queryPerformers, ratingParameters, runOperation, serializedSettings, settingsFromConfiguration, uniqueCategoryId,
+    useEffect, useMemo, useRef, useState, validateSettings,
+  } = dependencies;
 
   const GenderBoxEditor = createGenderBoxEditor(dependencies);
   const PresentationSettings = createPresentationSettings(dependencies);
@@ -39,33 +19,17 @@ export function createSettingsPanel(dependencies: RankSettingsPanelDependencies)
   const RatingSettings = createRatingSettings(dependencies);
   function DirtyRankSettings(props: PanelProps) {
     if (!SettingsCard || !Section || !Toggle) return null;
-    var currentParametersState = useState(function () { return ratingParameters(settingsFromConfiguration(props.configuration)); });
-    var currentParameters = currentParametersState[0];
-    var setCurrentParameters = currentParametersState[1];
-    var estimatePerformersState = useState<RankPerformer[] | null>(null);
-    var estimatePerformers = estimatePerformersState[0];
-    var setEstimatePerformers = estimatePerformersState[1];
-    var estimateErrorState = useState(false);
-    var estimateError = estimateErrorState[0];
-    var setEstimateError = estimateErrorState[1];
-    var editingCohortState = useState(function () {
-      return settingsFromConfiguration(props.configuration).defaultCohort;
-    });
-    var editingCohort = editingCohortState[0];
-    var setEditingCohort = editingCohortState[1];
-    var busyState = useState(false);
-    var busy = busyState[0];
-    var setBusy = busyState[1];
-    var statusState = useState("");
-    var localStatus = statusState[0];
-    var setStatus = statusState[1];
-    var errorState = useState("");
-    var localError = errorState[0];
-    var setError = errorState[1];
-    var settingsRevisionRef = useRef<number | null | undefined>(null);
+    const [currentParameters, setCurrentParameters] = useState(() => ratingParameters(settingsFromConfiguration(props.configuration)));
+    const [estimatePerformers, setEstimatePerformers] = useState<RankPerformer[] | null>(null);
+    const [estimateError, setEstimateError] = useState(false);
+    const [editingCohort, setEditingCohort] = useState(() => settingsFromConfiguration(props.configuration).defaultCohort);
+    const [busy, setBusy] = useState(false);
+    const [localStatus, setStatus] = useState("");
+    const [localError, setError] = useState("");
+    const settingsRevisionRef = useRef<number | null | undefined>(null);
     const mounted = useRef(true);
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-    const control = DirtyPlugins.react.useSettingsDraft<RankSettingsDraft, import("./types").RankOperationResult, Record<string, unknown>, import("./types").RankOperationResult>({
+    const control = DirtyPlugins.react.useSettingsDraft<RankSettingsDraft, RankOperationResult, Record<string, unknown>, RankOperationResult>({
       initialValue: settingsFromConfiguration(props.configuration),
       load: () => runOperation({ mode: "getSettings" }).catch(() => ({ settings: props.configuration })),
       normalize: result => settingsFromConfiguration(result.settings),
@@ -97,169 +61,131 @@ export function createSettingsPanel(dependencies: RankSettingsPanelDependencies)
     const status = localStatus || (control.ready && !dirty ? "Saved automatically."
       : control.status.state === "pending" ? "Waiting to save automatically…"
       : saving ? "Saving automatically…" : control.status.state === "saved" ? "Saved automatically." : "");
-    var presetEstimate = useMemo(function () {
+    const presetEstimate = useMemo(() => {
       if (!estimatePerformers) return null;
-      var category = { enabled: true };
-      var count = estimatePerformers.filter(function (performer) {
-        return categoryEligible(performer, category, draft, editingCohort);
-      }).length;
+      const category = { enabled: true };
+      const count = estimatePerformers.filter(performer => categoryEligible(performer, category, draft, editingCohort)).length;
       return freshCategoryBattleEstimate(count, draft);
     }, [draft, editingCohort, estimatePerformers]);
 
-    useEffect(function () {
-      var cancelled = false;
-      queryPerformers().then(function (values) {
+    useEffect(() => {
+      let cancelled = false;
+      queryPerformers().then(values => {
         if (!cancelled) setEstimatePerformers(values);
-      }).catch(function () { if (!cancelled) setEstimateError(true); });
-      return function () { cancelled = true; };
+      }).catch(() => { if (!cancelled) setEstimateError(true); });
+      return () => { cancelled = true; };
     }, []);
 
-    function changed(update: Partial<RankSettingsDraft>) {
-      setDraft(function (current) { return Object.assign({}, current, update); });
+    /** Every edit clears the previous operation's status or error. */
+    function edit(update: (current: RankSettingsDraft) => RankSettingsDraft) {
+      setDraft(update);
       setStatus("");
       setError("");
+    }
+
+    function changed(update: Partial<RankSettingsDraft>) {
+      edit(current => Object.assign({}, current, update));
     }
 
     function toggleCohort(cohort: string, enabled: boolean) {
       if (!enabled && draft.enabledCohorts.length === 1 && draft.enabledCohorts[0] === cohort) return;
-      updateBox(cohort, { enabled: enabled });
+      updateBox(cohort, { enabled });
     }
 
     function changeBoxes(transform: (boxes: RankGenderBox[]) => RankGenderBox[]) {
-      setDraft(function (current) {
-        var boxes = transform(current.genderBoxes);
-        var enabledCohorts = boxes.filter(function (box) { return box.enabled; }).map(function (box) { return box.id; });
-        var defaultCohort = enabledCohorts.indexOf(current.defaultCohort) !== -1
-          ? current.defaultCohort
-          : enabledCohorts[0];
-        return Object.assign({}, current, { genderBoxes: boxes, defaultCohort: defaultCohort, enabledCohorts: enabledCohorts });
+      edit(current => {
+        const boxes = transform(current.genderBoxes);
+        const enabledCohorts = boxes.filter(box => box.enabled).map(box => box.id);
+        const defaultCohort = enabledCohorts.indexOf(current.defaultCohort) !== -1 ? current.defaultCohort : enabledCohorts[0];
+        return Object.assign({}, current, { genderBoxes: boxes, defaultCohort, enabledCohorts });
       });
-      setStatus("");
-      setError("");
     }
 
     function updateBox(id: string, update: Partial<RankGenderBox>) {
-      changeBoxes(function (boxes) {
-        return boxes.map(function (box) {
-          return box.id === id ? Object.assign({}, box, update) : box;
-        });
-      });
+      changeBoxes(boxes => boxes.map(box => box.id === id ? Object.assign({}, box, update) : box));
     }
 
     function addBox() {
-      var used = new Set(Object.keys(draft.categoriesByCohort).concat(draft.genderBoxes.map(function (box) { return box.id; })));
-      var index = 1;
+      const used = new Set(Object.keys(draft.categoriesByCohort).concat(draft.genderBoxes.map(box => box.id)));
+      let index = 1;
       while (used.has("BOX-" + index)) index += 1;
-      var id = "BOX-" + index;
-      var names = new Set(draft.genderBoxes.map(function (box) { return box.name.toLowerCase(); }));
-      var name = "Box " + index;
+      const id = "BOX-" + index;
+      const names = new Set(draft.genderBoxes.map(box => box.name.toLowerCase()));
+      let name = "Box " + index;
       while (names.has(name.toLowerCase())) { index += 1; name = "Box " + index; }
-      setDraft(function (current) {
-        var categories = Object.assign({}, current.categoriesByCohort);
-        categories[id] = DEFAULT_CATEGORY_DEFINITIONS.map(function (category) { return Object.assign({}, category); });
-        return Object.assign({}, current, {
-          categoriesByCohort: categories,
-          genderBoxes: current.genderBoxes.concat([{ id: id, name: name, genders: ["FEMALE"], enabled: true }]),
-          enabledCohorts: current.enabledCohorts.concat([id])
-        });
-      });
+      edit(current => Object.assign({}, current, {
+        categoriesByCohort: { ...current.categoriesByCohort, [id]: DEFAULT_CATEGORY_DEFINITIONS.map(category => Object.assign({}, category)) },
+        genderBoxes: current.genderBoxes.concat([{ id, name, genders: ["FEMALE"], enabled: true }]),
+        enabledCohorts: current.enabledCohorts.concat([id]),
+      }));
       setEditingCohort(id);
-      setStatus("");
-      setError("");
     }
 
     function removeBox(id: string) {
-      var box = boxFor(draft, id);
+      const box = boxFor(draft, id);
       if (draft.genderBoxes.length <= 1 || (box.enabled && draft.enabledCohorts.length === 1)) return;
-      if (editingCohort === id) setEditingCohort(draft.genderBoxes.find(function (other) { return other.id !== id; })!.id);
+      if (editingCohort === id) setEditingCohort(draft.genderBoxes.find(other => other.id !== id)!.id);
       // Keep category definitions as well as rating rows, and never reuse their IDs.
-      changeBoxes(function (boxes) { return boxes.filter(function (other) { return other.id !== id; }); });
+      changeBoxes(boxes => boxes.filter(other => other.id !== id));
     }
 
     function changeCategories(transform: (categories: RankCategory[]) => RankCategory[]) {
-      setDraft(function (current) {
-        var nextByCohort = Object.assign({}, current.categoriesByCohort);
-        var currentCategories = (nextByCohort[editingCohort] || []).slice();
-        nextByCohort[editingCohort] = transform(currentCategories);
-        return Object.assign({}, current, { categoriesByCohort: nextByCohort });
-      });
-      setStatus("");
-      setError("");
+      edit(current => Object.assign({}, current, {
+        categoriesByCohort: { ...current.categoriesByCohort, [editingCohort]: transform((current.categoriesByCohort[editingCohort] || []).slice()) },
+      }));
     }
 
     function updateCategory(index: number, update: Partial<RankCategory>) {
-      changeCategories(function (categories) {
-        return categories.map(function (category, categoryIndex) {
-          return categoryIndex === index ? Object.assign({}, category, update) : category;
-        });
-      });
+      changeCategories(categories => categories.map((category, categoryIndex) => categoryIndex === index ? Object.assign({}, category, update) : category));
     }
 
     function moveCategory(index: number, direction: number) {
-      changeCategories(function (categories) {
-        var target = index + direction;
+      changeCategories(categories => {
+        const target = index + direction;
         if (target < 0 || target >= categories.length) return categories;
-        var moved = categories.splice(index, 1)[0];
+        const moved = categories.splice(index, 1)[0];
         categories.splice(target, 0, moved);
         return categories;
       });
     }
 
     function addCategory() {
-      changeCategories(function (categories) {
-        var ids = new Set(["overall"].concat(categories.map(function (category) { return category.id; })));
-        return categories.concat([{
-          id: uniqueCategoryId("New category", ids),
-          name: "New category",
-          description: "",
-          enabled: true,
-          weight: 1,
-        }]);
+      changeCategories(categories => {
+        const ids = new Set(["overall"].concat(categories.map(category => category.id)));
+        return categories.concat([{ id: uniqueCategoryId("New category", ids), name: "New category", description: "", enabled: true, weight: 1 }]);
       });
     }
 
     function removeCategory(index: number) {
-      changeCategories(function (categories) {
-        if (categories.length <= 1) return categories;
-        return categories.filter(function (_item, itemIndex) { return itemIndex !== index; });
-      });
+      changeCategories(categories => categories.length <= 1 ? categories : categories.filter((_item, itemIndex) => itemIndex !== index));
     }
 
     function resetCategoryPool(cohort: string, category: RankCategory) {
       if (busy) return;
       if (dirty || saving) { setError("Wait for the automatic save before resetting a category."); return; }
-      var target = boxFor(draft, cohort).name + " / " + category.name;
+      const target = boxFor(draft, cohort).name + " / " + category.name;
       if (!window.confirm("Reset all ratings and battle history for " + target + "? Other categories and gender boxes are kept. Use the General settings backup if you need to restore them later.")) return;
       setBusy(true);
       setError("");
       setStatus("Resetting " + target + "…");
-      runOperation({
-        mode: "resetPool",
-        categoryId: category.id,
-        cohort: cohort,
-        confirm: "RESET",
-      }).then(function (result) {
-        return loadRatingIndex().then(function () {
-          if (!mounted.current) return;
-          setStatus("Reset " + target + ": " + result.reset + " rating(s).");
-          DirtyPlugins.ui.notify("DirtyRank reset " + target + ": " + result.reset + " rating(s).");
-        });
-      }).catch(function (caught) { if (mounted.current) { setError(caught.message || String(caught)); setStatus(""); } })
-        .finally(function () { if (mounted.current) setBusy(false); });
+      runOperation({ mode: "resetPool", categoryId: category.id, cohort, confirm: "RESET" }).then(result => loadRatingIndex().then(() => {
+        if (!mounted.current) return;
+        setStatus("Reset " + target + ": " + result.reset + " rating(s).");
+        DirtyPlugins.ui.notify("DirtyRank reset " + target + ": " + result.reset + " rating(s).");
+      })).catch(caught => { if (mounted.current) { setError(caught.message || String(caught)); setStatus(""); } })
+        .finally(() => { if (mounted.current) setBusy(false); });
     }
 
-    var editingCategories = categoriesFor(draft, editingCohort);
+    const editingCategories = categoriesFor(draft, editingCohort);
 
     function categoryNameError(category: RankCategory, index: number) {
-      var name = String(category.name || "").trim().toLowerCase();
+      const name = String(category.name || "").trim().toLowerCase();
       if (!name) return "Enter a category name.";
-      if (editingCategories.some(function (other, otherIndex) {
-        return otherIndex !== index && String(other.name || "").trim().toLowerCase() === name;
-      })) return "Use a unique name for this performer sex.";
+      if (editingCategories.some((other, otherIndex) => otherIndex !== index && String(other.name || "").trim().toLowerCase() === name)) return "Use a unique name for this performer sex.";
       return "";
     }
 
-    var visibleStatus = documentationCapture()
+    const visibleStatus = documentationCapture()
       ? error ? "Operation failed; details hidden in documentation mode."
         : status.indexOf("Backup created:") === 0 ? "Backup created; path hidden in documentation mode." : status
       : error || status;
@@ -306,7 +232,5 @@ export function createSettingsPanel(dependencies: RankSettingsPanelDependencies)
         estimateError={estimateError} />
     </SettingsCard>);
   }
-
-
   return DirtyRankSettings;
 }

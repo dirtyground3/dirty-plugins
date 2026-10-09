@@ -21,7 +21,6 @@ from dirty_tidy_templates import (
 )
 
 
-
 PLUGIN_ID = "dirtyTidy"
 REVIEW_NAMESPACE = "dirtyTidy.reviewedPlans"
 AUTOMATION_NAMESPACE = "dirtyTidy.automationJobs"
@@ -52,17 +51,14 @@ STRATEGY_SETTING_KEYS = (
 )
 
 
-def _load_shared_storage():
-    plugin_root = Path(__file__).resolve().parent.parent
-    for folder in ("dirtyPlugins", "DirtyPlugins"):
-        path = plugin_root / folder / "dirty_plugins_storage.py"
-        if path.is_file():
-            sys.path.insert(0, str(path.parent))
-            return __import__("dirty_plugins_storage")
+for folder in ("dirtyPlugins", "DirtyPlugins"):  # installed plugin ID, then source directory
+    shared = Path(__file__).resolve().parent.parent / folder
+    if (shared / "dirty_plugins_storage.py").is_file():
+        sys.path.insert(0, str(shared))
+        break
+else:
     raise RuntimeError("DirtyPlugins shared storage is not installed")
-
-
-shared_storage = _load_shared_storage()
+import dirty_plugins_storage as shared_storage
 from dirty_plugins_client import StashClient as BaseClient
 from dirty_plugins_protocol import Reporter, StashReporter
 import dirty_plugins_protocol as protocol
@@ -73,14 +69,9 @@ class PluginError(RuntimeError):
     """An error that should be shown cleanly in Stash."""
 
 
-
-
-
-
 class StashClient(BaseClient):
     def __init__(self, server_connection):
         super().__init__(server_connection, timeout=120, error_type=PluginError)
-
 
     def library_snapshot(self) -> tuple[list[str], list[dict[str, Any]]]:
         query = """
@@ -107,17 +98,7 @@ class StashClient(BaseClient):
         page = 1
         total = None
         while total is None or len(scenes) < total:
-            data = self.call(
-                query,
-                {
-                    "filter": {
-                        "page": page,
-                        "per_page": SCENE_QUERY_PAGE_SIZE,
-                        "sort": "id",
-                        "direction": "ASC",
-                    }
-                },
-            )
+            data = self.call(query, {"filter": {"page": page, "per_page": SCENE_QUERY_PAGE_SIZE, "sort": "id", "direction": "ASC"}})
             if not roots:
                 stashes = ((data.get("configuration") or {}).get("general") or {}).get("stashes") or []
                 roots = [str(stash.get("path") or "") for stash in stashes if stash.get("path")]
@@ -137,14 +118,7 @@ class StashClient(BaseClient):
         }
         if operation["destination_basename"] != operation["source_basename"]:
             input_value["destination_basename"] = operation["destination_basename"]
-        data = self.call(
-            """
-            mutation DirtyTidyMove($input: MoveFilesInput!) {
-              moveFiles(input: $input)
-            }
-            """,
-            {"input": input_value},
-        )
+        data = self.call("mutation DirtyTidyMove($input: MoveFilesInput!) { moveFiles(input: $input) }", {"input": input_value})
         return bool(data.get("moveFiles"))
 
 
@@ -248,47 +222,22 @@ def _normalized_operation(operation: dict[str, Any]) -> dict[str, str]:
 
 def operation_key(operation: dict[str, Any]) -> tuple[str, str, str]:
     normalized = _normalized_operation(operation)
-    return (
-        normalized["file_id"],
-        normalized["source_path"],
-        normalized["destination_path"],
-    )
+    return normalized["file_id"], normalized["source_path"], normalized["destination_path"]
 
 
 def plan_digest(strategy_digest: str, operations: Iterable[dict[str, Any]]) -> str:
     """Identify the exact ready operations in a preview or execution snapshot."""
-    ready = sorted(
-        operation_key(operation)
-        for operation in operations
-        if operation.get("status") == "ready"
-    )
-    encoded = json.dumps(
-        {"strategyHash": strategy_digest, "operations": ready},
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
+    ready = sorted(operation_key(operation) for operation in operations if operation.get("status") == "ready")
+    encoded = json.dumps({"strategyHash": strategy_digest, "operations": ready}, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def save_reviewed_plan(plan: dict[str, Any]) -> None:
     """Persist the plan a user confirmed so execution cannot exceed it."""
-    operations = [
-        _normalized_operation(operation)
-        for operation in plan.get("operations") or []
-        if operation.get("status") == "ready"
-    ]
-    payload = json.dumps(
-        {
-            "strategyHash": plan.get("strategy_hash") or "",
-            "planDigest": plan.get("plan_digest") or "",
-            "operations": operations,
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-    shared_storage.set_metadata(
-        REVIEW_NAMESPACE, str(plan.get("strategy_hash") or ""), payload
-    )
+    operations = [_normalized_operation(operation) for operation in plan.get("operations") or [] if operation.get("status") == "ready"]
+    payload = json.dumps({"strategyHash": plan.get("strategy_hash") or "", "planDigest": plan.get("plan_digest") or "",
+                          "operations": operations}, ensure_ascii=False, separators=(",", ":"))
+    shared_storage.set_metadata(REVIEW_NAMESPACE, str(plan.get("strategy_hash") or ""), payload)
 
 
 def load_reviewed_plan(strategy_digest: str) -> set[tuple[str, str, str]] | None:
@@ -305,36 +254,20 @@ def load_reviewed_plan(strategy_digest: str) -> set[tuple[str, str, str]] | None
     operations = payload.get("operations")
     if not isinstance(operations, list):
         return None
-    keys: set[tuple[str, str, str]] = set()
-    for operation in operations:
-        if not isinstance(operation, dict):
-            continue
-        keys.add(
-            (
-                str(operation.get("file_id") or ""),
-                str(operation.get("source_path") or ""),
-                str(operation.get("destination_path") or ""),
-            )
-        )
-    return keys
+    return {
+        (str(operation.get("file_id") or ""), str(operation.get("source_path") or ""), str(operation.get("destination_path") or ""))
+        for operation in operations if isinstance(operation, dict)
+    }
 
 
 def scene_has_stash_id(scene: dict[str, Any]) -> bool:
     stash_ids = scene.get("stash_ids")
     if not isinstance(stash_ids, list):
         return False
-    return any(
-        isinstance(stash_id, dict) and bool(str(stash_id.get("stash_id") or "").strip())
-        for stash_id in stash_ids
-    )
+    return any(isinstance(stash_id, dict) and bool(str(stash_id.get("stash_id") or "").strip()) for stash_id in stash_ids)
 
 
-def build_operation(
-    scene: dict[str, Any],
-    file_info: dict[str, Any],
-    roots: list[str],
-    settings: dict[str, Any],
-) -> dict[str, Any]:
+def build_operation(scene: dict[str, Any], file_info: dict[str, Any], roots: list[str], settings: dict[str, Any]) -> dict[str, Any]:
     source_path = str(file_info.get("path") or "")
     source_basename = str(file_info.get("basename") or Path(source_path).name)
     source_root = find_source_root(source_path, roots)
@@ -367,19 +300,10 @@ def build_operation(
         warnings.append("Skipped because the Stash file record points to a missing or inaccessible source file.")
         return operation
 
-    variables = scene_variables(
-        scene,
-        file_info,
-        source_root,
-        settings["multiValueSeparator"],
-    )
+    variables = scene_variables(scene, file_info, source_root, settings["multiValueSeparator"])
     has_stash_id = scene_has_stash_id(scene)
-    move_allowed = settings["moveEnabled"] and (
-        not settings["moveRequireStashId"] or has_stash_id
-    )
-    rename_allowed = settings["renameEnabled"] and (
-        not settings["renameRequireStashId"] or has_stash_id
-    )
+    move_allowed = settings["moveEnabled"] and (not settings["moveRequireStashId"] or has_stash_id)
+    rename_allowed = settings["renameEnabled"] and (not settings["renameRequireStashId"] or has_stash_id)
     if settings["moveEnabled"] and not move_allowed:
         warnings.append("Skipped move because the scene has no Stash ID.")
     if settings["renameEnabled"] and not rename_allowed:
@@ -419,10 +343,7 @@ def build_operation(
     if missing_tokens:
         warnings.append("Used Unknown for: " + ", ".join(sorted(missing_tokens)))
     if skipped_rename_tokens:
-        warnings.append(
-            "Skipped empty filename variables: "
-            + ", ".join(sorted(skipped_rename_tokens))
-        )
+        warnings.append("Skipped empty filename variables: " + ", ".join(sorted(skipped_rename_tokens)))
     validation = validate_destination(source_path, source_root, source_basename, destination_folder, destination_basename, operation["status"])
     operation["status"] = validation.status
     operation["actions"] = validation.actions
@@ -430,16 +351,9 @@ def build_operation(
     return operation
 
 
-def build_plan(
-    roots: list[str],
-    scenes: list[dict[str, Any]],
-    raw_settings: dict[str, Any],
-) -> dict[str, Any]:
+def build_plan(roots: list[str], scenes: list[dict[str, Any]], raw_settings: dict[str, Any]) -> dict[str, Any]:
     settings = normalize_settings(raw_settings)
-    operations: list[dict[str, Any]] = []
-    for scene in scenes:
-        for file_info in scene.get("files") or []:
-            operations.append(build_operation(scene, file_info, roots, settings))
+    operations = [build_operation(scene, file_info, roots, settings) for scene in scenes for file_info in scene.get("files") or []]
 
     destinations: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for operation in operations:
@@ -455,9 +369,7 @@ def build_plan(
             if not scene_id or scene_id in seen_scene_ids:
                 continue
             seen_scene_ids.add(scene_id)
-            blocked_scenes.append(
-                {"id": scene_id, "title": duplicate["scene_title"]}
-            )
+            blocked_scenes.append({"id": scene_id, "title": duplicate["scene_title"]})
         for operation in duplicates:
             operation["status"] = "blocked"
             operation["warnings"].append("Multiple files in this plan have the same destination.")
@@ -471,9 +383,7 @@ def build_plan(
         ] if operation["scene_id"] else []
 
     counts = Counter(operation["status"] for operation in operations)
-    action_counts = Counter(
-        action for operation in operations for action in operation.get("actions") or []
-    )
+    action_counts = Counter(action for operation in operations for action in operation.get("actions") or [])
     digest = strategy_hash(settings)
     return {
         "strategy_hash": digest,
@@ -492,11 +402,7 @@ def build_plan(
     }
 
 
-def preview_plan(
-    client: StashClient,
-    raw_settings: dict[str, Any],
-    record_review: bool = False,
-) -> dict[str, Any]:
+def preview_plan(client: StashClient, raw_settings: dict[str, Any], record_review: bool = False) -> dict[str, Any]:
     # The settings panel filters and pages the complete plan locally.
     roots, scenes = client.library_snapshot()
     plan = build_plan(roots, scenes, raw_settings)
@@ -521,10 +427,7 @@ def execute_plan(
     if not expected_hash or expected_hash != plan["strategy_hash"]:
         raise PluginError("The confirmed preview is stale. Generate and confirm a new preview.")
     if expected_plan_digest and expected_plan_digest != plan["plan_digest"]:
-        raise PluginError(
-            "The approved plan changed after it was approved. Generate a new preview "
-            "and approve it again."
-        )
+        raise PluginError("The approved plan changed after it was approved. Generate a new preview and approve it again.")
 
     ready = [operation for operation in plan["operations"] if operation["status"] == "ready"]
     unreviewed = 0
@@ -533,10 +436,7 @@ def execute_plan(
         # Automation approves the rules for future libraries, including newly
         # scanned scenes. It must not be tied to the preview's file list.
         settings = normalize_settings(raw_settings)
-        if (
-            settings["automationMode"] not in {"scan", "generate"}
-            or settings["approvedStrategyHash"] != plan["strategy_hash"]
-        ):
+        if settings["automationMode"] not in {"scan", "generate"} or settings["approvedStrategyHash"] != plan["strategy_hash"]:
             raise PluginError("The current strategy has not been approved for automation.")
     else:
         # Manual execution only applies the exact operations the user confirmed.
@@ -544,13 +444,8 @@ def execute_plan(
         # never move unseen.
         reviewed_keys = load_reviewed_plan(expected_hash)
         if reviewed_keys is None:
-            raise PluginError(
-                "The confirmed preview could not be found. Generate and confirm a new "
-                "preview before running."
-            )
-        confirmed = [
-            operation for operation in ready if operation_key(operation) in reviewed_keys
-        ]
+            raise PluginError("The confirmed preview could not be found. Generate and confirm a new preview before running.")
+        confirmed = [operation for operation in ready if operation_key(operation) in reviewed_keys]
         unreviewed = len(ready) - len(confirmed)
         reviewed_missing = len(reviewed_keys) - len(confirmed)
         ready = confirmed
@@ -565,36 +460,19 @@ def execute_plan(
     completed: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
     for index, operation in enumerate(ready, start=1):
-        reporter.info(
-            f"[{index}/{len(ready)}] {operation['source_path']} -> "
-            f"{operation['destination_path']}"
-        )
+        reporter.info(f"[{index}/{len(ready)}] {operation['source_path']} -> {operation['destination_path']}")
+        entry = {key: operation[key] for key in ("file_id", "source_path", "destination_path")}
         try:
             if not client.move_file(operation):
                 raise PluginError("Stash did not confirm the move.")
-            completed.append(
-                {
-                    "file_id": operation["file_id"],
-                    "source_path": operation["source_path"],
-                    "destination_path": operation["destination_path"],
-                }
-            )
+            completed.append(entry)
         except Exception as exc:
             reporter.error(f"Failed {operation['source_path']}: {exc}")
-            failed.append(
-                {
-                    "file_id": operation["file_id"],
-                    "source_path": operation["source_path"],
-                    "destination_path": operation["destination_path"],
-                    "error": str(exc),
-                }
-            )
+            failed.append({**entry, "error": str(exc)})
         reporter.progress(index / max(len(ready), 1))
 
     reporter.progress(1.0)
-    reporter.info(
-        f"DirtyTidy finished: {len(completed)} completed, {len(failed)} failed."
-    )
+    reporter.info(f"DirtyTidy finished: {len(completed)} completed, {len(failed)} failed.")
     return {
         "strategy_hash": plan["strategy_hash"],
         "plan_digest": plan["plan_digest"],
@@ -678,54 +556,29 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
             settings = shared_storage.get_plugin_settings(PLUGIN_ID)
         return preview_plan(client, settings, record_review=True)
     if mode == "execute":
-        stored_settings = shared_storage.get_plugin_settings(PLUGIN_ID)
-        return execute_plan(
-            client,
-            stored_settings,
-            str(args.get("expectedStrategyHash") or ""),
-            reporter,
-        )
+        return execute_plan(client, shared_storage.get_plugin_settings(PLUGIN_ID), str(args.get("expectedStrategyHash") or ""), reporter)
     if mode == "automation":
         settings = normalize_settings(shared_storage.get_plugin_settings(PLUGIN_ID))
         trigger = str(args.get("automationTrigger") or "").strip().lower()
         if trigger not in {"scan", "generate"}:
             raise PluginError("DirtyTidy automation requires a Scan or Generate trigger")
-        if settings["automationMode"] != trigger:
-            message = (
-                f"DirtyTidy skipped the {trigger} automation because the saved mode is "
-                f"{settings['automationMode']}."
-            )
+
+        def skip(message: str) -> dict[str, Any]:
             reporter.info(message)
             return {"skipped": True, "reason": message}
+
+        if settings["automationMode"] != trigger:
+            return skip(f"DirtyTidy skipped the {trigger} automation because the saved mode is {settings['automationMode']}.")
         approved_hash = settings["approvedStrategyHash"]
         if not approved_hash:
-            message = "DirtyTidy skipped automation because this strategy has not been approved."
-            reporter.info(message)
-            return {"skipped": True, "reason": message}
+            return skip("DirtyTidy skipped automation because this strategy has not been approved.")
         roots, scenes = client.library_snapshot()
         plan = build_plan(roots, scenes, settings)
         if approved_hash != plan["strategy_hash"]:
-            message = (
-                "DirtyTidy skipped automation because the saved settings no longer "
-                "match the approved strategy."
-            )
-            reporter.info(message)
-            return {"skipped": True, "reason": message}
-        reporter.info(
-            f"DirtyTidy is applying the strategy approved for completed {trigger} jobs."
-        )
-        return execute_plan(
-            client, settings, approved_hash, reporter, plan=plan,
-            apply_approved_strategy=True,
-        )
+            return skip("DirtyTidy skipped automation because the saved settings no longer match the approved strategy.")
+        reporter.info(f"DirtyTidy is applying the strategy approved for completed {trigger} jobs.")
+        return execute_plan(client, settings, approved_hash, reporter, plan=plan, apply_approved_strategy=True)
     raise PluginError(f"Unsupported DirtyTidy operation mode: {mode}")
-
-
-def _requested_mode(payload: Any) -> str:
-    args = payload.get("args") if isinstance(payload, dict) else None
-    if isinstance(args, dict):
-        return str(args.get("mode") or "execute")
-    return "unknown"
 
 
 def exit_code_for(output: Any) -> int:
@@ -734,20 +587,14 @@ def exit_code_for(output: Any) -> int:
     Stash treats a nonzero plugin exit as a failure, so an all-failed run must
     not look green in Tasks. Preview and skipped runs stay successful.
     """
-    if (
-        isinstance(output, dict)
-        and output.get("failed")
-        and not output.get("completed")
-    ):
-        return 1
-    return 0
+    return 1 if isinstance(output, dict) and output.get("failed") and not output.get("completed") else 0
 
 
 def main() -> int:
     configure_standard_streams()
     return protocol.run_logged_backend(
         "DirtyTidy", run, read_payload, emit_output, emit_error, StashReporter(), time.monotonic,
-        requested_mode=_requested_mode, exit_code=exit_code_for,
+        requested_mode=protocol.requested_mode("execute"), exit_code=exit_code_for,
     )
 
 

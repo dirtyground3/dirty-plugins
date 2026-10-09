@@ -5,9 +5,9 @@ interface SaveRequest { names: string[]; snapshot: Record<string, unknown> }
 export function createSettings(runtime: Runtime) {
   const { React, hub } = runtime;
   let disposed = false, loadGeneration = 0;
-  var PLUGIN_ID = "dirtyStats";
-  var DEFAULT_THEME = hub.theme.defaultKey;
-  var STATS_SETTING_SPECS = {
+  const PLUGIN_ID = "dirtyStats";
+  const DEFAULT_THEME = hub.theme.defaultKey;
+  const STATS_SETTING_SPECS = {
     visualTheme: { options: ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"] },
     showMapNumbers: { options: [false, true] },
     sceneRatingRounding: { options: [0, 0.5, 1] },
@@ -25,7 +25,7 @@ export function createSettings(runtime: Runtime) {
     tagDnaColorMetric: { options: ["rating", "play_count"] },
     tagDnaMaxTags: { options: [0, 25, 50, 100, 200] }
   };
-  var statsSettings: StatsSettings = {
+  const statsSettings: StatsSettings = {
     visualTheme: hub.theme.currentKey,
     showMapNumbers: false,
     sceneRatingRounding: 0.5,
@@ -43,16 +43,16 @@ export function createSettings(runtime: Runtime) {
     tagDnaColorMetric: "rating",
     tagDnaMaxTags: 50
   };
-  var statsSettingsListeners = new Set<() => void>();
-  var statsSettingsRevision = 0;
-  var statsSettingsSaveController: SaveController<SaveRequest, Awaited<ReturnType<Runtime["hub"]["configurePlugin"]>>> | null = null;
-  var statsSettingsDirtyNames = new Set<string>();
-  var statsSettingsExtras: Record<string, unknown> = {};
-  var statsSettingsEditRevision = 0;
-  var statsSettingsSaveStatus = { state: "", message: "" };
-  var statsSaveStatusListeners = new Set<() => void>();
-  var statsSaveStatusRevision = 0;
-  var STATS_THEMES: Record<string, StatsTheme> = {
+  const statsSettingsListeners = new Set<() => void>();
+  let statsSettingsRevision = 0;
+  let statsSettingsSaveController: SaveController<SaveRequest, Awaited<ReturnType<Runtime["hub"]["configurePlugin"]>>> | null = null;
+  const statsSettingsDirtyNames = new Set<string>();
+  let statsSettingsExtras: Record<string, unknown> = {};
+  let statsSettingsEditRevision = 0;
+  let statsSettingsSaveStatus = { state: "", message: "" };
+  const statsSaveStatusListeners = new Set<() => void>();
+  let statsSaveStatusRevision = 0;
+  const STATS_THEMES: Record<string, StatsTheme> = {
     classic: {
       key: "classic", label: "Midnight", background: "#242b31", panel: "#2c343b", panelAlt: "#303941",
       primary: "#54d5ca", secondary: "#5687a2", accent: "#f3c779", highlight: "#bc8542",
@@ -108,15 +108,15 @@ export function createSettings(runtime: Runtime) {
   }
 
   function themeColor(name: string): string {
-    var propertyNames: Record<string, string> = {
+    const propertyNames: Record<string, string> = {
       background: "--dirty-stats-bg", panel: "--dirty-stats-panel", panelAlt: "--dirty-stats-panel-alt",
       primary: "--dirty-stats-primary", secondary: "--dirty-stats-secondary", accent: "--dirty-stats-accent",
       highlight: "--dirty-stats-highlight", text: "--dirty-stats-text", muted: "--dirty-stats-muted",
       grid: "--dirty-stats-grid", border: "--dirty-stats-border", selection: "--dirty-stats-selection",
       soft: "--dirty-stats-soft", softer: "--dirty-stats-softer"
     };
-    var page = typeof document !== "undefined" && document.querySelector ? document.querySelector(".dirty-stats-page") : null;
-    var readRole = hub.theme.readRole;
+    const page = typeof document !== "undefined" && document.querySelector ? document.querySelector(".dirty-stats-page") : null;
+    const readRole = hub.theme.readRole;
     return page && propertyNames[name] ? readRole(page, propertyNames[name]) || statsTheme()[name as keyof StatsTheme] as string : statsTheme()[name as keyof StatsTheme] as string;
   }
 
@@ -129,12 +129,12 @@ export function createSettings(runtime: Runtime) {
   }
 
   function parseStatsSetting(name: string, value: unknown) {
-    var spec = (STATS_SETTING_SPECS as Record<string, { options: SettingValue[] }>)[name];
+    const spec = (STATS_SETTING_SPECS as Record<string, { options: SettingValue[] }>)[name];
     if (!spec) return null;
-    for (var index = 0;index < spec.options.length;index += 1) {
+    for (let index = 0;index < spec.options.length;index += 1) {
       if (spec.options[index] === value) return spec.options[index];
     }
-    for (var stringIndex = 0;stringIndex < spec.options.length;stringIndex += 1) {
+    for (let stringIndex = 0;stringIndex < spec.options.length;stringIndex += 1) {
       if (String(spec.options[stringIndex]) === String(value)) return spec.options[stringIndex];
     }
     return null;
@@ -142,46 +142,46 @@ export function createSettings(runtime: Runtime) {
 
   function notifyStatsSettings() {
     statsSettingsRevision += 1;
-    statsSettingsListeners.forEach(function (listener) { listener(); });
+    statsSettingsListeners.forEach(listener => { listener(); });
   }
 
   function syncSuiteTheme(key: string) {
-    var next = hub.theme.normalizeKey(key);
+    const next = hub.theme.normalizeKey(key);
     if (!next || statsSettings.visualTheme === next) return;
     statsSettings.visualTheme = next;
     notifyStatsSettings();
   }
 
   function setStatsSettingsSaveStatus(state: string, message: string) {
-    statsSettingsSaveStatus = { state: state, message: message };
+    statsSettingsSaveStatus = { state, message };
     statsSaveStatusRevision += 1;
-    statsSaveStatusListeners.forEach(function (listener) { listener(); });
+    statsSaveStatusListeners.forEach(listener => { listener(); });
   }
 
   function scheduleStatsSettingsSave() {
     if (!statsSettingsSaveController) statsSettingsSaveController = hub.createSaveController({
       delay: 400,
-      save: function (request) {
-        request.names.forEach(function (name) {
-          var current = Object.prototype.hasOwnProperty.call(statsSettings, name) ? statsSettings[name] : statsSettingsExtras[name];
+      save: request => {
+        request.names.forEach(name => {
+          const current = Object.prototype.hasOwnProperty.call(statsSettings, name) ? statsSettings[name] : statsSettingsExtras[name];
           if (current === request.snapshot[name]) statsSettingsDirtyNames.delete(name);
         });
-        return hub.configurePlugin(PLUGIN_ID, request.snapshot).catch(function () {
+        return hub.configurePlugin(PLUGIN_ID, request.snapshot).catch(() => {
           // Reload and merge only this tab's changed keys on a revision conflict.
-          return hub.getPluginSettings(PLUGIN_ID).then(function (latest) {
-            var merged = Object.assign({}, latest || {});
-            request.names.forEach(function (name) { merged[name] = request.snapshot[name]; });
+          return hub.getPluginSettings(PLUGIN_ID).then(latest => {
+            const merged = Object.assign({}, latest || {});
+            request.names.forEach(name => { merged[name] = request.snapshot[name]; });
             return hub.configurePlugin(PLUGIN_ID, merged);
           });
         });
       },
-      onError: function (error, request) {
-        request.names.forEach(function (name) { statsSettingsDirtyNames.add(name); });
+      onError: (error, request) => {
+        request.names.forEach(name => { statsSettingsDirtyNames.add(name); });
         console.warn("DirtyStats could not save its settings", error);
         hub.ui.notify("DirtyStats settings could not be saved. Retry or reload this page.", { tone: "error" });
       },
-      onStatus: function (value) {
-        var message = value.state === "pending" ? "Unsaved settings."
+      onStatus: value => {
+        const message = value.state === "pending" ? "Unsaved settings."
           : value.state === "saving" ? "Saving settings…"
             : value.state === "saved" ? "Settings saved."
               : "Could not save settings. Retry or reload this page.";
@@ -192,7 +192,7 @@ export function createSettings(runtime: Runtime) {
   }
 
   function setStatsSetting(name: string, value: unknown) {
-    var next = parseStatsSetting(name, value);
+    const next = parseStatsSetting(name, value);
     if (next === null || statsSettings[name] === next) return;
     statsSettings[name] = next;
     statsSettingsDirtyNames.add(name);
@@ -203,10 +203,10 @@ export function createSettings(runtime: Runtime) {
   }
 
   function statsSettingsFromStorage(stored: Record<string, unknown> | null) {
-    var source = stored && typeof stored === "object" ? stored : {};
-    var parsed: Partial<StatsSettings> = {};
-    Object.keys(statsSettings).forEach(function (name) {
-      var value = parseStatsSetting(name, source[name]);
+    const source = stored && typeof stored === "object" ? stored : {};
+    const parsed: Partial<StatsSettings> = {};
+    Object.keys(statsSettings).forEach(name => {
+      const value = parseStatsSetting(name, source[name]);
       if (value !== null) parsed[name] = value;
     });
     return parsed;
@@ -214,36 +214,35 @@ export function createSettings(runtime: Runtime) {
 
   function loadStatsSettings() {
     const generation = ++loadGeneration;
-    return hub.getPluginSettings(PLUGIN_ID).then(function (stored) {
+    return hub.getPluginSettings(PLUGIN_ID).then(stored => {
       if (disposed || generation !== loadGeneration) return;
-      var parsed = statsSettingsFromStorage(stored);
-      var changed = false;
+      const parsed = statsSettingsFromStorage(stored);
+      let changed = false;
       statsSettingsExtras = {};
-      Object.keys(stored || {}).forEach(function (name) {
+      Object.keys(stored || {}).forEach(name => {
         if (!Object.prototype.hasOwnProperty.call(statsSettings, name)) statsSettingsExtras[name] = stored[name];
       });
-      Object.keys(parsed).forEach(function (name) {
+      Object.keys(parsed).forEach(name => {
         if (statsSettings[name] !== parsed[name]) {
           statsSettings[name] = parsed[name]!;
           changed = true;
         }
       });
       if (changed) notifyStatsSettings();
-      return hub.theme.ready.then(function (key) { if (!disposed && generation === loadGeneration) syncSuiteTheme(key); });
-    }).catch(function (error) {
+      return hub.theme.ready.then(key => { if (!disposed && generation === loadGeneration) syncSuiteTheme(key); });
+    }).catch(error => {
       console.warn("DirtyStats could not load its display settings", error);
     });
   }
 
   function useStatsSetting<K extends keyof StatsSettings & string>(name: K): [StatsSettings[K], (value: unknown) => void] {
-    var revisionState = React.useState(statsSettingsRevision);
-    var setRevision = revisionState[1];
-    React.useEffect(function () {
-      var listener = function () { setRevision(statsSettingsRevision); };
+    const [, setRevision] = React.useState(statsSettingsRevision);
+    React.useEffect(() => {
+      const listener = () => { setRevision(statsSettingsRevision); };
       statsSettingsListeners.add(listener);
-      return function () { statsSettingsListeners.delete(listener); };
+      return () => { statsSettingsListeners.delete(listener); };
     }, [setRevision]);
-    return [statsSettings[name], function (value) { setStatsSetting(name, value); }];
+    return [statsSettings[name], value => { setStatsSetting(name, value); }];
   }
 
   function useChartTheme() {

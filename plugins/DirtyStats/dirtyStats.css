@@ -291,13 +291,6 @@
   fill: currentColor;
 }
 
-.dirty-stats-alert {
-  padding: 1rem;
-  border: 1px solid var(--dirty-ui-danger);
-  border-radius: var(--dirty-ui-radius);
-  margin: 1rem 0;
-}
-
 .dirty-stats-native-filters .pagination-index-container,
 .dirty-stats-native-filters .pagination-footer-container,
 .dirty-stats-native-filters .pagination,

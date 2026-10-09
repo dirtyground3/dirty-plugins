@@ -10,7 +10,7 @@ export function WorkflowDialogs(props: WorkflowDialogsProps) {
   const { confirm, removing, readyCount, excluded, actions, review, busy, dirty,
     onCloseRun, onCloseRemove, onStart, onRemove } = props;
   return <React.Fragment>
-    <ui.Dialog open={confirm} ariaLabel="Confirm manual run" onClose={function() { onCloseRun(); }} className="dirty-ui-panel dirty-compactor-confirm">
+    <ui.Dialog open={confirm} ariaLabel="Confirm manual run" onClose={() => { onCloseRun(); }} className="dirty-ui-panel dirty-compactor-confirm">
       <h2>{"Run " + Math.max(0, readyCount - excluded.length) + " operations?"}</h2>
       <p>
         {"Resize " + actions.resize + " · Reencode " + actions.reencode + " · "}
@@ -22,10 +22,10 @@ export function WorkflowDialogs(props: WorkflowDialogsProps) {
       <p className="dirty-compactor-muted">{review ? "The run pauses after each encoded file until you accept or discard it." : "Smaller, validated outputs replace the originals automatically."}</p>
       <div className="dirty-ui-control-row">
         <ui.Button onClick={onCloseRun}>Cancel</ui.Button>
-        <ui.Button tone={actions.delete ? "danger" : "primary"} disabled={Boolean(busy) || dirty} onClick={function() { onStart(); }}>Start run</ui.Button>
+        <ui.Button tone={actions.delete ? "danger" : "primary"} disabled={Boolean(busy) || dirty} onClick={() => { onStart(); }}>Start run</ui.Button>
       </div>
     </ui.Dialog>
-    <ui.Dialog open={Boolean(removing)} ariaLabel="Delete rule" onClose={function() { onCloseRemove(); }} className="dirty-ui-panel dirty-compactor-confirm">
+    <ui.Dialog open={Boolean(removing)} ariaLabel="Delete rule" onClose={() => { onCloseRemove(); }} className="dirty-ui-panel dirty-compactor-confirm">
       <h2>{"Delete rule “" + (removing?.name || "") + "”?"}</h2>
       <p>Only the rule is removed. Media files are not affected.</p>
       <div className="dirty-ui-control-row">

@@ -1,10 +1,10 @@
 import type * as R from "react";
-import type { Host } from "../../DirtyPlugins/src/types";
+import type { Host, NativeComponent } from "../../DirtyPlugins/src/types";
 import type { Runtime } from "./runtime";
 import type { PreviewMedia } from "./types";
 export interface Router {
-  NavLink: import("../../DirtyPlugins/src/types").NativeComponent;
-  Prompt: import("../../DirtyPlugins/src/types").NativeComponent;
+  NavLink: NativeComponent;
+  Prompt: NativeComponent;
   useHistory(): { push(path: string): void; replace(path: string): void };
   useLocation(): { pathname: string; search: string };
 }

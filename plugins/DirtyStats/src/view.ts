@@ -8,7 +8,7 @@ import type { Filters } from "./domain/filters";
 import type * as Growth from "./domain/growth";
 import type { createRegistry } from "./domain/registry";
 import type { BirthdayCalendarProps, DashboardPageProps, FilterCaptureProps, PageProps, PerformerCardsProps, SceneCardsProps, SelectorProps, StateProps } from "./props";
-import type { Runtime } from "./runtime";
+import type { Runtime, StatsFilter } from "./runtime";
 import type { Settings } from "./settings";
 import type { ChartInstance } from "./types";
 export interface StatsViews {
@@ -22,7 +22,7 @@ export interface StatsViews {
   chartImage: (node: R.RefObject<HTMLDivElement>, className: string, label: string) => R.ReactElement;
   StatisticSelector: R.ComponentType<SelectorProps>;
   FilterStatisticSelector: R.ComponentType<SelectorProps & { page: R.RefObject<HTMLElement> }>;
-  useAgePerformerFilter: () => import("./runtime").StatsFilter | null;
+  useAgePerformerFilter: () => StatsFilter | null;
   PerformerFilterCapture: R.ComponentType<FilterCaptureProps>;
   DashboardFilterCapture: R.ComponentType<FilterCaptureProps>;
   AgePerformerControls: R.ComponentType<{}>;

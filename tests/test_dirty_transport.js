@@ -5,8 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const { events } = require("./ui_harness");
-const window = events(), requests = [], hub = {};
-const noop = () => {};
+const window = events(), requests = [];
 let response = {ok: true, json: async () => ({data: {ok: true}})};
 const moduleExports = { exports: {} };
 const context = vm.createContext({window, module: moduleExports, exports: moduleExports.exports, CustomEvent: class {
@@ -19,13 +18,9 @@ const context = vm.createContext({window, module: moduleExports, exports: module
   return response;
 }});
 vm.runInContext(fs.readFileSync(testModulePath("DirtyPlugins", "transport.cjs"), "utf8"), context);
-const transport = moduleExports.exports.createTransport({
-  hubApi: hub, pluginRevisionCache: {}, fieldActions: {}, settingsPanels: {},
-  FIELD_ACTIONS_CHANGED_EVENT: "fields", CONFIGURATION_CHANGED_EVENT: "configuration", SETTINGS_PANELS_CHANGED_EVENT: "panels",
-  asObject: value => value || {}, pluginResult: value => typeof value === "string" ? JSON.parse(value) : value,
-  applyVisualTheme: noop, debugGraphqlOperationName: () => "test", debugNow: () => 0,
-  debugLogThrottled: noop, debugDescribe: String, debugLog: noop,
-});
+const transport = moduleExports.exports;
+const settingsExports = { exports: {} };
+vm.runInContext(fs.readFileSync(testModulePath("DirtyPlugins", "settings.cjs"), "utf8"), vm.createContext({ ...context, module: settingsExports, exports: settingsExports.exports }));
 
 (async () => {
   const controller = new AbortController();
@@ -56,8 +51,8 @@ const transport = moduleExports.exports.createTransport({
   assert.equal(JSON.parse(requests.at(-1).body).variables.args.expectedRevision, 4, "successful writes advance the cache");
 
   let configuration;
-  window.addEventListener("configuration", event => { configuration = event.detail; });
-  hub.notifyConfigurationChanged("example", {preserveSettingsPage: true});
+  window.addEventListener("dirty-plugins:configuration-changed", event => { configuration = event.detail; });
+  settingsExports.exports.notifyConfigurationChanged("example", {preserveSettingsPage: true});
   assert.equal(configuration.pluginId, "example");
   assert.equal(configuration.preserveSettingsPage, true);
   console.log("GraphQL cancellation, response errors, settings revisions and events passed");

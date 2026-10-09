@@ -184,10 +184,6 @@
         "output": "settingsdraft.cjs"
       },
       {
-        "entry": "src/theme.ts",
-        "output": "theme.cjs"
-      },
-      {
         "entry": "src/components/SceneFilter.tsx",
         "output": "scenefilter.cjs"
       }

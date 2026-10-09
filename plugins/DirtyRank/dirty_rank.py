@@ -45,28 +45,17 @@ COHORT_ORDER = [
 DEFAULT_CATEGORY_DEFINITIONS = CONSTANTS["defaultCategories"]
 
 
-def _load_shared_storage():
-    """Load storage from the required DirtyPlugins sibling in source and installs."""
-    plugin_root = Path(__file__).resolve().parent.parent
-    for path in (
-        plugin_root / "dirtyPlugins" / "dirty_plugins_storage.py",
-        plugin_root / "DirtyPlugins" / "dirty_plugins_storage.py",
-    ):
-        if path.is_file():
-            sys.path.insert(0, str(path.parent))
-            return __import__("dirty_plugins_storage")
+for folder in ("dirtyPlugins", "DirtyPlugins"):  # installed plugin ID, then source directory
+    shared = Path(__file__).resolve().parent.parent / folder
+    if (shared / "dirty_plugins_storage.py").is_file():
+        sys.path.insert(0, str(shared))
+        break
+else:
     raise RuntimeError("DirtyPlugins shared storage is not installed")
-
-
-shared_storage = _load_shared_storage()
+import dirty_plugins_storage as shared_storage
 from dirty_plugins_protocol import Reporter, StashReporter
 import dirty_plugins_protocol as protocol
-
-
 from dirty_rank_rating import PluginError, Rating, glicko2_update
-
-
-
 
 
 def _finite_number(value: Any, fallback: float, minimum: float, maximum: float) -> float:
@@ -109,6 +98,16 @@ def _boolean(value: Any, fallback: bool) -> bool:
     return fallback
 
 
+def _maybe_json(value: Any) -> Any:
+    """Settings written by the browser may hold JSON strings; invalid JSON reads as missing."""
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _slug(value: Any) -> str:
     ascii_name = unicodedata.normalize("NFKD", str(value or "").strip().lower())
     ascii_name = "".join(character for character in ascii_name if not unicodedata.combining(character))
@@ -127,7 +126,7 @@ def _unique_category_id(name: str, used_ids: set[str]) -> str:
     return candidate
 
 
-def _parse_category_list(value: Any, cohort: str = "FEMALE") -> list[dict[str, Any]]:
+def _parse_category_list(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         value = copy.deepcopy(DEFAULT_CATEGORY_DEFINITIONS)
 
@@ -151,26 +150,21 @@ def _parse_category_list(value: Any, cohort: str = "FEMALE") -> list[dict[str, A
             }
         )
     if not categories:
-        return _parse_category_list(copy.deepcopy(DEFAULT_CATEGORY_DEFINITIONS), cohort)
+        return _parse_category_list(copy.deepcopy(DEFAULT_CATEGORY_DEFINITIONS))
     return categories
 
 
 def _parse_categories_by_cohort(value: Any, boxes: list[dict[str, Any]] | None = None) -> dict[str, list[dict[str, Any]]]:
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except (TypeError, ValueError):
-            value = None
-
+    value = _maybe_json(value)
     source = value if isinstance(value, dict) else {}
     result = {
-        cohort: _parse_category_list(source.get(cohort), cohort)
+        cohort: _parse_category_list(source.get(cohort))
         # A list, not the set: the order must not depend on the process hash seed.
         for cohort in COHORT_ORDER
     }
     for cohort in list(source) + [box["id"] for box in (boxes or [])]:
         if cohort not in result and _valid_box_id(cohort):
-            result[cohort] = _parse_category_list(source.get(cohort), cohort)
+            result[cohort] = _parse_category_list(source.get(cohort))
     return result
 
 
@@ -179,11 +173,7 @@ def _valid_box_id(value: Any) -> bool:
 
 
 def _parse_gender_boxes(value: Any, enabled_cohorts: list[str]) -> list[dict[str, Any]]:
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except (TypeError, ValueError):
-            value = None
+    value = _maybe_json(value)
     boxes: list[dict[str, Any]] = []
     used: set[str] = set()
     for raw in value[:24] if isinstance(value, list) else []:
@@ -208,22 +198,18 @@ def _parse_gender_boxes(value: Any, enabled_cohorts: list[str]) -> list[dict[str
 
 
 def _parse_enabled_cohorts(value: Any, fallback: list[str]) -> list[str]:
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except (TypeError, ValueError):
-            value = None
-    requested = (
-        {str(item or "").strip().upper() for item in value}
-        if isinstance(value, list)
-        else set()
-    )
+    value = _maybe_json(value)
+    requested = {str(item or "").strip().upper() for item in value} if isinstance(value, list) else set()
     result = [cohort for cohort in COHORT_ORDER if cohort in requested]
     return result or fallback.copy()
 
 
 def normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
     source = raw if isinstance(raw, dict) else {}
+
+    def flag(key: str) -> bool:
+        return _boolean(source.get(key), DEFAULTS[key])
+
     cohort = str(source.get("defaultCohort") or DEFAULTS["defaultCohort"]).upper()
     boxes = _parse_gender_boxes(source.get("genderBoxes"), [cohort])
     enabled_cohorts = [box["id"] for box in boxes if box["enabled"]]
@@ -252,21 +238,17 @@ def normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
         "genderBoxes": boxes,
         "defaultCohort": cohort,
         "enabledCohorts": enabled_cohorts,
-        "showBattlesInMenu": _boolean(source.get("showBattlesInMenu"), DEFAULTS["showBattlesInMenu"]),
+        "showBattlesInMenu": flag("showBattlesInMenu"),
         "leaderboardTopCount": top_count,
         "leaderboardPerformerCount": performer_count,
         "leaderboardView": "table" if source.get("leaderboardView") == "table" else DEFAULTS["leaderboardView"],
         "overallScoreStrategy": overall_strategy,
         "overallPower": _bounded(source, "overallPower"),
-        "showLeaderboardsInMenu": _boolean(
-            source.get("showLeaderboardsInMenu"), DEFAULTS["showLeaderboardsInMenu"]
-        ),
-        "showRatingsBeforeVote": _boolean(source.get("showRatingsBeforeVote"), DEFAULTS["showRatingsBeforeVote"]),
-        "hidePerformerImages": _boolean(source.get("hidePerformerImages"), DEFAULTS["hidePerformerImages"]),
-        "hideBattleStandings": _boolean(source.get("hideBattleStandings"), DEFAULTS["hideBattleStandings"]),
-        "includePerformersWithoutImages": _boolean(
-            source.get("includePerformersWithoutImages"), DEFAULTS["includePerformersWithoutImages"]
-        ),
+        "showLeaderboardsInMenu": flag("showLeaderboardsInMenu"),
+        "showRatingsBeforeVote": flag("showRatingsBeforeVote"),
+        "hidePerformerImages": flag("hidePerformerImages"),
+        "hideBattleStandings": flag("hideBattleStandings"),
+        "includePerformersWithoutImages": flag("includePerformersWithoutImages"),
         "confidenceGoal": confidence_goal,
         "confidenceTopN": _bounded_integer(source, "confidenceTopN"),
         "avoidRepeatWindow": _bounded_integer(source, "avoidRepeatWindow"),
@@ -301,22 +283,10 @@ def rating_from_pool(pool: Any, settings: dict[str, Any]) -> Rating:
     if not isinstance(pool, dict):
         return default_rating(settings)
     return Rating(
-        rating=_finite_number(
-            pool.get("rating"), settings["initialRating"], -1000000.0, 1000000.0
-        ),
-        deviation=_finite_number(
-            pool.get("deviation"),
-            settings["initialDeviation"],
-            settings["deviationFloor"],
-            settings["initialDeviation"],
-        ),
-        volatility=_finite_number(
-            pool.get("volatility"), settings["initialVolatility"], 0.0001, 2.0
-        ),
-        matches=_integer(pool.get("matches"), 0, 0, 2_000_000_000),
-        wins=_integer(pool.get("wins"), 0, 0, 2_000_000_000),
-        losses=_integer(pool.get("losses"), 0, 0, 2_000_000_000),
-        draws=_integer(pool.get("draws"), 0, 0, 2_000_000_000),
+        rating=_finite_number(pool.get("rating"), settings["initialRating"], -1000000.0, 1000000.0),
+        deviation=_finite_number(pool.get("deviation"), settings["initialDeviation"], settings["deviationFloor"], settings["initialDeviation"]),
+        volatility=_finite_number(pool.get("volatility"), settings["initialVolatility"], 0.0001, 2.0),
+        **{count: _integer(pool.get(count), 0, 0, 2_000_000_000) for count in ("matches", "wins", "losses", "draws")},
         last_rated_at=str(pool.get("lastRatedAt")) if pool.get("lastRatedAt") else None,
     )
 
@@ -538,6 +508,14 @@ class RatingRepository:
             state["pools"][pool_key(row["category_id"], row["cohort"])] = self._row_pool(row)
         return state
 
+    def pair_result(self, connection: Any, left_id: str, right_id: str, key: str, revision: int) -> dict[str, Any]:
+        """Both performers' full states and their battle pool at one revision."""
+        result = {}
+        for side, performer_id in (("left", left_id), ("right", right_id)):
+            state = self.state(connection, performer_id, revision)
+            result[side] = {"id": performer_id, "pool": state["pools"].get(key), "state": state}
+        return result
+
     def all_states(self) -> dict[str, Any]:
         with self.connect() as connection:
             revision = self.revision(connection)
@@ -552,12 +530,7 @@ class RatingRepository:
 def _category_settings_with_label_ids(raw_settings: dict[str, Any]) -> tuple[dict[str, Any], dict[str, dict[str, str]]]:
     """Canonicalize category IDs while retaining each category's previous ID to move its ratings."""
     result = dict(raw_settings)
-    raw_categories = raw_settings.get("categories")
-    if isinstance(raw_categories, str):
-        try:
-            raw_categories = json.loads(raw_categories)
-        except (TypeError, ValueError):
-            raw_categories = None
+    raw_categories = _maybe_json(raw_settings.get("categories"))
     if not isinstance(raw_categories, dict):
         return result, {}
     categories = copy.deepcopy(raw_categories)
@@ -635,12 +608,7 @@ def save_settings(repository: RatingRepository, connection: Any, args: dict[str,
         if expected_revision != current_revision:
             raise shared_storage.SettingsRevisionConflict(PLUGIN_ID, expected_revision, current_revision)
         current = shared_storage.get_plugin_settings(PLUGIN_ID, connection=connection)
-        current_categories = current.get("categories")
-        if isinstance(current_categories, str):
-            try:
-                current_categories = json.loads(current_categories)
-            except (TypeError, ValueError):
-                current_categories = None
+        current_categories = _maybe_json(current.get("categories"))
         if isinstance(current_categories, dict):
             for cohort, mapping in remaps.items():
                 existing_ids = {str(item.get("id")) for item in current_categories.get(cohort, []) if isinstance(item, dict)}
@@ -707,22 +675,15 @@ def record_battle(
         raise PluginError("Outcome must be left, right, or draw")
 
     timestamp = iso_time(now or utc_now())
+    key = pool_key(category_id, cohort)
     with repository.connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
         duplicate = connection.execute(
             "SELECT status FROM dirty_rank_battles WHERE battle_id=?", (battle_id,)
         ).fetchone()
         if duplicate is not None:
-            revision = repository.revision(connection)
-            left_state = repository.state(connection, left_id, revision)
-            right_state = repository.state(connection, right_id, revision)
-            key = pool_key(category_id, cohort)
-            return {
-                "duplicate": True,
-                "battleId": battle_id,
-                "left": {"id": left_id, "pool": left_state["pools"].get(key), "state": left_state},
-                "right": {"id": right_id, "pool": right_state["pools"].get(key), "state": right_state},
-            }
+            return {"duplicate": True, "battleId": battle_id,
+                    **repository.pair_result(connection, left_id, right_id, key, repository.revision(connection))}
 
         left_pool = repository.pool(connection, left_id, category_id, cohort)
         right_pool = repository.pool(connection, right_id, category_id, cohort)
@@ -753,19 +714,9 @@ def record_battle(
                 serialize_state(next_left), serialize_state(next_right), timestamp,
             ),
         )
-        revision = repository.increment_revision(connection)
-        left_state = repository.state(connection, left_id, revision)
-        right_state = repository.state(connection, right_id, revision)
+        result = repository.pair_result(connection, left_id, right_id, key, repository.increment_revision(connection))
         connection.commit()
-    key = pool_key(category_id, cohort)
-    return {
-        "duplicate": False,
-        "battleId": battle_id,
-        "categoryId": category_id,
-        "cohort": cohort,
-        "left": {"id": left_id, "pool": left_state["pools"][key], "state": left_state},
-        "right": {"id": right_id, "pool": right_state["pools"][key], "state": right_state},
-    }
+    return {"duplicate": False, "battleId": battle_id, "categoryId": category_id, "cohort": cohort, **result}
 
 
 def undo_battle(
@@ -809,17 +760,9 @@ def undo_battle(
             "UPDATE dirty_rank_battles SET status='undone', undone_at=? WHERE sequence=?",
             (iso_time(utc_now()), battle["sequence"]),
         )
-        revision = repository.increment_revision(connection)
-        left_state = repository.state(connection, left_id, revision)
-        right_state = repository.state(connection, right_id, revision)
+        result = repository.pair_result(connection, left_id, right_id, pool_key(category_id, cohort), repository.increment_revision(connection))
         connection.commit()
-    key = pool_key(category_id, cohort)
-    return {
-        "undone": True,
-        "battleId": battle_id,
-        "left": {"id": left_id, "state": left_state, "pool": left_state["pools"].get(key)},
-        "right": {"id": right_id, "state": right_state, "pool": right_state["pools"].get(key)},
-    }
+    return {"undone": True, "battleId": battle_id, **result}
 
 
 def reset_pool(
@@ -901,18 +844,11 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
         connection.close()
 
 
-def _requested_mode(payload: Any) -> str:
-    args = payload.get("args") if isinstance(payload, dict) else None
-    if isinstance(args, dict):
-        return str(args.get("mode") or "record")
-    return "unknown"
-
-
 def main() -> int:
     configure_standard_streams()
     return protocol.run_logged_backend(
         "DirtyRank", run, read_payload, emit_output, emit_error, StashReporter(), time.monotonic,
-        requested_mode=_requested_mode,
+        requested_mode=protocol.requested_mode("record"),
     )
 
 

@@ -2,19 +2,16 @@ import type { RankSettingsPanelDependencies, RankSettingsSectionProps } from "..
 export function createCategoryEditor(dependencies: Pick<RankSettingsPanelDependencies, "React" | "Fragment" | "Field" | "RankButton" | "Section" | "SharedIconButton" | "Toggle" | "boxFor" | "boxOptions">) {
   const { React, Fragment, Field, RankButton, Section, SharedIconButton, Toggle, boxFor, boxOptions } = dependencies;
   function CategoryEditor(props: RankSettingsSectionProps) {
-    var draft = props.draft;
-    var busy = props.busy;
-    var saving = props.saving;
-    var dirty = props.dirty;
-    var editingCohort = props.editingCohort!;
-    var editingCategories = props.editingCategories!;
-    var setEditingCohort = props.setEditingCohort!;
-    var categoryNameError = props.categoryNameError!;
-    var updateCategory = props.updateCategory!;
-    var moveCategory = props.moveCategory!;
-    var removeCategory = props.removeCategory!;
-    var addCategory = props.addCategory!;
-    var resetCategoryPool = props.resetCategoryPool!;
+    const { draft, busy, saving, dirty } = props;
+    const editingCohort = props.editingCohort!;
+    const editingCategories = props.editingCategories!;
+    const setEditingCohort = props.setEditingCohort!;
+    const categoryNameError = props.categoryNameError!;
+    const updateCategory = props.updateCategory!;
+    const moveCategory = props.moveCategory!;
+    const removeCategory = props.removeCategory!;
+    const addCategory = props.addCategory!;
+    const resetCategoryPool = props.resetCategoryPool!;
     return (<Fragment>
       <Section
         title="Rating categories"
@@ -24,9 +21,9 @@ export function createCategoryEditor(dependencies: Pick<RankSettingsPanelDepende
             <select
               className="form-control"
               id="dirty-rank-category-cohort"
-              onChange={function (event) { setEditingCohort(event.target.value); }}
+              onChange={event => { setEditingCohort(event.target.value); }}
               value={editingCohort}>
-              {boxOptions(draft, false).map(function (item) {
+              {boxOptions(draft, false).map(item => {
                 return (<option key={item[0]} value={item[0]}>
                   {item[1]}
                 </option>);
@@ -35,7 +32,7 @@ export function createCategoryEditor(dependencies: Pick<RankSettingsPanelDepende
           </Field>
         </div>)}
         <div className="dirty-rank-category-list">
-          {editingCategories.map(function (category, index) {
+          {editingCategories.map((category, index) => {
             return (<div className="dirty-rank-category-editor" key={editingCohort + ":" + category.id}>
               <div className="dirty-rank-category-toolbar d-flex flex-wrap align-items-center justify-content-between">
                 <span className="dirty-rank-category-sex">
@@ -47,24 +44,24 @@ export function createCategoryEditor(dependencies: Pick<RankSettingsPanelDepende
                     disabled={busy || saving || dirty}
                     tone="danger"
                     title={"Reset ratings for " + boxFor(draft, editingCohort).name + " / " + category.name}
-                    onClick={function () { resetCategoryPool(editingCohort, category); }}>
-                    {"Reset ratings"}
+                    onClick={() => { resetCategoryPool(editingCohort, category); }}>
+                    Reset ratings
                   </RankButton>
                   <SharedIconButton
                     ariaLabel="Move category up"
                     disabled={index === 0}
                     fallback="↑"
-                    onClick={function () { moveCategory(index, -1); }} />
+                    onClick={() => { moveCategory(index, -1); }} />
                   <SharedIconButton
                     ariaLabel="Move category down"
                     disabled={index === editingCategories.length - 1}
                     fallback="↓"
-                    onClick={function () { moveCategory(index, 1); }} />
+                    onClick={() => { moveCategory(index, 1); }} />
                   <SharedIconButton
                     ariaLabel="Remove category"
                     disabled={editingCategories.length <= 1}
                     fallback="×"
-                    onClick={function () { removeCategory(index); }} />
+                    onClick={() => { removeCategory(index); }} />
                 </div>
               </div>
               <div className="dirty-rank-category-basics">
@@ -76,7 +73,7 @@ export function createCategoryEditor(dependencies: Pick<RankSettingsPanelDepende
                     className="form-control"
                     id={"dirty-rank-category-name-" + editingCohort + "-" + index}
                     maxLength={80}
-                    onChange={function (event) { updateCategory(index, { name: event.target.value }); }}
+                    onChange={event => { updateCategory(index, { name: event.target.value }); }}
                     type="text"
                     value={category.name} />
                 </Field>
@@ -91,7 +88,7 @@ export function createCategoryEditor(dependencies: Pick<RankSettingsPanelDepende
                     min={0.01}
                     max={1000}
                     step={0.1}
-                    onChange={function (event) { updateCategory(index, { weight: event.target.value }); }}
+                    onChange={event => { updateCategory(index, { weight: event.target.value }); }}
                     type="number"
                     value={category.weight} />
                 </Field>
@@ -101,18 +98,18 @@ export function createCategoryEditor(dependencies: Pick<RankSettingsPanelDepende
                   className="form-control"
                   id={"dirty-rank-category-description-" + editingCohort + "-" + index}
                   maxLength={500}
-                  onChange={function (event) { updateCategory(index, { description: event.target.value }); }}
+                  onChange={event => { updateCategory(index, { description: event.target.value }); }}
                   rows={2}
                   value={category.description} />
               </Field>
               <Toggle
                 checked={category.enabled}
                 label="Enable this category"
-                onChange={function (value: boolean) { updateCategory(index, { enabled: value }); }} />
+                onChange={(value: boolean) => { updateCategory(index, { enabled: value }); }} />
             </div>);
           })}
           <RankButton onClick={addCategory}>
-            {"+ Add category"}
+            + Add category
           </RankButton>
         </div>
       </Section>
