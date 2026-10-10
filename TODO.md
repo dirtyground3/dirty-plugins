@@ -36,13 +36,14 @@ Carried over from the TypeScript migration record and the 2026-10-10
 simplification pass. The evidence and the exact reproduction steps are in the
 Git history of `docs/build-migration-status.md`, under the named checkpoint.
 
-- [ ] Live check of the 2026-10-10 registration and host-binding changes in the
-  real Stash after installing the new builds: Rank battle and
-  leaderboards, a Stats page and the dashboard, Tidy preview, a Multiscreen
-  launch, Captions playback, the FileExtractor selection action and a Compactor
-  preview. The automated suite and all seven isolated Stash fixtures pass (real
-  Stash binary, synthetic media); nothing was installed into the live Stash
-  during that pass.
+- [ ] Interactive check of the 2026-10-10 registration and host-binding changes
+  in the live Stash: Rank leaderboards, a Stats full page, Tidy preview, a
+  Multiscreen launch, Captions playback, the FileExtractor selection action and
+  a Compactor preview. Done on 2026-10-10 after installing 1.0.4/1.0.5 there:
+  all eight plugins register without console errors, the settings hub shows
+  every tab, the Stats dashboard and a Rank battle page render, the served
+  bundles equal staging and the hub, Rank, Captions and Stats backends answer.
+  The automated suite and all seven isolated Stash fixtures also pass.
 - [ ] DevTools breakpoint stepping in a development build (`npm run build:dev`)
   was never verified for any plugin; served source maps and decoded authored
   locations were.

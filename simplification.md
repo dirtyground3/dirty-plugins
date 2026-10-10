@@ -530,8 +530,7 @@ item 13 proposes keeping them in AGENTS.md.
 ## Implementation record — 2026-10-10
 
 Items 1-14 are implemented. The bold option B (one plugin instead of eight) was
-excluded by the user and is untouched. Nothing was committed, pushed or
-installed into Stash.
+excluded by the user and is untouched.
 
 ### What was done
 
@@ -619,6 +618,9 @@ line. The raw Git diff is therefore much larger than the real change.
   They exercise registration, the exact served bundles and every backend's new
   envelope end to end. The hub fixture also passes with `--development` after
   `npm run build:dev`.
-- Not done: a check in the live Stash on port 9999 (nothing was installed). It
-  is listed under "Manual checks still open" in `TODO.md`.
+- Installed into the live Stash on 2026-10-10: all eight plugins register
+  without console errors, the served bundles equal staging, the Stats dashboard
+  and a Rank battle page render and the hub, Rank, Captions and Stats backends
+  answer. The remaining interactive checks are listed under "Manual checks
+  still open" in `TODO.md`.
 - Versions are bumped for the release: DirtyStats 1.0.5, the other seven 1.0.4.
