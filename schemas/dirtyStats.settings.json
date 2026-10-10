@@ -1,0 +1,109 @@
+{
+  "settings": {},
+  "constants": {
+    "displayDefaults": {
+      "showMapNumbers": false,
+      "sceneRatingRounding": 0.5,
+      "performerRatingRounding": 0.5,
+      "growthDateBasis": "created_at",
+      "growthGrouping": "day",
+      "growthShowForecast": false,
+      "growthShowCapacity": true,
+      "constellationMaxPerformers": 100,
+      "constellationMinShared": 1,
+      "scatterMinRating": 9,
+      "scatterMaxScenes": 10,
+      "countRatingMetric": "play_count",
+      "studioMinScenes": 1,
+      "tagDnaColorMetric": "rating",
+      "tagDnaMaxTags": 50
+    },
+    "displayOptions": {
+      "showMapNumbers": [
+        false,
+        true
+      ],
+      "sceneRatingRounding": [
+        0,
+        0.5,
+        1
+      ],
+      "performerRatingRounding": [
+        0,
+        0.5,
+        1
+      ],
+      "growthDateBasis": [
+        "created_at",
+        "mod_time",
+        "scene_date"
+      ],
+      "growthGrouping": [
+        "day",
+        "month",
+        "year"
+      ],
+      "growthShowForecast": [
+        false,
+        true
+      ],
+      "growthShowCapacity": [
+        false,
+        true
+      ],
+      "constellationMaxPerformers": [
+        0,
+        50,
+        100,
+        200,
+        500,
+        1000
+      ],
+      "constellationMinShared": [
+        1,
+        2,
+        3,
+        5,
+        10
+      ],
+      "scatterMinRating": [
+        0,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "scatterMaxScenes": [
+        0,
+        5,
+        10,
+        20,
+        50,
+        100
+      ],
+      "countRatingMetric": [
+        "play_count",
+        "o_counter"
+      ],
+      "studioMinScenes": [
+        1,
+        2,
+        5,
+        10,
+        20
+      ],
+      "tagDnaColorMetric": [
+        "rating",
+        "play_count"
+      ],
+      "tagDnaMaxTags": [
+        0,
+        25,
+        50,
+        100,
+        200
+      ]
+    }
+  }
+}

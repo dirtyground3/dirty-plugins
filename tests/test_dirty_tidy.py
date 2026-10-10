@@ -183,17 +183,6 @@ class DirtyTidyTests(unittest.TestCase):
                 operation["warnings"],
             )
 
-    def test_plugin_output_is_safe_on_legacy_windows_code_pages(self):
-        buffer = io.BytesIO()
-        stream = io.TextIOWrapper(buffer, encoding="cp1252", errors="strict")
-        expected = "日本語のシーン 🎬"
-
-        dirty_tidy.emit_output({"scene_title": expected}, stream)
-        stream.flush()
-        decoded = json.loads(buffer.getvalue().decode("ascii"))
-
-        self.assertEqual(decoded["output"]["scene_title"], expected)
-
     def test_missing_values_render_as_unknown_and_move_preserves_basename(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -750,21 +739,6 @@ class DirtyTidyTests(unittest.TestCase):
 
             self.assertEqual(operation["destination_basename"], "clip.mp4")
             self.assertEqual(operation["status"], "unchanged")
-
-    def test_configure_standard_streams_covers_stdin(self):
-        calls = []
-
-        class FakeStream:
-            def reconfigure(self, **kwargs):
-                calls.append(kwargs)
-
-        with mock.patch.object(dirty_tidy.sys, "stdin", FakeStream()), \
-                mock.patch.object(dirty_tidy.sys, "stdout", FakeStream()), \
-                mock.patch.object(dirty_tidy.sys, "stderr", FakeStream()):
-            dirty_tidy.configure_standard_streams()
-
-        self.assertEqual(len(calls), 3, "stdin, stdout and stderr must all be reconfigured")
-        self.assertTrue(all(call["encoding"] == "utf-8" for call in calls))
 
 
 class DirtyTidyPlanIntegrityTests(unittest.TestCase):

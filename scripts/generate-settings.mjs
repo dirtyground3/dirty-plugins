@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import lib from "./build-lib.cjs";
 
-const { root, registry, buildPath, rejectLinks } = lib;
+const { root, buildRoot, registry } = lib;
 const TYPES = ["BOOLEAN", "NUMBER", "STRING"];
 const SETTING_KEYS = ["type", "displayName", "description", "default", "integer", "min", "max", "step", "options"];
 
@@ -21,17 +21,20 @@ function fail(pluginId, message) {
 
 export function validateSchema(pluginId, schema) {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) fail(pluginId, "must be an object");
-  for (const key of Object.keys(schema)) if (!["settings", "constants"].includes(key)) fail(pluginId, "unknown key " + key);
-  if (!schema.settings || typeof schema.settings !== "object" || Array.isArray(schema.settings)) fail(pluginId, "settings must be an object");
+  for (const key of Object.keys(schema))
+    if (!["settings", "constants"].includes(key)) fail(pluginId, "unknown key " + key);
+  if (!schema.settings || typeof schema.settings !== "object" || Array.isArray(schema.settings))
+    fail(pluginId, "settings must be an object");
   if (schema.constants !== undefined && (typeof schema.constants !== "object" || Array.isArray(schema.constants))) {
     fail(pluginId, "constants must be an object");
   }
   for (const [name, setting] of Object.entries(schema.settings)) {
-    const where = (message) => fail(pluginId, name + " " + message);
+    const where = message => fail(pluginId, name + " " + message);
     for (const key of Object.keys(setting)) if (!SETTING_KEYS.includes(key)) where("has unknown key " + key);
     if (!TYPES.includes(setting.type)) where("needs a type of " + TYPES.join(", "));
-    for (const key of ["displayName", "description"]) if (typeof setting[key] !== "string" || !setting[key].trim()) where("needs " + key);
-    const numeric = ["integer", "min", "max", "step"].filter((key) => setting[key] !== undefined);
+    for (const key of ["displayName", "description"])
+      if (typeof setting[key] !== "string" || !setting[key].trim()) where("needs " + key);
+    const numeric = ["integer", "min", "max", "step"].filter(key => setting[key] !== undefined);
     if (setting.type !== "NUMBER" && numeric.length) where("uses " + numeric.join(", ") + " without type NUMBER");
     if (setting.integer !== undefined && typeof setting.integer !== "boolean") where("integer must be true or false");
     for (const key of ["min", "max", "step"]) {
@@ -40,9 +43,16 @@ export function validateSchema(pluginId, schema) {
     if (setting.min !== undefined && setting.max !== undefined && setting.min > setting.max) where("min exceeds max");
     if (setting.step !== undefined && setting.step <= 0) where("step must be positive");
     if (setting.options !== undefined) {
-      const values = Array.isArray(setting.options) ? setting.options.map((option) => option && option.value) : [];
-      if (!values.length || setting.options.some((option) => typeof option.label !== "string" || !["string", "number"].includes(typeof option.value) ||
-          Object.keys(option).some((key) => key !== "value" && key !== "label"))) {
+      const values = Array.isArray(setting.options) ? setting.options.map(option => option && option.value) : [];
+      if (
+        !values.length ||
+        setting.options.some(
+          option =>
+            typeof option.label !== "string" ||
+            !["string", "number"].includes(typeof option.value) ||
+            Object.keys(option).some(key => key !== "value" && key !== "label"),
+        )
+      ) {
         where("options must be a list of { value, label }");
       }
       if (new Set(values).size !== values.length) where("has duplicate option values");
@@ -51,12 +61,16 @@ export function validateSchema(pluginId, schema) {
     const value = setting.default;
     if (setting.type === "BOOLEAN" && typeof value !== "boolean") where("default must be a boolean");
     if (setting.type === "NUMBER") {
-      if (!Number.isFinite(value) || (setting.integer && !Number.isInteger(value))) where("default must be a " + (setting.integer ? "whole " : "") + "number");
-      if ((setting.min !== undefined && value < setting.min) || (setting.max !== undefined && value > setting.max)) where("default is outside min/max");
+      if (!Number.isFinite(value) || (setting.integer && !Number.isInteger(value)))
+        where("default must be a " + (setting.integer ? "whole " : "") + "number");
+      if ((setting.min !== undefined && value < setting.min) || (setting.max !== undefined && value > setting.max))
+        where("default is outside min/max");
     }
     // STRING settings may hold JSON-encoded structures (for example DirtyRank's cohort lists).
-    if (setting.type === "STRING" && (value === null || typeof value === "number" || typeof value === "boolean")) where("default must be a string or JSON structure");
-    if (setting.options && !setting.options.some((option) => option.value === value)) where("default is not one of its options");
+    if (setting.type === "STRING" && (value === null || typeof value === "number" || typeof value === "boolean"))
+      where("default must be a string or JSON structure");
+    if (setting.options && !setting.options.some(option => option.value === value))
+      where("default is not one of its options");
   }
   return schema;
 }
@@ -64,7 +78,6 @@ export function validateSchema(pluginId, schema) {
 export function loadSchema(pluginId) {
   const filename = schemaPath(pluginId);
   if (!fs.existsSync(filename)) return null;
-  rejectLinks(filename);
   return validateSchema(pluginId, JSON.parse(fs.readFileSync(filename, "utf8")));
 }
 
@@ -85,19 +98,28 @@ export function settingsTables(schema) {
 
 /** The Stash manifest settings section; the source manifest keeps everything else. */
 export function manifestSettings(schema) {
-  return Object.fromEntries(Object.entries(schema.settings).map(([name, setting]) => [
-    name, { displayName: setting.displayName, description: setting.description, type: setting.type },
-  ]));
+  return Object.fromEntries(
+    Object.entries(schema.settings).map(([name, setting]) => [
+      name,
+      { displayName: setting.displayName, description: setting.description, type: setting.type },
+    ]),
+  );
 }
 
 function header(pluginId, comment) {
-  return comment + " Generated by scripts/generate-settings.mjs from schemas/" + pluginId + ".settings.json; do not edit.\n";
+  return (
+    comment + " Generated by scripts/generate-settings.mjs from schemas/" + pluginId + ".settings.json; do not edit.\n"
+  );
 }
 
 export function typescriptModule(pluginId, schema) {
   const tables = settingsTables(schema);
-  return header(pluginId, "//") + ["order", "defaults", "limits", "options", "constants"]
-    .map((name) => "export const " + name + " = " + JSON.stringify(tables[name], null, 2) + ";\n").join("");
+  return (
+    header(pluginId, "//") +
+    ["order", "defaults", "limits", "options", "constants"]
+      .map(name => "export const " + name + " = " + JSON.stringify(tables[name], null, 2) + ";\n")
+      .join("")
+  );
 }
 
 // Python keeps its own number types: real-valued settings stay floats (1000.0), whole ones ints.
@@ -109,16 +131,38 @@ function pythonLiteral(value, real = false) {
     return real && Number.isInteger(value) && !/e/i.test(text) ? text + ".0" : text;
   }
   if (typeof value === "string") return JSON.stringify(value);
-  if (Array.isArray(value)) return "[" + value.map((item) => pythonLiteral(item, real)).join(", ") + "]";
-  return "{" + Object.entries(value).map(([key, item]) => JSON.stringify(key) + ": " + pythonLiteral(item, real)).join(", ") + "}";
+  if (Array.isArray(value)) return "[" + value.map(item => pythonLiteral(item, real)).join(", ") + "]";
+  return (
+    "{" +
+    Object.entries(value)
+      .map(([key, item]) => JSON.stringify(key) + ": " + pythonLiteral(item, real))
+      .join(", ") +
+    "}"
+  );
 }
 
 export function pythonModule(pluginId, schema) {
   const tables = settingsTables(schema);
-  const block = (name, table, real = []) => name + " = " + (Object.keys(table).length ? "{\n" + Object.entries(table)
-    .map(([key, value]) => "    " + JSON.stringify(key) + ": " + pythonLiteral(value, real.includes(key)) + ",\n").join("") + "}" : "{}") + "\n";
-  return '"""' + header(pluginId, "").trim() + '"""\n' + block("DEFAULTS", tables.defaults, tables.real) +
-    block("LIMITS", tables.limits, tables.real) + block("OPTIONS", tables.options) + block("CONSTANTS", tables.constants);
+  const block = (name, table, real = []) =>
+    name +
+    " = " +
+    (Object.keys(table).length
+      ? "{\n" +
+        Object.entries(table)
+          .map(([key, value]) => "    " + JSON.stringify(key) + ": " + pythonLiteral(value, real.includes(key)) + ",\n")
+          .join("") +
+        "}"
+      : "{}") +
+    "\n";
+  return (
+    '"""' +
+    header(pluginId, "").trim() +
+    '"""\n' +
+    block("DEFAULTS", tables.defaults, tables.real) +
+    block("LIMITS", tables.limits, tables.real) +
+    block("OPTIONS", tables.options) +
+    block("CONSTANTS", tables.constants)
+  );
 }
 
 /** Writes the TypeScript modules every bundle and the type checker resolve; returns the schemas by plugin ID. */
@@ -131,14 +175,15 @@ export function writeGenerated() {
     schemas[plugin.id] = schema;
     expected.set(plugin.id + ".settings.ts", typescriptModule(plugin.id, schema));
   }
-  const directory = buildPath("generated");
+  const directory = path.join(buildRoot, "generated");
   fs.mkdirSync(directory, { recursive: true });
   for (const name of fs.readdirSync(directory)) {
-    if (!expected.has(name)) fs.rmSync(buildPath("generated", name), { force: true });
+    if (!expected.has(name)) fs.rmSync(path.join(directory, name), { force: true });
   }
   for (const [name, contents] of expected) {
-    const filename = buildPath("generated", name);
-    if (!fs.existsSync(filename) || fs.readFileSync(filename, "utf8") !== contents) fs.writeFileSync(filename, contents);
+    const filename = path.join(directory, name);
+    if (!fs.existsSync(filename) || fs.readFileSync(filename, "utf8") !== contents)
+      fs.writeFileSync(filename, contents);
   }
   return schemas;
 }

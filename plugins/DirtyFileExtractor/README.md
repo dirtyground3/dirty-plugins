@@ -42,7 +42,7 @@ blurred only in this documentation capture.
    repository root and copy `.build/plugins/DirtyFileExtractor/` into Stash's
    plugin directory as `extractScenes`. The authored source directory requires
    compilation and is not installable.
-2. Install **DirtyPlugins** 1.0.0 or newer alongside it as `dirtyPlugins`.
+2. Install **DirtyPlugins** alongside it as `dirtyPlugins`.
 3. In Stash, open **Settings > Plugins** and click **Reload Plugins**.
 4. Expand **DirtyFileExtractor**, follow its settings link, and set
    **Destination folder** to an absolute path on
@@ -98,9 +98,9 @@ The UI integration adds a React action row to Stash's scene, marker, and image
 lists through `PluginApi.patch.after`. Strict TypeScript modules and a focused
 TSX component compile into the sole staged script, `extractScenes.js`, using
 Stash's React and DirtyPlugins' public API. No React or hub implementation is
-bundled. Repeated asset loads retain the active instance because Stash cannot
-unregister patches. Explicit teardown releases owned effects and makes its
-patches pass the native list through; partial patch failure keeps the guard.
+bundled. The entry registers once through the hub's `registerPlugin`: Stash
+cannot unregister patches, so a reloaded asset is ignored and a failed
+registration is logged once without being retried.
 The folder picker is attached to `document.body` and registered as a shared
 settings field action.
 The folder picker uses the shared button style, keeps keyboard focus inside

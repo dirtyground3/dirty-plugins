@@ -1,24 +1,53 @@
 "use strict";
-const { testModulePath } = require("./plugin_paths");
+const { requireSource, runSource } = require("./plugin_paths");
 const assert = require("node:assert/strict");
 const element = (type, props, ...children) => ({ type, props: { ...props, children } });
-const effects = [], timers = new Map(), listeners = new Map(), calls = [];
+const effects = [],
+  timers = new Map(),
+  listeners = new Map(),
+  calls = [];
 let id = 0;
-const React = { createElement: element, cloneElement: (node, props, ...children) => ({ type: node.type,
-  props: { ...node.props, ...props, ...(children.length ? { children: children.length === 1 ? children[0] : children } : {}) } }),
-  isValidElement: node => !!node?.type, useEffect: fn => effects.push(fn), useRef: value => ({ current: value }) };
-const window = { setInterval: fn => { timers.set(++id, fn); return id; }, clearInterval: key => timers.delete(key),
-  addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
+const React = {
+  createElement: element,
+  cloneElement: (node, props, ...children) => ({
+    type: node.type,
+    props: {
+      ...node.props,
+      ...props,
+      ...(children.length ? { children: children.length === 1 ? children[0] : children } : {}),
+    },
+  }),
+  isValidElement: node => !!node?.type,
+  useEffect: fn => effects.push(fn),
+  useRef: value => ({ current: value }),
+};
+const window = {
+  setInterval: fn => {
+    timers.set(++id, fn);
+    return id;
+  },
+  clearInterval: key => timers.delete(key),
+  addEventListener: (name, fn) => listeners.set(name, fn),
+  removeEventListener: name => listeners.delete(name),
+};
 require("./shared_runtime").installJobHelpers(window);
 global.window = window;
-const filters = require(testModulePath("DirtyCaptions", "filter.cjs"));
-const {createIndexUi} = require(testModulePath("DirtyCaptions", "indexUi.cjs"));
-const api = {...filters, createIndexUi: deps => createIndexUi({...deps, lifetime: {active:true, effects:new Set()}})};
+const filters = requireSource("DirtyCaptions", "src/domain/filter.ts");
+// Each simulated browser evaluates the plugin modules against its own PluginApi and hub.
+function createIndexUi({ api: PluginApi, hub: DirtyPlugins }) {
+  const globals = { window: { ...window, PluginApi, DirtyPlugins } };
+  return {
+    decorateList: runSource("DirtyCaptions", "src/filterView.ts", globals).decorateList,
+    Monitor: runSource("DirtyCaptions", "src/components/IndexMonitor.tsx", globals).IndexMonitor,
+  };
+}
+const api = { ...filters, createIndexUi };
 // Minimal native-model contracts from Stash v0.31.1: the filter editor uses
 // native enum controls, and the factory shares criterionOptions per mode.
 // Native CustomFieldsCriterion overwrites the input array, so combining it
 // with separate caption criteria must be independent of criterion order.
-const {NativeFilter, NativeResolutionCriterion, options, criterion}=require("./captions_native_filter").createNativeModels();
+const { NativeFilter, NativeResolutionCriterion, options, criterion } =
+  require("./captions_native_filter").createNativeModels();
 const personal = { field: "personal", modifier: "EQUALS", value: ["keep"] };
 const oldCaption = { field: "Contains embedded captions", modifier: "EQUALS", value: ["No"] };
 const original = new NativeFilter();
@@ -28,8 +57,15 @@ assert.equal(api.installNativeFilters(original, intl), true);
 api.installNativeFilters(original, intl);
 assert.equal(options.criterionOptions.length, 5, "One caption option joins the native options");
 const captionOption = options.criterionOptions.find(o => o.type === "dirty_captions");
-assert.equal(JSON.stringify(captionOption.options), JSON.stringify(["Any captions", "Text captions", "Bitmap / other", "None", "Verified", "Unverified"]));
-assert.equal(JSON.stringify(captionOption.modifierOptions), '["EQUALS"]', "Caption categories have no ordering or range operators");
+assert.equal(
+  JSON.stringify(captionOption.options),
+  JSON.stringify(["Any captions", "Text captions", "Bitmap / other", "None", "Verified", "Unverified"]),
+);
+assert.equal(
+  JSON.stringify(captionOption.modifierOptions),
+  '["EQUALS"]',
+  "Caption categories have no ordering or range operators",
+);
 const changed = api.normalizeFilter(original);
 assert.notEqual(changed, original);
 assert.equal(original.criteria.length, 2, "Normalizing URL criteria does not mutate the active filter");
@@ -38,7 +74,10 @@ assert.equal(changed.sortBy, "rating");
 assert.equal(changed.searchTerm, "test");
 assert.equal(changed.criteria[0].criterionOption.type, "performers");
 const caption = changed.criteria.find(c => c.criterionOption.type === "dirty_captions");
-assert.ok(caption instanceof NativeResolutionCriterion, "The native filter dialog renders the same enum controls as Resolution");
+assert.ok(
+  caption instanceof NativeResolutionCriterion,
+  "The native filter dialog renders the same enum controls as Resolution",
+);
 assert.equal(caption.value, "None");
 assert.equal(caption.getLabel(intl), "Embedded captions is None");
 assert.equal(caption.clone().getLabel(intl), "Embedded captions is None");
@@ -55,62 +94,107 @@ for (const reverse of [false, true]) {
   assert.equal(filter.makeSavedFilter().custom_fields.length, 2);
   const encoded = filter.getEncodedParams().c;
   assert.equal(encoded.length, 2);
-  assert.equal(encoded.filter(c => c.type === "custom_fields").length, 1, "URLs group all custom fields into one native criterion");
+  assert.equal(
+    encoded.filter(c => c.type === "custom_fields").length,
+    1,
+    "URLs group all custom fields into one native criterion",
+  );
 }
-changed.criteria.push(criterion("custom_fields", [
-  { field: "Contains embedded text captions", modifier: "EQUALS", value: ["No"] },
-  { field: "Caption index status", modifier: "NOT_EQUALS", value: ["Ready"] }
-]));
+changed.criteria.push(
+  criterion("custom_fields", [
+    { field: "Contains embedded text captions", modifier: "EQUALS", value: ["No"] },
+    { field: "Caption index status", modifier: "NOT_EQUALS", value: ["Ready"] },
+  ]),
+);
 const fields = changed.makeFilter().custom_fields;
 assert.equal(fields.find(f => f.field === "Contains embedded text captions").value[0], "No");
 assert.equal(fields.find(f => f.field === "Caption index status").modifier, "NOT_EQUALS");
 assert.equal(fields.find(f => f.field === "Caption index status").value[0], "Ready");
-const saved = changed.makeSavedFilter(), reloaded = new NativeFilter();
+const saved = changed.makeSavedFilter(),
+  reloaded = new NativeFilter();
 reloaded.configureFromSavedFilter(saved);
 const restored = api.normalizeFilter(reloaded);
 assert.equal(restored, reloaded, "Saved filters are adapted before native controls render");
-assert.equal(restored.criteria.filter(c => c.getId() === "dirty_captions").length, 1, "Legacy combinations preserve one caption picker and additional exact custom predicates");
+assert.equal(
+  restored.criteria.filter(c => c.getId() === "dirty_captions").length,
+  1,
+  "Legacy combinations preserve one caption picker and additional exact custom predicates",
+);
 assert.equal(restored.criteria.find(c => c.getId() === "dirty_captions").value, "Bitmap / other");
 function querySignature(query) {
-  return JSON.stringify({ ...query, custom_fields: [...query.custom_fields].sort((a, b) => a.field.localeCompare(b.field)) });
+  return JSON.stringify({
+    ...query,
+    custom_fields: [...query.custom_fields].sort((a, b) => a.field.localeCompare(b.field)),
+  });
 }
-assert.equal(querySignature(restored.makeFilter()), querySignature(changed.makeFilter()), "Saved filters retain the same native query");
+assert.equal(
+  querySignature(restored.makeFilter()),
+  querySignature(changed.makeFilter()),
+  "Saved filters retain the same native query",
+);
 const urlReloaded = new NativeFilter();
 urlReloaded.configureFromDecodedParams(changed.getEncodedParams());
-assert.ok(urlReloaded.criteria.find(c => c.getId() === "dirty_captions") instanceof NativeResolutionCriterion,
-  "URL reconstruction restores the native caption criterion, rather than a custom-field chip");
+assert.ok(
+  urlReloaded.criteria.find(c => c.getId() === "dirty_captions") instanceof NativeResolutionCriterion,
+  "URL reconstruction restores the native caption criterion, rather than a custom-field chip",
+);
 assert.equal(querySignature(urlReloaded.makeFilter()), querySignature(changed.makeFilter()));
 changed.sortBy = "random";
 assert.equal(changed.getEncodedParams().sortby, "random_123");
 assert.equal(changed.randomSeed, 123, "Bookmark serialization preserves the active random seed");
 changed.criteria = changed.criteria.filter(c => c.getId() !== "dirty_captions");
-assert.equal(changed.makeFilter().custom_fields.some(f => f.field === oldCaption.field), false, "Native remove buttons remove only that caption criterion");
+assert.equal(
+  changed.makeFilter().custom_fields.some(f => f.field === oldCaption.field),
+  false,
+  "Native remove buttons remove only that caption criterion",
+);
 const complex = new NativeFilter();
 complex.criteria = [criterion("custom_fields", [{ ...oldCaption, modifier: "NOT_EQUALS" }])];
-assert.equal(api.normalizeFilter(complex), complex, "Complex custom field constraints are left editable as custom fields");
+assert.equal(
+  api.normalizeFilter(complex),
+  complex,
+  "Complex custom field constraints are left editable as custom fields",
+);
 const duplicates = new NativeFilter();
 duplicates.criteria = [criterion("custom_fields", [oldCaption, oldCaption])];
-assert.equal(api.normalizeFilter(duplicates), duplicates, "Duplicate or conflicting legacy constraints retain their exact query");
+assert.equal(
+  api.normalizeFilter(duplicates),
+  duplicates,
+  "Duplicate or conflicting legacy constraints retain their exact query",
+);
 const categories = [
   ["Any captions", [{ field: oldCaption.field, modifier: "EQUALS", value: ["Yes"] }]],
   ["Text captions", [{ field: "Contains embedded text captions", modifier: "EQUALS", value: ["Yes"] }]],
-  ["Bitmap / other", [{ field: oldCaption.field, modifier: "EQUALS", value: ["Yes"] },
-    { field: "Contains embedded text captions", modifier: "EQUALS", value: ["No"] }]],
+  [
+    "Bitmap / other",
+    [
+      { field: oldCaption.field, modifier: "EQUALS", value: ["Yes"] },
+      { field: "Contains embedded text captions", modifier: "EQUALS", value: ["No"] },
+    ],
+  ],
   ["None", [oldCaption]],
   ["Verified", [{ field: "Caption index status", modifier: "EQUALS", value: ["Ready"] }]],
-  ["Unverified", [{ field: "Caption index status", modifier: "NOT_EQUALS", value: ["Ready"] }]]
+  ["Unverified", [{ field: "Caption index status", modifier: "NOT_EQUALS", value: ["Ready"] }]],
 ];
 for (const [value, expected] of categories) {
   for (const reverse of [false, true]) {
     const filter = new NativeFilter();
     filter.criteria = [criterion("dirty_captions", value), criterion("custom_fields", [personal])];
     if (reverse) filter.criteria.reverse();
-    assert.equal(querySignature(filter.makeFilter()), querySignature({ custom_fields: [...expected, personal] }), value);
+    assert.equal(
+      querySignature(filter.makeFilter()),
+      querySignature({ custom_fields: [...expected, personal] }),
+      value,
+    );
     for (const save of [false, true]) {
       const reloaded = new NativeFilter();
       if (save) reloaded.configureFromSavedFilter(filter.makeSavedFilter());
       else reloaded.configureFromDecodedParams(filter.getEncodedParams());
-      assert.equal(reloaded.criteria.find(c => c.getId() === "dirty_captions").value, value, "Normal URLs and bookmarks restore " + value);
+      assert.equal(
+        reloaded.criteria.find(c => c.getId() === "dirty_captions").value,
+        value,
+        "Normal URLs and bookmarks restore " + value,
+      );
       assert.equal(querySignature(reloaded.makeFilter()), querySignature(filter.makeFilter()));
     }
     const removed = filter.clone();
@@ -122,27 +206,53 @@ const blank = criterion("dirty_captions", "");
 assert.equal(blank.isValid(), false);
 blank.value = "unexpected";
 assert.equal(blank.isValid(), false);
-blank.value = "Text captions"; blank.modifier = "GREATER_THAN";
+blank.value = "Text captions";
+blank.modifier = "GREATER_THAN";
 assert.equal(blank.isValid(), false);
 const performerFilter = new NativeFilter("PERFORMERS");
 assert.equal(api.installNativeFilters(performerFilter, intl), false);
 performerFilter.criteria = [criterion("custom_fields", [personal])];
 assert.equal(performerFilter.makeFilter().custom_fields[0], personal);
-const ui = api.createIndexUi({ api: { React, libraries: { Intl: { useIntl: () => intl } } },
-  hub: { ...window.DirtyPlugins, react: { SettingsSection: "section", Button: "button" },
-    runPluginOperation: (_pluginId, args) => { calls.push(args); return Promise.resolve({ status: "Finished" }); } } });
+const ui = api.createIndexUi({
+  api: { React, libraries: { Intl: { useIntl: () => intl } }, GQL: { useJobsSubscribeSubscription: () => ({}) } },
+  hub: {
+    ...window.DirtyPlugins,
+    react: { SettingsSection: "section", Button: "button" },
+    runPluginOperation: (_pluginId, args) => {
+      calls.push(args);
+      return Promise.resolve({ status: "Finished" });
+    },
+  },
+});
 const nativeOps = element("native-operations", {});
-const nativeToolbar = element("native-toolbar", { filter: original, setFilter() { throw new Error("Equivalent URLs do not update native filter state"); },
-  showEditFilter() {}, listSelect: { selectedIds: new Set() }, operationComponent: nativeOps });
+const nativeToolbar = element("native-toolbar", {
+  filter: original,
+  setFilter() {
+    throw new Error("Equivalent URLs do not update native filter state");
+  },
+  showEditFilter() {},
+  listSelect: { selectedIds: new Set() },
+  operationComponent: nativeOps,
+});
 const tags = element("native-filter-tags", { criteria: original.criteria });
 const nested = element("provider", {}, element("main", {}, nativeToolbar, tags));
 const decorated = ui.decorateList(nested, intl);
 assert.equal(decorated.props.children[0].props.children[0], nativeToolbar, "Native toolbar elements remain unchanged");
-assert.equal(nativeToolbar.props.operationComponent, nativeOps, "No toolbar selector or additional operation is inserted");
+assert.equal(
+  nativeToolbar.props.operationComponent,
+  nativeOps,
+  "No toolbar selector or additional operation is inserted",
+);
 assert.ok(original.criteria.some(c => c.getId() === "dirty_captions"));
-assert.equal(decorated.props.children[0].props.children[1].props.criteria, original.criteria,
-  "Already constructed native FilterTags receive the adapted criteria");
-assert.equal(ui.decorateList(element("performer-list", { filter: performerFilter, setFilter() {} })).type, "performer-list");
+assert.equal(
+  decorated.props.children[0].props.children[1].props.criteria,
+  original.criteria,
+  "Already constructed native FilterTags receive the adapted criteria",
+);
+assert.equal(
+  ui.decorateList(element("performer-list", { filter: performerFilter, setFilter() {} })).type,
+  "performer-list",
+);
 ui.Monitor();
 const cleanup = effects[0]();
 assert.equal(calls[0].mode, "indexBootstrap");
@@ -152,9 +262,15 @@ assert.equal(timers.size, 0);
 assert.equal(listeners.size, 0);
 
 function browser() {
-  let event, cursor, pendingEffects, fail = false;
-  const slots = [], calls = [], cleanups = [];
-  const hooks = { ...React,
+  let event,
+    cursor,
+    pendingEffects,
+    fail = false;
+  const slots = [],
+    calls = [],
+    cleanups = [];
+  const hooks = {
+    ...React,
     useRef(initial) {
       const index = cursor++;
       if (!slots[index]) slots[index] = { current: initial };
@@ -167,26 +283,38 @@ function browser() {
         slots[index] = deps;
         pendingEffects.push(effect);
       }
-    }
+    },
   };
   const monitor = api.createIndexUi({
     api: { React: hooks, GQL: { useJobsSubscribeSubscription: () => ({ data: { jobsSubscribe: event } }) } },
-    hub: { ...window.DirtyPlugins, react: {}, debugLog() {}, runPluginOperation: async (_plugin, args) => {
-      calls.push(args);
-      if (fail && args.mode === "indexAfterScan") throw new Error("queue unavailable");
-      return {};
-    } }
+    hub: {
+      ...window.DirtyPlugins,
+      react: {},
+      debugLog() {},
+      runPluginOperation: async (_plugin, args) => {
+        calls.push(args);
+        if (fail && args.mode === "indexAfterScan") throw new Error("queue unavailable");
+        return {};
+      },
+    },
   }).Monitor;
   return {
     calls,
-    setFailure: value => { fail = value; },
+    setFailure: value => {
+      fail = value;
+    },
     async render(next) {
-      event = next; cursor = 0; pendingEffects = [];
+      event = next;
+      cursor = 0;
+      pendingEffects = [];
       monitor();
-      pendingEffects.forEach(effect => { const cleanup = effect(); if (cleanup) cleanups.push(cleanup); });
+      pendingEffects.forEach(effect => {
+        const cleanup = effect();
+        if (cleanup) cleanups.push(cleanup);
+      });
       await new Promise(resolve => setImmediate(resolve));
     },
-    cleanup: () => cleanups.forEach(cleanup => cleanup())
+    cleanup: () => cleanups.forEach(cleanup => cleanup()),
   };
 }
 function completed(startTime, overrides = {}) {
@@ -197,7 +325,10 @@ async function main() {
   const tab = browser();
   const first = completed("2026-10-02T08:00:00Z");
   await tab.render(undefined);
-  assert.deepEqual(tab.calls.map(args => args.mode), ["indexBootstrap"]);
+  assert.deepEqual(
+    tab.calls.map(args => args.mode),
+    ["indexBootstrap"],
+  );
   assert.equal(timers.size, 0);
   await tab.render(first);
   assert.equal(tab.calls.length, 2);
@@ -232,4 +363,7 @@ async function main() {
   assert.equal(timers.size, 0);
   console.log("DirtyCaptions imported native filter and Scan completion regression tests passed");
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+main().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

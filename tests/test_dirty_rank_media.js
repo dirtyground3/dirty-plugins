@@ -1,5 +1,5 @@
 "use strict";
-const { testModulePath } = require("./plugin_paths");
+const { runSource } = require("./plugin_paths");
 
 const assert = require("assert");
 const fs = require("fs");
@@ -13,7 +13,11 @@ const React = {
   Fragment: "fragment",
   createElement(type, props, ...children) {
     // Render the extracted, hook-free settings sections just as React would.
-    if (typeof type === "function" && ["GenderBoxEditor", "PresentationSettings", "CategoryEditor", "RatingSettings"].includes(type.name)) return type(props || {});
+    if (
+      typeof type === "function" &&
+      ["GenderBoxEditor", "PresentationSettings", "CategoryEditor", "RatingSettings"].includes(type.name)
+    )
+      return type(props || {});
     return element(type, props, ...children.flat());
   },
   ...createHooks(() => active),
@@ -44,12 +48,11 @@ const runtime = {
   captureEnabled: search => new URLSearchParams(search).get("docsCapture") === "1",
   captureUrl: path => path,
   getPluginSettings: () => Promise.resolve({}),
-  runPluginOperation: (_pluginId, args) => Promise.resolve(args.mode === "getSettings" ? { revision: 0, settings: {} } : { states: {} }),
-  graphql: (query, variables, options) => { calls.push({ query, variables, signal: options && options.signal }); return response(query, variables, options && options.signal); },
-  values: {
-    asObject: value => value || {},
-    parseMaybeJson: value => { if (typeof value === "string") { try { return JSON.parse(value); } catch (_) {} } return value; },
-    coerceBoolean: (value, fallback) => typeof value === "boolean" ? value : fallback,
+  runPluginOperation: (_pluginId, args) =>
+    Promise.resolve(args.mode === "getSettings" ? { revision: 0, settings: {} } : { states: {} }),
+  graphql: (query, variables, options) => {
+    calls.push({ query, variables, signal: options && options.signal });
+    return response(query, variables, options && options.signal);
   },
 };
 const context = vm.createContext({
@@ -60,66 +63,115 @@ const context = vm.createContext({
   document: {
     activeElement: null,
     addEventListener: (name, listener) => documentListeners.set(name, listener),
-    removeEventListener: (name, listener) => { if (documentListeners.get(name) === listener) documentListeners.delete(name); },
+    removeEventListener: (name, listener) => {
+      if (documentListeners.get(name) === listener) documentListeners.delete(name);
+    },
   },
   window: {
     DirtyPlugins: runtime,
     PluginApi: {
       React,
       components: { FilteredPerformerList: function FilteredPerformerList() {} },
-      libraries: { Intl: {}, ReactRouterDOM: {
-        NavLink: "a",
-        useLocation: () => context.window.location,
-        useHistory: () => ({
-          push: path => { context.window.location.pathname = path.split("?")[0]; context.window.location.search = path.includes("?") ? "?" + path.split("?")[1] : ""; },
-          replace: path => { context.window.location.pathname = path.split("?")[0]; context.window.location.search = path.includes("?") ? "?" + path.split("?")[1] : ""; },
-        }),
-      }, Bootstrap: {
-        ButtonGroup: "button-group",
-        Dropdown: Object.assign(function Dropdown() {}, { Toggle: "dropdown-toggle", Menu: "dropdown-menu", Item: "dropdown-item" }),
-        InputGroup: { Prepend: "input-group-prepend" },
-      } },
-      register: { route: noop }, patch: { before: noop, after: noop, instead: noop },
+      libraries: {
+        Intl: {},
+        ReactRouterDOM: {
+          NavLink: "a",
+          useLocation: () => context.window.location,
+          useHistory: () => ({
+            push: path => {
+              context.window.location.pathname = path.split("?")[0];
+              context.window.location.search = path.includes("?") ? "?" + path.split("?")[1] : "";
+            },
+            replace: path => {
+              context.window.location.pathname = path.split("?")[0];
+              context.window.location.search = path.includes("?") ? "?" + path.split("?")[1] : "";
+            },
+          }),
+        },
+        Bootstrap: {
+          ButtonGroup: "button-group",
+          Dropdown: Object.assign(function Dropdown() {}, {
+            Toggle: "dropdown-toggle",
+            Menu: "dropdown-menu",
+            Item: "dropdown-item",
+          }),
+          InputGroup: { Prepend: "input-group-prepend" },
+        },
+      },
+      register: { route: noop },
+      patch: { before: noop, after: noop, instead: noop },
     },
     addEventListener: noop,
     removeEventListener: noop,
     location: { pathname: "/plugins/dirty-rank-leaderboards", search: "" },
-    setTimeout: callback => { timers.set(++nextTimer, callback); return nextTimer; },
+    setTimeout: callback => {
+      timers.set(++nextTimer, callback);
+      return nextTimer;
+    },
     clearTimeout: id => timers.delete(id),
   },
 });
 require("./shared_runtime").installSaveController(context.window);
-runtime.react.useSettingsDraft = require("./shared_runtime").loadFeature(context.window, "SettingsDraft")
+runtime.react.useSettingsDraft = require("./shared_runtime")
+  .loadFeature(context.window, "SettingsDraft")
   .createSettingsDraftHook(React);
-context.module = {exports: {}};
-vm.runInContext(fs.readFileSync(testModulePath("DirtyRank", "views.cjs"), "utf8"), context);
-const views = context.module.exports.createViews({React, PluginApi: context.window.PluginApi, DirtyPlugins: runtime});
+// Every Rank module in one bundle, evaluated against this context's window.
+const VIEWS = [
+  "domain/navigation",
+  "domain/settings",
+  "domain/matchmaking",
+  "domain/rating",
+  "domain/rank",
+  "components/Primitives",
+  "components/Preview",
+  "components/PerformerCard",
+  "components/Leaderboards",
+  "components/Battles",
+  "components/Native",
+  "settingsPanel",
+  "battleSession",
+  "runtime",
+]
+  .map(name => 'export * from "./src/' + name + '";')
+  .join(";");
+const views = { ...runSource("DirtyRank", "rank-test-views.ts", context, { contents: VIEWS }) };
 views.ratingPresets = views.RATING_PRESETS;
-const plugin = {testing: views, algorithms: views};
+const plugin = { testing: views, algorithms: views };
 const settings = plugin.algorithms.settingsFromConfiguration({});
 {
   const originalLocation = context.window.location;
   context.window.location = { pathname: "/plugins/dirty-rank", search: "" };
   const prefixPage = plugin.testing.DirtyRankRoute({ match: { params: {} } });
-  assert.strictEqual(prefixPage.type.name, "DirtyRankBattlePage", "route ownership mounts a separate page with its own effect lifecycle");
+  assert.strictEqual(
+    prefixPage.type.name,
+    "DirtyRankBattlePage",
+    "route ownership mounts a separate page with its own effect lifecycle",
+  );
   context.window.location.pathname = "/plugins/dirty-rank/category/appearance";
-  assert.strictEqual(plugin.testing.DirtyRankRoute({ match: { params: {} } }), null,
-    "the prefix route removes its page when a category route takes over, cleaning up its title observer");
+  assert.strictEqual(
+    plugin.testing.DirtyRankRoute({ match: { params: {} } }),
+    null,
+    "the prefix route removes its page when a category route takes over, cleaning up its title observer",
+  );
   const categoryPage = plugin.testing.DirtyRankRoute({ match: { params: { categoryId: "appearance" } } });
   assert.strictEqual(categoryPage.type, prefixPage.type);
   context.window.location.pathname += "/king-of-the-hill";
   const kingsPage = plugin.testing.DirtyRankRoute({ match: { params: { categoryId: "appearance" } } });
   assert.strictEqual(kingsPage.props.routeDetails.kingsMode, true);
   context.window.location.pathname = "/plugins/dirty-rank-leaderboards";
-  assert.strictEqual(plugin.testing.DirtyRankRoute({ match: { params: {} } }), null,
-    "leaving battles unmounts the page even if Stash retains the route wrapper");
+  assert.strictEqual(
+    plugin.testing.DirtyRankRoute({ match: { params: {} } }),
+    null,
+    "leaving battles unmounts the page even if Stash retains the route wrapper",
+  );
   context.window.location = originalLocation;
 }
 const scene = { id: "top", title: "Top scene", rating100: 100, paths: { stream: "/top.mp4" } };
 const markerScene = { id: "curated", title: "Curated", rating100: 80, paths: { stream: "/curated.mp4" } };
-const data = { top: { scenes: [scene] }, markers: { scene_markers: [
-  { id: "marker", seconds: 12, end_seconds: 18, scene: markerScene },
-] } };
+const data = {
+  top: { scenes: [scene] },
+  markers: { scene_markers: [{ id: "marker", seconds: 12, end_seconds: 18, scene: markerScene }] },
+};
 let nextId = 0;
 function card(auto, overrides) {
   let votes = 0;
@@ -127,12 +179,15 @@ function card(auto, overrides) {
   let tree;
   const props = {
     performer: { id: String(++nextId), name: "Example", image_path: "/portrait.svg", scene_count: 1 },
-    pool: { matches: 0 }, settings: { ...settings, autoPlayTopScenes: auto, ...overrides },
+    pool: { matches: 0 },
+    settings: { ...settings, autoPlayTopScenes: auto, ...overrides },
     onChoose: () => votes++,
   };
   return {
     props,
-    get votes() { return votes; },
+    get votes() {
+      return votes;
+    },
     render() {
       active = state;
       state.cursor = 0;
@@ -143,14 +198,21 @@ function card(auto, overrides) {
     unmount() {
       // React detaches the ref before running passive effect cleanups.
       if (video(tree)) video(tree).props.ref(null);
-      state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+      state.slots.forEach(slot => {
+        if (slot && slot.cleanup) slot.cleanup();
+      });
     },
   };
 }
 const byClass = (tree, name) => find(tree, node => (node.props.className || "").split(" ").includes(name));
 const visibleText = tree => text(tree, " ");
 const video = tree => find(tree, node => node.type === "video");
-const event = () => ({ preventDefault: noop, stopPropagation() { this.stopped = true; } });
+const event = () => ({
+  preventDefault: noop,
+  stopPropagation() {
+    this.stopped = true;
+  },
+});
 const toggle = tree => byClass(tree, "dirty-rank-play-scene").props.onClick(event());
 const flush = () => {
   const pending = Array.from(timers.values());
@@ -162,9 +224,15 @@ function attachPlayer(tree, attributes) {
   const player = {
     src: video(tree).props.src,
     loadCalls: 0,
-    pause() { this.paused = true; },
-    removeAttribute(name) { delete this[name]; },
-    load() { this.loadCalls++; },
+    pause() {
+      this.paused = true;
+    },
+    removeAttribute(name) {
+      delete this[name];
+    },
+    load() {
+      this.loadCalls++;
+    },
     ...attributes,
   };
   video(tree).props.ref(player);
@@ -183,13 +251,22 @@ async function main() {
       { url: "/scene/896/stream.mp4?resolution=STANDARD_HD", mime_type: "video/mp4", label: "MP4 HD (720p)" },
     ],
   };
-  assert.strictEqual(playbackUrl(legacyScene), legacyScene.sceneStreams[1].url,
-    "WMV originals must use Stash's browser-compatible MP4 preview");
-  assert.strictEqual(playbackUrl({ ...legacyScene, sceneStreams: [legacyScene.sceneStreams[0]] }),
-    legacyScene.sceneStreams[0].url, "MP4 remains preferred when 720p is unavailable");
+  assert.strictEqual(
+    playbackUrl(legacyScene),
+    legacyScene.sceneStreams[1].url,
+    "WMV originals must use Stash's browser-compatible MP4 preview",
+  );
+  assert.strictEqual(
+    playbackUrl({ ...legacyScene, sceneStreams: [legacyScene.sceneStreams[0]] }),
+    legacyScene.sceneStreams[0].url,
+    "MP4 remains preferred when 720p is unavailable",
+  );
   const directMp4 = { url: "/direct.mp4", mime_type: "video/mp4", label: "Direct" };
-  assert.strictEqual(playbackUrl({ ...legacyScene, sceneStreams: [...legacyScene.sceneStreams, directMp4] }),
-    directMp4.url, "compatible direct MP4 streams avoid unnecessary transcoding");
+  assert.strictEqual(
+    playbackUrl({ ...legacyScene, sceneStreams: [...legacyScene.sceneStreams, directMp4] }),
+    directMp4.url,
+    "compatible direct MP4 streams avoid unnecessary transcoding",
+  );
   assert.strictEqual(playbackUrl({ paths: legacyScene.paths }), legacyScene.paths.stream);
   assert.strictEqual(playbackUrl(null), "");
   assert(plugin.testing.needsNativePreview(legacyScene));
@@ -220,9 +297,11 @@ async function main() {
   delete context.window.PluginApi.utils;
 
   assert.strictEqual(settings.autoPlayTopScenes, false);
-  assert.strictEqual(plugin.testing.serializedSettings(
-    plugin.algorithms.settingsFromConfiguration({ autoPlayTopScenes: true })
-  ).autoPlayTopScenes, true);
+  assert.strictEqual(
+    plugin.testing.serializedSettings(plugin.algorithms.settingsFromConfiguration({ autoPlayTopScenes: true }))
+      .autoPlayTopScenes,
+    true,
+  );
 
   response = () => Promise.resolve(data);
   calls.length = 0; // Ignore the initial full-cohort query used by overall sorting.
@@ -250,7 +329,10 @@ async function main() {
     assert.strictEqual(calls.at(-1).variables.sceneFilter.performers.value[0], automatic.props.performer.id);
     assert.strictEqual(video(tree).props.src, "/top.mp4", "autoplay must choose the highest-rated full scene");
     assert.strictEqual(video(tree).props.muted, true);
-    assert(find(tree, node => node.type === "img"), "photo and video must coexist");
+    assert(
+      find(tree, node => node.type === "img"),
+      "photo and video must coexist",
+    );
     assert(!byClass(tree, "dirty-rank-portrait").props.onClick, "photo clicks must reach the voting card");
     const click = event();
     byClass(tree, "dirty-rank-scene-panel").props.onClick(click);
@@ -281,7 +363,11 @@ async function main() {
   toggle(fallback.render());
   await flush();
   tree = fallback.render();
-  const delayed = attachPlayer(tree, { duration: Infinity, currentTime: 0, play: () => Promise.reject(new Error("Blocked")) });
+  const delayed = attachPlayer(tree, {
+    duration: Infinity,
+    currentTime: 0,
+    play: () => Promise.reject(new Error("Blocked")),
+  });
   video(tree).props.onLoadedMetadata({ currentTarget: delayed });
   assert.strictEqual(delayed.currentTime, 0);
   delayed.duration = 200;
@@ -302,7 +388,10 @@ async function main() {
   assert.strictEqual(calls.length, before);
 
   let resolve;
-  response = () => new Promise(done => { resolve = done; });
+  response = () =>
+    new Promise(done => {
+      resolve = done;
+    });
   const cancelled = card(true);
   cancelled.render();
   await flush();
@@ -333,7 +422,10 @@ async function main() {
   await flush();
   tree = failed.render();
   assert.strictEqual(byClass(tree, "dirty-rank-scene-error").children[0], "No playable scene found.");
-  assert(find(tree, node => node.type === "img"), "failures must leave voting photos available");
+  assert(
+    find(tree, node => node.type === "img"),
+    "failures must leave voting photos available",
+  );
 
   response = () => Promise.resolve(data);
   const released = card(true);
@@ -378,8 +470,12 @@ async function main() {
   assert.strictEqual(loadedComponent, "PerformerCard", "native cards load through the hub's component loader");
   const rankedPerformer = { ...manual.props.performer, rating100: 87, favorite: true };
   const standingsProps = {
-    performer: rankedPerformer, rank: 4, ranked: [rankedPerformer],
-    cohort: "FEMALE", leaderboardId: "appearance", settings,
+    performer: rankedPerformer,
+    rank: 4,
+    ranked: [rankedPerformer],
+    cohort: "FEMALE",
+    leaderboardId: "appearance",
+    settings,
   };
   active = { slots: [], effects: [], cursor: 0 };
   const gallery = plugin.testing.LeaderboardGalleryCard(standingsProps);
@@ -389,9 +485,16 @@ async function main() {
   assert.strictEqual(nativeGallery.props.performer.rating100, 87, "DirtyRank scores must not replace Stash ratings");
   const nativeBattle = card(false);
   const battleTree = nativeBattle.render();
-  assert(find(battleTree, node => node.type === nativeCard), "battles must render the native card");
+  assert(
+    find(battleTree, node => node.type === nativeCard),
+    "battles must render the native card",
+  );
   const portrait = byClass(battleTree, "dirty-rank-native-portrait");
-  const photoEvent = { ...event(), button: 0, target: { closest: selector => selector === ".thumbnail-section" ? {} : null } };
+  const photoEvent = {
+    ...event(),
+    button: 0,
+    target: { closest: selector => (selector === ".thumbnail-section" ? {} : null) },
+  };
   portrait.props.onClickCapture(photoEvent);
   assert.strictEqual(nativeBattle.votes, 1, "native photo clicks must vote");
   assert(photoEvent.stopped, "photo voting must suppress profile navigation");
@@ -400,7 +503,10 @@ async function main() {
   battleTree.props.onClick(nativeButtonEvent);
   assert.strictEqual(nativeBattle.votes, 1, "native buttons must not vote");
   assert(!nativeButtonEvent.stopped, "native buttons must retain their own handlers");
-  const nativeLinkEvent = { ...event(), target: { closest: selector => selector === ".dirty-rank-native-portrait" ? {} : null } };
+  const nativeLinkEvent = {
+    ...event(),
+    target: { closest: selector => (selector === ".dirty-rank-native-portrait" ? {} : null) },
+  };
   battleTree.props.onClick(nativeLinkEvent);
   assert.strictEqual(nativeBattle.votes, 1, "native profile links must not vote");
   nativeBattle.props.disabled = true;
@@ -409,30 +515,47 @@ async function main() {
   assert(!find(card(false, { hidePerformerImages: true }).render(), node => node.type === nativeCard));
   assert(!byClass(gallery, "dirty-rank-gallery-image-link"), "native mode must not duplicate the image markup");
   const podium = plugin.testing.LeaderboardPodium(standingsProps);
-  assert(find(podium, node => node.type === nativeCard), "podium must use the same native card");
+  assert(
+    find(podium, node => node.type === nativeCard),
+    "podium must use the same native card",
+  );
   delete api.components.PerformerCard;
   active = { slots: [], effects: [], cursor: 0 };
-  assert(byClass(plugin.testing.LeaderboardGalleryCard(standingsProps), "dirty-rank-gallery-image-link"), "older Stash builds keep the fallback card");
+  assert(
+    byClass(plugin.testing.LeaderboardGalleryCard(standingsProps), "dirty-rank-gallery-image-link"),
+    "older Stash builds keep the fallback card",
+  );
   const hubNative = runtime.native;
   runtime.native = { loadComponent: () => Promise.reject(new Error("native card unavailable")) };
-  assert.strictEqual(await plugin.testing.loadNativePerformerCard(), null,
-    "an unavailable native card must keep the fallback route usable");
+  assert.strictEqual(
+    await plugin.testing.loadNativePerformerCard(),
+    null,
+    "an unavailable native card must keep the fallback route usable",
+  );
   runtime.native = hubNative;
   response = () => Promise.resolve({ findPerformers: { performers: [rankedPerformer] } });
   await plugin.testing.queryPerformers(true);
   assert(calls.at(-1).query.includes("favorite rating100 o_counter"));
   await plugin.testing.queryPerformers();
   assert(!calls.at(-1).query.includes("favorite rating100 o_counter"), "battle queries must remain lightweight");
-  const labeled = plugin.algorithms.settingsFromConfiguration({ categories: { FEMALE: [
-    { id: "old-a", name: "Étoile & Face" },
-    { id: "old-b", name: "Etoile Face" },
-    { id: "old-c", name: "Étoile--Face" },
-    { name: "Overall" },
-  ] } });
-  assert.strictEqual(labeled.categoriesByCohort.FEMALE.map(category => category.id).join(","),
-    "etoile-face,etoile-face-1,etoile-face-2,overall-1");
-  assert.strictEqual(plugin.testing.leaderboardStatPath(labeled.categoriesByCohort.FEMALE[1].id),
-    "/plugins/dirty-rank-leaderboards/etoile-face-1");
+  const labeled = plugin.algorithms.settingsFromConfiguration({
+    categories: {
+      FEMALE: [
+        { id: "old-a", name: "Étoile & Face" },
+        { id: "old-b", name: "Etoile Face" },
+        { id: "old-c", name: "Étoile--Face" },
+        { name: "Overall" },
+      ],
+    },
+  });
+  assert.strictEqual(
+    labeled.categoriesByCohort.FEMALE.map(category => category.id).join(","),
+    "etoile-face,etoile-face-1,etoile-face-2,overall-1",
+  );
+  assert.strictEqual(
+    plugin.testing.leaderboardStatPath(labeled.categoriesByCohort.FEMALE[1].id),
+    "/plugins/dirty-rank-leaderboards/etoile-face-1",
+  );
   await verifyLeaderboardDisplays();
   const royalCard = card(false);
   royalCard.props.hillMode = true;
@@ -473,25 +596,33 @@ async function verifySettingsFieldValidation() {
   }
   try {
     let tree = render();
-    find(tree, node => node.props.id === "dirty-rank-confidence-goal" && node.type === "select")
-      .props.onChange({ target: { value: "top" } });
+    find(tree, node => node.props.id === "dirty-rank-confidence-goal" && node.type === "select").props.onChange({
+      target: { value: "top" },
+    });
     tree = render();
     const topInput = find(tree, node => node.props.id === "dirty-rank-confidence-top-n" && node.type === "input");
     topInput.props.onChange({ target: { value: "" } });
     tree = render();
-    assert.strictEqual(find(tree, node => node.props.id === "dirty-rank-confidence-top-n" && node.type === "input").props.value, "",
-      "clearing top N must leave the invalid draft visible");
-    assert.match(find(tree, node => node.props.id === "dirty-rank-confidence-top-n" && node.props.label).props.error, /whole number/);
+    assert.strictEqual(
+      find(tree, node => node.props.id === "dirty-rank-confidence-top-n" && node.type === "input").props.value,
+      "",
+      "clearing top N must leave the invalid draft visible",
+    );
+    assert.match(
+      find(tree, node => node.props.id === "dirty-rank-confidence-top-n" && node.props.label).props.error,
+      /whole number/,
+    );
     assert.strictEqual(timers.size, 0, "invalid settings must not schedule an automatic save");
 
     const weightId = "dirty-rank-category-weight-FEMALE-0";
-    find(tree, node => node.props.id === weightId && node.type === "input")
-      .props.onChange({ target: { value: "" } });
+    find(tree, node => node.props.id === weightId && node.type === "input").props.onChange({ target: { value: "" } });
     tree = render();
     assert.strictEqual(find(tree, node => node.props.id === weightId && node.type === "input").props.value, "");
     assert.match(find(tree, node => node.props.id === weightId && node.props.label).props.error, /weight/);
   } finally {
-    state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+    state.slots.forEach(slot => {
+      if (slot && slot.cleanup) slot.cleanup();
+    });
     runtime.getPluginSettings = originalGetSettings;
   }
 }
@@ -503,20 +634,30 @@ async function verifyRatingPresets() {
   response = (query, variables, signal) => {
     if (!query.includes("DirtyRankPerformers")) return originalResponse(query, variables, signal);
     performerQueries += 1;
-    return Promise.resolve({ findPerformers: { performers: [
-      { id: "estimate-female", gender: "FEMALE", image_path: "/synthetic.svg" },
-      { id: "estimate-nonbinary", gender: "NON_BINARY", image_path: "/synthetic.svg" },
-      { id: "estimate-male", gender: "MALE", image_path: "/synthetic.svg" },
-      { id: "estimate-no-image", gender: "FEMALE", image_path: "" },
-    ] } });
+    return Promise.resolve({
+      findPerformers: {
+        performers: [
+          { id: "estimate-female", gender: "FEMALE", image_path: "/synthetic.svg" },
+          { id: "estimate-nonbinary", gender: "NON_BINARY", image_path: "/synthetic.svg" },
+          { id: "estimate-male", gender: "MALE", image_path: "/synthetic.svg" },
+          { id: "estimate-no-image", gender: "FEMALE", image_path: "" },
+        ],
+      },
+    });
   };
   const configuration = {
     hideBattleStandings: true,
     genderBoxes: [{ id: "BOX-1", name: "Mixed", genders: ["FEMALE", "NON_BINARY"] }],
     categories: { "BOX-1": [{ id: "style", name: "Style", weight: 2 }] },
-    evidenceWeight: 1.7, avoidRepeatWindow: 19, calibrationPercent: 7, tau: 0.8,
-    initialRating: 980, initialDeviation: 320, initialVolatility: 0.07,
-    deviationFloor: 35, provisionalDeviation: 95,
+    evidenceWeight: 1.7,
+    avoidRepeatWindow: 19,
+    calibrationPercent: 7,
+    tau: 0.8,
+    initialRating: 980,
+    initialDeviation: 320,
+    initialVolatility: 0.07,
+    deviationFloor: 35,
+    provisionalDeviation: 95,
   };
   const saved = [];
   let holdNextSave = false;
@@ -529,7 +670,9 @@ async function verifyRatingPresets() {
       if (holdNextSave) {
         holdNextSave = false;
         const revision = saved.length;
-        return new Promise(resolve => { completeHeldSave = () => resolve({ revision, settings: args.settings }); });
+        return new Promise(resolve => {
+          completeHeldSave = () => resolve({ revision, settings: args.settings });
+        });
       }
       return Promise.resolve({ revision: saved.length, settings: args.settings });
     }
@@ -548,21 +691,44 @@ async function verifyRatingPresets() {
     let tree = render();
     await flush();
     tree = render();
-    const presetButtons = () => findAll(tree, node => typeof node.type === "function" && node.type.name === "RankButton" && node.props.pressed != null);
+    const presetButtons = () =>
+      findAll(
+        tree,
+        node => typeof node.type === "function" && node.type.name === "RankButton" && node.props.pressed != null,
+      );
     const field = id => find(tree, node => node.type === "input" && node.props.id === id);
-    const currentButton = () => find(tree, node => typeof node.type === "function" && node.type.name === "RankButton" && visibleText(node).trim() === "Current");
+    const currentButton = () =>
+      find(
+        tree,
+        node =>
+          typeof node.type === "function" && node.type.name === "RankButton" && visibleText(node).trim() === "Current",
+      );
     assert(currentButton().props.className.includes("dirty-rank-preset-current"), "Current has its own green styling");
     assert.strictEqual(currentButton().props.disabled, false);
     assert.strictEqual(saved.length, 0, "opening advanced configuration does not choose a preset");
     assert(presetButtons().every(button => !button.props.pressed));
-    const initialPayload = plugin.testing.serializedSettings(plugin.algorithms.settingsFromConfiguration(configuration));
-    const estimateText = settings => plugin.algorithms.freshCategoryBattleEstimate(2, settings).battles.toLocaleString() + " battles expected to rank 1 category for 2 performers";
+    const initialPayload = plugin.testing.serializedSettings(
+      plugin.algorithms.settingsFromConfiguration(configuration),
+    );
+    const estimateText = settings =>
+      plugin.algorithms.freshCategoryBattleEstimate(2, settings).battles.toLocaleString() +
+      " battles expected to rank 1 category for 2 performers";
     const liveEstimate = () => visibleText(byClass(tree, "dirty-rank-preset-estimate")).trim();
-    assert.strictEqual(liveEstimate(), estimateText(configuration), "estimate includes eligible members of every gender in the selected box");
+    assert.strictEqual(
+      liveEstimate(),
+      estimateText(configuration),
+      "estimate includes eligible members of every gender in the selected box",
+    );
     for (const preset of plugin.algorithms.ratingPresets) {
-      presetButtons().find(button => visibleText(button).trim() === preset.name).props.onClick();
+      presetButtons()
+        .find(button => visibleText(button).trim() === preset.name)
+        .props.onClick();
       tree = render();
-      assert.strictEqual(liveEstimate(), estimateText(preset.settings), "preset estimate updates immediately before autosave");
+      assert.strictEqual(
+        liveEstimate(),
+        estimateText(preset.settings),
+        "preset estimate updates immediately before autosave",
+      );
       assert.strictEqual(presetButtons().filter(button => button.props.pressed).length, 1);
       assert.strictEqual(presetButtons().find(button => button.props.pressed).props.tone, "primary");
       assert.strictEqual(field("dirty-rank-evidence-weight").props.value, preset.settings.evidenceWeight);
@@ -575,12 +741,19 @@ async function verifyRatingPresets() {
       assert.strictEqual(saved.length, previousCount + 1);
       for (const [key, value] of Object.entries(preset.settings)) assert.strictEqual(saved.at(-1)[key], value);
       for (const key of ["genderBoxes", "categories", "hideBattleStandings"]) {
-        assert.strictEqual(JSON.stringify(saved.at(-1)[key]), JSON.stringify(initialPayload[key]), "presets preserve " + key);
+        assert.strictEqual(
+          JSON.stringify(saved.at(-1)[key]),
+          JSON.stringify(initialPayload[key]),
+          "presets preserve " + key,
+        );
       }
     }
     field("dirty-rank-tau").props.onChange({ target: { value: "0.42" } });
     tree = render();
-    assert(presetButtons().every(button => !button.props.pressed), "manual edits show Custom instead of a stale preset name");
+    assert(
+      presetButtons().every(button => !button.props.pressed),
+      "manual edits show Custom instead of a stale preset name",
+    );
     assert(visibleText(tree).includes("Custom configuration"));
     await flush();
     tree = render();
@@ -592,24 +765,48 @@ async function verifyRatingPresets() {
     const beforeRestore = saved.length;
     currentButton().props.onClick();
     tree = render();
-    assert.strictEqual(liveEstimate(), estimateText(configuration), "Current restores the opening estimate immediately");
+    assert.strictEqual(
+      liveEstimate(),
+      estimateText(configuration),
+      "Current restores the opening estimate immediately",
+    );
     for (const key of Object.keys(plugin.algorithms.ratingPresets[0].settings)) {
-      const id = { evidenceWeight: "evidence-weight", avoidRepeatWindow: "repeat-window", calibrationPercent: "calibration" }[key] || key;
-      assert.strictEqual(field("dirty-rank-" + id).props.value, initialPayload[key], "Current restores page-open " + key);
+      const id =
+        { evidenceWeight: "evidence-weight", avoidRepeatWindow: "repeat-window", calibrationPercent: "calibration" }[
+          key
+        ] || key;
+      assert.strictEqual(
+        field("dirty-rank-" + id).props.value,
+        initialPayload[key],
+        "Current restores page-open " + key,
+      );
     }
     await flush();
     tree = render();
     assert.strictEqual(saved.length, beforeRestore + 1, "Current restores all parameters in one automatic save");
-    for (const key of Object.keys(plugin.algorithms.ratingPresets[0].settings)) assert.strictEqual(saved.at(-1)[key], initialPayload[key]);
-    assert.strictEqual(saved.at(-1).hideBattleStandings, false, "Current preserves unrelated settings edited since opening");
+    for (const key of Object.keys(plugin.algorithms.ratingPresets[0].settings))
+      assert.strictEqual(saved.at(-1)[key], initialPayload[key]);
+    assert.strictEqual(
+      saved.at(-1).hideBattleStandings,
+      false,
+      "Current preserves unrelated settings edited since opening",
+    );
     presetButtons()[0].props.onClick();
     tree = render();
     currentButton().props.onClick();
     tree = render();
     await flush();
     tree = render();
-    assert.strictEqual(saved.length, beforeRestore + 1, "restoring before the debounce cancels the unsaved preset change");
-    assert.strictEqual(field("dirty-rank-tau").props.value, 0.8, "the opening snapshot is stable across repeated saves and restores");
+    assert.strictEqual(
+      saved.length,
+      beforeRestore + 1,
+      "restoring before the debounce cancels the unsaved preset change",
+    );
+    assert.strictEqual(
+      field("dirty-rank-tau").props.value,
+      0.8,
+      "the opening snapshot is stable across repeated saves and restores",
+    );
     const beforeHeldSave = saved.length;
     holdNextSave = true;
     presetButtons()[0].props.onClick();
@@ -620,23 +817,38 @@ async function verifyRatingPresets() {
     assert.strictEqual(currentButton().props.disabled, false, "Current stays available while the preset saves");
     currentButton().props.onClick();
     tree = render();
-    assert.strictEqual(field("dirty-rank-tau").props.value, 0.8, "Current restores values immediately during the request");
+    assert.strictEqual(
+      field("dirty-rank-tau").props.value,
+      0.8,
+      "Current restores values immediately during the request",
+    );
     completeHeldSave();
     await flush();
     tree = render();
-    assert.strictEqual(field("dirty-rank-tau").props.value, 0.8, "the older response cannot replace the restored draft");
+    assert.strictEqual(
+      field("dirty-rank-tau").props.value,
+      0.8,
+      "the older response cannot replace the restored draft",
+    );
     await flush();
     tree = render();
     assert.strictEqual(saved.length, beforeHeldSave + 2, "the restored values save after the older request completes");
-    for (const key of Object.keys(plugin.algorithms.ratingPresets[0].settings)) assert.strictEqual(saved.at(-1)[key], initialPayload[key]);
+    for (const key of Object.keys(plugin.algorithms.ratingPresets[0].settings))
+      assert.strictEqual(saved.at(-1)[key], initialPayload[key]);
     assert.strictEqual(saved.at(-1).hideBattleStandings, false);
     assert.strictEqual(currentButton().props.disabled, false);
     field("dirty-rank-provisionalDeviation").props.onChange({ target: { value: "70" } });
     tree = render();
-    assert.strictEqual(liveEstimate(), estimateText({ ...configuration, provisionalDeviation: 70 }), "manual parameter changes recompute the estimate before saving");
+    assert.strictEqual(
+      liveEstimate(),
+      estimateText({ ...configuration, provisionalDeviation: 70 }),
+      "manual parameter changes recompute the estimate before saving",
+    );
     assert.strictEqual(performerQueries, 1, "parameter changes reuse the loaded performer count");
   } finally {
-    state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+    state.slots.forEach(slot => {
+      if (slot && slot.cleanup) slot.cleanup();
+    });
     runtime.runPluginOperation = originalRunOperation;
     response = originalResponse;
   }
@@ -660,18 +872,29 @@ async function verifyCategoryResets() {
     ],
     categories: {
       "BOX-1": [{ id: "appearance", name: "Appearance" }],
-      "BOX-2": [{ id: "appearance", name: "Appearance" }, { id: "energy", name: "Energy", enabled: false }],
+      "BOX-2": [
+        { id: "appearance", name: "Appearance" },
+        { id: "energy", name: "Energy", enabled: false },
+      ],
     },
   };
-  context.window.confirm = message => { prompts.push(message); return approve; };
+  context.window.confirm = message => {
+    prompts.push(message);
+    return approve;
+  };
   runtime.ui = { notify: message => notifications.push(message) };
   runtime.runPluginOperation = (_pluginId, args) => {
     if (args.mode === "getSettings") return Promise.resolve({ revision: 0, settings: configuration });
     if (args.mode === "resetPool") {
       resets.push(args);
-      return new Promise(resolve => { finishReset = () => resolve({ reset: 3 }); });
+      return new Promise(resolve => {
+        finishReset = () => resolve({ reset: 3 });
+      });
     }
-    if (args.mode === "loadAll") { reloads++; return Promise.resolve({ states: {} }); }
+    if (args.mode === "loadAll") {
+      reloads++;
+      return Promise.resolve({ states: {} });
+    }
     throw new Error("Unexpected operation during a category reset: " + args.mode);
   };
   const state = { slots: [], effects: [], cursor: 0 };
@@ -688,28 +911,46 @@ async function verifyCategoryResets() {
     tree = render();
     const buttons = () => findAll(tree, node => (node.props.className || "").includes("dirty-rank-category-reset"));
     assert.strictEqual(buttons().length, 1);
-    find(tree, node => node.type === "select" && node.props.id === "dirty-rank-category-cohort").props.onChange({ target: { value: "BOX-2" } });
+    find(tree, node => node.type === "select" && node.props.id === "dirty-rank-category-cohort").props.onChange({
+      target: { value: "BOX-2" },
+    });
     tree = render();
     assert.strictEqual(buttons().length, 2, "each category has its own reset action");
     buttons()[1].props.onClick();
     assert.strictEqual(resets.length, 0, "cancelling never calls the reset backend");
-    assert(prompts[0].includes("Mixed box / Energy") && prompts[0].includes("battle history"), "confirmation describes the precise target and deleted data");
+    assert(
+      prompts[0].includes("Mixed box / Energy") && prompts[0].includes("battle history"),
+      "confirmation describes the precise target and deleted data",
+    );
     approve = true;
     buttons()[1].props.onClick();
     tree = render();
-    assert(buttons().every(button => button.props.disabled), "all reset actions wait for an in-flight reset");
+    assert(
+      buttons().every(button => button.props.disabled),
+      "all reset actions wait for an in-flight reset",
+    );
     buttons()[0].props.onClick();
     assert.strictEqual(resets.length, 1, "busy guard prevents another reset");
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(resets[0])), { mode: "resetPool", categoryId: "energy", cohort: "BOX-2", confirm: "RESET" }, "reset targets the clicked category in the edited box, not the default box");
+    assert.deepStrictEqual(
+      JSON.parse(JSON.stringify(resets[0])),
+      { mode: "resetPool", categoryId: "energy", cohort: "BOX-2", confirm: "RESET" },
+      "reset targets the clicked category in the edited box, not the default box",
+    );
     finishReset();
     await flush();
     tree = render();
     assert.strictEqual(reloads, 1, "successful reset refreshes the rating index");
-    assert(find(tree.props.footer, node => node.type === runtime.react.SaveStatus).props.message.includes("Reset Mixed box / Energy: 3 rating(s)."));
+    assert(
+      find(tree.props.footer, node => node.type === runtime.react.SaveStatus).props.message.includes(
+        "Reset Mixed box / Energy: 3 rating(s).",
+      ),
+    );
     assert(notifications[0].includes("Mixed box / Energy"));
     assert(buttons().every(button => !button.props.disabled));
   } finally {
-    state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+    state.slots.forEach(slot => {
+      if (slot && slot.cleanup) slot.cleanup();
+    });
     runtime.runPluginOperation = originalRunOperation;
     context.window.confirm = originalConfirm;
     runtime.ui = originalUi;
@@ -741,13 +982,22 @@ async function verifyLeaderboardPresentationSettings() {
     await flush();
     tree = render();
     const select = id => find(tree, node => node.type === "select" && node.props.id === id);
-    const option = label => find(tree, node => typeof node.type === "function" && node.type.name === "RankButton" && visibleText(node).trim() === label);
-    assert(!find(tree, node => visibleText(node).trim() === "Backup Dirty Plugins database"), "backup belongs in shared settings");
+    const option = label =>
+      find(
+        tree,
+        node =>
+          typeof node.type === "function" && node.type.name === "RankButton" && visibleText(node).trim() === label,
+      );
+    assert(
+      !find(tree, node => visibleText(node).trim() === "Backup Dirty Plugins database"),
+      "backup belongs in shared settings",
+    );
     assert(!option("Export ratings"));
     assert(!option("Reset current pool"));
     assert.strictEqual(option("Reset ratings").props.tone, "danger");
     assert.strictEqual(select("dirty-rank-leaderboard-top-count").props.value, 3);
-    const genderToggle = (gender, box = "FEMALE") => find(tree, node => node.props.id === "dirty-rank-box-gender-" + box + "-" + gender);
+    const genderToggle = (gender, box = "FEMALE") =>
+      find(tree, node => node.props.id === "dirty-rank-box-gender-" + box + "-" + gender);
     assert.strictEqual(genderToggle("FEMALE").props.checked, true, "legacy boxes retain their original gender");
     assert.strictEqual(genderToggle("FEMALE").props.disabled, true, "a box always has at least one gender");
     assert.strictEqual(genderToggle("MALE").props.checked, false);
@@ -755,11 +1005,18 @@ async function verifyLeaderboardPresentationSettings() {
     tree = render();
     assert.strictEqual(genderToggle("MALE").props.checked, true);
     assert.strictEqual(genderToggle("FEMALE").props.disabled, false);
-    assert.strictEqual(genderToggle("FEMALE", "MALE").props.checked, false, "gender selections belong to individual boxes");
-    find(tree, node => node.type === "input" && node.props.id === "dirty-rank-box-name-FEMALE").props.onChange({ target: { value: "My mixed box" } });
+    assert.strictEqual(
+      genderToggle("FEMALE", "MALE").props.checked,
+      false,
+      "gender selections belong to individual boxes",
+    );
+    find(tree, node => node.type === "input" && node.props.id === "dirty-rank-box-name-FEMALE").props.onChange({
+      target: { value: "My mixed box" },
+    });
     tree = render();
     assert.strictEqual(select("dirty-rank-leaderboard-view").props.value, "gallery");
-    const countInput = () => find(tree, node => node.type === "input" && node.props.id === "dirty-rank-leaderboard-performer-count");
+    const countInput = () =>
+      find(tree, node => node.type === "input" && node.props.id === "dirty-rank-leaderboard-performer-count");
     assert.strictEqual(countInput().props.value, 18);
     assert.strictEqual(countInput().props.step, 3);
     select("dirty-rank-leaderboard-top-count").props.onChange({ target: { value: "4" } });
@@ -769,7 +1026,10 @@ async function verifyLeaderboardPresentationSettings() {
     countInput().props.onChange({ target: { value: "21" } });
     tree = render();
     assert.strictEqual(countInput().props.value, "21", "invalid input remains visible for correction");
-    assert.match(find(tree, node => node.props.id === "dirty-rank-leaderboard-performer-count" && node.props.label).props.error, /multiple of 4/);
+    assert.match(
+      find(tree, node => node.props.id === "dirty-rank-leaderboard-performer-count" && node.props.label).props.error,
+      /multiple of 4/,
+    );
     assert.strictEqual(timers.size, 0, "invalid page counts must not autosave");
     countInput().props.onChange({ target: { value: "24" } });
     tree = render();
@@ -800,8 +1060,14 @@ async function verifyLeaderboardPresentationSettings() {
     const scoringSelect = () => select("dirty-rank-overall-strategy");
     const scoringInput = key => find(tree, node => node.type === "input" && node.props.id === "dirty-rank-" + key);
     assert.strictEqual(scoringSelect().props.value, "weighted");
-    assert.deepStrictEqual(scoringSelect().children.map(node => node.props.value), ["weighted", "power"]);
-    assert.deepStrictEqual(scoringSelect().children.map(node => node.children.join("")), ["Simple weighted", "Power mean"]);
+    assert.deepStrictEqual(
+      scoringSelect().children.map(node => node.props.value),
+      ["weighted", "power"],
+    );
+    assert.deepStrictEqual(
+      scoringSelect().children.map(node => node.children.join("")),
+      ["Simple weighted", "Power mean"],
+    );
     assert(!scoringInput("overallPower"), "Simple weighted has no additional scoring control");
     scoringSelect().props.onChange({ target: { value: "power" } });
     tree = render();
@@ -811,7 +1077,10 @@ async function verifyLeaderboardPresentationSettings() {
     scoringInput("overallPower").props.onChange({ target: { value: "" } });
     tree = render();
     assert.strictEqual(timers.size, 0, "empty power input must not autosave");
-    assert.match(find(tree, node => node.props.id === "dirty-rank-overallPower" && node.props.label).props.error, /Enter a number from 1 to 4/);
+    assert.match(
+      find(tree, node => node.props.id === "dirty-rank-overallPower" && node.props.label).props.error,
+      /Enter a number from 1 to 4/,
+    );
     scoringInput("overallPower").props.onChange({ target: { value: "5" } });
     tree = render();
     assert.strictEqual(timers.size, 0, "out-of-range power input must not autosave");
@@ -832,28 +1101,58 @@ async function verifyLeaderboardPresentationSettings() {
     await flush();
     tree = render();
     assert.strictEqual(savedPayload.overallScoreStrategy, "power");
-    assert.strictEqual(savedPayload.overallPower, 3.5, "power mean selection and exponent use the existing automatic save");
+    assert.strictEqual(
+      savedPayload.overallPower,
+      3.5,
+      "power mean selection and exponent use the existing automatic save",
+    );
     assert.strictEqual(savedPayload.leaderboardTopCount, 4);
     assert.strictEqual(savedPayload.leaderboardView, "table");
     assert.strictEqual(savedPayload.leaderboardPerformerCount, 24);
     assert.strictEqual(savedPayload.showBattlesInMenu, false);
     assert.strictEqual(savedPayload.showLeaderboardsInMenu, false);
     assert.strictEqual(savedPayload.hideBattleStandings, true, "sidebar preference uses the existing autosave");
-    assert.deepStrictEqual(JSON.parse(savedPayload.genderBoxes).find(box => box.id === "FEMALE").genders, ["FEMALE", "MALE"], "multiple genders autosave in the same box");
-    assert.strictEqual(JSON.parse(savedPayload.genderBoxes).find(box => box.id === "FEMALE").name, "My mixed box", "renaming retains the stable box ID");
-    assert.deepStrictEqual(JSON.parse(savedPayload.genderBoxes).find(box => box.id === "MALE").genders, ["MALE"], "other boxes remain unchanged");
+    assert.deepStrictEqual(
+      JSON.parse(savedPayload.genderBoxes).find(box => box.id === "FEMALE").genders,
+      ["FEMALE", "MALE"],
+      "multiple genders autosave in the same box",
+    );
+    assert.strictEqual(
+      JSON.parse(savedPayload.genderBoxes).find(box => box.id === "FEMALE").name,
+      "My mixed box",
+      "renaming retains the stable box ID",
+    );
+    assert.deepStrictEqual(
+      JSON.parse(savedPayload.genderBoxes).find(box => box.id === "MALE").genders,
+      ["MALE"],
+      "other boxes remain unchanged",
+    );
     assert.strictEqual(option("Reset ratings").props.disabled, false, "category reset is available after autosave");
-    assert(find(tree.props.footer, node => node.type === runtime.react.SaveStatus).props.message.includes("Saved automatically."), "accepted normalized settings report Saved after the draft-hook callbacks");
+    assert(
+      find(tree.props.footer, node => node.type === runtime.react.SaveStatus).props.message.includes(
+        "Saved automatically.",
+      ),
+      "accepted normalized settings report Saved after the draft-hook callbacks",
+    );
     option("+ Add gender box").props.onClick();
     tree = render();
-    assert(find(tree, node => node.props["data-box-id"] === "BOX-1"), "new boxes have independent stable IDs");
-    assert.strictEqual(select("dirty-rank-category-cohort").props.value, "BOX-1", "adding a box selects its own categories");
+    assert(
+      find(tree, node => node.props["data-box-id"] === "BOX-1"),
+      "new boxes have independent stable IDs",
+    );
+    assert.strictEqual(
+      select("dirty-rank-category-cohort").props.value,
+      "BOX-1",
+      "adding a box selects its own categories",
+    );
     const newName = find(tree, node => node.type === "input" && node.props.id === "dirty-rank-box-name-BOX-1");
     newName.props.onChange({ target: { value: "New independent box" } });
     tree = render();
     find(tree, node => node.props.id === "dirty-rank-box-gender-BOX-1-NON_BINARY").props.onChange(true);
     tree = render();
-    find(tree, node => node.type === "input" && node.props.id === "dirty-rank-category-name-BOX-1-0").props.onChange({ target: { value: "Energy" } });
+    find(tree, node => node.type === "input" && node.props.id === "dirty-rank-category-name-BOX-1-0").props.onChange({
+      target: { value: "Energy" },
+    });
     tree = render();
     [...timers.values()][0]();
     render();
@@ -862,17 +1161,30 @@ async function verifyLeaderboardPresentationSettings() {
     const added = JSON.parse(savedPayload.genderBoxes).find(box => box.id === "BOX-1");
     assert.strictEqual(added.name, "New independent box");
     assert.deepStrictEqual(added.genders, ["FEMALE", "NON_BINARY"]);
-    assert.strictEqual(JSON.parse(savedPayload.categories)["BOX-1"][0].name, "Energy", "each box owns its category definitions");
+    assert.strictEqual(
+      JSON.parse(savedPayload.categories)["BOX-1"][0].name,
+      "Energy",
+      "each box owns its category definitions",
+    );
     const editor = find(tree, node => node.props["data-box-id"] === "BOX-1");
     assert(editor, "the saved box remains in settings");
-    find(editor, node => typeof node.type === "function" && node.type.name === "RankButton" && visibleText(node).trim() === "Remove box").props.onClick();
+    find(
+      editor,
+      node =>
+        typeof node.type === "function" && node.type.name === "RankButton" && visibleText(node).trim() === "Remove box",
+    ).props.onClick();
     tree = render();
     assert(!find(tree, node => node.props["data-box-id"] === "BOX-1"));
     option("+ Add gender box").props.onClick();
     tree = render();
-    assert(find(tree, node => node.props["data-box-id"] === "BOX-2"), "removed box IDs are never reused, protecting retained ratings");
+    assert(
+      find(tree, node => node.props["data-box-id"] === "BOX-2"),
+      "removed box IDs are never reused, protecting retained ratings",
+    );
   } finally {
-    state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+    state.slots.forEach(slot => {
+      if (slot && slot.cleanup) slot.cleanup();
+    });
     runtime.runPluginOperation = originalRunOperation;
     timers.clear();
   }
@@ -888,21 +1200,50 @@ async function verifyNamedGenderBoxes() {
     { id: "BOX-2", name: "Box 2", genders: ["MALE"] },
     { id: "BOX-3", name: "Box 3", genders: ["TRANSGENDER_MALE", "TRANSGENDER_FEMALE"] },
   ];
-  const configuration = { genderBoxes: JSON.stringify(boxes), defaultCohort: "BOX-1", categories: JSON.stringify({
-    "BOX-1": [{ name: "Style" }], "BOX-2": [{ name: "Strength" }], "BOX-3": [{ name: "Energy" }],
-  }) };
-  const people = ["FEMALE", "NON_BINARY", "MALE", "MALE", "TRANSGENDER_MALE", "TRANSGENDER_FEMALE"].map((gender, index) => ({
-    id: "box-person-" + index, name: gender + " " + index, gender, image_path: "/portrait.svg", scene_count: 1,
-  }));
-  const states = Object.fromEntries(people.map((person, index) => {
-    const box = boxes.find(box => box.genders.includes(person.gender));
-    const category = ["style", "strength", "energy"][boxes.indexOf(box)];
-    return [person.id, { revision: 10001, pools: { [category + "|" + box.id]: {
-      rating: 1000 + index * 10, deviation: 75, volatility: 0.06, matches: 8, wins: 4, losses: 4, draws: 0,
-    } } }];
-  }));
+  const configuration = {
+    genderBoxes: JSON.stringify(boxes),
+    defaultCohort: "BOX-1",
+    categories: JSON.stringify({
+      "BOX-1": [{ name: "Style" }],
+      "BOX-2": [{ name: "Strength" }],
+      "BOX-3": [{ name: "Energy" }],
+    }),
+  };
+  const people = ["FEMALE", "NON_BINARY", "MALE", "MALE", "TRANSGENDER_MALE", "TRANSGENDER_FEMALE"].map(
+    (gender, index) => ({
+      id: "box-person-" + index,
+      name: gender + " " + index,
+      gender,
+      image_path: "/portrait.svg",
+      scene_count: 1,
+    }),
+  );
+  const states = Object.fromEntries(
+    people.map((person, index) => {
+      const box = boxes.find(box => box.genders.includes(person.gender));
+      const category = ["style", "strength", "energy"][boxes.indexOf(box)];
+      return [
+        person.id,
+        {
+          revision: 10001,
+          pools: {
+            [category + "|" + box.id]: {
+              rating: 1000 + index * 10,
+              deviation: 75,
+              volatility: 0.06,
+              matches: 8,
+              wins: 4,
+              losses: 4,
+              draws: 0,
+            },
+          },
+        },
+      ];
+    }),
+  );
   runtime.getPluginSettings = () => Promise.resolve(configuration);
-  runtime.runPluginOperation = (_id, args) => args.mode === "loadAll" ? Promise.resolve({ revision: 10001, states }) : originalOperation(_id, args);
+  runtime.runPluginOperation = (_id, args) =>
+    args.mode === "loadAll" ? Promise.resolve({ revision: 10001, states }) : originalOperation(_id, args);
   response = () => Promise.resolve({ findPerformers: { count: people.length, performers: people } });
   const owner = { slots: [], effects: [], cursor: 0 };
   const component = name => node => typeof node.type === "function" && node.type.name === name;
@@ -923,34 +1264,63 @@ async function verifyNamedGenderBoxes() {
     return tree;
   }
   function reset() {
-    owner.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
-    owner.slots = []; owner.effects = []; timers.clear();
+    owner.slots.forEach(slot => {
+      if (slot && slot.cleanup) slot.cleanup();
+    });
+    owner.slots = [];
+    owner.effects = [];
+    timers.clear();
   }
   try {
     context.window.location.pathname = "/plugins/dirty-rank/category/style";
     context.window.location.search = "?box=BOX-1";
-    renderBattle(); await flush(); renderBattle();
+    renderBattle();
+    await flush();
+    renderBattle();
     let tree = renderBattle();
     const boxPicker = () => find(tree, node => node.props.id === "dirty-rank-battle-cohort");
-    assert.deepStrictEqual(boxPicker().children.map(option => visibleText(option)), ["Box 1", "Box 2", "Box 3"]);
+    assert.deepStrictEqual(
+      boxPicker().children.map(option => visibleText(option)),
+      ["Box 1", "Box 2", "Box 3"],
+    );
     for (const [index, category] of ["style", "strength", "energy"].entries()) {
-      if (index) { boxPicker().props.onChange({ target: { value: boxes[index].id } }); renderBattle(); renderBattle(); tree = renderBattle(); }
+      if (index) {
+        boxPicker().props.onChange({ target: { value: boxes[index].id } });
+        renderBattle();
+        renderBattle();
+        tree = renderBattle();
+      }
       assert.strictEqual(boxPicker().props.value, boxes[index].id);
-      assert.strictEqual(find(tree, node => node.props.id === "dirty-rank-category").props.value, category, "box selection switches its category set");
+      assert.strictEqual(
+        find(tree, node => node.props.id === "dirty-rank-category").props.value,
+        category,
+        "box selection switches its category set",
+      );
       const cards = findAll(tree, node => node.type === plugin.testing.PerformerCard);
       assert.strictEqual(cards.length, 2);
-      assert(cards.every(card => boxes[index].genders.includes(card.props.performer.gender)), "battle cards stay within the selected box");
+      assert(
+        cards.every(card => boxes[index].genders.includes(card.props.performer.gender)),
+        "battle cards stay within the selected box",
+      );
       assert.strictEqual(context.window.location.search, "?box=" + boxes[index].id);
-      assert(find(tree, node => node.type === "a" && visibleText(node) === "Leaderboards").props.to.includes("box=" + boxes[index].id), "leaderboard links preserve the box");
+      assert(
+        find(tree, node => node.type === "a" && visibleText(node) === "Leaderboards").props.to.includes(
+          "box=" + boxes[index].id,
+        ),
+        "leaderboard links preserve the box",
+      );
     }
     reset();
     context.window.location.pathname = "/plugins/dirty-rank-leaderboards/style";
     context.window.location.search = "?box=BOX-1";
-    renderLeaderboard(); await flush();
+    renderLeaderboard();
+    await flush();
     tree = renderLeaderboard();
     for (const [index, category] of ["style", "strength", "energy"].entries()) {
       if (index) {
-        find(tree, node => node.type === "select" && node.props.id === "dirty-rank-leaderboard-cohort").props.onChange({ target: { value: boxes[index].id } });
+        find(tree, node => node.type === "select" && node.props.id === "dirty-rank-leaderboard-cohort").props.onChange({
+          target: { value: boxes[index].id },
+        });
         tree = renderLeaderboard();
         const selector = find(tree, component("RankStatisticSelector"));
         selector.type(selector.props).props.onSelect(category);
@@ -961,14 +1331,31 @@ async function verifyNamedGenderBoxes() {
       assert.strictEqual(selector.props.categories.length, 1, "leaderboards only show the box's categories");
       const podium = find(tree, component("LeaderboardPodium"));
       assert.strictEqual(podium.props.ranked.length, 2);
-      assert(podium.props.ranked.every(person => boxes[index].genders.includes(person.gender)), "standings stay within the selected box");
-      assert(find(tree, node => node.type === "a" && visibleText(node) === "Battles").props.to.includes("box=" + boxes[index].id));
+      assert(
+        podium.props.ranked.every(person => boxes[index].genders.includes(person.gender)),
+        "standings stay within the selected box",
+      );
+      assert(
+        find(tree, node => node.type === "a" && visibleText(node) === "Battles").props.to.includes(
+          "box=" + boxes[index].id,
+        ),
+      );
     }
-    reset(); renderLeaderboard(); await flush(); tree = renderLeaderboard();
-    assert.strictEqual(find(tree, node => node.type === "select" && node.props.id === "dirty-rank-leaderboard-cohort").props.value, "BOX-3", "a bookmarked leaderboard retains its box");
+    reset();
+    renderLeaderboard();
+    await flush();
+    tree = renderLeaderboard();
+    assert.strictEqual(
+      find(tree, node => node.type === "select" && node.props.id === "dirty-rank-leaderboard-cohort").props.value,
+      "BOX-3",
+      "a bookmarked leaderboard retains its box",
+    );
   } finally {
-    reset(); runtime.getPluginSettings = originalSettings; runtime.runPluginOperation = originalOperation;
-    response = originalResponse; Object.assign(context.window.location, originalLocation);
+    reset();
+    runtime.getPluginSettings = originalSettings;
+    runtime.runPluginOperation = originalOperation;
+    response = originalResponse;
+    Object.assign(context.window.location, originalLocation);
   }
 }
 
@@ -995,16 +1382,26 @@ async function verifyNavigationSettings() {
     let tree = render();
     assert(find(tree, node => node.type === plugin.testing.DirtyRankBattleNavLink));
     assert(find(tree, node => node.type === plugin.testing.DirtyRankLeaderboardsNavLink));
-    for (const [battles, leaderboards] of [[false, true], [true, false], [false, false], [true, true]]) {
+    for (const [battles, leaderboards] of [
+      [false, true],
+      [true, false],
+      [false, false],
+      [true, true],
+    ]) {
       configuration = { showBattlesInMenu: battles, showLeaderboardsInMenu: leaderboards };
       listeners.forEach(listener => listener({ detail: { pluginId: "dirtyRank" } }));
       await flush();
       tree = render();
       assert.strictEqual(Boolean(find(tree, node => node.type === plugin.testing.DirtyRankBattleNavLink)), battles);
-      assert.strictEqual(Boolean(find(tree, node => node.type === plugin.testing.DirtyRankLeaderboardsNavLink)), leaderboards);
+      assert.strictEqual(
+        Boolean(find(tree, node => node.type === plugin.testing.DirtyRankLeaderboardsNavLink)),
+        leaderboards,
+      );
     }
   } finally {
-    state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+    state.slots.forEach(slot => {
+      if (slot && slot.cleanup) slot.cleanup();
+    });
     runtime.getPluginSettings = originalGetSettings;
     context.window.addEventListener = originalAddListener;
     context.window.removeEventListener = originalRemoveListener;
@@ -1019,16 +1416,35 @@ async function verifyKingsMode() {
   const originalSearch = context.window.location.search;
   const originalCrypto = context.window.crypto;
   let battleCounter = 0;
-  context.window.crypto = { randomUUID: () => "kings-test-" + (++battleCounter) };
+  context.window.crypto = { randomUUID: () => "kings-test-" + ++battleCounter };
   context.window.location.pathname = "/plugins/dirty-rank";
   timers.clear();
   const performers = Array.from({ length: 4 }, (_, index) => ({
-    id: "king-" + (index + 1), name: "Contender " + (index + 1), gender: "FEMALE",
-    image_path: "/portrait.svg", scene_count: 1,
+    id: "king-" + (index + 1),
+    name: "Contender " + (index + 1),
+    gender: "FEMALE",
+    image_path: "/portrait.svg",
+    scene_count: 1,
   }));
-  const states = Object.fromEntries(performers.map((person, index) => [person.id, { revision: 101, pools: {
-    "appearance|FEMALE": { rating: 1000 + index * 10, deviation: 250, volatility: 0.06, matches: 1, wins: 1, losses: 0, draws: 0 },
-  } }]));
+  const states = Object.fromEntries(
+    performers.map((person, index) => [
+      person.id,
+      {
+        revision: 101,
+        pools: {
+          "appearance|FEMALE": {
+            rating: 1000 + index * 10,
+            deviation: 250,
+            volatility: 0.06,
+            matches: 1,
+            wins: 1,
+            losses: 0,
+            draws: 0,
+          },
+        },
+      },
+    ]),
+  );
   const recorded = [];
   let battleConfiguration = {};
   runtime.getPluginSettings = () => Promise.resolve(battleConfiguration);
@@ -1050,38 +1466,63 @@ async function verifyKingsMode() {
     active = state;
     state.cursor = 0;
     const pathDetails = plugin.algorithms.battleRouteFromPath(context.window.location.pathname);
-    const params = { ...routeParams, ...(pathDetails && pathDetails.categoryId ? { categoryId: pathDetails.categoryId } : {}) };
+    const params = {
+      ...routeParams,
+      ...(pathDetails && pathDetails.categoryId ? { categoryId: pathDetails.categoryId } : {}),
+    };
     const page = plugin.testing.DirtyRankRoute({ match: { params } });
     const tree = page && page.type(page.props);
     state.effects.splice(0).forEach(effect => effect());
     return tree;
   }
   const battleCards = tree => findAll(tree, node => node.type === plugin.testing.PerformerCard);
-  const actions = tree => findAll(tree, node => typeof node.type === "function" && node.type.name === "RankButton").map(visibleText);
+  const actions = tree =>
+    findAll(tree, node => typeof node.type === "function" && node.type.name === "RankButton").map(visibleText);
   render();
   await flush();
   render();
   let tree = render();
   assert(actions(tree).includes("Tie") && actions(tree).includes("Skip"), "standard battles keep tie and skip");
   assert.strictEqual(visibleText(byClass(tree, "dirty-rank-title")), "DirtyRank");
-  assert(byClass(tree, "dirty-rank-leaderboards-page-title"), "page title remains accessible while hidden from the battle toolbar");
+  assert(
+    byClass(tree, "dirty-rank-leaderboards-page-title"),
+    "page title remains accessible while hidden from the battle toolbar",
+  );
   const identity = byClass(tree, "dirty-rank-header-identity");
   const categoryPicker = find(identity, node => node.props.id === "dirty-rank-category");
-  assert(categoryPicker && categoryPicker.type === runtime.react.StatisticSelector, "left-side category picker uses the leaderboard's shared dropdown");
+  assert(
+    categoryPicker && categoryPicker.type === runtime.react.StatisticSelector,
+    "left-side category picker uses the leaderboard's shared dropdown",
+  );
   assert.strictEqual(categoryPicker.props.ariaLabel, "Category");
-  assert(!categoryPicker.props.options.some(option => option.value === "__overall__"), "battles offer categories rather than the overall leaderboard");
+  assert(
+    !categoryPicker.props.options.some(option => option.value === "__overall__"),
+    "battles offer categories rather than the overall leaderboard",
+  );
   assert(!byClass(tree, "dirty-rank-subtitle"), "battle heading keeps only the title");
   assert(!byClass(tree, "dirty-rank-statusbar"), "idle battles have no session statistics row");
-  assert(!find(tree, node => typeof node.type === "function" && /^(Gauntlet)?ConfidenceIndicator$/.test(node.type.name)),
-    "battle page omits the confidence panel");
-  assert(visibleText(byClass(tree, "dirty-rank-refinement-estimate")).includes("4 of 4 female performers need refinement"), "estimate covers the entire selected cohort");
+  assert(
+    !find(tree, node => typeof node.type === "function" && /^(Gauntlet)?ConfidenceIndicator$/.test(node.type.name)),
+    "battle page omits the confidence panel",
+  );
+  assert(
+    visibleText(byClass(tree, "dirty-rank-refinement-estimate")).includes("4 of 4 female performers need refinement"),
+    "estimate covers the entire selected cohort",
+  );
   const currentIds = battleCards(tree).map(card => card.props.performer.id);
   const refinedStates = JSON.parse(JSON.stringify(states));
-  currentIds.forEach(id => { refinedStates[id].pools["appearance|FEMALE"].deviation = 75; });
+  currentIds.forEach(id => {
+    refinedStates[id].pools["appearance|FEMALE"].deviation = 75;
+  });
   plugin.algorithms.applyRatingIndex({ revision: 102, states: refinedStates });
   tree = render();
-  assert(visibleText(byClass(tree, "dirty-rank-refinement-estimate")).includes("2 of 4 female performers need refinement"), "refined current opponents do not hide other performers needing refinement");
-  Object.values(refinedStates).forEach(state => { state.pools["appearance|FEMALE"].deviation = 75; });
+  assert(
+    visibleText(byClass(tree, "dirty-rank-refinement-estimate")).includes("2 of 4 female performers need refinement"),
+    "refined current opponents do not hide other performers needing refinement",
+  );
+  Object.values(refinedStates).forEach(state => {
+    state.pools["appearance|FEMALE"].deviation = 75;
+  });
   plugin.algorithms.applyRatingIndex({ revision: 103, states: refinedStates });
   tree = render();
   assert(!byClass(tree, "dirty-rank-refinement-estimate"), "estimate hides only once the whole cohort is refined");
@@ -1091,31 +1532,58 @@ async function verifyKingsMode() {
   assert(byClass(tree, "dirty-rank-refinement-estimate"), "one provisional performer restores the estimate");
   const estimateSettings = plugin.algorithms.settingsFromConfiguration({});
   const refinedPool = { rating: 1000, deviation: 75, volatility: 0.06, matches: 1 };
-  assert.strictEqual(plugin.algorithms.precisionTier({ ...refinedPool, deviation: 40 }, estimateSettings).id, "excellent", "Excellent also counts as refined");
-  assert(plugin.algorithms.estimatedMatchesToConfidence({ ...refinedPool, matches: 0 }, 100, refinedPool, estimateSettings) > 0, "unrated performers still need a battle even below the RD threshold");
+  assert.strictEqual(
+    plugin.algorithms.precisionTier({ ...refinedPool, deviation: 40 }, estimateSettings).id,
+    "excellent",
+    "Excellent also counts as refined",
+  );
+  assert(
+    plugin.algorithms.estimatedMatchesToConfidence({ ...refinedPool, matches: 0 }, 100, refinedPool, estimateSettings) >
+      0,
+    "unrated performers still need a battle even below the RD threshold",
+  );
   plugin.algorithms.applyRatingIndex({ revision: 105, states });
   tree = render();
-  assert(find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"), "standard battles show the sidebar leaderboard");
+  assert(
+    find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"),
+    "standard battles show the sidebar leaderboard",
+  );
   assert(!byClass(tree, "dirty-rank-hill-crest"), "standard battles have no royal mode identity");
   assert(!byClass(tree, "dirty-rank-hill-progress"));
   const mode = find(tree, node => node.props.id === "dirty-rank-battle-mode");
   assert(mode && mode.type !== "select", "hill mode is entered through a button");
   assert.strictEqual(visibleText(mode), "King of the hill");
   mode.props.onClick();
-  assert.strictEqual(context.window.location.pathname, "/plugins/dirty-rank/category/appearance/king-of-the-hill", "hill mode has its own category URL");
+  assert.strictEqual(
+    context.window.location.pathname,
+    "/plugins/dirty-rank/category/appearance/king-of-the-hill",
+    "hill mode has its own category URL",
+  );
   render();
   tree = render();
   assert.strictEqual(visibleText(find(tree, node => node.props.id === "dirty-rank-battle-mode")), "Standard battles");
-  assert(!find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"), "hill mode removes the sidebar leaderboard");
-  assert(find(tree, node => (node.props.className || "").includes("dirty-rank-kings-route")), "hill mode expands into a single-column layout");
+  assert(
+    !find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"),
+    "hill mode removes the sidebar leaderboard",
+  );
+  assert(
+    find(tree, node => (node.props.className || "").includes("dirty-rank-kings-route")),
+    "hill mode expands into a single-column layout",
+  );
   assert.strictEqual(visibleText(byClass(tree, "dirty-rank-hill-crest")).trim(), "King of the hill");
   assert.strictEqual(visibleText(byClass(tree, "dirty-rank-hill-progress-count")), "0 / 3 defeated");
   assert.strictEqual(visibleText(byClass(tree, "dirty-rank-hill-progress-label")), "Claim the crown");
   assert(!actions(tree).includes("Tie") && !actions(tree).includes("Skip"), "Kings of the hill is winner-only");
   let cards = battleCards(tree);
   assert.strictEqual(cards.length, 2);
-  assert(cards.every(card => card.props.hillMode && card.props.hillOpening), "the opening labels both performers as contenders");
-  assert(cards.every(card => card.props.performer.id !== "king-4"), "Kings opens among the lower-ranked performers");
+  assert(
+    cards.every(card => card.props.hillMode && card.props.hillOpening),
+    "the opening labels both performers as contenders",
+  );
+  assert(
+    cards.every(card => card.props.performer.id !== "king-4"),
+    "Kings opens among the lower-ranked performers",
+  );
   const firstLeft = cards[0];
   const firstRight = cards[1];
   firstLeft.props.onChoose();
@@ -1140,8 +1608,14 @@ async function verifyKingsMode() {
   assert.strictEqual(cards[1].props.key, secondRight.props.key, "right winner keeps its mounted scene player");
   assert.strictEqual(cards[1].props.kingTarget, true);
   assert.strictEqual(cards[0].props.kingTarget, false, "the crown moves with the new reigning performer");
-  assert(!cards.some(card => card.props.performer.id === firstLeft.props.performer.id || card.props.performer.id === firstRight.props.performer.id),
-    "neither earlier loser can return as a challenger");
+  assert(
+    !cards.some(
+      card =>
+        card.props.performer.id === firstLeft.props.performer.id ||
+        card.props.performer.id === firstRight.props.performer.id,
+    ),
+    "neither earlier loser can return as a challenger",
+  );
   await flush();
   tree = render();
   const countBeforeShortcuts = recorded.length;
@@ -1155,19 +1629,32 @@ async function verifyKingsMode() {
   const crownedCards = battleCards(tree);
   assert.strictEqual(crownedCards.length, 1, "the hill ends with only the winner visible");
   assert.strictEqual(crownedCards[0].props.performer.id, secondRight.props.performer.id);
-  assert.strictEqual(crownedCards[0].props.key, secondRight.props.key, "the winning card keeps its mounted scene player");
+  assert.strictEqual(
+    crownedCards[0].props.key,
+    secondRight.props.key,
+    "the winning card keeps its mounted scene player",
+  );
   assert.strictEqual(crownedCards[0].props.crowned, true, "the crowned card no longer accepts votes");
   assert.strictEqual(visibleText(byClass(tree, "dirty-rank-hill-progress-count")), "3 / 3 defeated");
   assert.strictEqual(byClass(tree, "dirty-rank-hill-progress-track").children[0].props.style.width, "100%");
-  assert(find(tree, node => (node.props.className || "").includes("dirty-rank-coronation-right")), "the winning card moves to the center");
-  assert.strictEqual(findAll(tree, node => (node.props.className || "") === "dirty-rank-firework").length, 18,
-    "victory includes staggered bursts and a six-burst finale");
+  assert(
+    find(tree, node => (node.props.className || "").includes("dirty-rank-coronation-right")),
+    "the winning card moves to the center",
+  );
+  assert.strictEqual(
+    findAll(tree, node => (node.props.className || "") === "dirty-rank-firework").length,
+    18,
+    "victory includes staggered bursts and a six-burst finale",
+  );
   assert.strictEqual(findAll(tree, node => node.props.className === "dirty-rank-firework-spark").length, 576);
   assert.strictEqual(findAll(tree, node => node.props.className === "dirty-rank-victory-confetti").length, 64);
   assert.strictEqual(byClass(tree, "dirty-rank-fireworks").props["aria-hidden"], "true");
   const cleared = find(tree, node => node.props.title === "Hill cleared");
   assert(cleared && cleared.props.detail.includes(secondRight.props.performer.name));
-  const clearedActions = findAll(cleared.props.actions, node => typeof node.type === "function" && node.type.name === "RankButton");
+  const clearedActions = findAll(
+    cleared.props.actions,
+    node => typeof node.type === "function" && node.type.name === "RankButton",
+  );
   assert.strictEqual(clearedActions.length, 2, "the cleared hill offers undo and a new run");
   clearedActions[0].props.onClick();
   tree = render();
@@ -1181,28 +1668,48 @@ async function verifyKingsMode() {
   cards[1].props.onChoose();
   await flush();
   tree = render();
-  const restart = findAll(find(tree, node => node.props.title === "Hill cleared").props.actions,
-    node => typeof node.type === "function" && node.type.name === "RankButton")[1];
+  const restart = findAll(
+    find(tree, node => node.props.title === "Hill cleared").props.actions,
+    node => typeof node.type === "function" && node.type.name === "RankButton",
+  )[1];
   assert.strictEqual(restart.props.disabled, false);
   restart.props.onClick();
   tree = render();
   tree = render();
   assert.strictEqual(battleCards(tree).length, 2, "a new run makes the pool available again");
-  assert.strictEqual(visibleText(byClass(tree, "dirty-rank-hill-progress-count")), "0 / 3 defeated", "restarting resets the royal progress ribbon");
+  assert.strictEqual(
+    visibleText(byClass(tree, "dirty-rank-hill-progress-count")),
+    "0 / 3 defeated",
+    "restarting resets the royal progress ribbon",
+  );
   find(tree, node => node.props.id === "dirty-rank-battle-mode").props.onClick();
-  assert.strictEqual(context.window.location.pathname, "/plugins/dirty-rank/category/appearance", "standard mode has a distinct category URL");
+  assert.strictEqual(
+    context.window.location.pathname,
+    "/plugins/dirty-rank/category/appearance",
+    "standard mode has a distinct category URL",
+  );
   render();
   tree = render();
   assert.strictEqual(visibleText(find(tree, node => node.props.id === "dirty-rank-battle-mode")), "King of the hill");
-  assert(find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"), "returning to standard restores the sidebar");
+  assert(
+    find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"),
+    "returning to standard restores the sidebar",
+  );
   assert(!byClass(tree, "dirty-rank-hill-crest"));
-  assert(battleCards(tree).every(card => !card.props.hillMode), "royal styling does not leak into standard cards");
+  assert(
+    battleCards(tree).every(card => !card.props.hillMode),
+    "royal styling does not leak into standard cards",
+  );
   assert(actions(tree).includes("Tie") && actions(tree).includes("Skip"));
   find(tree, node => node.props.id === "dirty-rank-category").props.onSelect("performance");
   assert.strictEqual(context.window.location.pathname, "/plugins/dirty-rank/category/performance");
   render();
   tree = render();
-  assert.strictEqual(find(tree, node => node.props.id === "dirty-rank-category").props.value, "performance", "category selection navigates to its own page");
+  assert.strictEqual(
+    find(tree, node => node.props.id === "dirty-rank-category").props.value,
+    "performance",
+    "category selection navigates to its own page",
+  );
   find(tree, node => node.props.id === "dirty-rank-battle-mode").props.onClick();
   render();
   tree = render();
@@ -1210,13 +1717,26 @@ async function verifyKingsMode() {
   find(tree, node => node.props.id === "dirty-rank-category").props.onSelect("appearance");
   render();
   tree = render();
-  assert.strictEqual(context.window.location.pathname, "/plugins/dirty-rank/category/appearance/king-of-the-hill", "category changes preserve hill mode");
+  assert.strictEqual(
+    context.window.location.pathname,
+    "/plugins/dirty-rank/category/appearance/king-of-the-hill",
+    "category changes preserve hill mode",
+  );
   context.window.location.pathname = "/plugins/dirty-rank/category/performance";
   render();
   tree = render();
-  assert.strictEqual(find(tree, node => node.props.id === "dirty-rank-category").props.value, "performance", "browser history restores the URL's category");
-  assert(find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"), "browser history restores standard mode");
-  state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+  assert.strictEqual(
+    find(tree, node => node.props.id === "dirty-rank-category").props.value,
+    "performance",
+    "browser history restores the URL's category",
+  );
+  assert(
+    find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"),
+    "browser history restores standard mode",
+  );
+  state.slots.forEach(slot => {
+    if (slot && slot.cleanup) slot.cleanup();
+  });
   state.slots = [];
   state.effects = [];
   context.window.location.pathname = "/plugins/dirty-rank/category/appearance/king-of-the-hill";
@@ -1224,16 +1744,29 @@ async function verifyKingsMode() {
   await flush();
   render();
   tree = render();
-  assert.strictEqual(find(tree, node => node.props.id === "dirty-rank-category").props.value, "appearance", "direct category links override the remembered category");
-  assert(!find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"), "direct hill links open in hill mode");
+  assert.strictEqual(
+    find(tree, node => node.props.id === "dirty-rank-category").props.value,
+    "appearance",
+    "direct category links override the remembered category",
+  );
+  assert(
+    !find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"),
+    "direct hill links open in hill mode",
+  );
   assert.strictEqual(battleCards(tree).length, 2);
   const encodedCategory = "face / body";
   const encodedPath = plugin.algorithms.battleCategoryPath(encodedCategory, true);
   assert.strictEqual(encodedPath, "/plugins/dirty-rank/category/face%20%2F%20body/king-of-the-hill");
   assert.strictEqual(plugin.algorithms.battleRouteFromPath(encodedPath).categoryId, encodedCategory);
-  assert.strictEqual(plugin.algorithms.battleRouteFromPath("/plugins/dirty-rank/category/%ZZ"), null, "malformed category URLs fail safely");
+  assert.strictEqual(
+    plugin.algorithms.battleRouteFromPath("/plugins/dirty-rank/category/%ZZ"),
+    null,
+    "malformed category URLs fail safely",
+  );
   assert.strictEqual(plugin.algorithms.battleRouteFromPath("/plugins/dirty-rank/category/appearance/unknown"), null);
-  state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+  state.slots.forEach(slot => {
+    if (slot && slot.cleanup) slot.cleanup();
+  });
   state.slots = [];
   state.effects = [];
   routeParams = { performerId: "king-1" };
@@ -1242,43 +1775,69 @@ async function verifyKingsMode() {
   await flush();
   render();
   tree = render();
-  const targetConfidence = find(tree, node => typeof node.type === "function" && node.type.name === "GauntletConfidenceIndicator");
+  const targetConfidence = find(
+    tree,
+    node => typeof node.type === "function" && node.type.name === "GauntletConfidenceIndicator",
+  );
   assert(targetConfidence, "Gauntlet retains its target precision bar");
-  assert.strictEqual(context.window.location.pathname, "/plugins/dirty-rank/gauntlet/king-1/appearance", "Gauntlet category is also bookmarkable");
+  assert.strictEqual(
+    context.window.location.pathname,
+    "/plugins/dirty-rank/gauntlet/king-1/appearance",
+    "Gauntlet category is also bookmarkable",
+  );
   assert(!byClass(tree, "dirty-rank-refinement-estimate"), "Gauntlet uses its own target estimate without duplication");
   assert.strictEqual(targetConfidence.props.performer.id, "king-1");
   const confidenceTree = targetConfidence.type(targetConfidence.props);
   const confidenceBar = find(confidenceTree, node => node.props.role === "progressbar");
-  assert(confidenceBar && confidenceBar.props["aria-valuenow"] < 100, "provisional target shows remaining progress toward Refined");
-  assert(find(confidenceTree, node => node.type === plugin.testing.PrecisionBadge), "target precision tier remains visible");
+  assert(
+    confidenceBar && confidenceBar.props["aria-valuenow"] < 100,
+    "provisional target shows remaining progress toward Refined",
+  );
+  assert(
+    find(confidenceTree, node => node.type === plugin.testing.PrecisionBadge),
+    "target precision tier remains visible",
+  );
   for (const hideBattleStandings of [false, true]) {
     for (const mode of ["standard", "hill", "gauntlet"]) {
-      state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+      state.slots.forEach(slot => {
+        if (slot && slot.cleanup) slot.cleanup();
+      });
       state.slots = [];
       state.effects = [];
       battleConfiguration = { hideBattleStandings };
       routeParams = mode === "gauntlet" ? { performerId: "king-1" } : {};
-      context.window.location.pathname = mode === "gauntlet" ? "/plugins/dirty-rank/gauntlet/king-1/appearance"
-        : "/plugins/dirty-rank/category/appearance" + (mode === "hill" ? "/king-of-the-hill" : "");
+      context.window.location.pathname =
+        mode === "gauntlet"
+          ? "/plugins/dirty-rank/gauntlet/king-1/appearance"
+          : "/plugins/dirty-rank/category/appearance" + (mode === "hill" ? "/king-of-the-hill" : "");
       render();
       await flush();
       render();
       tree = render();
       const expectedHidden = hideBattleStandings || mode === "hill";
-      assert.strictEqual(Boolean(find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard")), !expectedHidden,
-        "hill always hides standings; other modes respect the preference");
-      assert.strictEqual(Boolean(byClass(tree, "dirty-rank-standings-hidden")), expectedHidden, "hidden sidebar frees the battle width");
+      assert.strictEqual(
+        Boolean(find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard")),
+        !expectedHidden,
+        "hill always hides standings; other modes respect the preference",
+      );
+      assert.strictEqual(
+        Boolean(byClass(tree, "dirty-rank-standings-hidden")),
+        expectedHidden,
+        "hidden sidebar frees the battle width",
+      );
     }
   }
   performers[1].gender = "MALE";
-  battleConfiguration = { genderBoxes: [
-    { id: "FEMALE", name: "Shared", genders: ["FEMALE", "MALE"] },
-    { id: "MALE", name: "Men", genders: ["MALE"], enabled: false },
-  ], categories: { FEMALE: [
-    { name: "Appearance" },
-    { name: "Performance" },
-  ] } };
-  state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+  battleConfiguration = {
+    genderBoxes: [
+      { id: "FEMALE", name: "Shared", genders: ["FEMALE", "MALE"] },
+      { id: "MALE", name: "Men", genders: ["MALE"], enabled: false },
+    ],
+    categories: { FEMALE: [{ name: "Appearance" }, { name: "Performance" }] },
+  };
+  state.slots.forEach(slot => {
+    if (slot && slot.cleanup) slot.cleanup();
+  });
   state.slots = [];
   state.effects = [];
   routeParams = { performerId: "king-2" };
@@ -1292,13 +1851,31 @@ async function verifyKingsMode() {
   await flush();
   render();
   tree = render();
-  assert.strictEqual(battleCards(tree).length, 2, "Gauntlet can use a mixed category even when the target's original set is disabled");
+  assert.strictEqual(
+    battleCards(tree).length,
+    2,
+    "Gauntlet can use a mixed category even when the target's original set is disabled",
+  );
   assert.strictEqual(battleCards(tree)[0].props.performer.id, "king-2");
-  assert.strictEqual(battleCards(tree)[1].props.performer.gender, "FEMALE", "the target can battle a different selected gender");
+  assert.strictEqual(
+    battleCards(tree)[1].props.performer.gender,
+    "FEMALE",
+    "the target can battle a different selected gender",
+  );
   assert.strictEqual(context.window.location.search, "", "Gauntlet uses the default shared box");
-  assert.strictEqual(find(tree, node => node.props.id === "dirty-rank-category").props.options.length, 2, "all categories in a box use its selected genders");
-  assert.strictEqual(find(tree, node => typeof node.type === "function" && node.type.name === "GauntletConfidenceIndicator").props.cohort, "FEMALE");
-  state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+  assert.strictEqual(
+    find(tree, node => node.props.id === "dirty-rank-category").props.options.length,
+    2,
+    "all categories in a box use its selected genders",
+  );
+  assert.strictEqual(
+    find(tree, node => typeof node.type === "function" && node.type.name === "GauntletConfidenceIndicator").props
+      .cohort,
+    "FEMALE",
+  );
+  state.slots.forEach(slot => {
+    if (slot && slot.cleanup) slot.cleanup();
+  });
   state.slots = [];
   state.effects = [];
   render();
@@ -1307,7 +1884,9 @@ async function verifyKingsMode() {
   tree = render();
   assert.strictEqual(battleCards(tree).length, 2, "a direct mixed-category Gauntlet URL survives a fresh mount");
   battleConfiguration.genderBoxes[1].enabled = true;
-  state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+  state.slots.forEach(slot => {
+    if (slot && slot.cleanup) slot.cleanup();
+  });
   state.slots = [];
   state.effects = [];
   render();
@@ -1325,10 +1904,16 @@ async function verifyKingsMode() {
   render();
   render();
   tree = render();
-  assert.strictEqual(find(tree, node => node.props.id === "dirty-rank-battle-cohort").props.value, "FEMALE", "browser history restores the shared category pool");
+  assert.strictEqual(
+    find(tree, node => node.props.id === "dirty-rank-battle-cohort").props.value,
+    "FEMALE",
+    "browser history restores the shared category pool",
+  );
   assert.strictEqual(battleCards(tree).length, 2);
   assert.strictEqual(battleCards(tree)[1].props.performer.gender, "FEMALE");
-  state.slots.forEach(slot => { if (slot && slot.cleanup) slot.cleanup(); });
+  state.slots.forEach(slot => {
+    if (slot && slot.cleanup) slot.cleanup();
+  });
   runtime.getPluginSettings = originalSettings;
   runtime.runPluginOperation = originalOperation;
   response = originalResponse;
@@ -1338,15 +1923,34 @@ async function verifyKingsMode() {
 }
 
 async function verifyLeaderboardDisplays() {
-  const { PrecisionBadge, LeaderboardPodium, LeaderboardGallery, LeaderboardGalleryCard, LeaderboardTable, LeaderboardPagination, DirtyRankLeaderboardsRoute } = plugin.testing;
+  const {
+    PrecisionBadge,
+    LeaderboardPodium,
+    LeaderboardGallery,
+    LeaderboardGalleryCard,
+    LeaderboardTable,
+    LeaderboardPagination,
+    DirtyRankLeaderboardsRoute,
+  } = plugin.testing;
   // Ratings use the viewer's locale; format expectations the same way so the test passes on any host.
   const n = value => value.toLocaleString();
-  for (const [deviation, matches, tier] of [[350, 0, "Provisional"], [75, 12, "Refined"], [50, 20, "Excellent"], [75, 1, "Refined"]]) {
+  for (const [deviation, matches, tier] of [
+    [350, 0, "Provisional"],
+    [75, 12, "Refined"],
+    [50, 20, "Excellent"],
+    [75, 1, "Refined"],
+  ]) {
     const badge = PrecisionBadge({ pool: { deviation, matches }, settings });
     assert.strictEqual(visibleText(badge), tier);
-    assert.strictEqual(badge.props.title, `${tier} precision · RD ${deviation.toFixed(1)} · ${matches} ${matches === 1 ? "battle" : "battles"}`);
-    assert.strictEqual(plugin.testing.leaderboardRatingText({ rating: 1400, deviation, matches }, settings),
-      n(1400) + (tier === "Provisional" ? "*" : ""), "leaderboards only mark ratings that need more comparisons");
+    assert.strictEqual(
+      badge.props.title,
+      `${tier} precision · RD ${deviation.toFixed(1)} · ${matches} ${matches === 1 ? "battle" : "battles"}`,
+    );
+    assert.strictEqual(
+      plugin.testing.leaderboardRatingText({ rating: 1400, deviation, matches }, settings),
+      n(1400) + (tier === "Provisional" ? "*" : ""),
+      "leaderboards only mark ratings that need more comparisons",
+    );
   }
   const battle = card(false);
   battle.props.reveal = true;
@@ -1355,50 +1959,137 @@ async function verifyLeaderboardDisplays() {
   assert(!/\bRD\b|\bbattles\b/.test(visibleText(battleTree)), "battle card details belong in the confidence tooltip");
   assert(find(battleTree, node => node.type === PrecisionBadge));
   const ranked = Array.from({ length: 49 }, (_, i) => ({
-    id: "rank-" + (i + 1), name: "Performer " + (i + 1), gender: "FEMALE", image_path: "/portrait.svg", scene_count: 1,
+    id: "rank-" + (i + 1),
+    name: "Performer " + (i + 1),
+    gender: "FEMALE",
+    image_path: "/portrait.svg",
+    scene_count: 1,
   }));
-  const tooltipSettings = plugin.algorithms.settingsFromConfiguration({ categories: { FEMALE: [
-    { name: "Appearance", enabled: true, weight: 2 },
-    { name: "Performance", enabled: true, weight: 1 },
-    { name: "Ignored", enabled: false, weight: 5 },
-  ] } });
-  plugin.algorithms.applyRatingIndex({ revision: 1, states: { "rank-1": { pools: {
-    "appearance|FEMALE": { rating: 1200, deviation: 75, matches: 2, wins: 2, losses: 0, draws: 0 },
-  } } } });
-  const overallProps = { ranked: [ranked[0]], settings: tooltipSettings, cohort: "FEMALE", leaderboardId: "__overall__", page: 1, onPageChange: noop };
+  const tooltipSettings = plugin.algorithms.settingsFromConfiguration({
+    categories: {
+      FEMALE: [
+        { name: "Appearance", enabled: true, weight: 2 },
+        { name: "Performance", enabled: true, weight: 1 },
+        { name: "Ignored", enabled: false, weight: 5 },
+      ],
+    },
+  });
+  plugin.algorithms.applyRatingIndex({
+    revision: 1,
+    states: {
+      "rank-1": {
+        pools: {
+          "appearance|FEMALE": { rating: 1200, deviation: 75, matches: 2, wins: 2, losses: 0, draws: 0 },
+        },
+      },
+    },
+  });
+  const overallProps = {
+    ranked: [ranked[0]],
+    settings: tooltipSettings,
+    cohort: "FEMALE",
+    leaderboardId: "__overall__",
+    page: 1,
+    onPageChange: noop,
+  };
   plugin.algorithms.setOverallReferencePerformers(ranked);
   const tooltip = `Overall: 50.0 · Simple weighted · 1/2 categories rated\nAppearance: #1 (${n(1200)}) · score 50.00\nPerformance: Unrated · score 50.00`;
-  assert.strictEqual(find(LeaderboardPodium(overallProps), node => node.props.className === "dirty-rank-podium-rating").props.title, tooltip);
+  assert.strictEqual(
+    find(LeaderboardPodium(overallProps), node => node.props.className === "dirty-rank-podium-rating").props.title,
+    tooltip,
+  );
   active = { slots: [], effects: [], cursor: 0 };
-  assert.strictEqual(find(LeaderboardGalleryCard({ ...overallProps, performer: ranked[0], rank: 1 }), node => node.type === "strong" && node.props.title).props.title, tooltip);
-  assert.strictEqual(find(LeaderboardTable({ ...overallProps, entries: [{ performer: ranked[0], rank: 1 }] }), node => node.props.className === "dirty-rank-table-rating").props.title, tooltip);
-  assert.strictEqual(visibleText(find(LeaderboardPodium(overallProps), node => node.props.className === "dirty-rank-podium-rating")), "50.0*");
-  assert.deepStrictEqual(findAll(LeaderboardTable({ ...overallProps, entries: [{ performer: ranked[0], rank: 1 }] }), node => node.type === "th").map(visibleText), ["Rank", "Performer", "Score"]);
+  assert.strictEqual(
+    find(
+      LeaderboardGalleryCard({ ...overallProps, performer: ranked[0], rank: 1 }),
+      node => node.type === "strong" && node.props.title,
+    ).props.title,
+    tooltip,
+  );
+  assert.strictEqual(
+    find(
+      LeaderboardTable({ ...overallProps, entries: [{ performer: ranked[0], rank: 1 }] }),
+      node => node.props.className === "dirty-rank-table-rating",
+    ).props.title,
+    tooltip,
+  );
+  assert.strictEqual(
+    visibleText(find(LeaderboardPodium(overallProps), node => node.props.className === "dirty-rank-podium-rating")),
+    "50.0*",
+  );
+  assert.deepStrictEqual(
+    findAll(
+      LeaderboardTable({ ...overallProps, entries: [{ performer: ranked[0], rank: 1 }] }),
+      node => node.type === "th",
+    ).map(visibleText),
+    ["Rank", "Performer", "Score"],
+  );
   const overallPool = plugin.algorithms.leaderboardPoolFor(ranked[0], "__overall__", "FEMALE", tooltipSettings);
   assert.strictEqual(visibleText(PrecisionBadge({ pool: overallPool, settings: tooltipSettings })), "Provisional");
-  assert(PrecisionBadge({ pool: overallPool, settings: tooltipSettings }).props.title.includes("1/2 categories rated · mean category RD"));
-  assert.strictEqual(find(LeaderboardPodium({ ...overallProps, leaderboardId: "appearance" }), node => node.props.className === "dirty-rank-podium-rating").props.title, undefined,
-    "category leaderboards keep their ordinary score without an overall breakdown");
-  const rankStates = { "rank-1": { pools: {
-    "appearance|FEMALE": { rating: 1200, deviation: 75, matches: 2 },
-  } }, "rank-2": { pools: {
-    "appearance|FEMALE": { rating: 1600, deviation: 75, matches: 2 },
-  } }, "rank-3": { pools: {
-    "appearance|FEMALE": { rating: 1200, deviation: 75, matches: 2 },
-  } }, "no-image": { pools: {
-    "appearance|FEMALE": { rating: 1800, deviation: 75, matches: 2 },
-  } } };
-  plugin.algorithms.setOverallReferencePerformers(ranked.concat([{ id: "no-image", gender: "FEMALE", image_path: "" }]));
+  assert(
+    PrecisionBadge({ pool: overallPool, settings: tooltipSettings }).props.title.includes(
+      "1/2 categories rated · mean category RD",
+    ),
+  );
+  assert.strictEqual(
+    find(
+      LeaderboardPodium({ ...overallProps, leaderboardId: "appearance" }),
+      node => node.props.className === "dirty-rank-podium-rating",
+    ).props.title,
+    undefined,
+    "category leaderboards keep their ordinary score without an overall breakdown",
+  );
+  const rankStates = {
+    "rank-1": {
+      pools: {
+        "appearance|FEMALE": { rating: 1200, deviation: 75, matches: 2 },
+      },
+    },
+    "rank-2": {
+      pools: {
+        "appearance|FEMALE": { rating: 1600, deviation: 75, matches: 2 },
+      },
+    },
+    "rank-3": {
+      pools: {
+        "appearance|FEMALE": { rating: 1200, deviation: 75, matches: 2 },
+      },
+    },
+    "no-image": {
+      pools: {
+        "appearance|FEMALE": { rating: 1800, deviation: 75, matches: 2 },
+      },
+    },
+  };
+  plugin.algorithms.setOverallReferencePerformers(
+    ranked.concat([{ id: "no-image", gender: "FEMALE", image_path: "" }]),
+  );
   plugin.algorithms.applyRatingIndex({ revision: 2, states: rankStates });
-  const rankTitle = (performer, options = {}) => find(LeaderboardPodium({ ...overallProps, ...options, ranked: [performer] }),
-    node => node.props.className === "dirty-rank-podium-rating").props.title;
-  assert(rankTitle(ranked[0]).includes(`Appearance: #2 (${n(1200)})`), "tooltip rank must use the full category leaderboard, not the visible subset");
-  assert(rankTitle(ranked[2]).includes(`Appearance: #3 (${n(1200)})`), "equal ratings must retain the category leaderboard's displayed positions");
-  assert(rankTitle(ranked[0], { settings: { ...tooltipSettings, includePerformersWithoutImages: true } }).includes(`Appearance: #3 (${n(1200)})`),
-    "tooltip positions must follow the leaderboard's image eligibility setting");
+  const rankTitle = (performer, options = {}) =>
+    find(
+      LeaderboardPodium({ ...overallProps, ...options, ranked: [performer] }),
+      node => node.props.className === "dirty-rank-podium-rating",
+    ).props.title;
+  assert(
+    rankTitle(ranked[0]).includes(`Appearance: #2 (${n(1200)})`),
+    "tooltip rank must use the full category leaderboard, not the visible subset",
+  );
+  assert(
+    rankTitle(ranked[2]).includes(`Appearance: #3 (${n(1200)})`),
+    "equal ratings must retain the category leaderboard's displayed positions",
+  );
+  assert(
+    rankTitle(ranked[0], { settings: { ...tooltipSettings, includePerformersWithoutImages: true } }).includes(
+      `Appearance: #3 (${n(1200)})`,
+    ),
+    "tooltip positions must follow the leaderboard's image eligibility setting",
+  );
   rankStates["rank-1"].pools["appearance|FEMALE"].rating = 1900;
   plugin.algorithms.applyRatingIndex({ revision: 3, states: rankStates });
-  assert(rankTitle(ranked[0]).includes(`Appearance: #1 (${n(1900)})`), "rating updates must invalidate cached tooltip positions");
+  assert(
+    rankTitle(ranked[0]).includes(`Appearance: #1 (${n(1900)})`),
+    "rating updates must invalidate cached tooltip positions",
+  );
   const props = { ranked, settings, cohort: "FEMALE", leaderboardId: "appearance", page: 1, onPageChange: noop };
   const articleIds = tree => findAll(tree, node => node.type === "article").map(node => node.props.key);
   for (const topCount of [3, 4, 5]) {
@@ -1407,14 +2098,24 @@ async function verifyLeaderboardDisplays() {
     assert.deepStrictEqual(articleIds(podium).sort(), expectedIds.sort());
     assert.strictEqual(podium.props["aria-label"], { 3: "Podium", 4: "Mount Rushmore", 5: "Fingers" }[topCount]);
     assert(!find(podium, node => node.type === "header"), "featured cards must have no decorative header");
-    assert(!/\bScore\b|\/100|\bRD\b|\bbattles\b|Refined|Excellent|Provisional/.test(visibleText(podium)), "featured cards keep rank and score without extra labels");
+    assert(
+      !/\bScore\b|\/100|\bRD\b|\bbattles\b|Refined|Excellent|Provisional/.test(visibleText(podium)),
+      "featured cards keep rank and score without extra labels",
+    );
     assert.strictEqual(findAll(podium, node => node.type === PrecisionBadge).length, 0);
     findAll(podium, node => node.props.className === "dirty-rank-leaderboard-rating-row").forEach(row => {
       assert(/^#\d+$/.test(visibleText(row.children[0])));
       assert(row.children[1].props.className === "dirty-rank-podium-rating", "rank and score must share a row");
     });
-    assert.strictEqual(findAll(podium, node => node.props.className === "dirty-rank-podium-step").length, topCount === 3 ? 3 : 0);
-    if (topCount > 3) assert.deepStrictEqual(articleIds(podium), ranked.slice(0, topCount).map(performer => performer.id));
+    assert.strictEqual(
+      findAll(podium, node => node.props.className === "dirty-rank-podium-step").length,
+      topCount === 3 ? 3 : 0,
+    );
+    if (topCount > 3)
+      assert.deepStrictEqual(
+        articleIds(podium),
+        ranked.slice(0, topCount).map(performer => performer.id),
+      );
     const totalCount = Math.ceil(18 / topCount) * topCount;
     const pageSize = totalCount - topCount;
     for (const Component of [LeaderboardGallery, LeaderboardTable]) {
@@ -1422,20 +2123,37 @@ async function verifyLeaderboardDisplays() {
       const totalPages = Math.ceil((ranked.length - topCount) / pageSize);
       for (let page = 1; page <= totalPages; page++) {
         const tree = Component({ ...props, topCount, page });
-        assert(!find(tree, node => node.type === "h2" || (node.props.className || "").includes("dirty-rank-panel-heading")),
-          "standings must have no decorative header");
+        assert(
+          !find(tree, node => node.type === "h2" || (node.props.className || "").includes("dirty-rank-panel-heading")),
+          "standings must have no decorative header",
+        );
         const firstRank = topCount + (page - 1) * pageSize + 1;
         const lastRank = Math.min(firstRank + pageSize - 1, ranked.length);
         const expectedRanks = Array.from({ length: lastRank - firstRank + 1 }, (_, i) => firstRank + i);
         if (Component === LeaderboardGallery) {
-          assert.strictEqual(find(tree, node => node.props.className === "dirty-rank-gallery-grid").props.style["--dirty-rank-gallery-columns"], topCount);
+          assert.strictEqual(
+            find(tree, node => node.props.className === "dirty-rank-gallery-grid").props.style[
+              "--dirty-rank-gallery-columns"
+            ],
+            topCount,
+          );
           const cards = findAll(tree, node => node.type === LeaderboardGalleryCard);
-          assert.deepStrictEqual(cards.map(node => node.props.rank), expectedRanks);
+          assert.deepStrictEqual(
+            cards.map(node => node.props.rank),
+            expectedRanks,
+          );
           collected.push(...cards.map(node => node.props.performer.id));
         } else {
-          assert.deepStrictEqual(findAll(tree, node => node.type === "th").map(visibleText), ["Rank", "Performer", "Rating"]);
+          assert.deepStrictEqual(findAll(tree, node => node.type === "th").map(visibleText), [
+            "Rank",
+            "Performer",
+            "Rating",
+          ]);
           const rows = find(tree, node => node.type === "tbody").children;
-          assert.deepStrictEqual(rows.map(node => node.children[0].children[0]), expectedRanks.map(rank => "#" + rank));
+          assert.deepStrictEqual(
+            rows.map(node => node.children[0].children[0]),
+            expectedRanks.map(rank => "#" + rank),
+          );
           collected.push(...rows.map(node => node.props.key));
         }
         const pagination = find(tree, node => node.type === LeaderboardPagination).props;
@@ -1443,7 +2161,11 @@ async function verifyLeaderboardDisplays() {
         assert.strictEqual(pagination.lastRank, lastRank);
         assert.strictEqual(pagination.totalPages, totalPages);
       }
-      assert.deepStrictEqual(collected, ranked.slice(topCount).map(performer => performer.id), "standings must not duplicate or omit anyone");
+      assert.deepStrictEqual(
+        collected,
+        ranked.slice(topCount).map(performer => performer.id),
+        "standings must not duplicate or omit anyone",
+      );
       const clamped = Component({ ...props, topCount, page: 999 });
       assert.strictEqual(find(clamped, node => node.type === LeaderboardPagination).props.page, totalPages);
       for (const count of [0, 1, 2, topCount]) {
@@ -1455,38 +2177,76 @@ async function verifyLeaderboardDisplays() {
       }
     }
   }
-  for (const [topCount, totalCount] of [[3, 12], [4, 20], [5, 30]]) {
-    const pageSettings = plugin.algorithms.settingsFromConfiguration({ leaderboardTopCount: topCount, leaderboardPerformerCount: totalCount });
+  for (const [topCount, totalCount] of [
+    [3, 12],
+    [4, 20],
+    [5, 30],
+  ]) {
+    const pageSettings = plugin.algorithms.settingsFromConfiguration({
+      leaderboardTopCount: topCount,
+      leaderboardPerformerCount: totalCount,
+    });
     for (const Component of [LeaderboardGallery, LeaderboardTable]) {
-      const countEntries = tree => Component === LeaderboardGallery
-        ? findAll(tree, node => node.type === LeaderboardGalleryCard).length
-        : find(tree, node => node.type === "tbody").children.length;
+      const countEntries = tree =>
+        Component === LeaderboardGallery
+          ? findAll(tree, node => node.type === LeaderboardGalleryCard).length
+          : find(tree, node => node.type === "tbody").children.length;
       const pageProps = { ...props, settings: pageSettings, topCount };
-      assert.strictEqual(countEntries(Component(pageProps)) + articleIds(LeaderboardPodium(pageProps)).length, totalCount,
-        "configured counts include featured performers in both views");
-      const filtered = Component({ ...pageProps, entries: ranked.map((performer, i) => ({ performer, rank: i + 1 })), showFeatured: false });
-      assert.strictEqual(countEntries(filtered), totalCount, "filters use the whole page budget when the featured top is hidden");
+      assert.strictEqual(
+        countEntries(Component(pageProps)) + articleIds(LeaderboardPodium(pageProps)).length,
+        totalCount,
+        "configured counts include featured performers in both views",
+      );
+      const filtered = Component({
+        ...pageProps,
+        entries: ranked.map((performer, i) => ({ performer, rank: i + 1 })),
+        showFeatured: false,
+      });
+      assert.strictEqual(
+        countEntries(filtered),
+        totalCount,
+        "filters use the whole page budget when the featured top is hidden",
+      );
     }
   }
-  assert.deepStrictEqual(articleIds(LeaderboardPodium(props)), ["rank-2", "rank-1", "rank-3"], "default podium retains silver/gold/bronze order");
+  assert.deepStrictEqual(
+    articleIds(LeaderboardPodium(props)),
+    ["rank-2", "rank-1", "rank-3"],
+    "default podium retains silver/gold/bronze order",
+  );
   active = { slots: [], effects: [], cursor: 0 };
   const galleryCard = LeaderboardGalleryCard({ ...props, performer: ranked[0], rank: 6 });
-  assert(!/\bRD\b|\bbattles\b|W-L-D/.test(visibleText(galleryCard)), "gallery cards hide rating detail and win/loss records");
+  assert(
+    !/\bRD\b|\bbattles\b|W-L-D/.test(visibleText(galleryCard)),
+    "gallery cards hide rating detail and win/loss records",
+  );
   assert(!find(galleryCard, node => node.type === PrecisionBadge));
-  const ratingRow = find(galleryCard, node => (node.props.className || "").includes("dirty-rank-leaderboard-rating-row"));
+  const ratingRow = find(galleryCard, node =>
+    (node.props.className || "").includes("dirty-rank-leaderboard-rating-row"),
+  );
   assert.strictEqual(visibleText(ratingRow.children[0]), "#6");
   assert(ratingRow.children[1].type === "strong", "gallery score belongs beside the rank");
 
   let configuration = {};
   runtime.getPluginSettings = () => Promise.resolve(configuration);
-  const states = Object.fromEntries(ranked.map((performer, i) => [performer.id, { pools: {
-    "appearance|FEMALE": { rating: 2000 - i * 10, deviation: 50, matches: 10, wins: 10, losses: 0, draws: 0 },
-  } }]));
+  const states = Object.fromEntries(
+    ranked.map((performer, i) => [
+      performer.id,
+      {
+        pools: {
+          "appearance|FEMALE": { rating: 2000 - i * 10, deviation: 50, matches: 10, wins: 10, losses: 0, draws: 0 },
+        },
+      },
+    ]),
+  );
   runtime.runPluginOperation = () => Promise.resolve({ revision: 100, states });
   let matchingIds = [];
-  response = query => Promise.resolve({ findPerformers: query.includes("DirtyRankFilteredPerformerIds")
-    ? { count: matchingIds.length, performers: matchingIds.map(id => ({ id })) }
-    : { performers: ranked } });
+  response = query =>
+    Promise.resolve({
+      findPerformers: query.includes("DirtyRankFilteredPerformerIds")
+        ? { count: matchingIds.length, performers: matchingIds.map(id => ({ id })) }
+        : { performers: ranked },
+    });
   function route() {
     const state = { slots: [], effects: [], cursor: 0 };
     return () => {
@@ -1502,13 +2262,42 @@ async function verifyLeaderboardDisplays() {
   await flush();
   let tree = render();
   assert.strictEqual(find(tree, node => node.type === LeaderboardPodium).props.topCount, 3);
-  const header = find(tree, node => node.type === "header" && node.props.className.includes("dirty-rank-leaderboards-header"));
-  assert.deepStrictEqual(header.children[1].children.filter(Boolean).map(node => node.type === "a" ? visibleText(node) : node.type === plugin.testing.RankStatisticSelector ? "Statistic" : node.props.label || "Filter"), ["Statistic", "Filter", "Coverage", "Confidence", "Battles", "Options"]);
-  assert.strictEqual(header.children[1].children.filter(Boolean).slice(-2)[0].props.to, "/plugins/dirty-rank", "battles sit immediately before options");
-  assert.strictEqual(header.children[1].children.filter(Boolean).slice(-1)[0].props.to, "/plugins/dirty-plugins?plugin=dirtyRank", "rightmost header button opens options");
+  const header = find(
+    tree,
+    node => node.type === "header" && node.props.className.includes("dirty-rank-leaderboards-header"),
+  );
+  assert.deepStrictEqual(
+    header.children[1].children
+      .filter(Boolean)
+      .map(node =>
+        node.type === "a"
+          ? visibleText(node)
+          : node.type === plugin.testing.RankStatisticSelector
+            ? "Statistic"
+            : node.props.label || "Filter",
+      ),
+    ["Statistic", "Filter", "Coverage", "Confidence", "Battles", "Options"],
+  );
+  assert.strictEqual(
+    header.children[1].children.filter(Boolean).slice(-2)[0].props.to,
+    "/plugins/dirty-rank",
+    "battles sit immediately before options",
+  );
+  assert.strictEqual(
+    header.children[1].children.filter(Boolean).slice(-1)[0].props.to,
+    "/plugins/dirty-plugins?plugin=dirtyRank",
+    "rightmost header button opens options",
+  );
   assert(find(tree, node => node.type === runtime.react.Dialog && node.props.ariaLabel === "Performer filters"));
-  assert(find(tree, node => node.type === context.window.PluginApi.components.FilteredPerformerList), "the filter dialog uses Stash's native performer filters");
-  const statSelector = plugin.testing.RankStatisticSelector({ value: "__overall__", label: "Overall", categories: [{ id: "appearance", name: "Appearance" }] });
+  assert(
+    find(tree, node => node.type === context.window.PluginApi.components.FilteredPerformerList),
+    "the filter dialog uses Stash's native performer filters",
+  );
+  const statSelector = plugin.testing.RankStatisticSelector({
+    value: "__overall__",
+    label: "Overall",
+    categories: [{ id: "appearance", name: "Appearance" }],
+  });
   assert.strictEqual(statSelector.type, runtime.react.StatisticSelector);
   assert(statSelector.props.options.some(option => option.value === "appearance" && option.label === "Appearance"));
   statSelector.props.onSelect("appearance");
@@ -1521,8 +2310,18 @@ async function verifyLeaderboardDisplays() {
   render();
   await flush();
   tree = render();
-  assert.strictEqual(find(tree, node => node.type === plugin.testing.RankStatisticSelector).props.value, "appearance", "a bookmarked stat opens directly");
-  plugin.testing.RankStatisticSelector({ value: "appearance", label: "Appearance", categories: [{ id: "appearance", name: "Appearance" }] }).props.onSelect("__overall__");
+  assert.strictEqual(
+    find(tree, node => node.type === plugin.testing.RankStatisticSelector).props.value,
+    "appearance",
+    "a bookmarked stat opens directly",
+  );
+  plugin.testing
+    .RankStatisticSelector({
+      value: "appearance",
+      label: "Appearance",
+      categories: [{ id: "appearance", name: "Appearance" }],
+    })
+    .props.onSelect("__overall__");
   assert.strictEqual(context.window.location.pathname, "/plugins/dirty-rank-leaderboards/overall");
   context.window.location.pathname = "/plugins/dirty-rank-leaderboards";
 
@@ -1533,26 +2332,38 @@ async function verifyLeaderboardDisplays() {
   tree = render();
   assert.strictEqual(find(tree, node => node.type === LeaderboardPodium).props.topCount, 5);
   assert.strictEqual(find(tree, node => node.type === LeaderboardTable).props.entries[0].rank, 6);
-  assert(!find(header, node => node.props.id === "dirty-rank-leaderboard-top-count" || node.props.id === "dirty-rank-leaderboard-view"));
-  const savedConfiguration = plugin.testing.serializedSettings(plugin.algorithms.settingsFromConfiguration(configuration));
+  assert(
+    !find(
+      header,
+      node => node.props.id === "dirty-rank-leaderboard-top-count" || node.props.id === "dirty-rank-leaderboard-view",
+    ),
+  );
+  const savedConfiguration = plugin.testing.serializedSettings(
+    plugin.algorithms.settingsFromConfiguration(configuration),
+  );
   assert.strictEqual(savedConfiguration.leaderboardTopCount, 5);
   assert.strictEqual(savedConfiguration.leaderboardView, "table");
 
   function captureFilter(findFilter, performerFilter, count) {
     const state = { slots: [], effects: [], cursor: 0 };
     active = state;
-    plugin.testing.DirtyRankLeaderboardFilterCapture({ filter: {
-      makeFindFilter: () => findFilter,
-      makeFilter: () => performerFilter,
-      count: () => count,
-    } });
+    plugin.testing.DirtyRankLeaderboardFilterCapture({
+      filter: {
+        makeFindFilter: () => findFilter,
+        makeFilter: () => performerFilter,
+        count: () => count,
+      },
+    });
     state.effects.splice(0).forEach(effect => effect());
   }
   render = route();
   render();
   await flush();
   tree = render();
-  assert(find(tree, node => node.type === LeaderboardPodium), "the featured display shows without filters");
+  assert(
+    find(tree, node => node.type === LeaderboardPodium),
+    "the featured display shows without filters",
+  );
   matchingIds = ["rank-4"].concat(Array.from({ length: 10 }, (_, i) => "rank-" + (40 + i)));
   captureFilter({ q: "Performer 4" }, { tags: { value: ["7"], modifier: "INCLUDES" } }, 1);
   render();
@@ -1560,10 +2371,14 @@ async function verifyLeaderboardDisplays() {
   tree = render();
   assert(!find(tree, node => node.type === LeaderboardPodium), "filtering hides the global podium");
   const filteredResults = find(tree, node => node.type === LeaderboardTable);
-  assert.deepStrictEqual(filteredResults.props.entries.map(entry => entry.performer.name),
-    ["Performer 4"].concat(Array.from({ length: 10 }, (_, i) => "Performer " + (40 + i))));
-  assert.deepStrictEqual(filteredResults.props.entries.map(entry => entry.rank),
-    [4].concat(Array.from({ length: 10 }, (_, i) => 40 + i)));
+  assert.deepStrictEqual(
+    filteredResults.props.entries.map(entry => entry.performer.name),
+    ["Performer 4"].concat(Array.from({ length: 10 }, (_, i) => "Performer " + (40 + i))),
+  );
+  assert.deepStrictEqual(
+    filteredResults.props.entries.map(entry => entry.rank),
+    [4].concat(Array.from({ length: 10 }, (_, i) => 40 + i)),
+  );
   assert.strictEqual(filteredResults.props.page, 1);
   assert.strictEqual(filteredResults.props.title, undefined);
   const filterCall = calls.findLast(call => call.query.includes("DirtyRankFilteredPerformerIds"));
@@ -1582,26 +2397,51 @@ async function verifyLeaderboardDisplays() {
   captureFilter({ q: "" }, {}, 0);
   render();
   tree = render();
-  assert(find(tree, node => node.type === LeaderboardPodium), "clearing filters restores the featured display");
-  assert.strictEqual(find(tree, node => node.type === LeaderboardTable).props.entries[0].rank, 6,
-    "clearing filters restores standings after the five featured performers");
+  assert(
+    find(tree, node => node.type === LeaderboardPodium),
+    "clearing filters restores the featured display",
+  );
+  assert.strictEqual(
+    find(tree, node => node.type === LeaderboardTable).props.entries[0].rank,
+    6,
+    "clearing filters restores standings after the five featured performers",
+  );
 
-  for (const [saved, expected] of [["5", 5], ["6", 3], ["4", 4], ["broken", 3], ["7", 3], ["4.5", 3]]) {
+  for (const [saved, expected] of [
+    ["5", 5],
+    ["6", 3],
+    ["4", 4],
+    ["broken", 3],
+    ["7", 3],
+    ["4.5", 3],
+  ]) {
     configuration = { leaderboardTopCount: saved };
     render = route();
     render();
     await flush();
-    assert.strictEqual(find(render(), node => node.type === LeaderboardPodium).props.topCount, expected, "saved selections should be restored or safely defaulted");
+    assert.strictEqual(
+      find(render(), node => node.type === LeaderboardPodium).props.topCount,
+      expected,
+      "saved selections should be restored or safely defaulted",
+    );
   }
   const pages = [];
   response = (_query, variables) => {
     pages.push(variables.filter.page);
     const start = (variables.filter.page - 1) * 500;
     const count = Math.min(500, 501 - start);
-    return Promise.resolve({ findPerformers: { count: 501, performers: Array.from({ length: count }, (_, i) => ({ id: String(start + i + 1) })) } });
+    return Promise.resolve({
+      findPerformers: {
+        count: 501,
+        performers: Array.from({ length: count }, (_, i) => ({ id: String(start + i + 1) })),
+      },
+    });
   };
   const allMatchingIds = await plugin.testing.queryLeaderboardPerformerIds({ find: {}, object: {} });
   assert.strictEqual(allMatchingIds.size, 501, "native filters include every matching performer across pages");
   assert.deepStrictEqual(pages, [1, 2]);
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+main().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

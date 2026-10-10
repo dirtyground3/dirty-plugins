@@ -21,9 +21,10 @@ plugins/
 ├── DirtyRank/           # battle/leaderboard UI + Glicko-2 backend
 ├── DirtyStats/          # statistics/visualization UI
 └── DirtyTidy/           # preview UI + file-organization backend
-tests/                   # Python unittest + Node JS tests + shared UI contract tests
-scripts/                 # staged build, settings generator and install-file registry
+tests/                   # Node test suites, Python unittest and opt-in Stash fixtures
+scripts/                 # staged build, settings generator and plugin registry
 schemas/                 # authored settings metadata, one <pluginId>.settings.json each
+types/                   # the only global TypeScript declarations
 .build/plugins/          # ignored installable output, never authored source
 build_site.sh            # packages staged plugins for GitHub Pages
 docs/images/             # censored screenshots used by the README
@@ -43,7 +44,9 @@ existing primitive:
 - `DirtyPlugins.graphql` / `hubApi.graphql` — the only GraphQL client. Plugins
   must not call `fetch("/graphql")` directly.
 - `hubApi.runPluginOperation`, `hubApi.getPluginSettings`,
-  `hubApi.configurePlugin`, `hubApi.values`, `hubApi.ui` — data and helpers.
+  `hubApi.configurePlugin`, `hubApi.ui` — data and helpers.
+- `hubApi.registerPlugin(pluginId, setup)` — the one registration entry point
+  (see the conventions below).
 - `DirtyPlugins.react` — shared components: `SettingsCard`,
   `SettingsSection`, `SettingsToggle`, `IconButton`, `StateView`, and other
   settings primitives. Prefer these over bespoke markup.
@@ -54,9 +57,17 @@ existing primitive:
   settings UI inside the shared hub.
 - CSS custom properties prefixed `--dirty-ui-*` (tokens, radius, shadow, etc.)
   are the shared visual language.
+- `plugins/DirtyPlugins/src/shared/` — the typed host binding (`host.ts`:
+  `PluginApi`, `hub`, `React`, `ui`) and pure value helpers (`values.ts`). It is
+  the only hub source compiled into the other bundles. Put only stateless code
+  there; anything that must exist once (GraphQL client, settings, React
+  components, debug log) stays on the hub object.
 
-The shared contract is guarded by `tests/test_shared_ui_contract.py`. If you
-change the runtime, update that test intentionally rather than weakening it.
+The typed contract in `src/types.ts` is enforced by `npm run typecheck`: `Host`
+is the single description of the Stash plugin API and `HubApi` of the hub. The
+build enforces the architecture rules (`SOURCE_RULES` and the boundary plugin in
+`scripts/build.mjs`). Add a rule there rather than a test that matches source
+text.
 
 Every plugin manifest must declare the hub as a UI dependency:
 
@@ -83,10 +94,17 @@ ui:
 
 ## JavaScript and TypeScript conventions
 
-- Run `npm run build` to stage all eight plugins under `.build/plugins/`.
-  `scripts/plugin-registry.json` explicitly lists installable files. Builds never
-  overwrite source or installed plugins. Add required runtime files to the
-  allowlist; never add runtime data, source tooling, or tests.
+- Run `npm run build` to stage all eight plugins under `.build/plugins/`. The
+  build stages into `.build/staging` and replaces `.build/plugins` in one
+  rename, so a failed build keeps the previous output. Builds never overwrite
+  source or installed plugins.
+- Install files are derived from the manifest: the manifest itself, its
+  `ui.javascript` and `ui.css` entries, the top-level `*.py` modules, the
+  registry's `generatedFiles` and `extraFiles`, `README.md` and `LICENSE`.
+  `scripts/plugin-registry.json` holds only what cannot be derived
+  (`directory`, `id`, `entry`, `generatedImports`, `generatedFiles`,
+  `bundledPackages`, `extraFiles`, `runtimeDirectories`). Never place runtime
+  data, source tooling, or tests where they would be installed.
 - `npm run build` stages minified release bundles without source maps for
   tests, packages and installs; property names are never mangled and
   `keepNames` preserves function/component names. `npm run build:dev` and
@@ -95,9 +113,12 @@ ui:
 - Every plugin authors `src/index.ts` or `src/index.tsx` with internal imports,
   colocated types, and small TSX components, and compiles to one browser IIFE
   with the existing entry filename; its manifest's `ui.javascript` lists only
-  that entry. Configure `bundle` and selected CommonJS `testModules` in the
-  registry. Source manifests keep host metadata (identity, version, exec, tasks,
+  that entry. Source manifests keep host metadata (identity, version, exec, tasks,
   hooks, dependencies, asset mappings).
+- Write plain ES modules with named exports. Do not wrap a plugin's modules in
+  `createX(dependencies)` factories; tests compile the modules they need on
+  demand and replace an import where a fake is required
+  (`tests/plugin_paths.js`).
 - Selected settings metadata (keys, labels, descriptions, defaults, bounds,
   options) and constants shared by TS and Python live only in
   `schemas/<pluginId>.settings.json`. The build generates `@generated/<id>.settings`
@@ -106,19 +127,28 @@ ui:
   import only the modules in its registry `generatedImports`. Never put `settings:`
   back into a source manifest that has a schema. Keep normalization, coercion,
   migrations and algorithms handwritten in each language.
-- Entries validate the host and claim their instance guard before registration.
-  Imported modules must not install routes, patches, or listeners. Tear down
-  owned effects where supported; preserve one-time guards for host integrations
-  that cannot unregister.
+- An entry is `hub?.registerPlugin(ID, () => { ... })`. The hub runs each
+  plugin's setup once, attributes its debug log lines, and logs a failed
+  registration once without retrying or undoing it. Imported modules must not
+  install routes, patches, or listeners at load; do that inside the setup
+  callback. Stash cannot unregister routes or patches, so plugins have no
+  `destroy()` handles or instance keys; clean up only what a React effect owns.
+  `window.DirtyPlugins` is the hub's own guard.
 - Source is strict TypeScript (`tsconfig.json`). Run `npm ci` and
   `npm run typecheck`, which generates `.build/generated/` first; esbuild does
   not replace checking and TypeScript is never shipped to Stash. The only global
   declarations are in `types/stash-globals.d.ts`; use `import type` for hub types.
-- Access React through `window.PluginApi.React` with a typed host adapter and
-  classic `React.createElement`/`React.Fragment` output. Never bundle
-  React/ReactDOM or another plugin's implementation; type-only imports are
-  allowed. Shared runtime APIs remain on DirtyPlugins; the hub exposes only
-  members that a plugin uses.
+- Access the host through the shared binding: each plugin's `runtime.ts`
+  re-exports `React`, `PluginApi`, `hub` and `ui` from
+  `plugins/DirtyPlugins/src/shared/host`. Output stays classic
+  `React.createElement`/`React.Fragment`. Never bundle
+  React/ReactDOM or another plugin's implementation; type-only imports and the
+  `shared/` folder are the only cross-plugin imports. Shared runtime APIs remain
+  on DirtyPlugins; the hub exposes only members that a plugin uses.
+- `npm run format` (Prettier, 120 columns) formats the TypeScript sources,
+  `scripts/` and the JavaScript tests; `npm test` checks it. Run only that
+  script: CSS, Markdown, vendor files and fixtures are not formatted.
+  `.gitattributes` keeps every text file LF.
 - Versions before 1.0.0 were developer builds. Do not keep compatibility with
   their APIs, URLs, file layouts or hub versions. Code that reads older stored
   data is removed only after a read-only check shows real data no longer needs it.
@@ -135,8 +165,15 @@ ui:
   contract; follow the existing `interface: raw` / `exec` manifest pattern.
 - Keep the manifest's executable script as the JSON protocol entry point and
   import same-directory modules for domain logic.
+- Every `main()` is one call to `dirty_plugins_protocol.serve(name, run, ...)`.
+  It reads the payload, logs started/finished/failed with the mode and
+  duration, applies the exit policy and writes one ASCII JSON envelope;
+  `run(payload, reporter)` returns the result. Backends that the browser polls
+  (Captions, Compactor) pass `quiet=True` and log only failures. Use
+  `public_error` when an error message could expose private paths.
 - Keep shared storage logic in `dirty_plugins_storage.py`; plugins reuse the
-  same SQLite database rather than creating their own.
+  same SQLite database rather than creating their own. A table that only one
+  plugin uses belongs to that plugin (`dirty_compactor_store.py`).
 
 ## Settings and data
 
@@ -174,15 +211,17 @@ npm ci
 npm test
 ```
 
-`npm test` builds once, then runs typecheck, every `tests/test_*.js` suite, and
-Python unittest discovery. Focused npm test commands also prepare staging.
-Direct Node/Python test-file invocations require `npm run build` first. Runtime
-tests use staged path helpers; architecture checks use authored source.
-Missing/stale builds fail clearly. See `tests/README.md` for details.
+`npm test` builds once, then runs typecheck, the format check, every
+`tests/test_*.js` suite through `node --test`, and Python unittest discovery.
+Focused npm test commands also prepare staging. Direct Node/Python test-file
+invocations require `npm run build` first, and again after changing source: a
+missing build fails clearly, a stale one is not detected. Runtime tests use
+staged path helpers; module tests compile authored source on demand. See
+`tests/README.md` for details.
 
-Add or update tests with behavior changes. Contract tests in `tests/` enforce
-that plugins use the shared GraphQL client, shared visual primitives, and the
-hub runtime exports.
+Add or update tests with behavior changes. Test behavior, not source text: the
+build and the type checker enforce that plugins use the shared GraphQL client,
+the hub's capture mode and its typed API.
 
 ## Build and release
 
@@ -197,7 +236,7 @@ hub runtime exports.
   each plugin whose runtime files (bundle, manifest content, styles, backends)
   change, once per release, and update the README version table and release
   notes. README-only and staging-only changes keep versions.
-  `docs/build-migration-status.md` records the completed migration's handoffs.
+  `simplification.md` records the 2026-10-10 simplification pass.
 
 ## Local install (this machine)
 
@@ -249,6 +288,29 @@ Do not copy `__pycache__/`, `*.pyc`, or SQLite artifacts. Stash aggregates a
 plugin's declared JS/CSS into `/plugin/<id>/javascript` and `/plugin/<id>/css`
 (the individual source paths 404). Reloading does not refresh the browser: the
 user must hard-refresh (Ctrl+F5) the Stash tab.
+
+## Non-goals
+
+These simplifications keep coming up and do not pay off; see also
+`simplification.md` ("Not recommended").
+
+- Another save framework. The shared save controller and `useSettingsDraft`
+  exist; Rank's revisions, Stats' key merging and Compactor's blocking after a
+  failed save are different policies, and Tidy keeps preview/confirm.
+- One chart definition for Stats pages and dashboard widgets, or one table of
+  Stats defaults. They share aggregates and leaf helpers; presentation,
+  defaults and persistence keys differ on purpose.
+- One filter representation or editor for the hub, Stats and Rank.
+- One subprocess runner. Captions bounds in-memory output with a timeout,
+  Compactor journals progress and cancellation, Extractor produces marker
+  clips; only child containment is shared.
+- Collapsing the destructive workflows of Tidy, Extractor and Compactor. Their
+  plans, reservations, approvals and journals are different contracts.
+- Removing caption caches, leases, unknown/error states or hook-loop
+  protection, or adding timer-based library checks.
+- Replacing rules mirrored in TypeScript and Python with one language. Browser
+  previews need fast local math and the server must validate; parity fixtures
+  keep them in step.
 
 ## Content safety
 

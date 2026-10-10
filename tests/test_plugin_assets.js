@@ -21,7 +21,11 @@ const entries = {
 for (const [plugin, entry] of Object.entries(entries)) {
   const scripts = scriptPaths(plugin);
   for (const filename of scripts) new vm.Script(fs.readFileSync(filename, "utf8"), { filename });
-  assert.deepEqual(scripts.map(filename => path.basename(filename)), [entry], plugin + " must serve one compiled entry");
+  assert.deepEqual(
+    scripts.map(filename => path.basename(filename)),
+    [entry],
+    plugin + " must serve one compiled entry",
+  );
 }
 
 console.log("Every plugin serves one parseable compiled entry script");

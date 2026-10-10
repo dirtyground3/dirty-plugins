@@ -26,6 +26,7 @@ from dirty_compactor_rules import (
     quick_hash, container_video_bitrate,
 )
 import dirty_compactor_quality as quality
+import dirty_compactor_store as records
 from dirty_compactor_workflow import Run, OperationJournal, transition_run
 import dirty_plugins_protocol as protocol
 
@@ -173,27 +174,27 @@ def container_for(path, rule, media):
 
 
 def save(kind, record):
-    updated = storage.compactor_put(kind, record["id"], record, expected=record.get("_revision"))
+    updated = records.put(kind, record["id"], record, expected=record.get("_revision"))
     record.update(updated)
     return record
 
 
 def get(kind, record_id):
-    value = storage.compactor_get(kind, str(record_id))
+    value = records.get(kind, str(record_id))
     if value is None:
         raise PluginError("Record not found")
     return value
 
 
 def report(run_id, stage, progress=0):
-    previous = storage.compactor_get("progress", run_id) or {}
-    storage.compactor_put("progress", run_id, {"id": run_id, "stage": stage, "progress": progress, "heartbeat": time.time(),
+    previous = records.get("progress", run_id) or {}
+    records.put("progress", run_id, {"id": run_id, "stage": stage, "progress": progress, "heartbeat": time.time(),
                                                "pid": os.getpid(), "started": previous.get("started") or time.time()})
     print("\x01p\x02" + str(max(0, min(1, progress))), file=sys.stderr, flush=True)
 
 
 def check_cancel(run_id):
-    if storage.compactor_get("cancel", run_id):
+    if records.get("cancel", run_id):
         raise Cancelled("Cancelled; original retained")
 
 
@@ -326,7 +327,7 @@ def build_preview(client, preview):
                             op.update(destination=str(Path(op["source"]).with_suffix(suffix)), muxer=muxer)
                             if op["destination"] != op["source"] and Path(op["destination"]).exists():
                                 raise PluginError("Destination already exists")
-                            completed = storage.compactor_get("completed", completed_key(op))
+                            completed = records.get("completed", completed_key(op))
                             action_key = digest({k: v for k, v in rule.items() if k not in ("name", "mode", "enabled", "condition")})
                             op["actionKey"] = action_key
                             if completed and completed.get("actionKey") == action_key and same_file(completed, op):
@@ -339,7 +340,7 @@ def build_preview(client, preview):
                                 # Preview uses typical figures, or an earlier run's measurement.
                                 ffmpeg = ffmpeg or client.tool("ffmpeg")
                                 kinds.setdefault(rule["id"], pick_encoder(ffmpeg, rule["codec"], rule["encoder"]))
-                                choice = storage.compactor_get("qualitySearch", search_key(op, rule, ENCODERS[rule["codec"]][kinds[rule["id"]]]))
+                                choice = records.get("qualitySearch", search_key(op, rule, ENCODERS[rule["codec"]][kinds[rule["id"]]]))
                                 if choice:
                                     op.update(crf=choice["crf"], vmaf=choice["vmaf"], mbps=choice["mbps"])
                                     skip = visual_skip_reason(choice, media, rule)
@@ -395,7 +396,7 @@ def measure_quality(ffmpeg, run, op, encoder):
     Skipped when the file would not get meaningfully smaller at the target.
     """
     rule, media, key = op["rule"], op["media"], search_key(op, op["rule"], encoder)
-    choice = storage.compactor_get("qualitySearch", key)
+    choice = records.get("qualitySearch", key)
     if not choice:
         tests = [0]
 
@@ -406,7 +407,7 @@ def measure_quality(ffmpeg, run, op, encoder):
         choice = quality.search(ffmpeg, op["source"], media, op["dimensions"], rule["codec"], encoder, rule["vmaf"],
                                 PRIVATE / ("quality-" + op["id"]), step, lambda: check_cancel(run["id"]))
         # Same file and settings give the same answer; later previews and runs reuse it.
-        storage.compactor_put("qualitySearch", key, {k: choice[k] for k in ("crf", "vmaf", "mbps", "reached")})
+        records.put("qualitySearch", key, {k: choice[k] for k in ("crf", "vmaf", "mbps", "reached")})
     op.update(crf=choice["crf"], vmaf=choice["vmaf"], mbps=choice["mbps"])
     save("run", run)
     reason = visual_skip_reason(choice, media, rule)
@@ -517,7 +518,7 @@ def encode(client, run, op):
     if not converting and output.stat().st_size >= op["identity"]["size"]:
         # Constant-quality sizes are only known after encoding; remember the
         # outcome so later previews skip this file with the same settings.
-        storage.compactor_put("completed", completed_key(op),
+        records.put("completed", completed_key(op),
                               {"hash": op["sourceHash"], "quickHash": op.get("quickHash"), "actionKey": op["actionKey"], "notSmaller": True})
         raise PluginError("Output is not smaller; original retained")
     if not converting and op["rule"]["action"] == "reencode" and (not result["bitrate"] or result["bitrate"] >= original["bitrate"]):
@@ -591,9 +592,9 @@ def commit(client, run: Run, op: OperationJournal):
 
 def complete_run(client, run, status="completed"):
     transition_run(run, status, save)
-    pending = storage.compactor_get("control", "pending")
+    pending = records.get("control", "pending")
     if pending and pending.get("trigger") and not settings()["automationPaused"]:
-        storage.compactor_put("control", "pending", {"trigger": None})
+        records.put("control", "pending", {"trigger": None})
         client.queue(PLUGIN_ID, {"mode": "pendingAutomatic", "trigger": pending["trigger"]}, "DirtyCompactor: pending automatic evaluation")
 
 
@@ -674,7 +675,7 @@ def finalize(client, run_id):
             raise PluginError("Stash resolution is not reconciled yet")
         if not restoring:
             Path(op["backup"]).unlink(missing_ok=True)
-            storage.compactor_put("completed", completed_key(op),
+            records.put("completed", completed_key(op),
                                   {"hash": op["outputHash"], "quickHash": quick_hash(target), "actionKey": op["actionKey"]})
         cleanup_output(op)
         op.update(status="restored" if restoring else "completed", actualSavings=0 if restoring else op["identity"]["size"] - op["outputSize"])
@@ -737,11 +738,11 @@ def public_record(record, page=1):
                   operations=[{k: o.get(k) for k in ("id", "sceneId", "title", "fileId", "source", "destination", "status", "reason", "savings", "dimensions", "mbps", "crf", "vmaf", "convert", "identity", "media", "rule", "actualSavings")} for o in operations[(page - 1) * 25:page * 25]])
     if "reviewOutputs" in record:
         result["review"] = output_review(record)
-    result["progress"] = storage.compactor_get("progress", record["id"]) if record["status"] in ("running", "planning", "reconciling", "finalizing") else None
+    result["progress"] = records.get("progress", record["id"]) if record["status"] in ("running", "planning", "reconciling", "finalizing") else None
     if result["progress"] and "reviewOutputs" not in record:
         result["progress"]["eta"] = eta(result["progress"])
     if "reviewOutputs" not in record and record["status"] in ("queued", "planning"):
-        result["cancelRequested"] = bool(storage.compactor_get("cancel", record["id"]))
+        result["cancelRequested"] = bool(records.get("cancel", record["id"]))
     return result
 
 
@@ -753,7 +754,7 @@ def start_run(client, preview, args, automatic=False, trigger=None):
            "rulesDigest": digest(preview["settings"]["rules"]), "automatic": automatic,
            "reviewOutputs": bool(args.get("reviewOutputs")) and not automatic,
            "operations": [dict(o) for o in preview["operations"] if o["status"] == "ready" and o["sceneId"] not in excluded]}
-    result = storage.compactor_claim_run(run, trigger)
+    result = records.claim_run(run, trigger)
     if result.get("duplicate") or result.get("coalesced"):
         return result
     # A used preview is not offered again when the panel reopens.
@@ -780,7 +781,7 @@ def tasks_active(client):
 def recover(client, run: Run, restore=False):
     if run["status"] not in ("recovery", "running", "finalizing", "reconciling", "queued", "acceptQueued", "discarding"):
         raise PluginError("This run does not need recovery")
-    progress = storage.compactor_get("progress", run["id"])
+    progress = records.get("progress", run["id"])
     if progress and time.time() - progress.get("heartbeat", 0) < 30 and run["status"] in ("running", "finalizing"):
         raise PluginError("Worker is still active")
     # A live Stash task remains authoritative even during long hashing/probing
@@ -891,7 +892,7 @@ def plan_preview(client, args):
 
 
 def latest_preview(client, args):
-    for preview in storage.compactor_list("preview", limit=20):
+    for preview in records.list_records("preview", limit=20):
         if preview.get("automatic"):
             continue
         if preview.get("runId") or preview.get("status") in ("discarded", "cancelled", "failed"):
@@ -936,22 +937,22 @@ def handle_automatic_trigger(client, args):
         if not args.get("startTime") or not args.get("jobId"):
             raise PluginError("Scan identity is required")
         trigger = digest([str(args["jobId"]), args["startTime"]])
-        previous_trigger = storage.compactor_get("trigger", trigger)
+        previous_trigger = records.get("trigger", trigger)
         if previous_trigger and previous_trigger.get("queued") is not False:
             return {"duplicate": True}
         # Queue planning, never do expensive probing in the browser request.
-        claim = storage.compactor_put("trigger", trigger, {"queued": True}, expected=previous_trigger["_revision"] if previous_trigger else -1)
+        claim = records.put("trigger", trigger, {"queued": True}, expected=previous_trigger["_revision"] if previous_trigger else -1)
         try:
             client.queue(PLUGIN_ID, {"mode": "pendingAutomatic", "trigger": trigger}, "DirtyCompactor: automatic evaluation")
         except Exception:
-            storage.compactor_put("trigger", trigger, {"queued": False, "error": "Queue failed"})
+            records.put("trigger", trigger, {"queued": False, "error": "Queue failed"})
             raise
         return claim
-    active = storage.compactor_get("control", "active")
+    active = records.get("control", "active")
     if active:
         current = get("run", active["id"])
         if current["status"] not in TERMINAL:
-            storage.compactor_put("control", "pending", {"trigger": args["trigger"]})
+            records.put("control", "pending", {"trigger": args["trigger"]})
             return {"coalesced": True}
     preview = {
         "id": uuid.uuid4().hex,
@@ -987,7 +988,7 @@ def list_runs(client, args):
             "automatic": run["automatic"],
             "actualSavings": sum(operation.get("actualSavings", 0) for operation in run["operations"]),
         }
-        for run in storage.compactor_list("run")
+        for run in records.list_records("run")
     ]
 
 
@@ -1021,13 +1022,13 @@ def decide_output(client, args):
 
 
 def cancel_preview(client, args):
-    storage.compactor_put("cancel", args["id"], {"requested": True})
+    records.put("cancel", args["id"], {"requested": True})
     return {"requested": True}
 
 
 def cancel_run(client, args):
     run = get("run", args["id"])
-    storage.compactor_put("cancel", run["id"], {"requested": True})
+    records.put("cancel", run["id"], {"requested": True})
     if run["status"] == "awaitingReview":
         transition_run(run, "queued", save)
         client.queue(PLUGIN_ID, {"mode": "worker", "id": run["id"]}, "DirtyCompactor: cancel")
@@ -1071,16 +1072,13 @@ def dispatch(client, args):
     return handler(client, args)
 
 
+def run(payload, _reporter=None):
+    return dispatch(Client(payload.get("server_connection") or {}), payload.get("args") or {})
+
+
 def main():
-    protocol.configure_standard_streams()
-    try:
-        payload = protocol.read_payload()
-        result = dispatch(Client(payload.get("server_connection") or {}), payload.get("args") or {})
-        protocol.emit_output(result)
-    except Exception as error:
-        protocol.emit_error(error)
-        return 1
-    return 0
+    # The settings page polls run and preview status; only failures are logged.
+    return protocol.serve("DirtyCompactor", run, quiet=True)
 
 
 if __name__ == "__main__":

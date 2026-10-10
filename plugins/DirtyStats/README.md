@@ -377,7 +377,7 @@ to a third-party service. Plugin code is MIT licensed; see `LICENSE`.
 
 ## Validation
 
-Run `node --check plugins/DirtyStats/dirtyStats.js`,
-`node --check plugins/DirtyStats/dirtyStatsDashboard.js`,
+Run `npm run build`, then `node --check .build/plugins/DirtyStats/dirtyStats.js`,
 `node tests/test_dirty_stats.js`, and
-`node tests/test_dirty_stats_dashboard.js` from the repository root.
+`node tests/test_dirty_stats_dashboard.js` from the repository root. The
+dashboard is part of the single `dirtyStats.js` bundle.

@@ -1,6 +1,6 @@
 name: DirtyCaptions
 description: Display embedded text subtitles in the native scene player without separate subtitle files.
-version: 1.0.3
+version: 1.0.4
 ui:
   requires:
     - dirtyPlugins

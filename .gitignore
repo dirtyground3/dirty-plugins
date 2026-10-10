@@ -5,3 +5,4 @@ _site/
 *.py[cod]
 plugins/DirtyCompactor/runtime/
 *.sqlite*
+.idea/

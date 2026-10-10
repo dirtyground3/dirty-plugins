@@ -1,8 +1,19 @@
 import type * as R from "react";
-import { CONFIGURATION_CHANGED_EVENT, FIELD_ACTIONS_CHANGED_EVENT, FIELD_LIMITS, FIELD_OPTIONS, MANAGED_PLUGIN_IDS, MANAGED_PLUGIN_ID_SET, PLUGIN_DEFAULTS, PLUGIN_SETTING_ORDER, ROUTE_PATH, SETTINGS_PANELS_CHANGED_EVENT } from "./constants";
+import {
+  CONFIGURATION_CHANGED_EVENT,
+  FIELD_ACTIONS_CHANGED_EVENT,
+  FIELD_LIMITS,
+  FIELD_OPTIONS,
+  MANAGED_PLUGIN_IDS,
+  MANAGED_PLUGIN_ID_SET,
+  PLUGIN_DEFAULTS,
+  PLUGIN_SETTING_ORDER,
+  ROUTE_PATH,
+  SETTINGS_PANELS_CHANGED_EVENT,
+} from "./constants";
 import { graphql, rememberPluginRevision, runSharedOperation } from "./transport";
 import type { Drafts, FieldAction, FieldValue, PanelProps, Plugin, Setting, Snapshot } from "./types";
-import { asObject } from "./values";
+import { asObject } from "./shared/values";
 
 type Panel = R.ComponentType<PanelProps>;
 /** Plugin-registered settings extensions; the settings page rerenders on change events. */
@@ -19,30 +30,22 @@ export function registerFieldAction(pluginId: string, settingName: string, actio
   fieldActions[pluginId][settingName] = action;
   changed(FIELD_ACTIONS_CHANGED_EVENT);
 }
-export function unregisterFieldAction(pluginId: string, settingName: string, action: FieldAction) {
-  if (!fieldActions[pluginId] || fieldActions[pluginId][settingName] !== action) return;
-  delete fieldActions[pluginId][settingName];
-  changed(FIELD_ACTIONS_CHANGED_EVENT);
-}
 function register(registry: Record<string, Panel>, pluginId: string, component: Panel) {
   if (registry[pluginId] === component) return;
   registry[pluginId] = component;
   changed(SETTINGS_PANELS_CHANGED_EVENT);
 }
-function unregister(registry: Record<string, Panel>, pluginId: string, component: Panel) {
-  if (registry[pluginId] !== component) return;
-  delete registry[pluginId];
-  changed(SETTINGS_PANELS_CHANGED_EVENT);
-}
-export const registerSettingsPanel = (pluginId: string, component: Panel) => register(settingsPanels, pluginId, component);
-export const unregisterSettingsPanel = (pluginId: string, component: Panel) => unregister(settingsPanels, pluginId, component);
-export const registerSettingsAddon = (pluginId: string, component: Panel) => register(settingsAddons, pluginId, component);
-export const unregisterSettingsAddon = (pluginId: string, component: Panel) => unregister(settingsAddons, pluginId, component);
+export const registerSettingsPanel = (pluginId: string, component: Panel) =>
+  register(settingsPanels, pluginId, component);
+export const registerSettingsAddon = (pluginId: string, component: Panel) =>
+  register(settingsAddons, pluginId, component);
 
-export function notifyConfigurationChanged(pluginId: string, options?: { preserveSettingsPage?: boolean; }) {
-  window.dispatchEvent(new CustomEvent(CONFIGURATION_CHANGED_EVENT, {
-    detail: { pluginId, preserveSettingsPage: Boolean(options && options.preserveSettingsPage) },
-  }));
+export function notifyConfigurationChanged(pluginId: string, options?: { preserveSettingsPage?: boolean }) {
+  window.dispatchEvent(
+    new CustomEvent(CONFIGURATION_CHANGED_EVENT, {
+      detail: { pluginId, preserveSettingsPage: Boolean(options && options.preserveSettingsPage) },
+    }),
+  );
 }
 
 export interface FieldDefinition {
@@ -62,16 +65,20 @@ export function fieldDefinition(pluginId: string, setting: Setting): FieldDefini
   return {
     id: "dirty-plugin-" + pluginId + "-" + setting.name,
     containerId: "plugin-" + pluginId + "-" + setting.name,
-    label: setting.display_name || setting.name, help: setting.description,
+    label: setting.display_name || setting.name,
+    help: setting.description,
     kind: setting.type === "BOOLEAN" ? "checkbox" : options ? "select" : setting.type === "NUMBER" ? "number" : "text",
-    options, ...FIELD_LIMITS[pluginId]?.[setting.name],
+    options,
+    ...FIELD_LIMITS[pluginId]?.[setting.name],
   };
 }
 
 /** Managed plugins in suite order, each with its settings in authored order. */
 export function loadSettingsSnapshot(): Promise<Snapshot> {
   return Promise.all([
-    graphql<{ plugins: Plugin[]; }>("query DirtyPluginsSettings{plugins{id name description version enabled settings{name display_name description type}}}"),
+    graphql<{ plugins: Plugin[] }>(
+      "query DirtyPluginsSettings{plugins{id name description version enabled settings{name display_name description type}}}",
+    ),
     runSharedOperation({ mode: "getAllSettings" }),
   ]).then(([data, payload]) => {
     const settingsPayload = asObject(payload);
@@ -82,10 +89,18 @@ export function loadSettingsSnapshot(): Promise<Snapshot> {
       .sort((left, right) => MANAGED_PLUGIN_IDS.indexOf(left.id) - MANAGED_PLUGIN_IDS.indexOf(right.id))
       .map(plugin => {
         const order = new Map((PLUGIN_SETTING_ORDER[plugin.id] || []).map((name, index) => [name, index]));
-        const position = (setting: Setting) => order.has(setting.name) ? order.get(setting.name)! : Number.MAX_SAFE_INTEGER;
-        return { ...plugin, settings: (plugin.settings || []).slice().sort((left, right) => position(left) - position(right)) };
+        const position = (setting: Setting) =>
+          order.has(setting.name) ? order.get(setting.name)! : Number.MAX_SAFE_INTEGER;
+        return {
+          ...plugin,
+          settings: (plugin.settings || []).slice().sort((left, right) => position(left) - position(right)),
+        };
       });
-    return { configuration: asObject(settingsPayload.settings) as Snapshot["configuration"], pluginRevisions: revisions, plugins };
+    return {
+      configuration: asObject(settingsPayload.settings) as Snapshot["configuration"],
+      pluginRevisions: revisions,
+      plugins,
+    };
   });
 }
 
@@ -120,14 +135,18 @@ export function serializeFieldValue(setting: Setting, value: FieldValue) {
 
 export function standardDraftsAreDirty(snapshot: Snapshot | null, drafts: Drafts, savedDrafts: Drafts) {
   if (!snapshot) return false;
-  return snapshot.plugins.some(plugin => (plugin.settings || []).some(setting => {
-    try {
-      return serializeFieldValue(setting, drafts[plugin.id] && drafts[plugin.id][setting.name]) !==
-        serializeFieldValue(setting, savedDrafts[plugin.id] && savedDrafts[plugin.id][setting.name]);
-    } catch (_error) {
-      return true;
-    }
-  }));
+  return snapshot.plugins.some(plugin =>
+    (plugin.settings || []).some(setting => {
+      try {
+        return (
+          serializeFieldValue(setting, drafts[plugin.id] && drafts[plugin.id][setting.name]) !==
+          serializeFieldValue(setting, savedDrafts[plugin.id] && savedDrafts[plugin.id][setting.name])
+        );
+      } catch (_error) {
+        return true;
+      }
+    }),
+  );
 }
 
 export function getFieldAction(pluginId: string, settingName: string) {

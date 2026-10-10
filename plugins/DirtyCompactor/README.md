@@ -1,7 +1,7 @@
 # DirtyCompactor
 
 Reclaim media space with ordered scene-filter rules. Requires Stash 0.31.1+,
-DirtyPlugins 1.0.0+, Python 3.9+, FFmpeg, and FFprobe. No Python packages are required.
+DirtyPlugins, Python 3.9+, FFmpeg, and FFprobe. No Python packages are required.
 The installed plugin ID is `dirtyCompactor`.
 
 The frontend is authored in TypeScript/TSX and compiled to one `dirtyCompactor.js`
@@ -228,8 +228,9 @@ files are excluded from Git and plugin packages.
 ## Development checks
 
 ```powershell
+npm run build
 python -B -m unittest discover -s tests -v
-node --check plugins/DirtyCompactor/dirtyCompactor.js
+node --check .build/plugins/DirtyCompactor/dirtyCompactor.js
 node tests/test_dirty_compactor.js
 python -B tests/test_dirty_compactor_stash_integration.py --binary 'C:\path\to\stash.exe'
 ```

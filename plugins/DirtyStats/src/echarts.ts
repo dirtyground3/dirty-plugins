@@ -5,8 +5,15 @@
 import { init, registerMap, use } from "echarts/core";
 import { BarChart, GraphChart, LineChart, MapChart, PieChart, ScatterChart, TreemapChart } from "echarts/charts";
 import {
-  AxisPointerComponent, DataZoomComponent, GridComponent, LegendComponent, MarkAreaComponent,
-  MarkLineComponent, TitleComponent, TooltipComponent, VisualMapContinuousComponent,
+  AxisPointerComponent,
+  DataZoomComponent,
+  GridComponent,
+  LegendComponent,
+  MarkAreaComponent,
+  MarkLineComponent,
+  TitleComponent,
+  TooltipComponent,
+  VisualMapContinuousComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import type { ChartEngine } from "./runtime";
@@ -14,9 +21,22 @@ import type { ChartEngine } from "./runtime";
 // Only the series, components and renderer the Stats views configure. This
 // registers into the bundle's private ECharts registry; it touches no host API.
 use([
-  BarChart, GraphChart, LineChart, MapChart, PieChart, ScatterChart, TreemapChart,
-  AxisPointerComponent, DataZoomComponent, GridComponent, LegendComponent, MarkAreaComponent,
-  MarkLineComponent, TitleComponent, TooltipComponent, VisualMapContinuousComponent,
+  BarChart,
+  GraphChart,
+  LineChart,
+  MapChart,
+  PieChart,
+  ScatterChart,
+  TreemapChart,
+  AxisPointerComponent,
+  DataZoomComponent,
+  GridComponent,
+  LegendComponent,
+  MarkAreaComponent,
+  MarkLineComponent,
+  TitleComponent,
+  TooltipComponent,
+  VisualMapContinuousComponent,
   CanvasRenderer,
 ]);
 

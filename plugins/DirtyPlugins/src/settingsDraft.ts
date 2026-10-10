@@ -34,7 +34,9 @@ export interface SettingsDraft<T> {
 
 /** Injectable host hooks for module tests; persistence/revision policy is external. */
 export function createSettingsDraftHook(hooks: Pick<typeof R, "useState" | "useRef" | "useEffect" | "useCallback">) {
-  return function useSettingsDraft<T, Loaded, Serialized, Result>(options: SettingsDraftOptions<T, Loaded, Serialized, Result>): SettingsDraft<T> {
+  return function useSettingsDraft<T, Loaded, Serialized, Result>(
+    options: SettingsDraftOptions<T, Loaded, Serialized, Result>,
+  ): SettingsDraft<T> {
     const { useState, useRef, useEffect, useCallback } = hooks;
     const latest = useRef(options);
     latest.current = options;
@@ -44,28 +46,34 @@ export function createSettingsDraftHook(hooks: Pick<typeof R, "useState" | "useR
     const [error, setError] = useState("");
     const [, setSavedVersion] = useState(0);
     const [attempt, setAttempt] = useState(0);
-    const saved = useRef<string | null>(null), mounted = useRef(true), blocked = useRef(false), loading = useRef(0);
+    const saved = useRef<string | null>(null),
+      mounted = useRef(true),
+      blocked = useRef(false),
+      loading = useRef(0);
     const controller = useRef<SaveController<{ draft: T; serialized: Serialized }, Result> | null>(null);
-    if (!controller.current) controller.current = createSaveController({
-      delay: options.delay, setTimeout: options.setTimeout, clearTimeout: options.clearTimeout,
-      save: request => latest.current.save(request.serialized),
-      onSaved: (request, result, current) => {
-        // A completed older write still advances the saved baseline. It must
-        // never overwrite the draft that was edited during the request.
-        saved.current = latest.current.comparable(request.draft);
-        latest.current.onSaved?.(request.draft, result, current);
-        setError("");
-        setSavedVersion(version => version + 1);
-      },
-      onError: (failure, request, current) => {
-        blocked.current = true;
-        latest.current.onError?.(failure, request.draft, current);
-      },
-      onStatus: value => {
-        setStatus(value);
-        if (value.state === "error" || value.state === "invalid") setError(value.message);
-      },
-    });
+    if (!controller.current)
+      controller.current = createSaveController({
+        delay: options.delay,
+        setTimeout: options.setTimeout,
+        clearTimeout: options.clearTimeout,
+        save: request => latest.current.save(request.serialized),
+        onSaved: (request, result, current) => {
+          // A completed older write still advances the saved baseline. It must
+          // never overwrite the draft that was edited during the request.
+          saved.current = latest.current.comparable(request.draft);
+          latest.current.onSaved?.(request.draft, result, current);
+          setError("");
+          setSavedVersion(version => version + 1);
+        },
+        onError: (failure, request, current) => {
+          blocked.current = true;
+          latest.current.onError?.(failure, request.draft, current);
+        },
+        onStatus: value => {
+          setStatus(value);
+          if (value.state === "error" || value.state === "invalid") setError(value.message);
+        },
+      });
     const reload = useCallback(async () => {
       const request = ++loading.current;
       controller.current!.cancelPending();
@@ -81,12 +89,17 @@ export function createSettingsDraftHook(hooks: Pick<typeof R, "useState" | "useR
         setStatus({ state: "saved", message: "" });
         setError("");
       } catch (failure) {
-        if (mounted.current && request === loading.current) setError(failure instanceof Error ? failure.message : String(failure));
+        if (mounted.current && request === loading.current)
+          setError(failure instanceof Error ? failure.message : String(failure));
       }
     }, []);
     useEffect(() => {
       reload();
-      return () => { mounted.current = false; loading.current += 1; controller.current!.dispose(); };
+      return () => {
+        mounted.current = false;
+        loading.current += 1;
+        controller.current!.dispose();
+      };
     }, [reload]);
     const dirty = latest.current.comparable(draft) !== saved.current;
     const invalid = latest.current.validate(draft);
@@ -124,6 +137,8 @@ export function createSettingsDraftHook(hooks: Pick<typeof R, "useState" | "useR
   };
 }
 
-export function useSettingsDraft<T, Loaded, Serialized, Result>(options: SettingsDraftOptions<T, Loaded, Serialized, Result>): SettingsDraft<T> {
+export function useSettingsDraft<T, Loaded, Serialized, Result>(
+  options: SettingsDraftOptions<T, Loaded, Serialized, Result>,
+): SettingsDraft<T> {
   return createSettingsDraftHook(React)(options);
 }

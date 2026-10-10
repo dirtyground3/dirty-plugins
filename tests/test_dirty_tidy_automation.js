@@ -1,13 +1,13 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const {testModulePath} = require("./plugin_paths");
-const {createAutomationMonitor} = require(testModulePath("DirtyTidy", "automation.cjs"));
+const { runSource } = require("./plugin_paths");
 const noop = () => {};
 
 // Run the real monitor with a shared backend and React effect semantics.
 function browser(claims = new Map()) {
   let event, cursor, effects;
+  const cleanups = [];
   const slots = [];
   const calls = [];
   const requests = [];
@@ -38,12 +38,17 @@ function browser(claims = new Map()) {
     },
     DirtyPlugins: {
       registerSettingsPanel: noop,
-      react: { html: noop, SettingsSection: noop, SettingsToggle: noop, Field: noop, Pagination: noop,
-        Button: noop, ActionMenu: noop, Badge: noop, Dialog: noop, SaveStatus: noop },
-      values: {
-        asObject: value => value,
-        coerceBoolean: (value, fallback) => value === undefined ? fallback : value,
-        clampInteger: (value, fallback) => value === undefined ? fallback : value,
+      react: {
+        html: noop,
+        SettingsSection: noop,
+        SettingsToggle: noop,
+        Field: noop,
+        Pagination: noop,
+        Button: noop,
+        ActionMenu: noop,
+        Badge: noop,
+        Dialog: noop,
+        SaveStatus: noop,
       },
       runPluginOperation: async (pluginId, args) => {
         assert.equal(pluginId, "dirtyTidy");
@@ -62,22 +67,32 @@ function browser(claims = new Map()) {
     },
   };
   require("./shared_runtime").installJobHelpers(window);
-  const lifetime = {active: true, effects: new Set()};
-  const monitor = createAutomationMonitor(window.PluginApi, window.DirtyPlugins, lifetime);
+  const monitor = runSource("DirtyTidy", "src/automation.tsx", { window }).AutomationMonitor;
   return {
     calls,
     requests,
-    destroy() {lifetime.active = false; [...lifetime.effects].forEach(release => release());},
+    unmount() {
+      cleanups.splice(0).forEach(cleanup => cleanup());
+    },
     notifications,
-    setSettings: value => { settings = value; },
-    setFailure: value => { failQueue = value; },
-    setSkipped: value => { skipped = value; },
+    setSettings: value => {
+      settings = value;
+    },
+    setFailure: value => {
+      failQueue = value;
+    },
+    setSkipped: value => {
+      skipped = value;
+    },
     async render(next) {
       event = next;
       cursor = 0;
       effects = [];
       monitor();
-      effects.forEach(effect => effect());
+      for (const effect of effects) {
+        const cleanup = effect();
+        if (typeof cleanup === "function") cleanups.push(cleanup);
+      }
       await new Promise(resolve => setImmediate(resolve));
     },
   };
@@ -86,10 +101,19 @@ function browser(claims = new Map()) {
 // Match Stash v0.31.1 graphql/subscriptions.graphql, not the broader JobData
 // query fragment: subscription events do NOT contain addTime or endTime.
 function completed(startTime, overrides = {}) {
-  return { type: "REMOVE", job: {
-    id: "1", description: "Scanning...", status: "FINISHED",
-    subTasks: [], progress: 1, error: null, startTime, ...overrides,
-  } };
+  return {
+    type: "REMOVE",
+    job: {
+      id: "1",
+      description: "Scanning...",
+      status: "FINISHED",
+      subTasks: [],
+      progress: 1,
+      error: null,
+      startTime,
+      ...overrides,
+    },
+  };
 }
 
 async function main() {
@@ -141,8 +165,11 @@ async function main() {
   const sessionOne = browser(sharedBackend);
   const sessionTwo = browser(sharedBackend);
   await Promise.all([sessionOne.render(first), sessionTwo.render(first)]);
-  assert.equal(sessionOne.calls.length + sessionTwo.calls.length, 1,
-    "independent browser sessions must use the same backend claim");
+  assert.equal(
+    sessionOne.calls.length + sessionTwo.calls.length,
+    1,
+    "independent browser sessions must use the same backend claim",
+  );
   const internal = browser();
   internal.setSkipped(true);
   await internal.render(first);
@@ -157,9 +184,15 @@ async function main() {
   const retry = browser(retryStorage);
   await retry.render(first);
   assert.equal(retry.calls.length, 1, "queue failures release persisted claims for retry");
-  const stopped = browser(); stopped.destroy(); await stopped.render(first);
-  assert.equal(stopped.calls.length, 0, "destroyed monitors cannot queue new jobs");
+  const stopped = browser();
+  await stopped.render(undefined);
+  stopped.unmount();
+  await stopped.render(first);
+  assert.equal(stopped.calls.length, 0, "unmounted monitors cannot queue new jobs");
   console.log("DirtyTidy imported automation monitor regression tests passed");
 }
 
-main().catch(error => { console.error(error); process.exitCode = 1; });
+main().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

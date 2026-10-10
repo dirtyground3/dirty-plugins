@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from typing import Any
 
 
@@ -36,73 +37,77 @@ class StashReporter(Reporter):
         self._write("p", str(min(max(float(value), 0.0), 1.0)))
 
 
-def read_payload(stream=None, *, error_type=RuntimeError,
-                 invalid_json="Invalid plugin input: {}",
-                 invalid_object="Plugin input must be a JSON object") -> dict:
+def read_payload(stream=None) -> dict:
     raw = (stream if stream is not None else sys.stdin).read()
     if not raw.strip():
-        raise error_type("Stash did not provide plugin input")
+        raise ValueError("Stash did not provide plugin input")
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise error_type(invalid_json.format(exc)) from exc
+        raise ValueError(f"Invalid plugin input: {exc}") from exc
     if not isinstance(payload, dict):
-        raise error_type(invalid_object)
+        raise ValueError("Plugin input must be a JSON object")
     return payload
 
 
-def emit_output(output: Any, stream=None, *, nested=False, ensure_ascii=True, newline=False) -> None:
+def _emit(envelope: dict, stream=None) -> None:
     target = stream if stream is not None else sys.stdout
-    value = json.dumps(output, ensure_ascii=ensure_ascii) if nested else output
-    json.dump({"output": value}, target, ensure_ascii=ensure_ascii)
-    if newline:
-        target.write("\n")
-        target.flush()
+    json.dump(envelope, target)
+    target.write("\n")
+    target.flush()
 
 
-def emit_error(error: Any, stream=None, *, ensure_ascii=True, newline=False) -> None:
-    target = stream if stream is not None else sys.stdout
-    json.dump({"error": str(error)}, target, ensure_ascii=ensure_ascii)
-    if newline:
-        target.write("\n")
-        target.flush()
+def emit_output(output: Any, stream=None) -> None:
+    """Every backend answers with the same envelope: the result as an ASCII JSON string.
+
+    Stash would pass a direct object through Go maps, which re-sort its keys; a string
+    arrives unchanged. ASCII output cannot fail to encode on any console code page.
+    """
+    _emit({"output": json.dumps(output)}, stream)
 
 
-def configure_standard_streams(*, errors=None) -> None:
+def emit_error(error: Any, stream=None) -> None:
+    _emit({"error": str(error)}, stream)
+
+
+def configure_standard_streams() -> None:
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if callable(reconfigure):
             try:
-                options = {"encoding": "utf-8"}
-                if errors is not None:
-                    options["errors"] = errors
-                reconfigure(**options)
+                reconfigure(encoding="utf-8", errors="backslashreplace")
             except (OSError, ValueError):
                 pass
 
 
-def requested_mode(default):
-    """Read args.mode for log lines; "unknown" when the payload has no args object."""
-    def mode(payload):
-        args = payload.get("args") if isinstance(payload, dict) else None
-        return str(args.get("mode") or default) if isinstance(args, dict) else "unknown"
-    return mode
+def serve(name, run, *, default_mode=None, exit_code=None, public_error=str, quiet=False,
+          reporter=None, clock=time.monotonic) -> int:
+    """Serve one Stash request: read stdin, call run(payload, reporter), write one envelope.
 
-
-def run_logged_backend(name, run, read, emit, fail, reporter, clock, *, requested_mode=None, exit_code=None):
-    """Keep timing and protocol handling shared; callers retain dispatch and envelopes."""
+    Failures are always logged for Stash's log; public_error chooses what the browser may
+    see. quiet omits the per-request start/finish lines for operations a page polls.
+    """
+    configure_standard_streams()
+    reporter = reporter or StashReporter()
     started = clock()
-    context = ": mode=unknown" if requested_mode else ""
+    mode = "unknown"
+
+    def elapsed() -> int:
+        return int((clock() - started) * 1000)
+
     try:
-        payload = read()
-        if requested_mode:
-            context = f": mode={requested_mode(payload)}"
-        reporter.info(f"{name} backend started{context}")
+        payload = read_payload()
+        args = payload.get("args")
+        if isinstance(args, dict):
+            mode = str(args.get("mode") or default_mode or "unknown")
+        if not quiet:
+            reporter.info(f"{name} backend started: mode={mode}")
         output = run(payload, reporter)
-        reporter.info(f"{name} backend finished{context} in {int((clock() - started) * 1000)}ms")
-        emit(output)
+        if not quiet:
+            reporter.info(f"{name} backend finished: mode={mode} in {elapsed()}ms")
+        emit_output(output)
         return exit_code(output) if exit_code else 0
     except Exception as exc:
-        reporter.error(f"{name} failed{context} after {int((clock() - started) * 1000)}ms: {exc}")
-        fail(exc)
+        reporter.error(f"{name} failed: mode={mode} after {elapsed()}ms: {exc}")
+        emit_error(public_error(exc))
         return 1

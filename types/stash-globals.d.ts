@@ -1,7 +1,7 @@
-// Browser globals the hub owns. The hub API itself is typed in plugins/DirtyPlugins/src/types.ts.
+// Browser globals. Stash's PluginApi and the hub API are typed in plugins/DirtyPlugins/src/types.ts.
 interface Window {
   __dirtyPluginsDebug?: boolean;
-  __dirtyCurrentPluginId?: string;
   dirtyPluginsDumpDebugLogs?: () => unknown[];
+  PluginApi?: import("../plugins/DirtyPlugins/src/types").Host;
   DirtyPlugins?: import("../plugins/DirtyPlugins/src/types").HubApi;
 }

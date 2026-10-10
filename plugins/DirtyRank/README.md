@@ -371,13 +371,13 @@ for display.
 The strict TypeScript domains and focused TSX components under `src/` use
 Stash's React and the public DirtyPlugins API. `npm run build` creates the sole
 frontend script, `dirtyRank.js`, in ignored `.build/plugins/DirtyRank/`; the
-authored source directory is not an installable plugin. Install only registry
-files from staging, with the manifest copied last, then reload Stash plugins
+authored source directory is not an installable plugin. Install only the
+staged files, with the manifest copied last, then reload Stash plugins
 and hard-refresh the browser (Ctrl+F5). Keep the shared database and package
 provenance intact.
 
 Run `npm test` for module algorithms/media/session tests, compiled-bundle
-registration tests and Python backend/contract tests. The opt-in
+registration tests and Python backend tests. The opt-in
 `tests/test_dirty_rank_stash_integration.py --binary /path/to/stash` checks an
 isolated Stash instance with generated portraits and videos, rating/undo
 round trips, native streams and the exact served bundle. After

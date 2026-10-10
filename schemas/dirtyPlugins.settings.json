@@ -36,5 +36,17 @@
         }
       ]
     }
+  },
+  "constants": {
+    "managedPluginIds": [
+      "dirtyPlugins",
+      "extractScenes",
+      "multiscreen",
+      "dirtyTidy",
+      "dirtyRank",
+      "dirtyStats",
+      "dirtyCompactor",
+      "dirtyCaptions"
+    ]
   }
 }

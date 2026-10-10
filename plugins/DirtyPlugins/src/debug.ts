@@ -1,17 +1,26 @@
 import type { DebugEntry, Host, NativePatchArguments, NativePatchHandler } from "./types";
 // --- Plugin debug logging ------------------------------------------------
-// Every Dirty plugin records its lifecycle and the PluginApi patches it runs
-// on ordinary Stash pages. Entries are kept in window.__dirtyPluginsDebugLog
-// and optionally mirrored to the console as [DirtyPlugins][<scope>] … lines.
+// Every Dirty plugin records its lifecycle in window.__dirtyPluginsDebugLog.
 // Run dirtyPluginsDumpDebugLogs() in the console to dump the full table.
-// Console logging is off by default. Enable it with
-// window.__dirtyPluginsDebug = true or localStorage dirtyPluginsDebug = "1".
+// Debugging is off by default. Enable it with localStorage
+// dirtyPluginsDebug = "1" (or window.__dirtyPluginsDebug = true) and reload:
+// entries are then mirrored to the console as [DirtyPlugins][<scope>] … lines,
+// and the PluginApi patches and routes registered afterwards are timed.
 // Note: Stash's Troubleshooting mode disables all plugin JS, so these logs
 // only appear when plugins are enabled.
-const debugWindow = window as unknown as { __dirtyPluginsDebugLog?: DebugEntry[]; dirtyPluginsDumpDebugLogs?: () => DebugEntry[]; };
+const debugWindow = window as unknown as {
+  __dirtyPluginsDebugLog?: DebugEntry[];
+  dirtyPluginsDumpDebugLogs?: () => DebugEntry[];
+};
 const DEBUG_MAX_ENTRIES = 5000;
 const throttleState: Record<string, number> = Object.create(null);
 let startTime = 0;
+// The plugin whose registration is running; its patches and routes are attributed to it.
+let currentPlugin: string | null = null;
+
+export function setDebugPlugin(pluginId: string | null) {
+  currentPlugin = pluginId;
+}
 
 /** The log lives on window so it survives a reloaded hub bundle. */
 function logStore() {
@@ -31,7 +40,7 @@ function debugEnabled() {
     if (window.__dirtyPluginsDebug === false) return false;
     if (window.__dirtyPluginsDebug === true) return true;
     if (window.localStorage) return window.localStorage.getItem("dirtyPluginsDebug") === "1";
-  } catch (_error) { }
+  } catch (_error) {}
   return false;
 }
 
@@ -41,7 +50,9 @@ function errorText(error: unknown) {
 
 export function debugLog(scope: string, message: string, data?: unknown): DebugEntry {
   const entry = {
-    elapsedMs: debugElapsed(), scope, message,
+    elapsedMs: debugElapsed(),
+    scope,
+    message,
     path: (window.location && window.location.pathname) || "",
     data: data === undefined ? null : data,
   };
@@ -49,18 +60,20 @@ export function debugLog(scope: string, message: string, data?: unknown): DebugE
     const store = logStore();
     store.push(entry);
     if (store.length > DEBUG_MAX_ENTRIES) store.splice(0, store.length - DEBUG_MAX_ENTRIES);
-  } catch (_error) { }
+  } catch (_error) {}
   if (!debugEnabled()) return entry;
   const prefix = "[DirtyPlugins][" + scope + "] " + message + " (t+" + entry.elapsedMs + "ms)";
   try {
     if (data === undefined) console.log(prefix);
     else console.log(prefix, data);
-  } catch (_error) { }
+  } catch (_error) {}
   return entry;
 }
 
 export function debugLogThrottled(scope: string, message: string, data?: unknown, intervalMs?: number) {
-  const key = scope + "|" + message, now = debugNow(), last = throttleState[key];
+  const key = scope + "|" + message,
+    now = debugNow(),
+    last = throttleState[key];
   if (last !== undefined && now - last < (intervalMs || 500)) return null;
   throttleState[key] = now;
   return debugLog(scope, message, data);
@@ -96,48 +109,63 @@ export function dumpDebugLogs() {
   try {
     if (console.table) console.table(logStore());
     else console.log(logStore());
-  } catch (_error) { }
+  } catch (_error) {}
   return logStore();
 }
 
 function wrapPatchHandler(pluginId: string, kind: string, component: string, handler: NativePatchHandler) {
-  if (typeof handler !== "function" || handler.__dirtyDebugWrapped) return handler;
+  if (typeof handler !== "function") return handler;
   const scope = pluginId + ":patch." + kind + ":" + component;
   function wrappedHandler(this: unknown, ...args: NativePatchArguments) {
-    debugLogThrottled(scope, "enter", {
-      path: (window.location && window.location.pathname) || "",
-      argumentCount: args.length,
-      firstArgument: debugDescribe(args[0]),
-    }, 500);
-    const started = debugNow(), elapsedMs = () => Math.round(debugNow() - started);
+    debugLogThrottled(
+      scope,
+      "enter",
+      {
+        path: (window.location && window.location.pathname) || "",
+        argumentCount: args.length,
+        firstArgument: debugDescribe(args[0]),
+      },
+      500,
+    );
+    const started = debugNow(),
+      elapsedMs = () => Math.round(debugNow() - started);
     let result;
     try {
       result = handler.apply(this, args);
     } catch (error) {
-      debugLog(scope, "THREW", { elapsedMs: elapsedMs(), error: errorText(error), stack: error && (error as Error).stack });
+      debugLog(scope, "THREW", {
+        elapsedMs: elapsedMs(),
+        error: errorText(error),
+        stack: error && (error as Error).stack,
+      });
       throw error;
     }
     if (result && typeof result.then === "function") {
       debugLog(scope, "returned a promise (Stash does not await patches)", { elapsedMs: elapsedMs() });
-      return result.then((value: unknown) => {
-        debugLogThrottled(scope, "promise resolved", { elapsedMs: elapsedMs() }, 500);
-        return value;
-      }, (error: Error) => {
-        debugLog(scope, "promise REJECTED", { elapsedMs: elapsedMs(), error: errorText(error), stack: error && error.stack });
-        throw error;
-      });
+      return result.then(
+        (value: unknown) => {
+          debugLogThrottled(scope, "promise resolved", { elapsedMs: elapsedMs() }, 500);
+          return value;
+        },
+        (error: Error) => {
+          debugLog(scope, "promise REJECTED", {
+            elapsedMs: elapsedMs(),
+            error: errorText(error),
+            stack: error && error.stack,
+          });
+          throw error;
+        },
+      );
     }
     const elapsed = elapsedMs();
     debugLogThrottled(scope, "exit", { elapsedMs: elapsed, result: debugDescribe(result) }, elapsed > 100 ? 0 : 500);
     return result;
   }
-  wrappedHandler.__dirtyDebugWrapped = true;
   return wrappedHandler;
 }
 
 function instrumentPluginApi(PluginApi: Host) {
-  if (!PluginApi || PluginApi.__dirtyDebugInstrumented) return;
-  const currentPluginId = () => window.__dirtyCurrentPluginId || "unknown";
+  const currentPluginId = () => currentPlugin || "unknown";
   try {
     if (PluginApi.patch) {
       (["before", "after", "instead"] as const).forEach(kind => {
@@ -157,45 +185,51 @@ function instrumentPluginApi(PluginApi: Host) {
         return originalRoute.call(PluginApi.register, path, component);
       };
     }
-    PluginApi.__dirtyDebugInstrumented = true;
     debugLog("dirtyPlugins", "PluginApi debug instrumentation installed");
   } catch (error) {
-    debugLog("dirtyPlugins", "could not install PluginApi instrumentation", { error: errorText(error), stack: error && (error as Error).stack });
+    debugLog("dirtyPlugins", "could not install PluginApi instrumentation", {
+      error: errorText(error),
+      stack: error && (error as Error).stack,
+    });
   }
 }
 
 function onWindowError(event: ErrorEvent) {
   debugLog("window", "uncaught error", {
-    message: event.message, source: event.filename, line: event.lineno, column: event.colno,
+    message: event.message,
+    source: event.filename,
+    line: event.lineno,
+    column: event.colno,
     error: event.error && String(event.error.stack || event.error.message),
   });
 }
 function onUnhandledRejection(event: PromiseRejectionEvent) {
   const reason = event.reason;
-  debugLog("window", "unhandled promise rejection", { reason: reason && String(reason.stack || reason.message || reason) });
+  debugLog("window", "unhandled promise rejection", {
+    reason: reason && String(reason.stack || reason.message || reason),
+  });
 }
 
-/** Install the window listeners and PluginApi instrumentation; returns their release. */
+/** Keep the log dump available; window listeners and PluginApi timing only when debugging. Returns their release. */
 export function installDebug(PluginApi: Host) {
   startTime = debugNow();
-  window.addEventListener("error", onWindowError);
-  window.addEventListener("unhandledrejection", onUnhandledRejection);
   debugWindow.dirtyPluginsDumpDebugLogs = dumpDebugLogs;
-  instrumentPluginApi(PluginApi);
   debugLog("dirtyPlugins", "hub script started", {
     script: document.currentScript && (document.currentScript as HTMLScriptElement).src,
     readyState: document.readyState,
   });
-  if (debugEnabled()) {
-    try {
-      console.info(
-        "[DirtyPlugins] Debug logging is active. Lines are prefixed " +
+  if (!debugEnabled()) return () => {};
+  window.addEventListener("error", onWindowError);
+  window.addEventListener("unhandledrejection", onUnhandledRejection);
+  instrumentPluginApi(PluginApi);
+  try {
+    console.info(
+      "[DirtyPlugins] Debug logging is active. Lines are prefixed " +
         "[DirtyPlugins]. Run dirtyPluginsDumpDebugLogs() to dump the collected " +
         "log. Stash's Troubleshooting mode disables all plugins, so logs only " +
-        "appear when plugins are enabled."
-      );
-    } catch (_error) { }
-  }
+        "appear when plugins are enabled.",
+    );
+  } catch (_error) {}
   return () => {
     window.removeEventListener("error", onWindowError);
     window.removeEventListener("unhandledrejection", onUnhandledRejection);

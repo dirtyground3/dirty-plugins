@@ -58,11 +58,12 @@ builds carry no source map; `npm run build:dev` adds an inline map that travels
 with `/plugin/multiscreen/javascript`. No React or hub
 implementation is bundled into this plugin.
 
-The entry validates dependencies and claims its guard before registering routes
-or patches. Repeated loads retain that guard, including after a partial native
-registration failure. Teardown deactivates integrations, clears owned timers,
-listeners and observers, ignores late responses and unmounts the native players.
-Domain tests import compiled modules; UI tests execute the final browser bundle.
+The entry registers its route and patches once through the hub's
+`registerPlugin`. A reloaded bundle is ignored, including after a partial
+native registration failure, which is logged once. Unmounting components clear
+their timers, listeners and observers, ignore late responses and release the
+native players.
+Domain tests compile modules on demand; UI tests execute the final browser bundle.
 An opt-in isolated Stash fixture uses synthetic media only:
 
 ```powershell
@@ -71,8 +72,8 @@ python -B tests/test_dirty_multiscreen_stash_integration.py --binary /path/to/st
 ```
 
 Close the review tab and create the named stop file to remove the temporary
-fixture. See `docs/build-migration-status.md` for acceptance results and explicit
-browser/manual limits.
+fixture. The remaining browser/manual limits are listed in the repository's
+`TODO.md`.
 
 The UI consumes DirtyPlugins' shared GraphQL client, value helpers, React
 icon/state components, and visual tokens so its controls remain consistent with

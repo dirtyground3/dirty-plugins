@@ -9,42 +9,12 @@ import unicodedata
 from pathlib import Path
 from typing import Any, Iterable
 
+from dirty_tidy_metadata import CONSTANTS
+
 UNKNOWN_VALUE = "Unknown"
-VARIABLE_NAMES = {
-    "title",
-    "scene_id",
-    "stash_id",
-    "date",
-    "year",
-    "month",
-    "day",
-    "rating",
-    "grade",
-    "rating_bucket",
-    "organized",
-    "performers",
-    "first_performer",
-    "female_performers",
-    "females_performers",
-    "male_performers",
-    "first_female_performer",
-    "first_male_performer",
-    "performer_count",
-    "studio",
-    "parent_studio",
-    "tags",
-    "first_tag",
-    "group",
-    "group_position",
-    "resolution",
-    "height",
-    "video_codec",
-    "duration",
-    "duration_bucket",
-    "source",
-    "original_name",
-    "extension",
-}
+# The menu's variables (schemas/dirtyTidy.settings.json) plus the documented
+# {females_performers} alias of {female_performers}.
+VARIABLE_NAMES = {name for name, _label, _group in CONSTANTS["variables"]} | {"females_performers"}
 TOKEN_PATTERN = re.compile(r"\{([a-z][a-z0-9_]*)\}", re.IGNORECASE)
 INVALID_PATH_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 RESERVED_WINDOWS_NAMES = {

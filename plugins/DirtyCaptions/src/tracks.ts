@@ -1,26 +1,55 @@
-import { language, label, preferredTrack, sceneKey, settings } from "./domain/captions";
-import type { Hub, CaptionResult, CaptionSettings, CaptionTrack, Scene, Player, TrackElement } from "./types";
-interface TrackRecord { data: CaptionTrack | null; mode: string; url: string; element: TrackElement | null; remove?(): void; loaded?: () => void; failed?: () => void; }
-export interface TrackEnvironment { language(): string; setTimeout(handler: () => void, delay: number): number; clearTimeout(id: number): void; }
-export function createTracksService(hub: Pick<Hub, "values" | "runPluginOperation">, environment: TrackEnvironment = {
-  language: () => window.navigator.language || "en", setTimeout: (handler, delay) => window.setTimeout(handler, delay), clearTimeout: id => window.clearTimeout(id),
-}) {
+import type { HubApi } from "../../DirtyPlugins/src/types";
+import { language, label, preferredTrack, sceneKey } from "./domain/captions";
+import type { CaptionResult, CaptionSettings, CaptionTrack, Scene, Player, TrackElement } from "./types";
+interface TrackRecord {
+  data: CaptionTrack | null;
+  mode: string;
+  url: string;
+  element: TrackElement | null;
+  remove?(): void;
+  loaded?: () => void;
+  failed?: () => void;
+}
+export interface TrackEnvironment {
+  language(): string;
+  setTimeout(handler: () => void, delay: number): number;
+  clearTimeout(id: number): void;
+}
+export function createTracksService(
+  hub: Pick<HubApi, "runPluginOperation">,
+  environment: TrackEnvironment = {
+    language: () => window.navigator.language || "en",
+    setTimeout: (handler, delay) => window.setTimeout(handler, delay),
+    clearTimeout: id => window.clearTimeout(id),
+  },
+) {
   const pending = new Map<string, Promise<CaptionResult>>();
   function requestCaptions(scene: Scene): Promise<CaptionResult> {
     const key = sceneKey(scene);
     if (pending.has(key)) return pending.get(key)!;
     const file = scene.files && scene.files[0];
-    const request = hub.runPluginOperation<CaptionResult>("dirtyCaptions", {
-      mode: "captions", sceneId: String(scene.id), fileId: file && file.id ? String(file.id) : undefined
-    }).then(result => {
-      if (!result || !Array.isArray(result.tracks) || !Array.isArray(result.warnings)) {
-        throw new Error("DirtyCaptions returned an invalid response.");
-      }
-      return result;
-    });
+    const request = hub
+      .runPluginOperation<CaptionResult>("dirtyCaptions", {
+        mode: "captions",
+        sceneId: String(scene.id),
+        fileId: file && file.id ? String(file.id) : undefined,
+      })
+      .then(result => {
+        if (!result || !Array.isArray(result.tracks) || !Array.isArray(result.warnings)) {
+          throw new Error("DirtyCaptions returned an invalid response.");
+        }
+        return result;
+      });
     pending.set(key, request);
     // Share concurrent players, but release subtitle text after they receive it.
-    request.then(() => { pending.delete(key); }, () => { pending.delete(key); });
+    request.then(
+      () => {
+        pending.delete(key);
+      },
+      () => {
+        pending.delete(key);
+      },
+    );
     return request;
   }
 
@@ -31,26 +60,48 @@ export function createTracksService(hub: Pick<Hub, "values" | "runPluginOperatio
    * @param {*} player @param {CaptionResult} result @param {CaptionSettings} config
    * @param {(message:string) => void} onError @returns {() => void}
    */
-  function attachTracks(player: Player, result: CaptionResult, config: CaptionSettings, onError: (message: string) => void) {
-    let disposed = false, updating = false; let timer: number | null = null;
+  function attachTracks(
+    player: Player,
+    result: CaptionResult,
+    config: CaptionSettings,
+    onError: (message: string) => void,
+  ) {
+    let disposed = false,
+      updating = false;
+    let timer: number | null = null;
     let records: TrackRecord[] = [];
     const existing = Array.from(player.textTracks());
-    const externalShowing = existing.some(track => (track.kind === "subtitles" || track.kind === "captions") && track.mode === "showing");
-    const chosen = config.showByDefault && !externalShowing ? preferredTrack(result.tracks,
-      config.preferredLanguage || environment.language() || "en") : null;
+    const externalShowing = existing.some(
+      track => (track.kind === "subtitles" || track.kind === "captions") && track.mode === "showing",
+    );
+    const chosen =
+      config.showByDefault && !externalShowing
+        ? preferredTrack(result.tracks, config.preferredLanguage || environment.language() || "en")
+        : null;
 
-    function alive() { return !disposed && !player.isDisposed(); }
+    function alive() {
+      return !disposed && !player.isDisposed();
+    }
     function rememberModes() {
       if (!alive() || updating) return;
-      records.forEach(record => { if (record.element) record.mode = record.element.track.mode; });
+      records.forEach(record => {
+        if (record.element) record.mode = record.element.track.mode;
+      });
     }
     function add(record: TrackRecord) {
       const selector = player.sourceSelector && player.sourceSelector();
       const data = record.data!;
-      const options = { kind: "captions", src: record.url, srclang: language(data.language),
-        label: label(data, environment.language()), default: false };
-      record.element = selector && selector.addTextTrack ? selector.addTextTrack(options, true) :
-        player.addRemoteTextTrack(options, true);
+      const options = {
+        kind: "captions",
+        src: record.url,
+        srclang: language(data.language),
+        label: label(data, environment.language()),
+        default: false,
+      };
+      record.element =
+        selector && selector.addTextTrack
+          ? selector.addTextTrack(options, true)
+          : player.addRemoteTextTrack(options, true);
       record.remove = () => {
         if (!alive()) return;
         if (selector && selector.removeTextTrack) selector.removeTextTrack(record.element!);
@@ -79,11 +130,16 @@ export function createTracksService(hub: Pick<Hub, "values" | "runPluginOperatio
             add(record);
           }
         });
-      } finally { updating = false; }
+      } finally {
+        updating = false;
+      }
     }
     function schedule() {
       if (timer !== null) environment.clearTimeout(timer);
-      timer = environment.setTimeout(() => { timer = null; reconcile(); }, 0);
+      timer = environment.setTimeout(() => {
+        timer = null;
+        reconcile();
+      }, 0);
     }
     function cleanup() {
       if (disposed) return;
@@ -108,8 +164,12 @@ export function createTracksService(hub: Pick<Hub, "values" | "runPluginOperatio
     try {
       updating = true;
       result.tracks.forEach(track => {
-        const record: TrackRecord = { data: track, mode: track === chosen ? "showing" : "disabled",
-          url: "data:text/vtt;charset=utf-8," + encodeURIComponent(track.vtt), element: null };
+        const record: TrackRecord = {
+          data: track,
+          mode: track === chosen ? "showing" : "disabled",
+          url: "data:text/vtt;charset=utf-8," + encodeURIComponent(track.vtt),
+          element: null,
+        };
         records.push(record);
         add(record);
       });
@@ -117,10 +177,13 @@ export function createTracksService(hub: Pick<Hub, "values" | "runPluginOperatio
       player.textTracks().addEventListener("change", rememberModes);
       player.on("loadstart", schedule);
       player.on("loadedmetadata", schedule);
-    } catch (error) { cleanup(); throw error; }
+    } catch (error) {
+      cleanup();
+      throw error;
+    }
     return cleanup;
   }
 
-  return { requestCaptions, attachTracks, settings: (raw: Record<string, unknown>) => settings(raw, hub.values) };
+  return { requestCaptions, attachTracks };
 }
 export type TracksService = ReturnType<typeof createTracksService>;

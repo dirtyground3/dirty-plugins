@@ -1,13 +1,25 @@
 "use strict";
-const assert=require("node:assert/strict"),{testModulePath}=require("./plugin_paths");
-const feature=name=>require(testModulePath("DirtyMultiscreen",name+".cjs"));
-const {createMultiscreenHarness}=require("./multiscreen_harness");
-const h=createMultiscreenHarness(),settings=feature("settings").createSettingsDomain(h.hub),queries=feature("queries").createQueries(h.hub,settings);
-const life={active:true,effects:new Set()},storedValues=h.storage;
-global.window=h.window;
-const contexts=feature("contexts").createContexts({life});
-const a={...settings,...queries,...feature("playlists"),...feature("context"),...feature("items")};
-const plain=value=>JSON.parse(JSON.stringify(value));
+const assert = require("node:assert/strict"),
+  { requireSource } = require("./plugin_paths");
+const SOURCES = {
+  context: "src/domain/context.ts",
+  contexts: "src/contexts.ts",
+  counts: "src/counts.ts",
+  items: "src/domain/items.ts",
+  playlists: "src/domain/playlists.ts",
+  queries: "src/queries.ts",
+  settings: "src/domain/settings.ts",
+};
+const feature = name => requireSource("DirtyMultiscreen", SOURCES[name]);
+const { createMultiscreenHarness } = require("./multiscreen_harness");
+const h = createMultiscreenHarness(),
+  settings = feature("settings"),
+  queries = feature("queries").createQueries(h.hub);
+const storedValues = h.storage;
+global.window = h.window;
+const contexts = feature("contexts").createContexts();
+const a = { ...settings, ...queries, ...feature("playlists"), ...feature("context"), ...feature("items") };
+const plain = value => JSON.parse(JSON.stringify(value));
 async function main() {
   const defaults = a.normalizeSettings({});
   assert.deepEqual(plain(defaults), {
@@ -22,7 +34,11 @@ async function main() {
     markerDuration: 30,
     pauseWhenHidden: true,
   });
-  assert.equal(a.normalizeSettings({ totalScreens: 6, rows: 2, columns: 2 }).totalScreens, 4, "tiles must not exceed rows x columns");
+  assert.equal(
+    a.normalizeSettings({ totalScreens: 6, rows: 2, columns: 2 }).totalScreens,
+    4,
+    "tiles must not exceed rows x columns",
+  );
   assert.equal(a.normalizeSettings({ totalScreens: 99, rows: 3, columns: 3 }).totalScreens, 9);
   assert.equal(a.normalizeSettings({ totalScreens: 0, rows: 0, columns: 40 }).totalScreens, 1);
   assert.equal(a.normalizeSettings({ rows: 40 }).rows, 12);
@@ -33,26 +49,37 @@ async function main() {
   const items = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }, { id: "e" }];
   const reused = a.createMultiscreenPlaylists(items, 3, false, false);
   assert.equal(reused.length, 3);
-  reused.forEach((playlist) => {
-    assert.deepEqual(plain(playlist.map((item) => item.id)), ["a", "b", "c", "d", "e"]);
+  reused.forEach(playlist => {
+    assert.deepEqual(plain(playlist.map(item => item.id)), ["a", "b", "c", "d", "e"]);
   });
   assert.notEqual(reused[0], reused[1], "each screen must receive its own list copy");
-  assert.deepEqual(items.map((item) => item.id), ["a", "b", "c", "d", "e"], "the source list must stay untouched");
+  assert.deepEqual(
+    items.map(item => item.id),
+    ["a", "b", "c", "d", "e"],
+    "the source list must stay untouched",
+  );
 
   const split = a.createMultiscreenPlaylists(items, 2, false, true);
-  assert.deepEqual(plain(split.map((playlist) => playlist.map((item) => item.id))), [["a", "c", "e"], ["b", "d"]]);
+  assert.deepEqual(plain(split.map(playlist => playlist.map(item => item.id))), [
+    ["a", "c", "e"],
+    ["b", "d"],
+  ]);
   assert.equal(a.createMultiscreenPlaylists([], 3, true, true).length, 3);
-  assert.deepEqual(plain(a.splitMultiscreenItemsByIndex([1, 2, 3, 4, 5], 3).map((group) => group.length)), [2, 2, 1]);
+  assert.deepEqual(plain(a.splitMultiscreenItemsByIndex([1, 2, 3, 4, 5], 3).map(group => group.length)), [2, 2, 1]);
   assert.deepEqual(plain(a.splitMultiscreenItemsByIndex([1, 2], 0)), []);
 
-  const random = Math.random; Math.random = () => 0;
+  const random = Math.random;
+  Math.random = () => 0;
   assert.deepEqual(plain(a.shuffleMultiscreenItems(["a", "b", "c"])), ["b", "c", "a"]);
   const shuffledSplit = a.createMultiscreenPlaylists(items, 2, true, true);
   Math.random = random;
   assert.deepEqual(
-    plain(shuffledSplit.map((playlist) => playlist.map((item) => item.id))),
-    [["b", "d", "a"], ["c", "e"]],
-    "randomized splits must use the shuffled order"
+    plain(shuffledSplit.map(playlist => playlist.map(item => item.id))),
+    [
+      ["b", "d", "a"],
+      ["c", "e"],
+    ],
+    "randomized splits must use the shuffled order",
   );
 
   const settings = a.normalizeSettings({ totalScreens: 4 });
@@ -87,7 +114,7 @@ async function main() {
   assert.equal(
     a.getSceneStreamUrl({ paths: { stream: "/direct" }, sceneStreams: [{ url: "/fallback" }] }),
     "/direct",
-    "the direct stream path must win over scene streams"
+    "the direct stream path must win over scene streams",
   );
   assert.equal(a.getSceneStreamUrl(fallbackScene), "/stream/2");
   assert.equal(a.getSceneStreamUrl(noStreamScene), "");
@@ -108,16 +135,25 @@ async function main() {
     playbackRange: { start: 10, end: 40 },
     scene: streamScene,
   });
-  assert.deepEqual(plain(a.getMarkerItem(Object.assign({}, marker, { end_seconds: 5 }), 30).playbackRange), { start: 10, end: 40 });
-  assert.deepEqual(plain(a.getMarkerItem(Object.assign({}, marker, { end_seconds: 25 }), 30).playbackRange), { start: 10, end: 25 });
+  assert.deepEqual(plain(a.getMarkerItem(Object.assign({}, marker, { end_seconds: 5 }), 30).playbackRange), {
+    start: 10,
+    end: 40,
+  });
+  assert.deepEqual(plain(a.getMarkerItem(Object.assign({}, marker, { end_seconds: 25 }), 30).playbackRange), {
+    start: 10,
+    end: 25,
+  });
   assert.equal(a.getMarkerItem(Object.assign({}, marker, { title: " Named " }), 30).title, "Named");
   assert.equal(a.getMarkerItem(Object.assign({}, marker, { scene: noStreamScene }), 30), null);
 
   const nonRandom = a.normalizeSettings({ randomize: false });
-  assert.deepEqual(plain(a.getMarkerQueryVariables(defaults, { source: "marker-selection", selectedIds: ["1", "2"] })), {
-    ids: ["1", "2"],
-    filter: { page: 1, per_page: -1 },
-  });
+  assert.deepEqual(
+    plain(a.getMarkerQueryVariables(defaults, { source: "marker-selection", selectedIds: ["1", "2"] })),
+    {
+      ids: ["1", "2"],
+      filter: { page: 1, per_page: -1 },
+    },
+  );
   const markerVariables = a.getMarkerQueryVariables(nonRandom, {
     source: "marker-filter",
     filter: { sort: "created_at" },
@@ -129,7 +165,7 @@ async function main() {
   });
   assert.equal(
     a.getMarkerQueryVariables(defaults, { source: "marker-filter", filter: {}, markerFilter: {} }).filter.sort,
-    "random"
+    "random",
   );
 
   const selectionVariables = await a.getSceneQueryVariables(defaults, { source: "selection", selectedIds: ["3"] });
@@ -146,7 +182,7 @@ async function main() {
   });
   assert.equal(
     (await a.getSceneQueryVariables(defaults, { source: "filter", filter: {}, sceneFilter: {} })).filter.sort,
-    "random"
+    "random",
   );
 
   const defaultVariables = await a.getSceneQueryVariables(defaults, null);
@@ -154,7 +190,10 @@ async function main() {
     filter: { page: 1, per_page: a.getSceneLimit(defaults), sort: "random" },
   });
 
-  const performerVariables = await a.getSceneQueryVariables(nonRandom, { source: "performer-detail", performerId: "7" });
+  const performerVariables = await a.getSceneQueryVariables(nonRandom, {
+    source: "performer-detail",
+    performerId: "7",
+  });
   assert.equal(performerVariables.filter.sort, "title");
   assert.equal(performerVariables.filter.per_page, -1);
   assert.deepEqual(plain(performerVariables.scene_filter), {
@@ -181,29 +220,70 @@ async function main() {
   storedValues.set("multiscreen.launchContext", JSON.stringify({ source: "selection", selectedIds: [] }));
   assert.equal(contexts.readLaunchContext(), null, "invalid launch contexts must be ignored");
 
-
-  for(const [key,path,source]of [["scene-list","/scenes","selection"],["marker-list","/scenes/markers","marker-selection"],["performer-list","/performers","performer-selection"],["studio-list","/studios","studio-selection"]]) {
-    contexts.captureList(key,{filter:{makeFindFilter:()=>({page:2,per_page:24,sort:"title"}),makeFilter:()=>({favorite:true})},selectedIds:new Set(["off-page","5"])});
-    assert.deepEqual(plain(contexts.getLaunchContextForPath(path)),{source,selectedIds:["off-page","5"]});
-    contexts.captureList(key,{filter:{makeFindFilter:()=>({page:2,per_page:24,sort:"title"}),makeFilter:()=>({favorite:true})},selectedIds:new Set()});
-    assert.equal(contexts.getLaunchContextForPath(path).filter.page,undefined);
+  for (const [key, path, source] of [
+    ["scene-list", "/scenes", "selection"],
+    ["marker-list", "/scenes/markers", "marker-selection"],
+    ["performer-list", "/performers", "performer-selection"],
+    ["studio-list", "/studios", "studio-selection"],
+  ]) {
+    contexts.captureList(key, {
+      filter: {
+        makeFindFilter: () => ({ page: 2, per_page: 24, sort: "title" }),
+        makeFilter: () => ({ favorite: true }),
+      },
+      selectedIds: new Set(["off-page", "5"]),
+    });
+    assert.deepEqual(plain(contexts.getLaunchContextForPath(path)), { source, selectedIds: ["off-page", "5"] });
+    contexts.captureList(key, {
+      filter: {
+        makeFindFilter: () => ({ page: 2, per_page: 24, sort: "title" }),
+        makeFilter: () => ({ favorite: true }),
+      },
+      selectedIds: new Set(),
+    });
+    assert.equal(contexts.getLaunchContextForPath(path).filter.page, undefined);
   }
-  assert.equal(contexts.getLaunchContextForPath("/performers/123"),null);
-  contexts.captureDetail("performer-detail","123");assert.deepEqual(plain(contexts.getLaunchContextForPath("/performers/123")),{source:"performer-detail",performerId:"123"});
-  assert.equal(contexts.getLaunchContextForPath("/performers/456"),null);
-  contexts.captureDetail("studio-detail","456");assert.deepEqual(plain(contexts.getLaunchContextForPath("/studios/456")),{source:"studio-detail",studioId:"456"});
-  const ordered=a.orderSelected([{id:"b"},{id:"a"},{id:"c"}],["c","missing","a"]);assert.deepEqual(ordered.map(item=>item.id),["c","a"]);
-  const emptyQueries=feature("queries").createQueries({...h.hub,graphql:async()=>({findPerformers:{performers:[]},findStudios:{studios:[]}})},settings);
-  for(const source of ["performer-filter","studio-filter"]) {
-    const context={source,filter:{},[source==="performer-filter" ? "performerFilter" : "studioFilter"]:{}};
-    assert.equal(await emptyQueries.getSceneQueryVariables(defaults,context),null);
-    assert.equal(await emptyQueries.getLiveSceneCount(context),0);
+  assert.equal(contexts.getLaunchContextForPath("/performers/123"), null);
+  contexts.captureDetail("performer-detail", "123");
+  assert.deepEqual(plain(contexts.getLaunchContextForPath("/performers/123")), {
+    source: "performer-detail",
+    performerId: "123",
+  });
+  assert.equal(contexts.getLaunchContextForPath("/performers/456"), null);
+  contexts.captureDetail("studio-detail", "456");
+  assert.deepEqual(plain(contexts.getLaunchContextForPath("/studios/456")), {
+    source: "studio-detail",
+    studioId: "456",
+  });
+  const ordered = a.orderSelected([{ id: "b" }, { id: "a" }, { id: "c" }], ["c", "missing", "a"]);
+  assert.deepEqual(
+    ordered.map(item => item.id),
+    ["c", "a"],
+  );
+  const emptyQueries = feature("queries").createQueries({
+    graphql: async () => ({ findPerformers: { performers: [] }, findStudios: { studios: [] } }),
+  });
+  for (const source of ["performer-filter", "studio-filter"]) {
+    const context = { source, filter: {}, [source === "performer-filter" ? "performerFilter" : "studioFilter"]: {} };
+    assert.equal(await emptyQueries.getSceneQueryVariables(defaults, context), null);
+    assert.equal(await emptyQueries.getLiveSceneCount(context), 0);
   }
-  assert.equal(await queries.getLiveSceneCount({source:"selection",selectedIds:["x","y"]}),2);
-  let now=0;const cache=feature("counts").createCounts(()=>now);cache.cacheSceneCount("empty",0);assert.equal(cache.getCachedSceneCount("empty"),0);now=30001;assert.equal(cache.getCachedSceneCount("empty"),null);
-  for(let i=0;i<101;i++)cache.cacheSceneCount(String(i),i);assert.equal(cache.getCachedSceneCount("0"),null);assert.equal(cache.getCachedSceneCount("100"),100);cache.clear();assert.equal(cache.getCachedSceneCount("100"),null);
-  for(const release of life.effects)release();assert.equal(h.timers.size,0);
+  assert.equal(await queries.getLiveSceneCount({ source: "selection", selectedIds: ["x", "y"] }), 2);
+  let now = 0;
+  const cache = feature("counts").createCounts(() => now);
+  cache.cacheSceneCount("empty", 0);
+  assert.equal(cache.getCachedSceneCount("empty"), 0);
+  now = 30001;
+  assert.equal(cache.getCachedSceneCount("empty"), null);
+  for (let i = 0; i < 101; i++) cache.cacheSceneCount(String(i), i);
+  assert.equal(cache.getCachedSceneCount("0"), null);
+  assert.equal(cache.getCachedSceneCount("100"), 100);
+  cache.clear();
+  assert.equal(cache.getCachedSceneCount("100"), null);
   delete global.window;
   console.log("DirtyMultiscreen settings, playlists, items, queries, contexts and cache modules passed");
 }
-main().catch(error=>{console.error(error);process.exitCode=1;});
+main().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

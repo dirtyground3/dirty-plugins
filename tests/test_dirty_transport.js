@@ -1,59 +1,95 @@
 "use strict";
-const { testModulePath } = require("./plugin_paths");
+const { compileSource } = require("./plugin_paths");
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const { events } = require("./ui_harness");
-const window = events(), requests = [];
-let response = {ok: true, json: async () => ({data: {ok: true}})};
+const window = events(),
+  requests = [];
+let response = { ok: true, json: async () => ({ data: { ok: true } }) };
 const moduleExports = { exports: {} };
-const context = vm.createContext({window, module: moduleExports, exports: moduleExports.exports, CustomEvent: class {
-  constructor(type, options) { this.type = type; this.detail = options?.detail; }
-}, fetch: async (url, options) => {
-  requests.push({url, ...options});
-  if (options.signal) return new Promise((_resolve, reject) => {
-    options.signal.addEventListener("abort", () => reject(Object.assign(new Error("Cancelled"), {name: "AbortError"})));
-  });
-  return response;
-}});
-vm.runInContext(fs.readFileSync(testModulePath("DirtyPlugins", "transport.cjs"), "utf8"), context);
+const context = vm.createContext({
+  window,
+  module: moduleExports,
+  exports: moduleExports.exports,
+  CustomEvent: class {
+    constructor(type, options) {
+      this.type = type;
+      this.detail = options?.detail;
+    }
+  },
+  fetch: async (url, options) => {
+    requests.push({ url, ...options });
+    if (options.signal)
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener("abort", () =>
+          reject(Object.assign(new Error("Cancelled"), { name: "AbortError" })),
+        );
+      });
+    return response;
+  },
+});
+vm.runInContext(compileSource("DirtyPlugins", "src/transport.ts"), context);
 const transport = moduleExports.exports;
 const settingsExports = { exports: {} };
-vm.runInContext(fs.readFileSync(testModulePath("DirtyPlugins", "settings.cjs"), "utf8"), vm.createContext({ ...context, module: settingsExports, exports: settingsExports.exports }));
+vm.runInContext(
+  compileSource("DirtyPlugins", "src/settings.ts"),
+  vm.createContext({ ...context, module: settingsExports, exports: settingsExports.exports }),
+);
 
 (async () => {
   const controller = new AbortController();
-  const aborted = transport.graphql("query { ok }", {}, {signal: controller.signal});
+  const aborted = transport.graphql("query { ok }", {}, { signal: controller.signal });
   controller.abort();
-  await assert.rejects(aborted, {name: "AbortError"}, "the shared transport forwards cancellation");
-  assert.equal((await transport.graphql("query { ok }", {title: "é"})).ok, true);
+  await assert.rejects(aborted, { name: "AbortError" }, "the shared transport forwards cancellation");
+  assert.equal((await transport.graphql("query { ok }", { title: "é" })).ok, true);
   const request = requests.at(-1);
   assert.equal(request.url, "/graphql");
   assert.equal(request.credentials, "same-origin");
-  assert.deepEqual(JSON.parse(request.body).variables, {title: "é"});
-  response = {ok: false, status: 503};
+  assert.deepEqual(JSON.parse(request.body).variables, { title: "é" });
+  response = { ok: false, status: 503 };
   await assert.rejects(transport.graphql("query { ok }"), /HTTP 503/);
-  response = {ok: true, json: async () => ({errors: [{message: "first"}, {message: "second"}]})};
+  response = { ok: true, json: async () => ({ errors: [{ message: "first" }, { message: "second" }] }) };
   await assert.rejects(transport.graphql("query { ok }"), /first; second/);
-  response = {ok: true, json: async () => ({})};
+  response = { ok: true, json: async () => ({}) };
   await assert.rejects(transport.graphql("query { ok }"), /did not include data/);
 
-  const backend = result => ({ok: true, json: async () => ({data: {runPluginOperation: JSON.stringify(result)}})});
-  response = backend({revision: 3, settings: {enabled: true}});
+  const backend = result => ({
+    ok: true,
+    json: async () => ({ data: { runPluginOperation: JSON.stringify(result) } }),
+  });
+  response = backend({ revision: 3, settings: { enabled: true } });
   assert.equal((await transport.getPluginSettings("example")).enabled, true);
-  response = backend({revision: 4, settings: {enabled: false}});
-  await transport.configurePlugin("example", {enabled: false});
-  assert.equal(JSON.parse(requests.at(-1).body).variables.args.expectedRevision, 3, "saving uses the revision read from storage");
-  await transport.configurePlugin("example", {enabled: true}, 2);
-  assert.equal(JSON.parse(requests.at(-1).body).variables.args.expectedRevision, 2, "an explicitly merged revision wins over the cache");
-  await transport.configurePlugin("example", {enabled: true});
-  assert.equal(JSON.parse(requests.at(-1).body).variables.args.expectedRevision, 4, "successful writes advance the cache");
+  response = backend({ revision: 4, settings: { enabled: false } });
+  await transport.configurePlugin("example", { enabled: false });
+  assert.equal(
+    JSON.parse(requests.at(-1).body).variables.args.expectedRevision,
+    3,
+    "saving uses the revision read from storage",
+  );
+  await transport.configurePlugin("example", { enabled: true }, 2);
+  assert.equal(
+    JSON.parse(requests.at(-1).body).variables.args.expectedRevision,
+    2,
+    "an explicitly merged revision wins over the cache",
+  );
+  await transport.configurePlugin("example", { enabled: true });
+  assert.equal(
+    JSON.parse(requests.at(-1).body).variables.args.expectedRevision,
+    4,
+    "successful writes advance the cache",
+  );
 
   let configuration;
-  window.addEventListener("dirty-plugins:configuration-changed", event => { configuration = event.detail; });
-  settingsExports.exports.notifyConfigurationChanged("example", {preserveSettingsPage: true});
+  window.addEventListener("dirty-plugins:configuration-changed", event => {
+    configuration = event.detail;
+  });
+  settingsExports.exports.notifyConfigurationChanged("example", { preserveSettingsPage: true });
   assert.equal(configuration.pluginId, "example");
   assert.equal(configuration.preserveSettingsPage, true);
   console.log("GraphQL cancellation, response errors, settings revisions and events passed");
-})().catch(error => { console.error(error); process.exitCode = 1; });
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

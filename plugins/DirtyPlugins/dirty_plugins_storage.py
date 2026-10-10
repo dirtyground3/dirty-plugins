@@ -291,94 +291,21 @@ def set_plugin_settings_on_connection(
     return {"pluginId": plugin_id, "revision": revision, "settings": values}
 
 
-# Compactor owns no second database. JSON snapshots are immutable at the run
-# boundary; revision checks protect decisions made by multiple browser tabs.
-def compactor_schema(connection):
-    connection.execute("""CREATE TABLE IF NOT EXISTS dirty_compactor_records (
-        kind TEXT NOT NULL, id TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0,
-        value_json TEXT NOT NULL, updated_at TEXT NOT NULL,
-        PRIMARY KEY(kind, id))""")
-
-
-def compactor_get(kind, record_id, path=None):
-    with transaction(path) as connection:
-        compactor_schema(connection)
-        row = connection.execute(
-            "SELECT value_json, revision FROM dirty_compactor_records WHERE kind=? AND id=?",
-            (kind, record_id)).fetchone()
-        if row is None:
-            return None
-        value = json.loads(row[0])
-        value["_revision"] = row[1]
-        return value
-
-
-def compactor_list(kind, limit=50, path=None):
-    with transaction(path) as connection:
-        compactor_schema(connection)
-        return [dict(json.loads(row[0]), _revision=row[1]) for row in connection.execute(
-            "SELECT value_json, revision FROM dirty_compactor_records WHERE kind=? ORDER BY updated_at DESC LIMIT ?",
-            (kind, max(1, min(int(limit), 1000))))]
-
-
-def compactor_put(kind, record_id, value, expected=None, path=None):
-    with transaction(path) as connection:
-        compactor_schema(connection)
-        row = connection.execute(
-            "SELECT revision FROM dirty_compactor_records WHERE kind=? AND id=?",
-            (kind, record_id)).fetchone()
-        revision = row[0] if row else -1
-        if expected is not None and revision != expected:
-            raise RuntimeError("This operation changed in another session. Refresh and retry.")
-        clean = {key: val for key, val in value.items() if key != "_revision"}
-        connection.execute("""INSERT INTO dirty_compactor_records VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(kind,id) DO UPDATE SET revision=excluded.revision,
-            value_json=excluded.value_json, updated_at=excluded.updated_at""",
-            (kind, record_id, revision + 1, json.dumps(clean, ensure_ascii=True), _timestamp()))
-        return dict(clean, _revision=revision + 1)
-
-
-def compactor_claim_run(run, trigger=None, path=None):
-    """Atomically claim one active run and deduplicate scan events across tabs."""
-    with transaction(path) as connection:
-        compactor_schema(connection)
-        def read(kind, key):
-            row = connection.execute("SELECT value_json FROM dirty_compactor_records WHERE kind=? AND id=?", (kind, key)).fetchone()
-            return json.loads(row[0]) if row else None
-        def write(kind, key, value):
-            connection.execute("""INSERT INTO dirty_compactor_records VALUES (?,?,0,?,?)
-                ON CONFLICT(kind,id) DO UPDATE SET value_json=excluded.value_json,
-                revision=dirty_compactor_records.revision+1, updated_at=excluded.updated_at""",
-                (kind, key, json.dumps(value), _timestamp()))
-        if trigger and read("trigger", trigger):
-            return {"duplicate": True}
-        active = read("control", "active")
-        if active:
-            existing = read("run", active["id"])
-            if existing and existing["status"] not in ("completed", "cancelled", "failed"):
-                if trigger:
-                    write("control", "pending", {"trigger": trigger})
-                    write("trigger", trigger, {"id": existing["id"]})
-                    return {"id": existing["id"], "coalesced": True}
-                raise RuntimeError("Resolve or cancel the active DirtyCompactor run first.")
-        write("run", run["id"], run)
-        write("control", "active", {"id": run["id"]})
-        if trigger:
-            write("trigger", trigger, {"id": run["id"]})
-        return {"id": run["id"]}
+INTERNAL_SCANS_NAMESPACE = "dirtyPlugins.internalScans"
 
 
 def internal_scan_register(job_id, path=None):
-    compactor_put("internalScan", str(job_id), {"id": str(job_id), "registered": datetime.now(timezone.utc).timestamp()}, path=path)
+    """Mark a Stash scan a Dirty plugin started itself, so scan automation ignores it."""
+    set_metadata(INTERNAL_SCANS_NAMESPACE, str(job_id), str(datetime.now(timezone.utc).timestamp()), path)
 
 
 def internal_scan_check(job_id, start_time=None, path=None):
-    record = compactor_get("internalScan", str(job_id), path)
-    if not record or not start_time:
+    registered = get_metadata(INTERNAL_SCANS_NAMESPACE, str(job_id), path)
+    if registered is None or not start_time:
         return False
     try:
         stamp = datetime.fromisoformat(str(start_time).replace("Z", "+00:00")).timestamp()
         # Job IDs reset on Stash restart; a later job must not inherit ownership.
-        return -2 <= stamp - record["registered"] < 86400
+        return -2 <= stamp - float(registered) < 86400
     except (ValueError, TypeError):
         return False

@@ -7,17 +7,18 @@ npm ci
 npm test
 ```
 
-`npm test` builds installable output once, runs the strict TypeScript check,
-then every JavaScript suite and Python unittest discovery.
-Python 3.9+ and Node.js must be available
-on PATH. Set the `PYTHON` environment variable to a different Python executable
-for the combined runner if needed. TypeScript is development tooling only;
-Stash users install generated packages without Node or runtime npm dependencies.
+`npm test` builds installable output once, runs the strict TypeScript check and
+the formatting check, then every JavaScript suite and Python unittest discovery.
+Python 3.9+ (as `python`) and Node.js must be available on PATH. The steps are
+chained, so the first failing step ends the run; use the focused commands below
+to run a later step on its own. TypeScript is development tooling only; Stash
+users install generated packages without Node or runtime npm dependencies.
 
 For a focused check:
 
 ```powershell
 npm run typecheck
+npm run format:check # npm run format rewrites the files
 npm run test:js
 npm run test:python
 npm run build # release staging; required before direct Node/Python test-file invocations
@@ -25,17 +26,20 @@ node tests/test_dirty_rank_media.js
 python -B -m unittest discover -s tests -p test_dirty_tidy.py -v
 ```
 
-The JavaScript runner discovers `tests/test_*.js` in alphabetical order and runs
-each in its own Node process with its output intact. Any failure or process
-launch error makes the runner fail; later suites still execute. Helper files
-must use a different filename prefix. The combined runner continues to Python
-after JavaScript failures and returns a failing exit code if either stage fails.
+JavaScript suites run through Node's own test runner:
+`node --test --test-concurrency=1 "tests/test_*.js"`. It runs each file in its
+own Node process, one after another, with a summary at the end; a failing or
+crashing file makes the run fail and later files still execute. Suites are
+plain scripts built on `node:assert`, so `node tests/<suite>.js` runs one
+directly. Helper files must use a different filename prefix.
 
-Plain Python discovery also invokes the Rank algorithm and media JavaScript
-suites when Node is available. The combined runner sets
-`DIRTY_PLUGINS_SKIP_JS_TESTS=1` only for its Python child because those two suites
-have already run. Their two unittest entries appear as intentionally skipped;
-all other Python checks execute normally.
+Python discovery runs only Python tests; it no longer starts JavaScript suites.
+`npm run test:packages` honors the `PYTHON` environment variable for its
+package-content check.
+
+Rebuild after changing plugin source, schemas or scripts: tests read
+`.build/plugins/`, and a missing build fails with a request to run
+`npm run build`. Staging is not fingerprinted, so a stale build is not detected.
 
 # Test helpers
 
@@ -43,14 +47,29 @@ all other Python checks execute normally.
   plugin's aggregated staged assets.
 - `plugin_paths.js` and `plugin_paths.py` distinguish `runtimePath`/`runtime_path`
   under `.build/plugins/` from `sourcePath`/`source_path` under authored `plugins/`.
-  Missing/stale staging produces an error asking for `npm run build`. Runtime
-  and Python-backend tests use staging; architecture checks retain source access.
-- `testModulePath` loads explicitly selected CommonJS domain/controller modules
-  compiled to `.build/test-modules/` through the registry's `testModules` entries.
-- `shared_runtime.js` installs actual shared save, job and metadata helpers into
-  a minimal plugin host.
+  Missing staging produces an error asking for `npm run build`. Runtime
+  and Python-backend tests use staging.
+- `plugin_paths.js` also compiles TypeScript modules on demand with the build's
+  own esbuild options, so no test modules are staged or listed in the registry:
+  `compileSource(plugin, entry, { contents, external })` returns CommonJS code,
+  `requireSource` evaluates a module once in the test's realm, and
+  `runSource(plugin, entry, globals, { contents, external, modules })` evaluates
+  it in a fresh context with the globals a test supplies (such as `window`).
+  `external` leaves imports unbundled and `modules` answers their `require()`
+  calls; that is how a suite replaces one module (a fake chart engine, a fake
+  hub runtime) while the rest stays real.
+- `shared_runtime.js` installs actual shared registration, save, job and value
+  helpers into a minimal plugin host (`installRegistration`,
+  `installSaveController`, `installJobHelpers`, `loadFeature`).
 - `ui_harness.js` provides plain element trees, tree search/text and event
-  dispatch. Suites own React hook state, component expansion and scenario data.
+  dispatch, plus `createHooks` and `createRenderer`: one render loop with hook
+  state keyed by tree position, effects after each render and cleanups for
+  components that leave the tree. `test_ui_harness.js` checks the harness
+  itself. Suites own their scenario data.
+- `rank_modules.js` exposes Rank's domain modules as one namespace
+  (`requireRankDomain`, `runRankDomain`); `stats_modules.js` loads every Stats
+  module as one bundle (`core`, `dashboard`, `load`) with ECharts left
+  external, so suites supply a fake chart engine.
 - `test_settings_generation.js` checks that `schemas/` generation is deterministic,
   matches the staged TS modules, manifests and Python constants, rejects invalid
   schemas, and that descriptions stating a default agree with it.
@@ -58,21 +77,23 @@ all other Python checks execute normally.
   values and int/float types against each schema.
 - `fixtures/domain-parity.json` contains shared fixed expectations for browser
   and Python settings/rules; `domain_fixtures.js` supplies the browser host.
-- Compactor's `test_dirty_compactor.js` imports staged rules and automation
-  CommonJS modules. `test_dirty_compactor_ui.js` executes its single compiled
+- Compactor's `test_dirty_compactor.js` compiles the rules and automation
+  modules on demand. `test_dirty_compactor_ui.js` executes its single compiled
   bundle through `compactor_harness.js`, with Stash-owned element/hooks and the
   real staged hub save/job helpers. It covers registration, draft/save ordering,
-  native filter payloads, preview/run/review actions and cleanup.
+  native filter payloads and preview/run/review actions.
 - The opt-in isolated Stash integration also compares the aggregated served
   bundle with staging. It uses synthetic FFmpeg media and a temporary database,
   never port 9999:
   `python -B tests/test_dirty_compactor_stash_integration.py --binary /path/to/stash`.
   Add `--serve` for browser review; Ctrl+C cleans up the isolated fixture.
 - Every opt-in Stash fixture shares `verify_served_bundle`. By default it checks
-  release staging: exact served bytes, no source map, and only plugin-owned
-  inputs in esbuild's recorded dependency graph. After `npm run build:dev`, pass
-  `--development` to require the inline map and decode served component lines
-  back to their embedded TSX. Each mode refuses staging built in the other.
+  release staging: exact served bytes and no source map. After
+  `npm run build:dev`, pass `--development` to require the inline map and decode
+  served component lines back to their embedded TSX; the map may name only the
+  plugin's own sources and the shared `plugins/DirtyPlugins/src/shared/`
+  modules. The mode is read from the staged bundle, and each mode refuses
+  staging built in the other.
 - `library_copy_fixture.py` (not a `test_` module, never run by `npm test`)
   starts a second Stash on copies of the local Stash and DirtyPlugins
   databases, for quicker realistic checks while porting. It copies through
@@ -90,17 +111,20 @@ all other Python checks execute normally.
   dirty reports, before-unload protection and rejected tab navigation.
 - `test_dirty_plugins_stash_integration.py` extends the controlled Stash fixture
   to all eight plugins and verifies the exact hub bundle (and its TSX maps with `--development`).
+- `test_dirty_plugins_protocol.py` covers the shared backend protocol: `serve`
+  logging and timing, the single ASCII envelope, the exit policy, public error
+  messages, quiet backends and UTF-8 standard streams including stdin.
 - Extractor's `test_dirty_file_extractor.js` imports typed selection and queue
   modules; `test_dirty_file_extractor_ui.js` renders its
   compiled TSX through `extractor_harness.js` and exercises the real picker DOM,
-  registration, async races, capture masking and cleanup. Its opt-in fixture is
+  registration, async races and capture masking. Its opt-in fixture is
   `python -B tests/test_dirty_file_extractor_stash_integration.py --binary
   /path/to/stash`: synthetic scene/image/marker copies, dry runs, collisions,
   progress/cancellation, unchanged originals and the exact served bundle.
   Add `--serve --stop-file <path>` for browser review and graceful cleanup.
 
 - Tidy's settings/preview helpers, manual workflow and automation monitor are
-  imported from selected CommonJS test modules. `test_dirty_tidy_ui.js` renders
+  compiled on demand from source. `test_dirty_tidy_ui.js` renders
   the sole compiled bundle through `tidy_harness.js` to check explicit saves,
   confirmation, approval, capture masking, dirty reports and registration.
   `python -B tests/test_dirty_tidy_stash_integration.py --binary /path/to/stash`
@@ -109,69 +133,77 @@ all other Python checks execute normally.
   byte/entity preservation and the exact served bundle. Add
   `--serve --stop-file <path>` for browser review and graceful cleanup.
 
-- Captions language/track/native filter and Scan behavior use five selected
-  CommonJS modules. `test_dirty_captions_ui.js` exercises the sole browser
+- Captions language/track/native filter and Scan behavior are compiled on
+  demand from source. `test_dirty_captions_ui.js` exercises the sole browser
   bundle through `captions_harness.js`; `captions_native_filter.js` models the
-  native enum/custom-field URL/bookmark contract. Checks cover owned cleanup,
-  guard failures, retry/late responses, status-poll races and action locking.
+  native enum/custom-field URL/bookmark contract. Checks cover owned track
+  cleanup, guard failures, retry/late responses, status-poll races and action
+  locking.
   `python -B tests/test_dirty_captions_stash_integration.py --binary /path/to/stash`
   checks synthetic multilingual WebVTT, no subtitle sidecars, partial fields,
   unchanged-file skipping, forced errors/recovery, Scan identity deduplication,
   media/entity preservation and the exact served bundle. Add
   `--serve --stop-file <path>` for player/filter/settings browser review.
 
-- Multiscreen's settings/playlists/items/context/query/cache domains use seven
-  selected CommonJS modules in `test_dirty_multiscreen.js`.
+- Multiscreen's settings/playlists/items/context/query/cache domains are
+  compiled on demand in `test_dirty_multiscreen.js`.
   `test_dirty_multiscreen_ui.js` executes its sole browser bundle through
-  `multiscreen_harness.js`: context order/counts, guard/partial registration,
-  pane limits, markers, audio, hidden-tab pause/resume, counters, async races
-  and player/listener/observer cleanup. The opt-in fixture is
+  `multiscreen_harness.js`: context order/counts, pane limits, markers, audio,
+  hidden-tab pause/resume, counters, async races and player/listener/observer
+  cleanup of unmounted components. The opt-in fixture is
   `python -B tests/test_dirty_multiscreen_stash_integration.py --binary /path/to/stash`:
   synthetic scene/marker/performer/studio contexts, native order/counts,
   HTTP seeking, byte/entity preservation and the exact served bundle.
   Add `--serve --stop-file <path>` for browser acceptance and graceful cleanup.
 
-- Rank's seven selected CJS modules test domains and UI/session behavior.
-  Registration tests execute the sole compiled IIFE,
-  including missing dependencies, duplicate/partial registration and cleanup.
+- Rank's domain, media and session suites compile the modules they need on
+  demand (`rank_modules.js`). Registration tests execute the sole compiled
+  IIFE, including a failing registration step (logged once, never retried) and
+  a reloaded bundle.
   `python -B tests/test_dirty_rank_stash_integration.py --binary /path/to/stash`
   verifies synthetic portraits/media/markers, rating/undo, HTTP seeking and
   the exact served bundle. Add `--serve --stop-file <path>` for browser review.
 
-- Stats' twelve selected CJS modules test registry, data/chart lifetimes,
-  settings, analytics, native filters and dashboard components.
+- Stats' suites load its modules through `stats_modules.js` to test the
+  registry, data/chart lifetimes, settings, analytics, native filters and
+  dashboard components.
   Registration tests run the sole compiled IIFE with its modular ECharts and
   map inputs (every configured series type must be registered in
-  `src/echarts.ts`), a map-free release bundle, partial-registration guards and
-  cleanup. Run
+  `src/echarts.ts`), a map-free release bundle and a reloaded bundle. Run
   `python -B tests/test_dirty_stats_stash_integration.py --binary /path/to/stash`
   for synthetic portraits/videos, native ratings/dates/tags/studios/view counters,
   exact served bundle and unchanged media/native metadata.
   Add `--serve --stop-file <path>` for browser acceptance and graceful cleanup.
 
-Keep architectural source/manifest checks for dependency order, shared GraphQL
-access and runtime exports. Exercise queues, undo, cancellation, navigation and
-cleanup through real controllers or components with explicit scenario assertions.
-The transport suite instantiates its factory directly rather than slicing a
-function out of source text. The Rank session suite exercises serialized votes,
-optimistic undo, failed saves, keyboard handling and cleanup directly through the
-extracted hook. The media suite still checks rendered behavior. Its Python
-contract retains UI metadata checks without depending on internal setter or
-queue variable names.
+Tests assert behavior, not source text. The architecture rules that used to be
+text-matching tests are now enforced where they apply: the build rejects plugin
+source that calls `fetch("/graphql")` or parses the capture parameters itself,
+bundles that import React, another plugin or an undeclared package, and
+manifests without the hub dependency; `npm run typecheck` enforces the hub's
+typed API. `test_capture_styles.py` keeps the one stylesheet check that
+protects privacy: capture mode must hide media and private paths.
+Exercise queues, undo, cancellation and navigation through real controllers or
+components with explicit scenario assertions. The transport suite instantiates
+its factory directly. The Rank session suite exercises serialized votes,
+optimistic undo, failed saves and keyboard handling directly through the
+extracted hook. The media suite checks rendered behavior.
 
-The build-pipeline suite compares every copied install file byte-for-byte with
-source. Its disposable checkout checks unsafe cleanup, missing assets, extra
-manifest scripts, missing bundles, stale inputs,
+The build-pipeline suite checks that every plugin stages exactly its derived
+install files and compares every copied one byte-for-byte with source. Its
+disposable checkout checks that a failed build leaves the previous staging
+intact, unsafe package cleanup, missing assets, extra manifest scripts, a
+missing hub dependency, settings left in a manifest that has a schema,
 runtime-artifact exclusion, shared-input package identities, TSX host React,
-duplicate bundle evaluation, and selected test-module compilation. Build and
-package commands share staging, so run them sequentially. Watch rebuilds files
-only; it does not copy into Stash or refresh the browser. Stop watch for checks.
+minified release and readable development output, and the bundle boundary and
+source rules. Build and package commands share staging, so run them
+sequentially. Watch rebuilds files only; it does not copy into Stash or refresh
+the browser. Stop watch for checks.
 
 `test_bundle_size.js` guards release output: every compiled bundle stays within
-its recorded budget in `fixtures/bundle-sizes.json` (never above the plugin's
-pre-migration JavaScript), carries no source map, and bundles only its own
-inputs; chart code may appear only in Stats. Raise a budget only with a reason
-recorded in `docs/build-migration-status.md`.
+its recorded budget in `fixtures/bundle-sizes.json` and carries no source map.
+The build's boundary rules keep foreign inputs, including chart code outside
+Stats, out of every bundle. Raise a budget only with a reason recorded in the
+fixture's note.
 
 After `./build_site.sh _site/main`, run `npm run test:packages` to verify all
 eight ZIPs, their root manifests, staged bytes, dependencies, source/build

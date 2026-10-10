@@ -5,7 +5,12 @@ const componentLoads: Record<string, Promise<NativeComponent>> = {};
 const bundleLoads: Record<string, Promise<unknown>> = {};
 
 function loadable(name: string) {
-  return Boolean(PluginApi.utils && typeof PluginApi.utils.loadComponents === "function" && PluginApi.loadableComponents && PluginApi.loadableComponents[name]);
+  return Boolean(
+    PluginApi.utils &&
+      typeof PluginApi.utils.loadComponents === "function" &&
+      PluginApi.loadableComponents &&
+      PluginApi.loadableComponents[name],
+  );
 }
 /** Load one lazy bundle once; a failed load may be retried. */
 function loadBundle<T>(loads: Record<string, Promise<T>>, name: string, then: () => T | Promise<T>) {
@@ -13,7 +18,10 @@ function loadBundle<T>(loads: Record<string, Promise<T>>, name: string, then: ()
     loads[name] = Promise.resolve()
       .then(() => PluginApi.utils!.loadComponents([PluginApi.loadableComponents![name]]))
       .then(then)
-      .catch(error => { delete loads[name]; throw error; });
+      .catch(error => {
+        delete loads[name];
+        throw error;
+      });
   }
   return loads[name];
 }

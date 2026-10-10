@@ -17,8 +17,9 @@ function role(block, name, fallback) {
   return match ? match[1] : fallback;
 }
 function luminance(hex) {
-  const channels = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16) / 255)
-    .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+  const channels = [1, 3, 5]
+    .map(index => parseInt(hex.slice(index, index + 2), 16) / 255)
+    .map(value => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4));
   return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
 }
 function contrast(first, second) {
@@ -30,7 +31,12 @@ for (const theme of ["classic", "candy", "tropical", "arcade", "paper", "destijl
   const value = name => role(block, name, role(shared, name));
   const accentText = role(block, "accent-text", value("accent"));
   for (const surface of ["bg", "panel", "panel-alt"]) {
-    for (const [name, color] of [["text", value("text")], ["muted", value("muted")], ["primary", value("primary")], ["accent text", accentText]]) {
+    for (const [name, color] of [
+      ["text", value("text")],
+      ["muted", value("muted")],
+      ["primary", value("primary")],
+      ["accent text", accentText],
+    ]) {
       const measured = contrast(color, value(surface));
       assert(measured >= 4.5, `${theme} ${name} on ${surface} is ${measured.toFixed(2)}:1, below 4.5:1`);
     }
@@ -43,9 +49,13 @@ function property(block, name) {
 }
 for (const theme of ["destijl", "destijl-dark"]) {
   const block = declarations(".dirty-ui-theme-" + theme);
-  assert(contrast(role(block, "on-accent"), property(shared, "--dirty-ui-icon-blue")) >= 4.5,
-    theme + " primary buttons and selected tabs have readable labels");
-  assert(contrast(property(block, "--dirty-ui-on-danger-action"), property(block, "--dirty-ui-danger-action")) >= 4.5,
-    theme + " destructive buttons have readable labels");
+  assert(
+    contrast(role(block, "on-accent"), property(shared, "--dirty-ui-icon-blue")) >= 4.5,
+    theme + " primary buttons and selected tabs have readable labels",
+  );
+  assert(
+    contrast(property(block, "--dirty-ui-on-danger-action"), property(block, "--dirty-ui-danger-action")) >= 4.5,
+    theme + " destructive buttons have readable labels",
+  );
 }
 console.log("DirtyStats theme text contrast checks passed");

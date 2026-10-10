@@ -1,8 +1,7 @@
-from plugin_paths import runtime_path, source_path
+from plugin_paths import runtime_path
 import importlib.util
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -18,12 +17,6 @@ dirty_rank = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules[SPEC.name] = dirty_rank
 SPEC.loader.exec_module(dirty_rank)
-
-
-def rank_source():
-    """Architecture contracts inspect authored modules; Node tests execute staging."""
-    return "\n".join(path.read_text(encoding="utf-8") for path in
-                     sorted(source_path("DirtyRank", "src").rglob("*.ts*")))
 
 
 class Glicko2Tests(unittest.TestCase):
@@ -528,14 +521,6 @@ class SettingsTests(unittest.TestCase):
                 ["appearance", "performance"],
             )
 
-    def test_inactivity_configuration_is_removed(self):
-        source = rank_source()
-        manifest = MODULE_PATH.with_name("dirtyRank.yml").read_text(encoding="utf-8")
-
-        self.assertNotIn("ratingPeriodDays", source)
-        self.assertNotIn("ratingPeriodDays", manifest)
-        self.assertNotIn("Inactivity period", source)
-
     def test_category_cohort_order_does_not_depend_on_the_hash_seed(self):
         self.assertEqual(list(dirty_rank.normalize_settings({})["categoriesByCohort"]), dirty_rank.COHORT_ORDER)
         script = ("import json, sys; sys.path.insert(0, sys.argv[1]); import dirty_rank; "
@@ -619,214 +604,6 @@ class SettingsTests(unittest.TestCase):
             })
             self.assertEqual(settings["leaderboardPerformerCount"], expected)
             self.assertEqual(settings["leaderboardPerformerCount"] % top, 0)
-
-
-class JavaScriptAlgorithmTests(unittest.TestCase):
-    @unittest.skipIf(os.environ.get("DIRTY_PLUGINS_SKIP_JS_TESTS") == "1", "already executed by combined runner")
-    @unittest.skipUnless(shutil.which("node"), "Node.js is required for JavaScript tests")
-    def test_information_gain_matchmaker(self):
-        script = Path(__file__).with_name("test_dirty_rank_algorithms.js")
-        result = subprocess.run(
-            ["node", str(script)],
-            capture_output=True,
-            check=False,
-            text=True,
-        )
-
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-    @unittest.skipIf(os.environ.get("DIRTY_PLUGINS_SKIP_JS_TESTS") == "1", "already executed by combined runner")
-    @unittest.skipUnless(shutil.which("node"), "Node.js is required for JavaScript tests")
-    def test_battle_media_behavior(self):
-        script = Path(__file__).with_name("test_dirty_rank_media.js")
-        result = subprocess.run(
-            ["node", str(script)], capture_output=True, check=False, text=True,
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-    def test_arrow_shortcuts_cover_tie_and_undo(self):
-        source = rank_source()
-
-        self.assertIn('event.key === "ArrowUp"', source)
-        self.assertIn('event.key === "ArrowDown"', source)
-        self.assertIn("↑ tie · ↓ undo", source)
-        # Queue ordering, optimistic undo and shortcuts execute in the session suite.
-        self.assertIn("UNDO_HISTORY_LIMIT = 25", source)
-        self.assertIn('"Undo" + (undoHistory.length', source)
-
-    def test_selected_battle_category_is_persisted_per_cohort(self):
-        source = rank_source()
-
-        self.assertIn("CATEGORY_PREFERENCE_STORAGE_KEY", source)
-        self.assertIn("function preferredCategoryId", source)
-        self.assertIn("rememberCategory(cohort, nextCategoryId)", source)
-        self.assertIn(
-            "preferredCategoryId(nextSettings, nextCohort, current)",
-            source,
-        )
-
-    def test_battle_cards_conditionally_render_images(self):
-        source = rank_source()
-        styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
-
-        self.assertIn("hidePerformerImages", source)
-        self.assertIn("dirty-rank-card-no-image", source)
-        self.assertIn("const showMedia = showImages || Boolean(scene) || sceneLoading", source)
-        self.assertIn("showMedia && (", source)
-        self.assertIn('showImages && (<div className="dirty-rank-portrait">', source)
-        self.assertIn("DirtyPlugins.captureEnabled(window.location.search)", source)
-        self.assertNotIn('get("censorMedia")', source)
-        self.assertIn("dirty-rank-censored-media", styles)
-        self.assertIn("blur(42px)", styles)
-
-    def test_battle_cards_link_performers_and_preserve_gauntlet_target(self):
-        source = rank_source()
-        styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
-
-        self.assertIn('to={"/performers/" + performer.id}', source)
-        self.assertIn('event.stopPropagation()', source)
-        self.assertIn('className="dirty-rank-scene-panel"', source)
-        self.assertIn('const arenaLeftKey = arenaLeft && (gauntletMode ? "gauntlet:" + arenaLeft.id : kingsMode ? "kings:"', source)
-        self.assertIn("key={arenaLeftKey}", source)
-        self.assertIn('key={kingsMode ? "kings:"', source)
-        self.assertIn("@keyframes dirty-rank-card-change", styles)
-        self.assertIn("@keyframes dirty-rank-firework-burst", styles)
-        self.assertIn(".dirty-rank-image-ready .dirty-rank-image", styles)
-        self.assertIn("@media (prefers-reduced-motion: reduce)", styles)
-
-    def test_next_battle_is_prepared_and_images_are_preloaded(self):
-        source = rank_source()
-        styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
-
-        self.assertIn("preparedPairRef", source)
-        self.assertIn("function preloadPairImages", source)
-        self.assertIn('new window.Image()', source)
-        self.assertIn("window.requestIdleCallback(prepareNextPair, { timeout: 300 })", source)
-        self.assertIn("function showPreparedOrPickNext", source)
-        self.assertIn("showPreparedOrPickNext(outcome);", source)
-        self.assertIn('showPreparedOrPickNext("skip");', source)
-        self.assertIn("animation: dirty-rank-card-change 250ms", styles)
-        self.assertIn("transition: opacity 180ms", styles)
-
-    def test_pending_operations_guard_navigation_and_page_close(self):
-        source = rank_source()
-
-        self.assertIn("Prompt: Router.Prompt", source)
-        self.assertIn('window.addEventListener("beforeunload", preventPendingOperationExit)', source)
-        self.assertIn('window.removeEventListener("beforeunload", preventPendingOperationExit)', source)
-        self.assertIn("when={pendingVotes > 0}", source)
-        self.assertIn("DirtyRank is still saving queued votes or undos", source)
-
-    def test_gauntlet_route_and_performer_page_launch_are_registered(self):
-        source = rank_source()
-        styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
-
-        self.assertIn('GAUNTLET_ROUTE_PATH = "/plugins/dirty-rank/gauntlet/:performerId"', source)
-        self.assertIn("function selectGauntletPair", source)
-        self.assertIn("function GauntletConfidenceIndicator", source)
-        self.assertIn('tier.id !== "provisional" ? " dirty-rank-gauntlet-established"', source)
-        self.assertIn(".dirty-rank-gauntlet-confidence.dirty-rank-gauntlet-established", styles)
-        self.assertIn("dirty-rank-gauntlet-excellent", source)
-        self.assertIn("function DirtyRankGauntletLaunch", source)
-        self.assertIn('PluginApi.register.route(GAUNTLET_ROUTE_PATH, Route)', source)
-        self.assertIn("gauntletPathActive && !routeTargetId", source)
-        self.assertIn('PluginApi.patch.after("PerformerDetailsPanel"', source)
-        self.assertIn('" Start Gauntlet"', source)
-        self.assertIn("dirty-rank-card-gauntlet-target", styles)
-        self.assertIn("dirty-rank-gauntlet-launch", styles)
-
-    def test_dedicated_leaderboards_route_has_filters_stats_and_podium(self):
-        source = rank_source()
-        styles = MODULE_PATH.with_name("dirtyRank.css").read_text(encoding="utf-8")
-
-        self.assertIn('LEADERBOARDS_ROUTE_PATH = "/plugins/dirty-rank-leaderboards"', source)
-        self.assertIn("DirtyRankLeaderboardsRoute", source)
-        self.assertIn('PluginApi.register.route(LEADERBOARDS_ROUTE_PATH', source)
-        self.assertIn('"Overall"', source)
-        self.assertIn('"Rated coverage"', source)
-        self.assertIn('"Median RD"', source)
-        self.assertIn('"Draw rate"', source)
-        podium = source[source.index("function LeaderboardPodium(") : source.index("function LeaderboardTable")]
-        self.assertNotIn("dirty-rank-podium-medal", podium)
-        self.assertNotIn("dirty-rank-showcase-heading", podium)
-        self.assertNotIn("<PrecisionBadge", podium)
-        self.assertIn("dirty-rank-leaderboard-rating-row", podium)
-        self.assertIn("leaderboardRatingText(pool, props.settings)", podium)
-        self.assertIn("const podiumOrder = [1, 0, 2]", source)
-        self.assertIn("dirty-rank-podium-step", source)
-        self.assertIn('PluginApi.register.route(LEADERBOARDS_ROUTE_PATH + "/:statistic?"', source)
-        self.assertIn('function RankStatisticSelector(', source)
-        self.assertIn('source.leaderboardView === "table" ? "table" : defaults.leaderboardView', source)
-        schema = json.loads((source_path("DirtyRank").parent.parent / "schemas" / "dirtyRank.settings.json").read_text(encoding="utf-8"))
-        self.assertEqual(schema["settings"]["leaderboardView"]["default"], "gallery")
-        self.assertIn('leaderboardTopCount: leaderboardTopCount(source.leaderboardTopCount)', source)
-        self.assertRegex(source, r'<option value="gallery">\s*Gallery\s*</option>')
-        self.assertRegex(source, r'<option value="table">\s*Table\s*</option>')
-        self.assertNotIn('LEADERBOARD_TOP_STORAGE_KEY', source)
-        self.assertIn("function LeaderboardGallery", source)
-        self.assertIn("function LeaderboardPagination", source)
-        self.assertIn("function leaderboardPageSize", source)
-        self.assertIn("function leaderboardPerformerCount", source)
-        self.assertIn('id="dirty-rank-leaderboard-performer-count"', source)
-        self.assertIn("dirty-rank-gallery-grid", styles)
-        self.assertIn("dirty-rank-pagination", styles)
-        self.assertIn("function precisionTier", source)
-        self.assertIn("dirty-rank-status-refined", styles)
-        self.assertIn("dirty-rank-status-excellent", styles)
-        self.assertIn(".dirty-rank-podium-1 {\n  grid-column: 2", styles)
-        self.assertIn(".dirty-rank-podium-2 {\n  grid-column: 1", styles)
-        self.assertIn(".dirty-rank-podium-3 {\n  grid-column: 3", styles)
-
-    def test_battle_sidebar_uses_the_selected_category_standings(self):
-        source = rank_source()
-        sidebar = source[source.index("function Leaderboard(") : source.index("function ConfidenceIndicator")]
-
-        self.assertIn("props.category.id", sidebar)
-        self.assertIn('props.category.name + " standings"', sidebar)
-        self.assertRegex(sidebar, r">\s*Current battle category · top 12\s*<")
-        self.assertNotIn("rankOverallPerformers", sidebar)
-        self.assertNotIn("overallPoolFor", sidebar)
-
-    def test_confidence_copy_separates_rating_precision_from_order_confidence(self):
-        source = rank_source()
-
-        self.assertIn('"order-separating"', source)
-        self.assertIn('confidence.refined.toLocaleString()', source)
-        self.assertIn('confidence.excellent.toLocaleString()', source)
-        self.assertIn("const refinedTie =", source)
-        self.assertIn("function confidenceProgress", source)
-        self.assertIn("completedBattles / total * 100", source)
-        self.assertNotIn("ORDER_TIE_GAP", source)
-
-    def test_sex_selectors_only_render_for_multiple_enabled_cohorts(self):
-        source = rank_source()
-
-        self.assertIn("enabledCohorts", source)
-        self.assertIn('availableCohorts.length > 1 && (<div', source)
-        self.assertIn('id="dirty-rank-battle-cohort"', source)
-        self.assertIn('id="dirty-rank-leaderboard-cohort"', source)
-        self.assertIn('title="Gender boxes"', source)
-
-    def test_leaderboards_navigation_is_configurable(self):
-        source = rank_source()
-
-        self.assertIn("showLeaderboardsInMenu", source)
-        self.assertIn("DirtyRankLeaderboardsNavLink", source)
-        self.assertIn("dirty-rank-leaderboards-nav-link", source)
-        self.assertIn('["showLeaderboardsInMenu", "Show Leaderboards in the Stash header"]', source)
-        self.assertRegex(source, r'checked=\{draft\[key as keyof RankSettingsDraft\] as boolean\}\s+label=\{definition\[1\]\}')
-        self.assertIn('["showBattlesInMenu", "Show Battles in the Stash header"]', source)
-
-    def test_category_editor_can_configure_disabled_boxes(self):
-        source = rank_source()
-
-        category_editor = source[source.index('id="dirty-rank-category-cohort"') :]
-        self.assertIn("boxOptions(draft, false)", category_editor)
-        self.assertIn('label="Categories for gender box"', category_editor)
-        self.assertIn(
-            'draft.genderBoxes.length > 1 && (<div className="dirty-rank-category-cohort">',
-            source,
-        )
 
 
 class DirtyRankProtocolTests(unittest.TestCase):

@@ -12,60 +12,76 @@ from dirty_plugins_client import StashClient
 
 
 class SharedProtocolTests(unittest.TestCase):
-    def test_logged_backend_preserves_messages_output_and_exit_policy(self):
-        for mode, result, code in [(None, {"copied": 1}, 0), ("execute", {"failed": 1}, 1)]:
-            with self.subTest(mode=mode):
-                logs = io.StringIO()
-                reporter = protocol.StashReporter(logs)
-                run, emit, fail = Mock(return_value=result), Mock(), Mock()
-                times = iter([10, 10.125])
-                self.assertEqual(protocol.run_logged_backend(
-                    "Plugin", run, lambda: {"args": {}}, emit, fail, reporter, lambda: next(times),
-                    requested_mode=(lambda _: mode) if mode else None,
-                    exit_code=lambda output: int(bool(output.get("failed"))),
-                ), code)
-                context = f": mode={mode}" if mode else ""
-                self.assertEqual(logs.getvalue(), f"\x01i\x02Plugin backend started{context}\n"
-                                 f"\x01i\x02Plugin backend finished{context} in 125ms\n")
-                run.assert_called_once_with({"args": {}}, reporter)
-                emit.assert_called_once_with(result)
-                fail.assert_not_called()
+    def serve(self, run, stdin, **options):
+        """Run protocol.serve with captured streams and a fixed 125 ms clock."""
+        logs, output = io.StringIO(), io.StringIO()
+        times = iter([10, 10.125])
+        with patch("sys.stdin", io.StringIO(stdin)), patch("sys.stdout", output):
+            code = protocol.serve("Plugin", run, reporter=protocol.StashReporter(logs),
+                                  clock=lambda: next(times), **options)
+        return code, logs.getvalue(), json.loads(output.getvalue())
 
-    def test_logged_backend_reports_read_and_dispatch_failures(self):
-        for mode, read_failure in [(None, True), ("preview", True), ("preview", False)]:
-            with self.subTest(mode=mode, read_failure=read_failure):
-                logs, output = io.StringIO(), io.StringIO()
-                times = iter([10, 10.125])
-                error = ValueError("été")
-                read = Mock(side_effect=error) if read_failure else Mock(return_value={})
-                run, emit = Mock(side_effect=error), Mock()
-                self.assertEqual(protocol.run_logged_backend(
-                    "Plugin", run, read, emit, lambda exc: protocol.emit_error(exc, output),
-                    protocol.StashReporter(logs), lambda: next(times),
-                    requested_mode=(lambda _: mode) if mode else None,
-                ), 1)
-                context = (": mode=unknown" if read_failure else f": mode={mode}") if mode else ""
-                self.assertIn(f"\x01e\x02Plugin failed{context} after 125ms: été\n", logs.getvalue())
-                self.assertEqual(json.loads(output.getvalue()), {"error": "été"})
-                emit.assert_not_called()
-                if read_failure:
+    def test_serve_logs_timing_writes_one_envelope_and_applies_the_exit_policy(self):
+        for args, result, code in [({}, {"copied": 1}, 0), ({"mode": "execute"}, {"failed": 1}, 1)]:
+            with self.subTest(args=args):
+                run = Mock(return_value=result)
+                status, logs, envelope = self.serve(run, json.dumps({"args": args}), default_mode="preview",
+                                                    exit_code=lambda output: int(bool(output.get("failed"))))
+                mode = args.get("mode", "preview")
+                self.assertEqual(status, code)
+                self.assertEqual(logs, f"\x01i\x02Plugin backend started: mode={mode}\n"
+                                 f"\x01i\x02Plugin backend finished: mode={mode} in 125ms\n")
+                self.assertEqual(run.call_args.args[0], {"args": args})
+                self.assertEqual(json.loads(envelope["output"]), result, "the result travels as a JSON string")
+
+    def test_serve_reports_read_and_run_failures(self):
+        for stdin, mode in [("", "unknown"), ("[]", "unknown"), ('{"args":{"mode":"preview"}}', "preview")]:
+            with self.subTest(stdin=stdin):
+                run = Mock(side_effect=ValueError("été"))
+                status, logs, envelope = self.serve(run, stdin, public_error=lambda error: "safe: " + str(error))
+                self.assertEqual(status, 1)
+                self.assertIn(f"\x01e\x02Plugin failed: mode={mode} after 125ms: ", logs)
+                self.assertTrue(envelope["error"].startswith("safe: "), "the browser sees only the public message")
+                if mode == "unknown":
                     run.assert_not_called()
 
-    def test_unicode_envelopes_and_error_stream_separation(self):
+    def test_quiet_serve_logs_only_failures(self):
+        status, logs, envelope = self.serve(lambda payload, reporter: {"ok": True}, "{}", quiet=True)
+        self.assertEqual((status, logs, json.loads(envelope["output"])), (0, "", {"ok": True}))
+        status, logs, _envelope = self.serve(Mock(side_effect=RuntimeError("broken")), "{}", quiet=True)
+        self.assertEqual(status, 1)
+        self.assertIn("Plugin failed: mode=unknown after 125ms: broken", logs)
+
+    def test_envelopes_are_ascii_and_survive_legacy_code_pages(self):
         self.assertEqual(protocol.read_payload(io.StringIO('{"name":"été"}')), {"name": "été"})
-        for nested in (False, True):
-            output = io.StringIO()
-            protocol.emit_output({"name": "été"}, output, nested=nested, newline=True)
-            envelope = json.loads(output.getvalue())
-            value = json.loads(envelope["output"]) if nested else envelope["output"]
-            self.assertEqual(value, {"name": "été"})
+        expected = {"scene_title": "日本語のシーン 🎬", "z": 1, "a": 2}
+        buffer = io.BytesIO()
+        stream = io.TextIOWrapper(buffer, encoding="cp1252", errors="strict")
+        protocol.emit_output(expected, stream)
+        envelope = json.loads(buffer.getvalue().decode("ascii"))
+        self.assertEqual(json.loads(envelope["output"]), expected)
+        self.assertEqual(list(json.loads(envelope["output"])), ["scene_title", "z", "a"], "key order is preserved")
+        error = io.StringIO()
+        protocol.emit_error(ValueError("été"), error)
+        self.assertEqual(json.loads(error.getvalue()), {"error": "été"})
         logs = io.StringIO()
         reporter = protocol.StashReporter(logs)
         reporter.error("one\ntwo")
         reporter.progress(2)
         self.assertEqual(logs.getvalue(), "\x01e\x02one\n\x01e\x02two\n\x01p\x021.0\n")
         with self.assertRaisesRegex(ValueError, "JSON object"):
-            protocol.read_payload(io.StringIO("[]"), error_type=ValueError)
+            protocol.read_payload(io.StringIO("[]"))
+
+    def test_standard_streams_are_reconfigured_including_stdin(self):
+        calls = []
+
+        class FakeStream:
+            def reconfigure(self, **kwargs):
+                calls.append(kwargs)
+
+        with patch("sys.stdin", FakeStream()), patch("sys.stdout", FakeStream()), patch("sys.stderr", FakeStream()):
+            protocol.configure_standard_streams()
+        self.assertEqual(calls, [{"encoding": "utf-8", "errors": "backslashreplace"}] * 3)
 
     def test_transport_connection_headers_unicode_and_timeout(self):
         client = StashClient({"Host": "::1", "Port": 9999, "ApiKey": 123,

@@ -4,7 +4,6 @@ import ctypes
 import os
 import shutil
 import sys
-import time
 from pathlib import Path
 
 for folder in ("dirtyPlugins", "DirtyPlugins"):
@@ -14,12 +13,7 @@ for folder in ("dirtyPlugins", "DirtyPlugins"):
         break
 
 
-from dirty_plugins_protocol import StashReporter
 import dirty_plugins_protocol as protocol
-
-
-def _elapsed_ms(started):
-    return int((time.monotonic() - started) * 1000)
 
 
 def volume_identity(path):
@@ -58,31 +52,18 @@ def capacities(paths, identity=volume_identity, usage=shutil.disk_usage):
             "volumes": list(volumes.values()), "errors": errors}
 
 
+def run(payload, _reporter=None):
+    args = payload.get("args") or {}
+    if args.get("mode") != "capacity":
+        raise ValueError("Unsupported DirtyStats operation")
+    paths = args.get("paths")
+    if not isinstance(paths, list) or not all(isinstance(path, str) and path for path in paths):
+        raise ValueError("Source paths must be a list of nonempty strings")
+    return capacities(paths)
+
+
 def main():
-    protocol.configure_standard_streams()
-    reporter = StashReporter()
-    started = time.monotonic()
-    try:
-        payload = protocol.read_payload()
-        args = payload.get("args") or {}
-        if args.get("mode") != "capacity":
-            raise ValueError("Unsupported DirtyStats operation")
-        paths = args.get("paths")
-        if not isinstance(paths, list) or not all(isinstance(path, str) and path for path in paths):
-            raise ValueError("Source paths must be a list of nonempty strings")
-        reporter.info(f"DirtyStats capacity started for {len(paths)} path(s)")
-        result = capacities(paths)
-        reporter.info(
-            f"DirtyStats capacity finished in {_elapsed_ms(started)}ms"
-        )
-        protocol.emit_output(result, nested=True)
-        return 0
-    except Exception as exc:
-        reporter.error(
-            f"DirtyStats backend failed after {_elapsed_ms(started)}ms: {exc}"
-        )
-        protocol.emit_error(exc)
-        return 1
+    return protocol.serve("DirtyStats", run)
 
 
 if __name__ == "__main__":

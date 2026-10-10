@@ -482,9 +482,9 @@ class CompactorPipelineTests(unittest.TestCase):
         self.assertIsNone(compactor.eta({"progress": 0.5, "started": 1000}, now=1020), "too soon")
         self.assertIsNone(compactor.eta({"progress": 0.5}, now=1600), "progress from an older version")
         compactor.report("eta-test", "Checking files", 0.1)
-        started = compactor.storage.compactor_get("progress", "eta-test")["started"]
+        started = compactor.records.get("progress", "eta-test")["started"]
         compactor.report("eta-test", "Checking files", 0.2)
-        self.assertEqual(compactor.storage.compactor_get("progress", "eta-test")["started"], started, "start time is kept")
+        self.assertEqual(compactor.records.get("progress", "eta-test")["started"], started, "start time is kept")
 
     def test_cancel_stops_a_running_quality_sample_immediately(self):
         started = time.monotonic()
@@ -520,7 +520,7 @@ class CompactorPipelineTests(unittest.TestCase):
     def test_outputs_that_could_not_shrink_are_skipped_next_time(self):
         self.set_rules([rule(action="reencode", quality="balanced")])
         first = self.preview()["operations"][0]
-        compactor.storage.compactor_put("completed", compactor.digest([first["fileId"], first["rule"]["id"]]),
+        compactor.records.put("completed", compactor.digest([first["fileId"], first["rule"]["id"]]),
                                         {"hash": "", "quickHash": first["quickHash"], "actionKey": first["actionKey"], "notSmaller": True})
         op = self.preview()["operations"][0]
         self.assertEqual((op["status"], op["reason"]), ("unchanged", "Would not get smaller with these settings"))

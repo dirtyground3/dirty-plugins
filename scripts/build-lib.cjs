@@ -1,5 +1,6 @@
 "use strict";
 
+// Shared by the build, packaging scripts and tests: plugin registry, install files and compile options.
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -9,53 +10,19 @@ const YAML = require("yaml");
 const root = path.resolve(__dirname, "..");
 const buildRoot = path.join(root, ".build");
 const pluginsRoot = path.join(buildRoot, "plugins");
-const statePath = path.join(buildRoot, "build-state.json");
 const registry = JSON.parse(fs.readFileSync(path.join(__dirname, "plugin-registry.json"), "utf8"));
-const sharedInputs = ["scripts", "package.json", "package-lock.json", "tsconfig.json", "types", "schemas", "build_site.sh"];
-// Release staging feeds tests, packages and installs; development adds inline maps.
-const BUILD_MODES = ["release", "development"];
-const BUILD_STATE_FORMAT = 2;
-const BUILD_COMMANDS = { release: "npm run build", development: "npm run build:dev" };
-
-function relativeFile(value) {
-  if (typeof value !== "string" || !value || value.includes("\\") || path.posix.isAbsolute(value) ||
-      value.split("/").some(part => !part || part === "." || part === "..") || /^[a-z]:/i.test(value)) {
-    throw new Error("Unsafe relative file: " + value);
-  }
-  return value;
-}
-
-function rejectLinks(filename, boundary = root) {
-  const relative = path.relative(boundary, filename);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("Path escapes workspace: " + filename);
-  let current = boundary;
-  for (const part of relative.split(path.sep).filter(Boolean)) {
-    current = path.join(current, part);
-    if (fs.existsSync(current) && fs.lstatSync(current).isSymbolicLink()) {
-      throw new Error("Symbolic links are not allowed in build paths: " + current);
-    }
-  }
-}
-
-function buildPath(...parts) {
-  const filename = path.resolve(buildRoot, ...parts);
-  const relative = path.relative(buildRoot, filename);
-  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("Unsafe build path: " + filename);
-  rejectLinks(filename);
-  return filename;
-}
-
-function removeBuildDirectory(name) {
-  if (!["staging", "plugins", "test-modules"].includes(name)) throw new Error("Refusing build cleanup: " + name);
-  fs.rmSync(buildPath(name), { recursive: true, force: true });
-}
-
-function walkFiles(directory) {
-  if (!fs.existsSync(directory)) return [];
-  rejectLinks(directory);
-  if (fs.statSync(directory).isFile()) return [directory];
-  return fs.readdirSync(directory).sort().flatMap(name => walkFiles(path.join(directory, name)));
-}
+const sharedInputs = [
+  "scripts",
+  "package.json",
+  "package-lock.json",
+  "tsconfig.json",
+  "types",
+  "schemas",
+  "build_site.sh",
+];
+// Installs never contain source, tooling, tests or runtime data.
+const FORBIDDEN_INSTALL_FILE =
+  /(^|\/)(src|runtime|__pycache__|node_modules|tests)(\/|$)|\.sqlite|\.(pyc|pyo|bak|ts|tsx|map)$/i;
 
 function pluginFor(directory) {
   const plugin = registry.find(value => value.directory === directory);
@@ -63,67 +30,109 @@ function pluginFor(directory) {
   return plugin;
 }
 
-function readManifest(plugin, directory = path.join(root, "plugins", plugin.directory)) {
+function pluginDirectory(plugin) {
+  return path.join(root, "plugins", plugin.directory);
+}
+
+function readManifest(plugin, directory = pluginDirectory(plugin)) {
   return YAML.parse(fs.readFileSync(path.join(directory, plugin.id + ".yml"), "utf8"));
 }
 
-function pluginInputs(plugin) {
-  const base = path.join(root, "plugins", plugin.directory);
-  // The bundle entry and generated files are outputs; schemas/ is a shared input.
-  const outputs = new Set([plugin.entry, ...(plugin.generatedFiles || [])]);
-  return [...new Set([
-    ...plugin.files.filter(file => !outputs.has(file)).map(file => path.join(base, relativeFile(file))),
-    ...walkFiles(path.join(base, "src")),
-    ...sharedInputs.flatMap(file => walkFiles(path.join(root, file))),
-  ])].sort();
+/** Install files: the manifest and its assets, same-directory Python, generated and listed extras, README and LICENSE. */
+function installFiles(plugin, manifest) {
+  const python = fs.readdirSync(pluginDirectory(plugin)).filter(name => name.endsWith(".py"));
+  return [
+    ...new Set([
+      plugin.id + ".yml",
+      ...((manifest.ui && manifest.ui.javascript) || []),
+      ...((manifest.ui && manifest.ui.css) || []),
+      ...python,
+      ...(plugin.generatedFiles || []),
+      ...(plugin.extraFiles || []),
+      "README.md",
+      "LICENSE",
+    ]),
+  ];
 }
 
-function hashFiles(files) {
-  const hash = crypto.createHash("sha256");
-  for (const file of files) {
-    rejectLinks(file);
-    hash.update(path.relative(root, file).split(path.sep).join("/") + "\0");
-    hash.update(fs.readFileSync(file));
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-}
-
-function inputFingerprint() {
-  return hashFiles([...new Set(registry.flatMap(pluginInputs))].sort());
-}
-
-function sourceMetadata(plugin) {
-  const inputs = pluginInputs(plugin);
-  const revision = spawnSync("git", ["log", "-1", "--format=%h%n%aI", "--",
-    "plugins/" + plugin.directory, ...sharedInputs], { cwd: root, encoding: "utf8" });
-  const [commit = "local", date] = revision.status === 0 ? revision.stdout.trim().split(/\r?\n/) : [];
+/** Shared esbuild options; the build adds its boundary plugin and output file. */
+function compileOptions(plugin, entry, platform, mode) {
+  const release = platform === "browser" && mode === "release";
   return {
-    commit: commit || "local",
-    // The content suffix also accounts for local edits and shared build inputs.
-    identity: (commit || "local") + "-" + hashFiles(inputs).slice(0, 12),
+    absWorkingDir: root,
+    entryPoints: [path.join(pluginDirectory(plugin), entry)],
+    bundle: true,
+    platform,
+    format: platform === "browser" ? "iife" : "cjs",
+    target: "es2020",
+    jsx: "transform",
+    jsxFactory: "React.createElement",
+    jsxFragment: "React.Fragment",
+    tsconfig: path.join(root, "tsconfig.json"),
+    // Stash serves only the aggregated asset, so a map must be inline to resolve.
+    sourcemap: release ? false : "inline",
+    // Release bundles are minified without property mangling, so host, hub and
+    // public names stay intact; keepNames preserves function/component names.
+    minify: release,
+    keepNames: release,
+    legalComments: "inline",
+    logLevel: "warning",
+  };
+}
+
+function walkFiles(directory) {
+  if (!fs.existsSync(directory)) return [];
+  if (fs.statSync(directory).isFile()) return [directory];
+  return fs
+    .readdirSync(directory)
+    .sort()
+    .flatMap(name => walkFiles(path.join(directory, name)));
+}
+
+/** Package identity: the last commit touching the plugin or shared inputs, plus a hash of their current contents. */
+function sourceMetadata(plugin) {
+  const inputs = [
+    ...walkFiles(pluginDirectory(plugin)).filter(file => !/[\\/](runtime|__pycache__)[\\/]|\.py[co]$/.test(file)),
+    ...sharedInputs.flatMap(file => walkFiles(path.join(root, file))),
+  ].sort();
+  const hash = crypto.createHash("sha256");
+  for (const file of inputs)
+    hash
+      .update(path.relative(root, file).split(path.sep).join("/") + "\0")
+      .update(fs.readFileSync(file))
+      .update("\0");
+  const revision = spawnSync(
+    "git",
+    ["log", "-1", "--format=%h%n%aI", "--", "plugins/" + plugin.directory, ...sharedInputs],
+    { cwd: root, encoding: "utf8" },
+  );
+  const [commit, date] = revision.status === 0 ? revision.stdout.trim().split(/\r?\n/) : [];
+  return {
+    identity: (commit || "local") + "-" + hash.digest("hex").slice(0, 12),
     date: date ? new Date(date).toISOString().slice(0, 19).replace("T", " ") : "1970-01-01 00:00:00",
   };
 }
 
-let checkedFingerprint;
-function requireBuild(mode = "release") {
-  if (!BUILD_MODES.includes(mode)) throw new Error("Unknown build mode: " + mode);
-  try {
-    if (fs.existsSync(path.join(buildRoot, "build.lock"))) throw new Error("build in progress");
-    const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
-    if (checkedFingerprint === undefined) checkedFingerprint = inputFingerprint();
-    if (state.format !== BUILD_STATE_FORMAT || state.fingerprint !== checkedFingerprint) throw new Error("stale build inputs");
-    if (state.mode !== mode) throw new Error("staging is a " + state.mode + " build; this check needs a " + mode + " build");
-    for (const plugin of registry) {
-      if (!fs.existsSync(path.join(pluginsRoot, plugin.directory, plugin.id + ".yml"))) throw new Error("missing staged manifest");
+/** Tests and packaging read staging; a missing build fails with the command to run. */
+function requireBuild() {
+  for (const plugin of registry) {
+    if (!fs.existsSync(path.join(pluginsRoot, plugin.directory, plugin.id + ".yml"))) {
+      throw new Error("Missing staged plugins. Run `npm run build` first.");
     }
-    return state;
-  } catch (error) {
-    throw new Error("Missing or stale staged plugins. Run `" + BUILD_COMMANDS[mode] + "` before direct tests. (" + error.message + ")");
   }
 }
 
-module.exports = { root, buildRoot, pluginsRoot, statePath, registry, relativeFile, rejectLinks,
-  buildPath, removeBuildDirectory, walkFiles, pluginFor, readManifest, pluginInputs,
-  hashFiles, inputFingerprint, sourceMetadata, requireBuild, BUILD_MODES, BUILD_STATE_FORMAT };
+module.exports = {
+  root,
+  buildRoot,
+  pluginsRoot,
+  registry,
+  FORBIDDEN_INSTALL_FILE,
+  pluginFor,
+  pluginDirectory,
+  readManifest,
+  installFiles,
+  compileOptions,
+  sourceMetadata,
+  requireBuild,
+};

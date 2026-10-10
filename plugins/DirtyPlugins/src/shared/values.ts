@@ -1,12 +1,15 @@
 /** Untrusted JSON from Stash and plugin operations is narrowed at this boundary. */
 export function parseMaybeJson(value: unknown): unknown {
   if (typeof value !== "string") return value;
-  try { return JSON.parse(value); } catch { return value; }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }
 export function asObject(value: unknown): Record<string, unknown> {
   const parsed = parseMaybeJson(value);
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? parsed as Record<string, unknown> : {};
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
 }
 export function pluginResult(value: unknown): unknown {
   const result = parseMaybeJson(value);

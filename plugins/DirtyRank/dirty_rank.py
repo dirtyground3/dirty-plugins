@@ -7,7 +7,6 @@ import json
 import math
 import re
 import sys
-import time
 import unicodedata
 import uuid
 from contextlib import contextmanager
@@ -53,7 +52,7 @@ for folder in ("dirtyPlugins", "DirtyPlugins"):  # installed plugin ID, then sou
 else:
     raise RuntimeError("DirtyPlugins shared storage is not installed")
 import dirty_plugins_storage as shared_storage
-from dirty_plugins_protocol import Reporter, StashReporter
+from dirty_plugins_protocol import Reporter
 import dirty_plugins_protocol as protocol
 from dirty_rank_rating import PluginError, Rating, glicko2_update
 
@@ -797,21 +796,6 @@ def reset_pool(
     return {"reset": int(reset)}
 
 
-def read_payload(stream=None):
-    return protocol.read_payload(stream, error_type=PluginError, invalid_json="Stash provided invalid JSON: {}", invalid_object="Stash plugin input must be an object")
-
-
-def emit_output(output, stream=None):
-    protocol.emit_output(output, stream, nested=True, ensure_ascii=False, newline=True)
-
-
-def emit_error(error, stream=None):
-    protocol.emit_error(error, stream, ensure_ascii=False, newline=True)
-
-
-configure_standard_streams = protocol.configure_standard_streams
-
-
 def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, Any]:
     reporter = reporter or Reporter()
     args = payload.get("args") or {}
@@ -845,11 +829,7 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
 
 
 def main() -> int:
-    configure_standard_streams()
-    return protocol.run_logged_backend(
-        "DirtyRank", run, read_payload, emit_output, emit_error, StashReporter(), time.monotonic,
-        requested_mode=protocol.requested_mode("record"),
-    )
+    return protocol.serve("DirtyRank", run, default_mode="record")
 
 
 if __name__ == "__main__":

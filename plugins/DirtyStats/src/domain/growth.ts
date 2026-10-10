@@ -1,10 +1,10 @@
 import type { GrowthZoomOption, StatsScene } from "../types";
 
-
 /** @param {number} bytes @returns {string} */
 export function formatBytes(bytes: number) {
   if (!bytes) return "0 B";
-  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"], unit = Math.min(units.length - 1, Math.max(0, Math.floor(Math.log(bytes) / Math.log(1024))));
+  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"],
+    unit = Math.min(units.length - 1, Math.max(0, Math.floor(Math.log(bytes) / Math.log(1024))));
   return (bytes / Math.pow(1024, unit)).toLocaleString("en", { maximumFractionDigits: 2 }) + " " + units[unit];
 }
 
@@ -25,29 +25,54 @@ export function growthBucketEnd(timestamp: number, grouping?: string) {
 /** @param {Array<*>} scenes @param {number} now @param {string} dateBasis @param {string} grouping @returns {{points: number[][], bytes: number, included: number, excluded: number, invalidFiles: number, invalidDates: number, total: number}} */
 export function aggregateGrowth(scenes: StatsScene[], now?: number | null, dateBasis?: string, grouping?: string) {
   dateBasis = dateBasis || "created_at";
-  let days = new Map<number, number>(), seen = new Set(), excluded = 0, invalidFiles = 0, invalidDates = 0, included = 0;
+  let days = new Map<number, number>(),
+    seen = new Set(),
+    excluded = 0,
+    invalidFiles = 0,
+    invalidDates = 0,
+    included = 0;
   scenes.forEach(scene => {
     if (seen.has(scene.id)) return;
     seen.add(scene.id);
     const sceneDate = dateBasis === "scene_date" ? scene.date : scene.created_at;
     const timestamp = sceneDate ? Date.parse(sceneDate) : NaN;
-    if (dateBasis !== "mod_time" && !Number.isFinite(timestamp)) { excluded++; return; }
-    let valid = 0, files = new Set();
+    if (dateBasis !== "mod_time" && !Number.isFinite(timestamp)) {
+      excluded++;
+      return;
+    }
+    let valid = 0,
+      files = new Set();
     (scene.files || []).forEach(file => {
       if (file.id != null && files.has(file.id)) return;
       if (file.id != null) files.add(file.id);
       const bytes = file.size == null || file.size === "" ? NaN : Number(file.size);
-      if (!Number.isFinite(bytes) || bytes < 0) { invalidFiles++; return; }
+      if (!Number.isFinite(bytes) || bytes < 0) {
+        invalidFiles++;
+        return;
+      }
       const fileTimestamp = dateBasis === "mod_time" ? (file.mod_time ? Date.parse(file.mod_time) : NaN) : timestamp;
-      if (!Number.isFinite(fileTimestamp)) { invalidDates++; return; }
+      if (!Number.isFinite(fileTimestamp)) {
+        invalidDates++;
+        return;
+      }
       const day = growthBucket(fileTimestamp, grouping);
-      days.set(day, (days.get(day) || 0) + bytes); valid++;
+      days.set(day, (days.get(day) || 0) + bytes);
+      valid++;
     });
-    if (!valid) { excluded++; return; }
+    if (!valid) {
+      excluded++;
+      return;
+    }
     included++;
   });
-  let total = 0, points: number[][] = [];
-  Array.from(days.keys()).sort((a, b) => a - b).forEach(day => { total += days.get(day)!; points.push([day, total]); });
+  let total = 0,
+    points: number[][] = [];
+  Array.from(days.keys())
+    .sort((a, b) => a - b)
+    .forEach(day => {
+      total += days.get(day)!;
+      points.push([day, total]);
+    });
   if (points.length) {
     points.unshift([growthBucket(points[0][0] - 86400000, grouping), 0]);
     const today = growthBucket(now == null ? Date.now() : now, grouping);
@@ -61,18 +86,29 @@ export function scenesInPeriod(scenes: StatsScene[], dateBasis: string, period: 
   if (!period) return scenes;
   return scenes.filter(scene => {
     return (scene.files || []).some(file => {
-      const value = dateBasis === "mod_time" ? file.mod_time : dateBasis === "scene_date" ? scene.date : scene.created_at;
+      const value =
+        dateBasis === "mod_time" ? file.mod_time : dateBasis === "scene_date" ? scene.date : scene.created_at;
       const time = value ? Date.parse(value) : NaN;
       const bytes = file.size == null || file.size === "" ? NaN : Number(file.size);
-      return Number.isFinite(time) && Number.isFinite(bytes) && bytes >= 0 && time >= period[0] && time < period[1] + 86400000;
+      return (
+        Number.isFinite(time) &&
+        Number.isFinite(bytes) &&
+        bytes >= 0 &&
+        time >= period[0] &&
+        time < period[1] + 86400000
+      );
     });
   });
 }
 
 /** @param {number[][]} points @param {number[]} period @returns {number} */
 export function periodGrowth(points: number[][], period: number[]) {
-  let before = 0, after = 0;
-  points.forEach(point => { if (point[0] < period[0]) before = point[1]; if (point[0] <= period[1]) after = point[1]; });
+  let before = 0,
+    after = 0;
+  points.forEach(point => {
+    if (point[0] < period[0]) before = point[1];
+    if (point[0] <= period[1]) after = point[1];
+  });
   return after - before;
 }
 
@@ -80,13 +116,15 @@ export function periodGrowth(points: number[][], period: number[]) {
 export function growthDataZoomRange(option: GrowthZoomOption | null) {
   const zoom = option && option.dataZoom && option.dataZoom[0];
   if (!zoom) return null;
-  let minimum = Infinity, maximum = -Infinity;
+  let minimum = Infinity,
+    maximum = -Infinity;
   (option!.series || []).forEach(series => {
     (series.data || []).forEach(point => {
       const coordinates = Array.isArray(point) ? point : point && Array.isArray(point.value) ? point.value : null;
       const value = coordinates ? Number(coordinates[0]) : NaN;
       if (!Number.isFinite(value)) return;
-      minimum = Math.min(minimum, value); maximum = Math.max(maximum, value);
+      minimum = Math.min(minimum, value);
+      maximum = Math.max(maximum, value);
     });
   });
   if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) return null;
@@ -94,13 +132,18 @@ export function growthDataZoomRange(option: GrowthZoomOption | null) {
   let endValue = zoom.endValue == null || zoom.endValue === "" ? NaN : Number(zoom.endValue);
   const start = Math.max(0, Math.min(100, Number.isFinite(Number(zoom.start)) ? Number(zoom.start) : 0));
   const end = Math.max(0, Math.min(100, Number.isFinite(Number(zoom.end)) ? Number(zoom.end) : 100));
-  if (!Number.isFinite(startValue)) startValue = minimum + (maximum - minimum) * start / 100;
-  if (!Number.isFinite(endValue)) endValue = minimum + (maximum - minimum) * end / 100;
+  if (!Number.isFinite(startValue)) startValue = minimum + ((maximum - minimum) * start) / 100;
+  if (!Number.isFinite(endValue)) endValue = minimum + ((maximum - minimum) * end) / 100;
   return [Math.min(startValue, endValue), Math.max(startValue, endValue)];
 }
 
 /** @param {{included: number, points: number[][], bytes: number}} stats @param {number} capacity @param {number} now @param {number[] | null} period */
-export function forecastGrowth(stats: { included: number, points: number[][], bytes: number }, capacity: number | null, now?: number | null, period?: number[] | null) {
+export function forecastGrowth(
+  stats: { included: number; points: number[][]; bytes: number },
+  capacity: number | null,
+  now?: number | null,
+  period?: number[] | null,
+) {
   const today = growthBucket(now == null ? Date.now() : now, "day");
   if (!(capacity! > 0)) return { reason: "Source capacity is unavailable." };
   if (!stats.included || !stats.points.length) return { reason: "No matching content to forecast." };
@@ -113,6 +156,16 @@ export function forecastGrowth(stats: { included: number, points: number[][], by
   const rate = bytes / days;
   if (!(rate > 0)) return { reason: "No growth in the reference period; capacity date cannot be estimated." };
   const reachedAt = today + Math.ceil((capacity! - stats.bytes) / rate) * 86400000;
-  if (!Number.isFinite(reachedAt) || reachedAt > 8640000000000000) return { reason: "Growth is too slow to estimate a capacity date." };
-  return { rate, reachedAt, points: [[today, stats.bytes], [reachedAt, capacity!]], start, end };
+  if (!Number.isFinite(reachedAt) || reachedAt > 8640000000000000)
+    return { reason: "Growth is too slow to estimate a capacity date." };
+  return {
+    rate,
+    reachedAt,
+    points: [
+      [today, stats.bytes],
+      [reachedAt, capacity!],
+    ],
+    start,
+    end,
+  };
 }

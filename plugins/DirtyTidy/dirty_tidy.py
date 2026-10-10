@@ -8,13 +8,13 @@ import json
 import os
 import re
 import sys
-import time
 import uuid
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from dirty_tidy_metadata import CONSTANTS  # noqa: E402
 from dirty_tidy_templates import (
     _clean_text, scene_variables, _normalized_path,
     find_source_root, render_destination_folder, render_destination_filename, validate_destination,
@@ -25,19 +25,7 @@ PLUGIN_ID = "dirtyTidy"
 REVIEW_NAMESPACE = "dirtyTidy.reviewedPlans"
 AUTOMATION_NAMESPACE = "dirtyTidy.automationJobs"
 STRATEGY_VERSION = 6
-DEFAULT_SETTINGS = {
-    "moveEnabled": True,
-    "moveRequireStashId": False,
-    "hierarchyLevels": ["{studio}", "{year}"],
-    "renameEnabled": False,
-    "renameRequireStashId": False,
-    "renamePattern": "{date} - {studio} - {title}",
-    "maxFilenameLength": 180,
-    "multiValueSeparator": ", ",
-    "automationMode": "manual",
-    "approvedStrategyHash": "",
-    "approvedPlanDigest": "",
-}
+DEFAULT_SETTINGS = CONSTANTS["defaultSettings"]
 AUTOMATION_MODES = {"manual", "scan", "generate"}
 STRATEGY_SETTING_KEYS = (
     "moveEnabled",
@@ -60,7 +48,7 @@ else:
     raise RuntimeError("DirtyPlugins shared storage is not installed")
 import dirty_plugins_storage as shared_storage
 from dirty_plugins_client import StashClient as BaseClient
-from dirty_plugins_protocol import Reporter, StashReporter
+from dirty_plugins_protocol import Reporter
 import dirty_plugins_protocol as protocol
 SCENE_QUERY_PAGE_SIZE = 100
 
@@ -120,22 +108,6 @@ class StashClient(BaseClient):
             input_value["destination_basename"] = operation["destination_basename"]
         data = self.call("mutation DirtyTidyMove($input: MoveFilesInput!) { moveFiles(input: $input) }", {"input": input_value})
         return bool(data.get("moveFiles"))
-
-
-def read_payload(stream=None):
-    return protocol.read_payload(stream, error_type=PluginError)
-
-
-def emit_output(output, stream=None):
-    protocol.emit_output(output, stream, ensure_ascii=True)
-
-
-def emit_error(error, stream=None):
-    protocol.emit_error(error, stream, ensure_ascii=True)
-
-
-def configure_standard_streams():
-    protocol.configure_standard_streams(errors="backslashreplace")
 
 
 def as_bool(value: Any, default: bool) -> bool:
@@ -591,11 +563,7 @@ def exit_code_for(output: Any) -> int:
 
 
 def main() -> int:
-    configure_standard_streams()
-    return protocol.run_logged_backend(
-        "DirtyTidy", run, read_payload, emit_output, emit_error, StashReporter(), time.monotonic,
-        requested_mode=protocol.requested_mode("execute"), exit_code=exit_code_for,
-    )
+    return protocol.serve("DirtyTidy", run, default_mode="execute", exit_code=exit_code_for)
 
 
 if __name__ == "__main__":

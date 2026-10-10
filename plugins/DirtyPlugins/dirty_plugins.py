@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dirty_plugins_protocol as protocol
 import dirty_plugins_storage as storage
+from dirty_plugins_metadata import CONSTANTS
 
 
-MANAGED_PLUGIN_IDS = {"dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor", "dirtyCaptions"}
+MANAGED_PLUGIN_IDS = set(CONSTANTS["managedPluginIds"])
 
 
 class PluginError(RuntimeError):
@@ -59,13 +59,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
-    protocol.configure_standard_streams()
-    return protocol.run_logged_backend(
-        "DirtyPlugins", lambda payload, _reporter: run(payload), protocol.read_payload,
-        lambda output: protocol.emit_output(output, nested=True, ensure_ascii=False, newline=True),
-        lambda error: protocol.emit_error(error, ensure_ascii=False, newline=True),
-        protocol.StashReporter(), time.monotonic, requested_mode=protocol.requested_mode("getAllSettings"),
-    )
+    return protocol.serve("DirtyPlugins", lambda payload, _reporter: run(payload), default_mode="getAllSettings")
 
 
 if __name__ == "__main__":

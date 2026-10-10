@@ -1,4 +1,3 @@
-import { observeSubtree, useOwnedEffect as useEffect } from "../lifecycle";
 import { PluginApi, React } from "../runtime";
 import type { AudioState, LoadedPlayerProps, Player, VideoPlayerElement } from "../types";
 const SCENES_ROUTE_PATH = "/scenes";
@@ -16,6 +15,12 @@ function applyAudio(player: Player, audio: AudioState) {
   if (player.volume() !== audio.volume) player.volume(audio.volume);
   if (player.muted() !== audio.muted) player.muted(audio.muted);
 }
+function observeSubtree(target: Element, callback: () => void) {
+  const observer = new MutationObserver(callback);
+  observer.observe(target, { childList: true, subtree: true });
+  return observer;
+}
+
 export function LoadedNativePlayer({
   audioState,
   item,
@@ -24,7 +29,7 @@ export function LoadedNativePlayer({
   onAudioStateChange,
   playback,
   previousItem,
-  scene
+  scene,
 }: LoadedPlayerProps) {
   const tileRef = React.useRef<HTMLDivElement | null>(null);
   const setTimestampRef = React.useRef<((seconds: number) => void) | null>(null);
@@ -47,7 +52,7 @@ export function LoadedNativePlayer({
     }
     nextItem();
   }, [item.playbackRange, nextItem, playback.loop]);
-  useEffect(() => {
+  React.useEffect(() => {
     const tile = tileRef.current;
     const playbackRange = item.playbackRange;
     const rangeEnd = playbackRange?.end;
@@ -81,7 +86,7 @@ export function LoadedNativePlayer({
       videoElement?.removeEventListener("timeupdate", handleTimeUpdate);
     };
   }, [item.playbackRange, nextItem, playback.loop]);
-  useEffect(() => {
+  React.useEffect(() => {
     const tile = tileRef.current;
     if (!tile) return;
     let player: Player | null = null;
@@ -100,7 +105,7 @@ export function LoadedNativePlayer({
       const nextVolume = Number(player.volume());
       const nextAudioState = {
         muted: !!player.muted(),
-        volume: Number.isFinite(nextVolume) ? nextVolume : audioStateRef.current.volume
+        volume: Number.isFinite(nextVolume) ? nextVolume : audioStateRef.current.volume,
       };
       audioStateRef.current = nextAudioState;
       onAudioStateChangeRef.current(nextAudioState);
@@ -131,33 +136,35 @@ export function LoadedNativePlayer({
       detachPlayer();
     };
   }, []);
-  useEffect(() => {
+  React.useEffect(() => {
     const player = tileRef.current?.querySelector<VideoPlayerElement>("video-js")?.player;
     if (usable(player)) applyAudio(player, audioState);
   }, [audioState.muted, audioState.volume]);
-  return (<div className="ms-native-tile" ref={tileRef}>
-    <PluginApi.libraries.ReactRouterDOM.NavLink
-      aria-label={`Open scene page for ${item.title}`}
-      className="ms-title"
-      rel="noopener noreferrer"
-      target="_blank"
-      title={`Open scene page: ${item.title}`}
-      to={`${SCENES_ROUTE_PATH}/${sceneId}`}
-    >
-      {item.title}
-    </PluginApi.libraries.ReactRouterDOM.NavLink>
-    <NativePlayer
-      autoplay={true}
-      hideScrubberOverride={true}
-      initialTimestamp={initialTimestamp}
-      onComplete={handleComplete}
-      onNext={nextItem}
-      onPrevious={previousItem}
-      permitLoop={playback.loop}
-      scene={scene}
-      sendSetTimestamp={(setTimestamp) => {
-        setTimestampRef.current = setTimestamp;
-      }}
-    />
-  </div>);
+  return (
+    <div className="ms-native-tile" ref={tileRef}>
+      <PluginApi.libraries.ReactRouterDOM.NavLink
+        aria-label={`Open scene page for ${item.title}`}
+        className="ms-title"
+        rel="noopener noreferrer"
+        target="_blank"
+        title={`Open scene page: ${item.title}`}
+        to={`${SCENES_ROUTE_PATH}/${sceneId}`}
+      >
+        {item.title}
+      </PluginApi.libraries.ReactRouterDOM.NavLink>
+      <NativePlayer
+        autoplay={true}
+        hideScrubberOverride={true}
+        initialTimestamp={initialTimestamp}
+        onComplete={handleComplete}
+        onNext={nextItem}
+        onPrevious={previousItem}
+        permitLoop={playback.loop}
+        scene={scene}
+        sendSetTimestamp={setTimestamp => {
+          setTimestampRef.current = setTimestamp;
+        }}
+      />
+    </div>
+  );
 }

@@ -157,21 +157,30 @@ navigation.
 
 The hub installs a shared browser-side debug log used by every Dirty plugin.
 Console logging is off by default. Enable it with
-`window.__dirtyPluginsDebug = true` or
-`localStorage.setItem("dirtyPluginsDebug", "1")` when troubleshooting.
+`localStorage.setItem("dirtyPluginsDebug", "1")` and reload the page when
+troubleshooting; `window.__dirtyPluginsDebug = true` mirrors new entries to the
+console on the current page only.
 Console lines are prefixed `[DirtyPlugins]`, and the full log is available at
-`window.__dirtyPluginsDebugLog` and through `dirtyPluginsDumpDebugLogs()` (also
-`DirtyPlugins.dumpDebugLogs()`). It records plugin lifecycle events, route and
-patch registrations, every patch invocation on ordinary Stash pages, and shared
-GraphQL requests. Set `window.__dirtyPluginsDebug = false` or
+`window.__dirtyPluginsDebugLog` and through `dirtyPluginsDumpDebugLogs()`. It
+always records plugin lifecycle events and shared GraphQL requests. Route and
+patch registrations, every patch invocation on ordinary Stash pages and
+uncaught page errors are recorded only when debugging was enabled while the
+page loaded, so normal browsing is not instrumented. Set
+`window.__dirtyPluginsDebug = false` or
 `localStorage.setItem("dirtyPluginsDebug", "0")` to silence the console; the
 in-memory log keeps collecting. Stash's Troubleshooting mode disables all
 plugin JavaScript, so no logs appear while it is active.
 
+Each plugin registers through `DirtyPlugins.registerPlugin(pluginId, setup)`.
+The hub runs a plugin's setup once per page, ignores a reloaded bundle and
+reports a failed registration once as `[<pluginId>] registration failed` in the
+console.
+
 The hub's Python backend logs through Stash's plugin log protocol as
 `[Plugin / DirtyPlugins]`, recording a `started`/`finished` pair (mode and
 elapsed milliseconds) for every operation. Set **Settings → General → Log
-level** to `Debug` and open **Settings → Logs** to read it.
+level** to `Debug` and open **Settings → Logs** to read it. The other backends
+share this protocol (`dirty_plugins_protocol.serve`).
 
 ## Screenshot
 

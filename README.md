@@ -15,14 +15,14 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.4 |
-| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.3 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.3 |
-| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.3 |
-| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 1.0.3 |
-| [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 1.0.3 |
-| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.3 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.3 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.5 |
+| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.4 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.4 |
+| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.4 |
+| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 1.0.4 |
+| [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 1.0.4 |
+| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.4 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.4 |
 
 ## Shared look and settings
 
@@ -344,6 +344,10 @@ when enabled, messages have a `[DirtyPlugins]` prefix. The log is kept in memory
 `window.__dirtyPluginsDebugLog`. Each entry names the plugin, the hook
 (`patch.before`, `patch.after`, `patch.instead`, `register.route`, a GraphQL
 request, or a lifecycle event), the current path, and elapsed milliseconds.
+GraphQL requests and lifecycle events are always recorded. Patch and route
+entries, their timing and uncaught page errors are recorded only when debugging
+was already enabled while the page loaded, so that normal browsing pays nothing
+for them.
 
 Open the browser developer tools (F12) on the Stash tab. To dump the whole
 collected log, including entries from
@@ -353,13 +357,18 @@ before the console was opened, run:
 dirtyPluginsDumpDebugLogs()
 ```
 
-The same function is available as `DirtyPlugins.dumpDebugLogs()`.
+Enable debugging when troubleshooting, then reload the page (F5) so patches and
+routes are timed from the start:
 
-Enable console output when troubleshooting:
+```js
+localStorage.setItem("dirtyPluginsDebug", "1"); // persists across reloads
+```
+
+To only mirror new entries to the console on the current page, without a reload
+and without patch or route timing:
 
 ```js
 window.__dirtyPluginsDebug = true;              // this page only
-localStorage.setItem("dirtyPluginsDebug", "1"); // persists
 ```
 
 Filter the console for `DirtyPlugins`. Disable console output again with:
@@ -371,7 +380,10 @@ localStorage.setItem("dirtyPluginsDebug", "0"); // persists
 
 If Stash is stuck on "Loading plugins…", the last `script started` line with no
 matching `script finished registering` identifies the plugin whose script never
-finished loading.
+finished loading. A plugin whose registration throws prints
+`[<pluginId>] registration failed` with the error to the console, even when
+debugging is off. It is not retried until the page is reloaded, and the other
+plugins keep working.
 
 > Stash's **Troubleshooting mode** disables all plugins and custom JavaScript,
 > and only raises the *server* log level. Dirty plugin logs therefore do not
@@ -383,14 +395,23 @@ finished loading.
 The Python backends log through Stash's plugin log protocol, so their output
 appears in Stash's own log with a `[Plugin / DirtyPlugins]`,
 `[Plugin / DirtyRank]`, `[Plugin / DirtyTidy]`, `[Plugin / DirtyStats]`,
-`[Plugin / DirtyCompactor]`, or `[Plugin / DirtyFileExtractor]` prefix. These
-backends log a `started` line and a `finished` line (with the operation mode and
-elapsed milliseconds), and logs failures. A `started` line with no matching
-`finished` line identifies a backend call that hung.
+`[Plugin / DirtyCompactor]`, `[Plugin / DirtyCaptions]`, or
+`[Plugin / DirtyFileExtractor]` prefix.
 
-DirtyCaptions reports extraction failures and failed tracks under
-`[Plugin / DirtyCaptions]`. Its browser log records player registration and
-loaded track counts without including subtitle text.
+DirtyPlugins, DirtyRank, DirtyTidy, DirtyStats and DirtyFileExtractor log a
+`backend started: mode=<operation>` line and a
+`backend finished: mode=<operation> in <N>ms` line for every call. A `started`
+line with no matching `finished` line identifies a backend call that hung.
+Every backend logs a failure as an error:
+`<Plugin> failed: mode=<operation> after <N>ms: <reason>`.
+
+DirtyCompactor and DirtyCaptions are called repeatedly by the player and by
+status polling, so they do not log each call; they log only failures.
+DirtyCaptions reports
+extraction failures and failed tracks under `[Plugin / DirtyCaptions]`; the
+browser receives only a generic message when a tool error could contain a
+private path. Its browser log records player registration and loaded track
+counts without including subtitle text.
 
 To see these, keep plugins enabled and set **Settings → General → Log level** to
 `Debug` (or at least `Info`), then open **Settings → Logs**. This is separate
@@ -427,13 +448,16 @@ plugins/
 ├── DirtyRank/           # battle/leaderboard UI and Glicko-2 backend
 ├── DirtyStats/          # dashboard, statistics and visualizations
 └── DirtyTidy/           # preview UI and file-organization backend
-tests/                   # Python, JavaScript, and shared UI contracts
-scripts/                 # staged build, settings generator and install-file registry
+tests/                   # JavaScript and Python suites, opt-in Stash fixtures
+scripts/                 # staged build, settings generator and plugin registry
 schemas/                 # authored settings metadata shared by manifests, TS and Python
 .build/plugins/          # generated installable output (ignored)
 build_site.sh            # packages staged plugins for GitHub Pages
 docs/images/             # censored screenshots used by the documentation
 ```
+
+Open work is tracked in [TODO.md](TODO.md); contributor conventions are in
+[AGENTS.md](AGENTS.md).
 
 ## Development and publishing
 
@@ -444,10 +468,13 @@ npm ci
 npm test
 ```
 
-`npm test` builds once, checks types, and runs the JavaScript and Python suites.
-Use `npm run test:js` or `npm run test:python` for focused runs. Direct Node or
-Python test-file invocations need `npm run build` first; helpers reject missing
-or stale staging. See [tests/README.md](tests/README.md) for test paths and fixtures.
+`npm test` builds once, checks types and formatting, and runs the JavaScript
+suites (through `node --test`) and the Python suites. Use `npm run test:js` or
+`npm run test:python` for focused runs. Direct Node or Python test-file
+invocations need `npm run build` first, and again after changing source:
+helpers reject missing staging but cannot detect a stale build. `npm run format`
+applies the formatter to TypeScript sources, scripts and JavaScript tests. See
+[tests/README.md](tests/README.md) for test paths and fixtures.
 
 Plugin frontends are TypeScript/TSX under each plugin's `src/`, compiled by
 esbuild into one browser bundle per plugin with the existing entry filename.
@@ -465,8 +492,10 @@ backend needs them, Python constants such as `dirty_rank_metadata.py`.
 Always use `.build/plugins/<Directory>/` for local installs and packages. Raw
 source directories are not installable: they contain no compiled bundle.
 Node and development dependencies are needed by contributors only; Stash users
-install the same ZIP packages without build tooling. The registry allowlists
-runtime assets and licenses, excluding source, tests, databases, and runtime data.
+install the same ZIP packages without build tooling. Install files are derived
+from each manifest (its script, stylesheets and Python modules) plus the README,
+license and the few extra files named in `scripts/plugin-registry.json`; source,
+tests, databases, and runtime data are never staged.
 
 For development:
 
@@ -479,8 +508,9 @@ npm run build:watch
 `npm run build` stages release bundles without source maps; tests, packages and
 local installs use it. `npm run build:dev` and watch stage development bundles
 with inline maps, which travel with Stash's aggregated asset because Stash does
-not serve individual files. Tests and packaging refuse staging built in the
-other mode. The development cycle is: run `npm run build:dev` (or keep
+not serve individual files. The release size check fails on development
+staging, and packaging always rebuilds release output. The development cycle
+is: run `npm run build:dev` (or keep
 `npm run build:watch` running, which rebuilds staging after any source, schema
 or build-input change), copy the changed staged files into the installed plugin
 ID directory, reload Stash plugins, then hard-refresh the tab (Ctrl+F5). Watch
@@ -493,9 +523,7 @@ DevTools stepping and other browsers are not covered by automated checks.
 Bundles target ES2020; release bundles are minified (no property mangling,
 component names and legal comments kept), development bundles stay readable.
 
-The completed TypeScript migration's [plan](docs/build-migration-plan.md),
-[baseline](docs/build-migration-baseline.md), and
-[handoff record](docs/build-migration-status.md) document each checkpoint.
+[simplification.md](simplification.md) records the latest simplification pass.
 
 Build the package source locally after `npm ci`, on a system with Bash and `zip`:
 
@@ -525,6 +553,27 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyStats 1.0.5 and 1.0.4 for the other plugins:** internal simplification
+  with no changes to settings or stored data.
+  - The hub registers every plugin once per page. A plugin whose registration
+    fails is reported once in the browser console
+    (`[<pluginId>] registration failed`) and no longer stops the others.
+  - Browser debug timing of patches and routes is recorded only when debugging
+    was enabled before the page loaded (set `dirtyPluginsDebug` in localStorage
+    and reload). `dirtyPluginsDumpDebugLogs()` still works;
+    `DirtyPlugins.dumpDebugLogs()` is removed.
+  - Server logs: every backend reports failures in the same form
+    (`<Plugin> failed: mode=... after ...ms: ...`), including DirtyCompactor,
+    which previously reported them only to the browser. DirtyStats'
+    `started`/`finished` lines use the same wording as the other backends.
+  - The marker that tells DirtyTidy, DirtyCaptions and DirtyCompactor
+    automation to ignore scans started by DirtyCompactor moved to another table
+    of the shared database. Markers written before the update are not read, so
+    a Compactor-started scan that is still running during the update may be
+    treated as an ordinary scan once.
+  - Developer-facing: plugins no longer expose `destroy()` handles or the
+    `DirtyPlugins.values`/`settingsMetadata`/`unregister*` members.
 
 - **DirtyStats 1.0.4 and 1.0.3 for the other plugins:** internal
   simplification with no behavior changes. The hub's internal modules import

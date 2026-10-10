@@ -1,5 +1,5 @@
 import { React } from "./runtime";
-const pageTitleOwners: { title: string; previousTitle: string; }[] = [];
+const pageTitleOwners: { title: string; previousTitle: string }[] = [];
 export function usePageTitle(pluginName: string, viewTitle?: string) {
   React.useEffect(() => {
     const title = (viewTitle ? viewTitle + " - " : "") + pluginName;

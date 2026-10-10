@@ -12,7 +12,9 @@ function scriptPaths(pluginDirectory) {
 }
 
 function sourceFor(pluginDirectory) {
-  return scriptPaths(pluginDirectory).map(filename => fs.readFileSync(filename, "utf8")).join("\n");
+  return scriptPaths(pluginDirectory)
+    .map(filename => fs.readFileSync(filename, "utf8"))
+    .join("\n");
 }
 
 module.exports = { scriptPaths, sourceFor };

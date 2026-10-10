@@ -19,4 +19,11 @@ export const LEADERBOARD_TOP_OPTIONS = [
   { count: 4, name: "Mount Rushmore", theme: "rushmore" },
   { count: 5, name: "Fingers", theme: "fingers" },
 ];
-export const COHORTS = [["FEMALE", "Female"], ["MALE", "Male"], ["TRANSGENDER_FEMALE", "Transgender female"], ["TRANSGENDER_MALE", "Transgender male"], ["INTERSEX", "Intersex"], ["NON_BINARY", "Non-binary"]];
+export const COHORTS = [
+  ["FEMALE", "Female"],
+  ["MALE", "Male"],
+  ["TRANSGENDER_FEMALE", "Transgender female"],
+  ["TRANSGENDER_MALE", "Transgender male"],
+  ["INTERSEX", "Intersex"],
+  ["NON_BINARY", "Non-binary"],
+];

@@ -10,18 +10,23 @@ export const UNSAVED_SETTINGS_MESSAGE = "You have unsaved Dirty Plugins settings
 export const DEFAULT_VISUAL_THEME = hubSettings.defaults.visualTheme;
 export const VISUAL_THEME_KEYS = hubSettings.options.visualTheme.map(option => option.value);
 
-/** Suite plugins in tab order; Stash's plugin page links and groups the same set. */
-export const MANAGED_PLUGIN_IDS = ["dirtyPlugins", "extractScenes", "multiscreen", "dirtyTidy", "dirtyRank", "dirtyStats", "dirtyCompactor", "dirtyCaptions"];
+/** Suite plugins in tab order (schemas/dirtyPlugins.settings.json); Stash's plugin page links and groups the same set. */
+export const MANAGED_PLUGIN_IDS: string[] = hubSettings.constants.managedPluginIds;
 export const MANAGED_PLUGIN_ID_SET = new Set(MANAGED_PLUGIN_IDS);
 
 /** Plugins whose ordinary controls the hub renders; their tables come from schemas/<id>.settings.json. */
 interface StandardSettings {
   order: string[];
   defaults: Record<string, unknown>;
-  options: Record<string, { value: string; label: string; }[]>;
-  limits: Record<string, { min?: number; max?: number; step?: number; }>;
+  options: Record<string, { value: string; label: string }[]>;
+  limits: Record<string, { min?: number; max?: number; step?: number }>;
 }
-const STANDARD_SETTINGS: Record<string, StandardSettings> = { dirtyPlugins: hubSettings, dirtyCaptions: captions, extractScenes: extractor, multiscreen };
+const STANDARD_SETTINGS: Record<string, StandardSettings> = {
+  dirtyPlugins: hubSettings,
+  dirtyCaptions: captions,
+  extractScenes: extractor,
+  multiscreen,
+};
 function standardTable<T>(pick: (settings: StandardSettings) => T): Record<string, T> {
   return Object.fromEntries(Object.entries(STANDARD_SETTINGS).map(([id, settings]) => [id, pick(settings)]));
 }

@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const { domainAlgorithms } = require("./domain_fixtures");
 const fixture = JSON.parse(fs.readFileSync("tests/fixtures/domain-parity.json", "utf8"));
-const {rank, compactor} = domainAlgorithms();
+const { rank, compactor } = domainAlgorithms();
 const plain = value => JSON.parse(JSON.stringify(value));
 for (const example of fixture.rank) {
   const normalized = plain(rank.settingsFromConfiguration(example.input));

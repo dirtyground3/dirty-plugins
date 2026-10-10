@@ -48,23 +48,24 @@ def captions(client, args):
     return result
 
 
+def run(payload, _reporter=None):
+    args = payload.get("args") or {}
+    if not isinstance(args, dict):
+        raise CaptionError("Plugin arguments must be an object.")
+    client = StashClient(payload.get("server_connection") or {})
+    return captions(client, args) if args.get("mode") == "captions" else caption_index.run(client, args)
+
+
+def public_error(error):
+    # Tool failures can contain private paths. Keep those in Stash's log.
+    if isinstance(error, CaptionError) and not str(error).startswith("Caption tool failed:"):
+        return str(error)
+    return "Could not read embedded captions. Check the Stash log and retry."
+
+
 def main():
-    protocol.configure_standard_streams()
-    try:
-        payload = protocol.read_payload()
-        args = payload.get("args") or {}
-        if not isinstance(args, dict):
-            raise CaptionError("Plugin arguments must be an object.")
-        client = StashClient(payload.get("server_connection") or {})
-        result = captions(client, args) if args.get("mode") == "captions" else caption_index.run(client, args)
-        protocol.emit_output(result)
-    except Exception as error:
-        print("\x01e\x02DirtyCaptions: " + str(error), file=sys.stderr)
-        # Tool failures can contain private paths. Keep those in Stash's log.
-        message = str(error) if isinstance(error, CaptionError) and not str(error).startswith("Caption tool failed:") else "Could not read embedded captions. Check the Stash log and retry."
-        protocol.emit_error(message)
-        return 1
-    return 0
+    # The player and the settings page call this often; only failures are logged.
+    return protocol.serve("DirtyCaptions", run, public_error=public_error, quiet=True)
 
 
 if __name__ == "__main__":

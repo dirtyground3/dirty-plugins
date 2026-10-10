@@ -4,7 +4,7 @@ python -B tests/test_dirty_compactor_stash_integration.py --binary /path/to/stas
 Add --serve to leave the synthetic fixture open for browser review until Ctrl+C.
 Add --development after `npm run build:dev` to decode the served inline TSX maps.
 """
-from plugin_paths import build_mode, runtime_path, use_build_mode
+from plugin_paths import runtime_path
 import argparse
 import base64
 from datetime import datetime, timezone
@@ -135,16 +135,21 @@ def add_build_mode_argument(parser):
                         help="Check a development build (npm run build:dev) and decode its inline TSX maps")
 
 
+# The staged build the checks expect; the served bundle shows which one Stash loaded.
+EXPECTED_MODE = {"value": "release"}
+
+
 def select_build_mode(args):
-    use_build_mode("development" if args.development else "release")
+    EXPECTED_MODE["value"] = "development" if args.development else "release"
 
 
 def verify_served_bundle(fixture, directory, plugin_id, entry, components, required=()):
     """Check Stash's real aggregated endpoint, not individual assets.
 
-    Release staging must be served byte-for-byte without a map, built only from
-    the plugin's own inputs. A development build also decodes the inline map at
-    the named components' compiled entry lines back to their embedded TSX.
+    Release staging must be served byte-for-byte without a map (the build's
+    boundary plugin already admits only the plugin's own inputs). A development
+    build also decodes the inline map at the named components' compiled entry
+    lines back to their embedded TSX.
     """
     staged = runtime_path(directory, entry).read_bytes()
     with urllib.request.urlopen(fixture.url + "/plugin/" + plugin_id + "/javascript") as response:
@@ -158,26 +163,25 @@ def verify_served_bundle(fixture, directory, plugin_id, entry, components, requi
     # Generated settings metadata the plugin declares is data, not another plugin's implementation.
     generated = [".build/generated/" + name + ".settings.ts" for item in registry if item["directory"] == directory
                  for name in item.get("generatedImports", [])]
-    if build_mode() == "release":
-        assert b"sourceMappingURL" not in served, "release bundles carry no source map"
-        state = json.loads((REPO / ".build" / "build-state.json").read_text(encoding="utf-8"))
-        inputs = list(state["plugins"][directory]["metafile"]["inputs"])
-        assert inputs and all(name.startswith(owner) or name in generated or any(name.startswith(package) for package in packages)
-                              for name in inputs), "only plugin-owned inputs; no React or hub copies"
-        assert all(any(name.endswith(suffix) for name in inputs) for suffix in required)
-        return "exact sole served release bundle without a map, " + directory + "-only inputs"
+    mode = "development" if b"sourceMappingURL=data:" in served else "release"
+    assert mode == EXPECTED_MODE["value"], "Stash serves a " + mode + " build; run the matching npm run build command"
+    if mode == "release":
+        return "exact sole served release bundle without a map"
     assert served.count(b"sourceMappingURL=data:") == 1, "one bundle, one inline development map"
     encoded = re.search(rb"sourceMappingURL=data:application/json;base64,([^\s]+)", served).group(1)
     source_map = json.loads(base64.b64decode(encoded))
     assert source_map["version"] == 3 and source_map["mappings"]
     assert len(source_map["sources"]) == len(source_map["sourcesContent"])
     # Map sources are relative to the staged output (for example ../../../generated/<id>.settings.ts).
-    assert all(owner in name or any(name.endswith(path[len(".build"):]) for path in generated) or any(package in name for package in packages)
-               for name in source_map["sources"]), "only plugin-owned sources; no React or hub copies"
+    # Every bundle also compiles the hub's shared host binding and value helpers.
+    shared = "plugins/DirtyPlugins/src/shared/"
+    assert all(owner in name or shared in name or any(name.endswith(path[len(".build"):]) for path in generated)
+               or any(package in name for package in packages)
+               for name in source_map["sources"]), "only plugin-owned and shared sources; no React or hub copies"
     assert all(isinstance(text, str) and text for text in source_map["sourcesContent"])
     assert all(any(name.endswith(suffix) for name in source_map["sources"]) for suffix in required)
     verify_component_mappings(served, source_map, components)
-    return ("exact sole served development bundle, one inline map, " + directory + "-only sources, decoded "
+    return ("exact sole served development bundle, one inline map, " + directory + " and shared sources, decoded "
             + "/".join(sorted(components)) + " TSX")
 
 

@@ -220,19 +220,18 @@ The frontend uses strict TypeScript modules and focused TSX components under
 `src/`, compiled to the sole `dirtyCaptions.js` script. React comes from Stash
 and shared services/components come from the DirtyPlugins public API. Python,
 settings keys, native filters and media/index storage contracts are unchanged.
-It runs with DirtyPlugins 1.0.0 or newer.
 
-The entry validates the host before claiming its instance guard. It owns
-registration; imported modules do not install patches or listeners. Teardown
-removes owned tracks, timers, observers, settings registration and event
-listeners. Stash patches/native filter prototype integration cannot unregister;
-the entry retains their guard and deactivates callbacks rather than repatching.
+The entry registers once through the hub's `registerPlugin`; imported modules
+do not install patches or listeners. Stash patches and the native filter
+prototype integration cannot be unregistered, so a reloaded bundle is ignored
+and there is no plugin teardown. Components remove the tracks, timers,
+observers and event listeners they own when they unmount.
 The native player, external tracks and host job subscription retain their
 own lifecycles. No recurring library check is scheduled.
 
 Run `npm test` from the root. Caption language/track/filter/Scan domains are
-tested through selected module builds; registration, components, async races
-and cleanup run against the compiled browser bundle. The opt-in fixture
+tested as modules compiled on demand; registration, components, async races
+and track cleanup run against the compiled browser bundle. The opt-in fixture
 `python -B tests/test_dirty_captions_stash_integration.py --binary /path/to/stash`
 uses an isolated server and synthetic subtitle media to check FFmpeg output,
 index fields, file-map skipping, forced errors/recovery, Scan deduplication,

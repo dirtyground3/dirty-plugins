@@ -17,23 +17,27 @@ export function Dialog(props: DialogProps) {
   function closeFromBackdrop(event: R.MouseEvent<HTMLDivElement>) {
     if (event.target === event.currentTarget && props.onClose) props.onClose();
   }
-  const content = (<div
-    className={props.backdropClassName || "dirty-ui-backdrop"}
-    style={props.open === false ? { display: "none" } : undefined}
-    onMouseDown={closeFromBackdrop}>
-    {props.backdrop}
-    <section
-      ref={dialog}
-      id={props.id}
-      className={props.className || "dirty-ui-dialog"}
-      role="dialog"
-      aria-modal={true}
-      aria-label={props.ariaLabel}
-      aria-labelledby={props.labelledBy}
-      tabIndex={-1}>
-      {props.children}
-    </section>
-  </div>);
+  const content = (
+    <div
+      className={props.backdropClassName || "dirty-ui-backdrop"}
+      style={props.open === false ? { display: "none" } : undefined}
+      onMouseDown={closeFromBackdrop}
+    >
+      {props.backdrop}
+      <section
+        ref={dialog}
+        id={props.id}
+        className={props.className || "dirty-ui-dialog"}
+        role="dialog"
+        aria-modal={true}
+        aria-label={props.ariaLabel}
+        aria-labelledby={props.labelledBy}
+        tabIndex={-1}
+      >
+        {props.children}
+      </section>
+    </div>
+  );
   return PluginApi.ReactDOM && PluginApi.ReactDOM.createPortal
     ? PluginApi.ReactDOM.createPortal(content, document.body)
     : content;

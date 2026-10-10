@@ -87,7 +87,7 @@ DirtyTidy depends on the sibling **DirtyPlugins** settings hub. Install from the
 repository package source. For a local install, run `npm ci` and `npm run build`,
 then copy the contents of `.build/plugins/DirtyTidy/` into Stash's
 `plugins/dirtyTidy/`, with `.build/plugins/DirtyPlugins/` installed as
-`plugins/dirtyPlugins/`. Use DirtyPlugins 1.0.0 or newer. Reload plugins
+`plugins/dirtyPlugins/`. Reload plugins
 and hard-refresh the Stash browser (Ctrl+F5).
 
 It uses the shared suite toolbar, row list, overflow menus, fields, dialog,
@@ -103,15 +103,17 @@ The strict TypeScript modules and focused TSX controls compile to the sole
 staged browser script, `dirtyTidy.js`. React comes from Stash's `PluginApi`;
 shared components, GraphQL, settings and completed-job handling use the public
 DirtyPlugins API. No React or hub implementation is bundled. Imported modules
-do not register effects; the entry owns the settings panel and App patch.
-Repeated loads retain the instance guard because Stash cannot remove patches.
-Teardown unsubscribes owned effects, clears dirty reports, ignores late results
-and makes the App patch pass through. Partial patch failure retains the guard.
+do not register effects; the entry registers the settings panel and App patch
+once through the hub's `registerPlugin`. Stash cannot remove patches, so a
+reloaded bundle is ignored and a failed registration is logged once.
+Unmounting components unsubscribe their effects, clear dirty reports and
+ignore late results.
 
 Tidy intentionally keeps manual Save and Preview/Confirm/Run. Preview normalizes
 the draft without saving it. Confirmation saves before queuing execution;
 edits made during that save require a new preview before execution. An older
-save cannot replace newer edits, and teardown prevents post-save queueing.
+save cannot replace newer edits, and an unmounted panel never queues after a
+save.
 
 ```powershell
 npm run build

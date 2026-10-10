@@ -140,16 +140,17 @@ in this repository.
 
 Check keyboard focus, Escape/Tab in dialogs and nested native popups, reduced
 motion, 360px width, and all suite themes.
-Run the Python contract suite and the affected Node tests. The shared source
+Run the affected Node and Python tests. The shared source
 uses PluginApi React and CSS served by Stash. Run `npm run build` to stage
 installable files in `.build/plugins/`; each plugin's TS/TSX compiles to one
 guarded browser IIFE. Release builds carry
 no source map; `npm run build:dev` adds an inline map for debugging. Components
 use the same shared primitives and tokens through typed runtime adapters.
 Write TSX.
-Keep a plugin's one-time route and PluginApi patch registrations behind its
-instance guard: Stash cannot unregister those integrations when it
-reloads an asset. Component effects are different; disconnect their observers
+Keep a plugin's one-time route and PluginApi patch registrations inside its
+`registerPlugin` setup: Stash cannot unregister those integrations when it
+reloads an asset, so the hub runs each setup once. Component effects are
+different; disconnect their observers
 and remove their listeners or timers when the component unmounts. The
 Multiscreen bundle uses this split so a repeated asset load does not stack
 navigation links or patches, while player and visibility effects still clean

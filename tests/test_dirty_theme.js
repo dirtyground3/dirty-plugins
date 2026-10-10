@@ -22,10 +22,12 @@ const fetch = (_url, options) => {
   } else {
     throw new Error(`Unexpected operation: ${args.mode}`);
   }
-  return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { runPluginOperation: JSON.stringify(output) } }) });
+  return Promise.resolve({
+    ok: true,
+    json: () => Promise.resolve({ data: { runPluginOperation: JSON.stringify(output) } }),
+  });
 };
-const React = { createElement: noop, useRef: noop, useEffect: noop,
-  useState: noop, useMemo: noop, useCallback: noop };
+const React = { createElement: noop, useRef: noop, useEffect: noop, useState: noop, useMemo: noop, useCallback: noop };
 const window = {
   PluginApi: {
     React,
@@ -33,18 +35,22 @@ const window = {
     patch: { instead: noop },
     register: { route: noop },
     components: {},
-    utils: {}
+    utils: {},
   },
   addEventListener: noop,
-  location: { pathname: "/plugins/dirty-plugins" }
+  location: { pathname: "/plugins/dirty-plugins" },
 };
 const document = {
   currentScript: null,
   addEventListener: noop,
-  documentElement: { classList: { add: key => classes.add(key), remove: key => classes.delete(key) } }
+  documentElement: { classList: { add: key => classes.add(key), remove: key => classes.delete(key) } },
 };
 vm.runInNewContext(require("./load_plugin_scripts").sourceFor("DirtyPlugins"), {
-  window, document, fetch, console: { info: noop, warn: noop, error: noop }, URLSearchParams
+  window,
+  document,
+  fetch,
+  console: { info: noop, warn: noop, error: noop },
+  URLSearchParams,
 });
 
 (async () => {
@@ -83,4 +89,7 @@ vm.runInNewContext(require("./load_plugin_scripts").sourceFor("DirtyPlugins"), {
   assert.equal(backup.path, "backup.sqlite3");
   assert(requests.some(item => item.mode === "backupDatabase"));
   console.log("Dirty Plugins suite theme and backup routing passed");
-})().catch(error => { console.error(error); process.exitCode = 1; });
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

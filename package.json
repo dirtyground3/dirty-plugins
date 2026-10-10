@@ -5,8 +5,10 @@
     "build": "node scripts/build.mjs",
     "build:dev": "node scripts/build.mjs --development",
     "build:watch": "node scripts/build.mjs --watch --development",
-    "test": "npm run build && npm run typecheck && node tests/run_tests.js",
-    "test:js": "npm run build && node tests/run_js_tests.js",
+    "format": "prettier --write \"plugins/*/src/**/*.{ts,tsx}\" \"scripts/*.{mjs,cjs}\" \"tests/*.js\" \"types/*.ts\"",
+    "format:check": "prettier --check \"plugins/*/src/**/*.{ts,tsx}\" \"scripts/*.{mjs,cjs}\" \"tests/*.js\" \"types/*.ts\"",
+    "test": "npm run build && npm run typecheck && npm run format:check && node --test --test-concurrency=1 \"tests/test_*.js\" && python -B -m unittest discover -s tests -v",
+    "test:js": "npm run build && node --test --test-concurrency=1 \"tests/test_*.js\"",
     "test:python": "npm run build && python -B -m unittest discover -s tests -v",
     "test:assets": "npm run build && node tests/test_plugin_assets.js",
     "test:packages": "node scripts/check-packages.mjs _site/main",
@@ -16,6 +18,7 @@
     "@types/react": "17.0.93",
     "echarts": "5.6.0",
     "esbuild": "0.28.2",
+    "prettier": "3.6.2",
     "typescript": "5.9.3",
     "yaml": "2.9.1"
   }

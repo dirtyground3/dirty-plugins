@@ -4,7 +4,7 @@ import type { ThemeApi } from "./types";
 const listeners: ((key: string) => void)[] = [];
 
 function normalizeKey(value: unknown) {
-  return VISUAL_THEME_KEYS.indexOf(value as string) >= 0 ? value as string : DEFAULT_VISUAL_THEME;
+  return VISUAL_THEME_KEYS.indexOf(value as string) >= 0 ? (value as string) : DEFAULT_VISUAL_THEME;
 }
 
 export const theme: ThemeApi = {
@@ -40,8 +40,10 @@ export function applyVisualTheme(value: unknown) {
 /** Apply the stored suite theme; a failed read falls back to the default. */
 export function loadVisualTheme(settings: () => Promise<Record<string, unknown>>) {
   if (typeof fetch !== "function" || !document.documentElement) return Promise.resolve(theme.currentKey);
-  return settings().then(stored => applyVisualTheme(stored.visualTheme)).catch(error => {
-    console.warn("DirtyPlugins could not load the suite theme", error);
-    return applyVisualTheme(DEFAULT_VISUAL_THEME);
-  });
+  return settings()
+    .then(stored => applyVisualTheme(stored.visualTheme))
+    .catch(error => {
+      console.warn("DirtyPlugins could not load the suite theme", error);
+      return applyVisualTheme(DEFAULT_VISUAL_THEME);
+    });
 }

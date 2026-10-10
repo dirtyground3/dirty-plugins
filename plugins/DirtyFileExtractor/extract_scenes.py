@@ -41,7 +41,7 @@ else:
     raise RuntimeError("DirtyPlugins shared storage is not installed")
 import dirty_plugins_storage as shared_storage
 from dirty_plugins_client import StashClient as BaseClient
-from dirty_plugins_protocol import Reporter, StashReporter
+from dirty_plugins_protocol import Reporter
 import dirty_plugins_protocol as protocol
 
 
@@ -116,18 +116,6 @@ class StashClient(BaseClient):
 
     def extract_marker_clip(self, source: Path, destination: Path, start_seconds: float, end_seconds: float, on_progress: Any) -> None:
         extract_marker_clip(self.ffmpeg_path(), source, destination, start_seconds, end_seconds, on_progress)
-
-
-def read_payload(stream=None):
-    return protocol.read_payload(stream, error_type=PluginError)
-
-
-def emit_output(output, stream=None):
-    protocol.emit_output(output, stream, ensure_ascii=False)
-
-
-def emit_error(error, stream=None):
-    protocol.emit_error(error, stream, ensure_ascii=False)
 
 
 def as_bool(value: Any, default: bool = False) -> bool:
@@ -575,10 +563,7 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
 
 
 def main() -> int:
-    protocol.configure_standard_streams()
-    return protocol.run_logged_backend(
-        "DirtyFileExtractor", run, read_payload, emit_output, emit_error, StashReporter(), time.monotonic,
-    )
+    return protocol.serve("DirtyFileExtractor", run, default_mode="copy")
 
 
 if __name__ == "__main__":
