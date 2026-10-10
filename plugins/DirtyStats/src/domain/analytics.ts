@@ -1,4 +1,5 @@
 import { world } from "../runtime";
+import { CONSTELLATION_EDGE_BUDGET, displayedConstellationLinks } from "./constellationLinks";
 import { statsTheme, themeColor } from "../settings";
 import type { StatsFilter } from "../runtime";
 import type {
@@ -359,7 +360,12 @@ export function constellationLayout(count: number) {
   };
 }
 
-export function aggregateConstellation(scenes: StatsScene[], maxPerformers: number, minShared: number) {
+export function aggregateConstellation(
+  scenes: StatsScene[],
+  maxPerformers: number,
+  minShared: number,
+  edgeBudget = CONSTELLATION_EDGE_BUDGET,
+) {
   const uniqueScenes = new Map<string, StatsScene>(),
     performers = new Map<string, StatsConstellationNode>();
   scenes.forEach(scene => {
@@ -429,17 +435,24 @@ export function aggregateConstellation(scenes: StatsScene[], maxPerformers: numb
       (a, b) =>
         b.value - a.value || a.sourceName.localeCompare(b.sourceName) || a.targetName.localeCompare(b.targetName),
     );
-  const collaborators = new Map<string, Set<string>>();
+  const collaborators = new Map<string, number>();
   links.forEach(link => {
-    if (!collaborators.has(link.source)) collaborators.set(link.source, new Set());
-    if (!collaborators.has(link.target)) collaborators.set(link.target, new Set());
-    collaborators.get(link.source)!.add(link.target);
-    collaborators.get(link.target)!.add(link.source);
+    collaborators.set(link.source, (collaborators.get(link.source) || 0) + 1);
+    collaborators.set(link.target, (collaborators.get(link.target) || 0) + 1);
   });
-  nodes = nodes.map(node =>
-    Object.assign({}, node, { collaborators: collaborators.has(node.id) ? collaborators.get(node.id)!.size : 0 }),
+  nodes = nodes.map(node => Object.assign({}, node, { collaborators: collaborators.get(node.id) || 0 }));
+  const displayed = displayedConstellationLinks(
+    links,
+    Math.max(1, Math.floor(edgeBudget) || CONSTELLATION_EDGE_BUDGET),
   );
-  return { nodes, links, totalScenes: uniqueScenes.size, totalPerformers: performers.size };
+  return {
+    nodes,
+    links: displayed,
+    totalConnections: links.length,
+    hiddenConnections: links.length - displayed.length,
+    totalScenes: uniqueScenes.size,
+    totalPerformers: performers.size,
+  };
 }
 
 export function constellationScenes(scenes: StatsScene[], selection: ConstellationSelection | null) {

@@ -7,7 +7,7 @@ export interface WorkflowDependencies {
   getSettings(): Promise<Record<string, unknown>>;
   runPreview(settings: Settings): Promise<Preview>;
   configurePlugin(settings: Settings): Promise<unknown>;
-  queueExecution(strategyHash: string): Promise<string>;
+  queueExecution(strategyHash: string, planDigest: string): Promise<string>;
   notify(message: string): void;
 }
 export interface WorkflowState {
@@ -68,6 +68,7 @@ export function createWorkflow(configuration: unknown, dependencies: WorkflowDep
       state.draft.approvedStrategyHash = "";
       state.draft.approvedPlanDigest = "";
       state.preview = null;
+      state.confirming = false;
       state.previewFilter = "all";
       state.previewPage = 1;
       state.showFiles = false;
@@ -146,6 +147,7 @@ export function createWorkflow(configuration: unknown, dependencies: WorkflowDep
   }
   async function generatePreview() {
     if (!begin("preview")) return;
+    state.confirming = false;
     const draft = state.draft,
       revision = version;
     state.status = "";
@@ -174,7 +176,7 @@ export function createWorkflow(configuration: unknown, dependencies: WorkflowDep
   }
   function discard() {
     state.preview = null;
-    view({ showFiles: false });
+    view({ showFiles: false, confirming: false });
   }
   async function applyPlan(runNow: boolean) {
     const preview = state.preview,
@@ -183,7 +185,7 @@ export function createWorkflow(configuration: unknown, dependencies: WorkflowDep
     if (!preview || !begin("apply")) return;
     const automated = draft.automationMode !== "manual" && state.approve;
     const approvedSettings = automated
-      ? { ...draft, approvedStrategyHash: preview.strategy_hash, approvedPlanDigest: preview.plan_digest || "" }
+      ? { ...draft, approvedStrategyHash: preview.strategy_hash, approvedPlanDigest: preview.plan_digest }
       : draft;
     try {
       await dependencies.configurePlugin(approvedSettings);
@@ -194,7 +196,7 @@ export function createWorkflow(configuration: unknown, dependencies: WorkflowDep
         return;
       }
       state.draft = approvedSettings;
-      const jobId = runNow ? await dependencies.queueExecution(preview.strategy_hash) : null;
+      const jobId = runNow ? await dependencies.queueExecution(preview.strategy_hash, preview.plan_digest) : null;
       if (state.destroyed) return;
       state.confirming = false;
       const automationText = automated

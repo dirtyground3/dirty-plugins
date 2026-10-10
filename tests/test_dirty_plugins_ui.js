@@ -13,8 +13,11 @@ async function main() {
   assert.equal(values.parseMaybeJson("invalid JSON"), "invalid JSON");
   assert.equal(values.coerceBoolean(" FALSE ", true), false);
   assert.equal(values.clampInteger("bad", 3, 1, 10), 3);
-  assert.equal(domain.serializeFieldValue({ name: "amount", type: "NUMBER" }, "5"), 5);
-  assert.throws(() => domain.serializeFieldValue({ name: "amount", type: "NUMBER" }, "bad"), /must be a number/);
+  assert.equal(domain.serializeFieldValue("fixture", { name: "amount", type: "NUMBER" }, "5"), 5);
+  assert.throws(
+    () => domain.serializeFieldValue("fixture", { name: "amount", type: "NUMBER" }, "bad"),
+    /must be a number/,
+  );
   const inertWindow = {};
   for (const name of ["Save", "Jobs", "SettingsDraft", "Register"]) loadFeature(inertWindow, name);
   assert.deepEqual(inertWindow, {}, "imports have no browser registration effects");
@@ -206,6 +209,14 @@ async function main() {
     .nodes(node => node.type === "button" && require("./ui_harness").text(node) === "Add rule")[0]
     .props.onClick();
   await combined.settle();
+  assert.equal(combined.window.handlers.get("beforeunload").size, 1);
+  combined.window.DirtyPlugins.notifyConfigurationChanged("dirtyPlugins");
+  await combined.settle();
+  assert.equal(
+    combined.nodes(node => node.type === "input" && node.props.value === "New rule").length,
+    1,
+    "unrelated settings refresh keeps the custom panel mounted and its workflow intact",
+  );
   assert.equal(combined.window.handlers.get("beforeunload").size, 1);
   const unload = {
     preventDefault() {

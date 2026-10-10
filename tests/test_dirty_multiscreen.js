@@ -52,7 +52,8 @@ async function main() {
   reused.forEach(playlist => {
     assert.deepEqual(plain(playlist.map(item => item.id)), ["a", "b", "c", "d", "e"]);
   });
-  assert.notEqual(reused[0], reused[1], "each screen must receive its own list copy");
+  assert.strictEqual(reused[0], items, "non-random unsplit playback shares its immutable source");
+  assert.strictEqual(reused[1], items);
   assert.deepEqual(
     items.map(item => item.id),
     ["a", "b", "c", "d", "e"],
@@ -65,6 +66,21 @@ async function main() {
     ["b", "d"],
   ]);
   assert.equal(a.createMultiscreenPlaylists([], 3, true, true).length, 3);
+  assert.deepEqual(
+    plain(a.pagePlaylists(items, 3, true, true, 42, 2)),
+    plain(a.pagePlaylists(items, 3, true, true, 42, 2)),
+    "split assignments stay identical when different panes request the page at different times",
+  );
+  assert.deepEqual(
+    plain(
+      a
+        .pagePlaylists(items, 3, true, true, 42, 2)
+        .flat()
+        .map(item => item.id)
+        .sort(),
+    ),
+    items.map(item => item.id),
+  );
   assert.deepEqual(plain(a.splitMultiscreenItemsByIndex([1, 2, 3, 4, 5], 3).map(group => group.length)), [2, 2, 1]);
   assert.deepEqual(plain(a.splitMultiscreenItemsByIndex([1, 2], 0)), []);
 
@@ -160,12 +176,12 @@ async function main() {
     markerFilter: { tag: "x" },
   });
   assert.deepEqual(plain(markerVariables), {
-    filter: { sort: "created_at", page: 1, per_page: -1 },
+    filter: { sort: "created_at", page: 1, per_page: a.getSceneLimit(nonRandom) },
     scene_marker_filter: { tag: "x" },
   });
-  assert.equal(
+  assert.match(
     a.getMarkerQueryVariables(defaults, { source: "marker-filter", filter: {}, markerFilter: {} }).filter.sort,
-    "random",
+    /^random_\d+$/,
   );
 
   const selectionVariables = await a.getSceneQueryVariables(defaults, { source: "selection", selectedIds: ["3"] });
@@ -177,12 +193,18 @@ async function main() {
     sceneFilter: { favorite: true },
   });
   assert.deepEqual(plain(filterVariables), {
-    filter: { sort: "created_at", page: 1, per_page: -1 },
+    filter: { sort: "created_at", page: 1, per_page: a.getSceneLimit(nonRandom) },
     scene_filter: { favorite: true },
   });
-  assert.equal(
+  assert.match(
     (await a.getSceneQueryVariables(defaults, { source: "filter", filter: {}, sceneFilter: {} })).filter.sort,
-    "random",
+    /^random_\d+$/,
+  );
+  assert.match(
+    (await a.getSceneQueryVariables(nonRandom, { source: "filter", filter: { sort: "random" }, sceneFilter: {} }))
+      .filter.sort,
+    /^random_\d+$/,
+    "native unseeded random order gets one seed for complete continuation",
   );
 
   const defaultVariables = await a.getSceneQueryVariables(defaults, null);
@@ -195,7 +217,7 @@ async function main() {
     performerId: "7",
   });
   assert.equal(performerVariables.filter.sort, "title");
-  assert.equal(performerVariables.filter.per_page, -1);
+  assert.equal(performerVariables.filter.per_page, a.getSceneLimit(nonRandom));
   assert.deepEqual(plain(performerVariables.scene_filter), {
     performers: { value: ["7"], modifier: "INCLUDES" },
   });

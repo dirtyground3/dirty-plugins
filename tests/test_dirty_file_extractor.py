@@ -25,8 +25,9 @@ class FakeClient:
         self._images = images or []
         self.extractions = []
 
-    def scene(self, scene_id):
-        return self._scenes.get(str(scene_id))
+    def scenes(self, scene_ids):
+        wanted = {str(value) for value in scene_ids}
+        return [scene for key, scene in self._scenes.items() if key in wanted]
 
     def markers(self, marker_ids):
         wanted = {str(value) for value in marker_ids}
@@ -46,6 +47,86 @@ class FakeClient:
 
 
 class DirtyFileExtractorTests(unittest.TestCase):
+    def test_thousand_scenes_use_forty_bounded_requests_and_keep_requested_order(self):
+        client = extractor.StashClient({})
+        requested = [str(n) for n in range(1000, 0, -1)]
+        def response(query, variables):
+            ids = []
+            condition = variables["scene"]
+            while condition:
+                self.assertEqual(condition["id"]["modifier"], "EQUALS")
+                ids.append(condition["id"]["value"])
+                condition = condition.get("OR")
+            self.assertLessEqual(len(ids), 25)
+            self.assertEqual(variables["filter"]["per_page"], 25)
+            return {"findScenes": {"scenes": [{"id": str(n), "files": []} for n in sorted(ids) if n != 500]}}
+        with mock.patch.object(client, "call", side_effect=response) as calls:
+            items, missing = extractor.resolve_selected_items(client, {"scene": requested})
+        self.assertEqual(calls.call_count, 40)
+        self.assertEqual([item["id"] for item in items], [item for item in requested if item != "500"])
+        self.assertEqual(missing, [{"scene_id": "500", "reason": "scene not found"}])
+
+    def test_mixed_selection_deduplicates_fetches_and_preserves_missing_order(self):
+        scene = {"id": "1", "files": []}
+        client = FakeClient(scenes={"1": scene}, markers=[{"id": "3", "scene": scene}], images=[{"id": "5"}])
+        selections = extractor.selections_from_args({"scene_ids": ["2", "1", "1"], "marker_ids": ["4", "3", "3"], "image_ids": ["6", "5", "5"]})
+        with mock.patch.object(client, "scenes", wraps=client.scenes) as scenes:
+            items, missing = extractor.resolve_selected_items(client, selections)
+        scenes.assert_called_once_with(["2", "1"])
+        self.assertEqual([(item["kind"], item["id"]) for item in items], [("scene", "1"), ("marker", "3"), ("image", "5")])
+        self.assertEqual(missing, [{"scene_id": "2", "reason": "scene not found"},
+                                  {"marker_id": "4", "reason": "marker not found"}, {"image_id": "6", "reason": "image not found"}])
+
+    def test_configuration_is_resolved_once_even_when_multiple_marker_clips_fail(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "scene.mp4"
+            source.write_bytes(b"source")
+            scene = {"id": "1", "files": [{"path": str(source)}]}
+            client = extractor.StashClient({})
+            markers = [{"id": str(n), "scene": scene, "seconds": n, "end_seconds": n + 1} for n in range(1, 4)]
+            def call(query, variables=None):
+                if "findSceneMarkers" in query:
+                    return {"findSceneMarkers": {"scene_markers": markers}}
+                return {"configuration": {"general": {"ffmpegPath": "configured-ffmpeg"}}}
+            attempted = []
+            def extract(tool, source, destination, start, end, progress):
+                attempted.append(tool)
+                if len(attempted) != 2:
+                    raise extractor.PluginError("synthetic clip failure")
+                destination.write_bytes(b"clip")
+            with mock.patch.object(client, "call", side_effect=call) as calls, \
+                 mock.patch.object(extractor, "extract_marker_clip", side_effect=extract):
+                result = extractor.copy_selected(client, {"marker": ["1", "2", "3"]}, {"destinationFolder": str(root / "output")})
+            self.assertEqual(calls.call_count, 2, "One marker batch and one configuration lookup")
+            self.assertEqual(attempted, ["configured-ffmpeg"] * 3)
+            self.assertEqual((result["files_failed"], result["marker_clips_extracted"]), (2, 1))
+            self.assertEqual(source.read_bytes(), b"source")
+
+    def test_failed_configuration_is_cached_for_the_run_and_unused_for_dry_runs(self):
+        client = extractor.StashClient({})
+        with mock.patch.object(client, "call", side_effect=extractor.PluginError("configuration unavailable")) as calls:
+            for n in range(3):
+                with self.assertRaisesRegex(extractor.PluginError, "configuration unavailable"):
+                    client.ffmpeg_path()
+            calls.assert_called_once()
+        # A different run gets a fresh client and can resolve a recovered path.
+        client = extractor.StashClient({})
+        with mock.patch.object(client, "call", return_value={"configuration": {"general": {"ffmpegPath": "recovered"}}}):
+            self.assertEqual(client.ffmpeg_path(), "recovered")
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "scene.mp4"
+            source.write_bytes(b"source")
+            marker = {"id": "1", "seconds": 0, "end_seconds": 1,
+                      "scene": {"id": "1", "files": [{"path": str(source)}]}}
+            with mock.patch.object(client, "markers", return_value=[marker]), \
+                 mock.patch.object(client, "ffmpeg_path", side_effect=AssertionError("Dry runs must not resolve FFmpeg")):
+                result = extractor.copy_selected(client, {"marker": ["1"]},
+                    {"destinationFolder": str(Path(folder) / "output"), "dryRun": True})
+            self.assertEqual(result["marker_clips_extracted"], 1)
+            self.assertFalse((Path(folder) / "output").exists())
+
+
     def test_parses_and_deduplicates_all_selection_types(self):
         self.assertEqual(
             extractor.selections_from_args(

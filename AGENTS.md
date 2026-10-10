@@ -95,8 +95,10 @@ ui:
 ## JavaScript and TypeScript conventions
 
 - Run `npm run build` to stage all eight plugins under `.build/plugins/`. The
-  build stages into `.build/staging` and replaces `.build/plugins` in one
-  rename, so a failed build keeps the previous output. Builds never overwrite
+  build stages into `.build/staging`, renames the previous output to a backup,
+  and promotes staging. Failed promotion restores the previous output; if a
+  file lock also prevents restoration, `.build/plugins.previous` retains it
+  and the next build recovers it. Builds never overwrite
   source or installed plugins.
 - Install files are derived from the manifest: the manifest itself, its
   `ui.javascript` and `ui.css` entries, the top-level `*.py` modules, the

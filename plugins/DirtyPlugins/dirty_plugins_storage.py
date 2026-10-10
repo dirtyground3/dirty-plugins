@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import json
 import sqlite3
+import uuid
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -135,17 +136,19 @@ def backup_database(destination: str | Path | None = None, path: str | Path | No
     source_path = database_path(path)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     target = Path(destination) if destination else source_path.with_name(
-        f"dirty_plugins-backup-{stamp}.sqlite3"
+        f"dirty_plugins-backup-{stamp}-{uuid.uuid4().hex}.sqlite3"
     )
     target = target.resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
-    source = connect(source_path)
-    target_connection = sqlite3.connect(target)
+    # Reserve before SQLite opens it: never merge into an existing backup.
+    with target.open("xb"):
+        pass
     try:
-        source.backup(target_connection)
-    finally:
-        target_connection.close()
-        source.close()
+        with closing(connect(source_path)) as source, closing(sqlite3.connect(target)) as target_connection:
+            source.backup(target_connection)
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
     return target
 
 
@@ -167,9 +170,9 @@ def get_plugin_revision(
         return int(value) if value is not None else 0
 
 
-def get_metadata(namespace: str, key: str, path: str | Path | None = None) -> str | None:
-    with closing(connect(path)) as connection:
-        return _metadata_value(connection, namespace, key)
+def get_metadata(namespace: str, key: str, path: str | Path | None = None, *, connection=None) -> str | None:
+    with _borrowed(connection, path) as current:
+        return _metadata_value(current, namespace, key)
 
 
 def set_metadata(
@@ -191,12 +194,31 @@ def update_json_metadata(namespace, key, update, path=None):
         return value
 
 
-def list_metadata(namespace, path=None):
-    with closing(connect(path)) as connection:
-        return {str(row["key"]): str(row["value"]) for row in connection.execute(
-            "SELECT key, value FROM dirty_metadata WHERE namespace=? ORDER BY key",
-            (str(namespace),),
-        )}
+def list_metadata(namespace, path=None, *, connection=None, limit=None, keys=None):
+    """Read a namespace, a bounded queue batch, or the keys on one fetched page."""
+    query = "SELECT key, value FROM dirty_metadata WHERE namespace=?"
+    values = [str(namespace)]
+    if keys is not None:
+        keys = list(dict.fromkeys(str(key) for key in keys))
+        if not keys:
+            return {}
+        if len(keys) > 900:
+            raise ValueError("Metadata key reads must be batched at 900 keys or fewer")
+        query += " AND key IN (" + ",".join("?" for key in keys) + ")"
+        values.extend(keys)
+    query += " ORDER BY key"
+    if limit is not None:
+        query += " LIMIT ?"
+        values.append(max(0, int(limit)))
+    with _borrowed(connection, path) as current:
+        return {str(row["key"]): str(row["value"]) for row in current.execute(query, values)}
+
+
+def has_metadata(namespace, path=None, *, connection=None):
+    with _borrowed(connection, path) as current:
+        return current.execute(
+            "SELECT 1 FROM dirty_metadata WHERE namespace=? LIMIT 1", (str(namespace),)
+        ).fetchone() is not None
 
 
 def delete_metadata(namespace, key, path=None, expected=None):

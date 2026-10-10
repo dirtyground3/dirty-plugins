@@ -1,10 +1,11 @@
-import { GLICKO_SCALE, OVERALL_LEADERBOARD_ID, PLUGIN_ID } from "../constants";
+import { OVERALL_LEADERBOARD_ID, PLUGIN_ID } from "../constants";
+import { buildCategoryScoreIndex, buildCategoryScoreIndexAsync, updateCategoryScoreIndex } from "./scores";
+import type { CategoryScoreIndex } from "./scores";
 import type {
   DisplayPool,
   LeaderboardProps,
   PerformerFilter,
   PerformerFilterModel,
-  PreviewMedia,
   RankCategory,
   RankOperationResult,
   RankPerformer,
@@ -42,27 +43,35 @@ let overallSortRevision = 0,
 const overallSortListeners = new Set<(revision: number) => void>();
 const ratingStateIndex = new Map<string, RankPerformerState>();
 let overallReferencePerformers: Map<string, RankPerformer> | null = null;
-const overallCategoryScoreCache = new Map<
-  string,
-  Map<
-    string,
-    {
-      rating: number;
-      position: number;
-      strength: number;
-    }
-  >
->();
+interface CategoryScoreCache {
+  categoryId: string;
+  cohort: string;
+  settings: RankSettings;
+  genders: Set<string>;
+  index: CategoryScoreIndex;
+}
+const overallCategoryScoreCache = new Map<string, CategoryScoreCache>();
+const scorePreparations = new Map<string, { controller: AbortController; promise: Promise<void> }>();
 const categoryLeaderboardRankCache = new Map<string, Map<string, number>>();
-const performerMediaCache = new Map<string, PreviewMedia>();
+const confidencePoolRevisions = new Map<string, number>();
+let confidenceGeneration = 0;
+export function confidenceRevisionFor(categoryId: string, cohort: string) {
+  return confidenceGeneration + ":" + (confidencePoolRevisions.get(keyFor(categoryId, cohort)) || 0);
+}
+export { loadPreferredMedia, scenePlaybackUrl, needsNativePreview, invalidatePerformerMedia } from "./media";
+import { invalidatePerformerMedia } from "./media";
+let performerGeneration = 0;
+let performerCache: { performers: RankPerformer[]; cardData: boolean } | null = null;
+let performerRequest: { promise: Promise<RankPerformer[]>; cardData: boolean; started: boolean } | null = null;
 let ratingIndexRevision = 0;
+let ratingSnapshotRevision = 0;
 let ratingIndexPromise: Promise<RankOperationResult> | null = null;
 export function refreshOverallSortSettings() {
   const request = ++sortRequest;
-  return Promise.all([DirtyPlugins.getPluginSettings(PLUGIN_ID), loadRatingIndex(), queryPerformers()])
-    .then(values => {
+  return DirtyPlugins.getPluginSettings(PLUGIN_ID)
+    .then(configuration => {
       if (request !== sortRequest) return;
-      overallSortSettings = settingsFromConfiguration(values[0]);
+      overallSortSettings = settingsFromConfiguration(configuration);
       notifyRatingListeners();
     })
     .catch(error => {
@@ -78,9 +87,31 @@ export function subscribeToOverallSortSettings(listener: (revision: number) => v
 export function runOperation(args: Record<string, unknown>) {
   return DirtyPlugins.runPluginOperation<RankOperationResult>(PLUGIN_ID, args);
 }
-function notifyRatingListeners() {
-  overallCategoryScoreCache.clear();
-  categoryLeaderboardRankCache.clear();
+function notifyRatingListeners(changedPools?: Set<string>, changedPerformers?: Set<string>) {
+  const prefixes = changedPools ? Array.from(changedPools, poolKey => poolKey + "|") : null;
+  for (const [key, preparation] of scorePreparations) {
+    if (!prefixes || prefixes.some(prefix => key.startsWith(prefix))) {
+      preparation.controller.abort();
+      scorePreparations.delete(key);
+    }
+  }
+  if (changedPools) {
+    for (const [cacheKey, cache] of overallCategoryScoreCache) {
+      if (prefixes!.some(prefix => cacheKey.startsWith(prefix)))
+        cache.index = updateCategoryScoreIndex(
+          cache.index,
+          Array.from(changedPerformers!, id => ({ id, rating: categoryScoreRating(id, cache) })),
+        );
+    }
+    for (const cacheKey of categoryLeaderboardRankCache.keys()) {
+      if (prefixes!.some(prefix => cacheKey.startsWith(prefix))) categoryLeaderboardRankCache.delete(cacheKey);
+    }
+  } else {
+    confidenceGeneration += 1;
+    confidencePoolRevisions.clear();
+    overallCategoryScoreCache.clear();
+    categoryLeaderboardRankCache.clear();
+  }
   overallSortRevision += 1;
   overallSortListeners.forEach(listener => {
     listener(overallSortRevision);
@@ -97,6 +128,7 @@ export function applyRatingIndex(payload: RankOperationResult) {
     ratingStateIndex.set(String(performerId), states[performerId]);
   });
   ratingIndexRevision = Math.max(ratingIndexRevision, revision);
+  ratingSnapshotRevision = revision;
   notifyRatingListeners();
   return payload;
 }
@@ -112,25 +144,60 @@ export function loadRatingIndex() {
 export function loadNativePerformerCard() {
   return DirtyPlugins.native.loadComponent("PerformerCard").catch(() => null);
 }
-export function queryPerformers(withCardData?: boolean) {
-  return DirtyPlugins.graphql<{
-    findPerformers?: {
-      performers: RankPerformer[];
-    };
-  }>(
-    "query DirtyRankPerformers($filter:FindFilterType){" +
-      "findPerformers(filter:$filter){count performers{" +
-      "id name gender image_path scene_count" +
-      (withCardData
-        ? " disambiguation birthdate country favorite rating100 o_counter image_count gallery_count group_count performer_count alias_list tags{id name} stash_ids{endpoint stash_id}"
-        : "") +
-      "}}}",
-    { filter: { per_page: -1, sort: "name", direction: "ASC" } },
-  ).then(data => {
-    const performers = (data.findPerformers && data.findPerformers.performers) || [];
-    setOverallReferencePerformers(performers);
-    return performers;
-  });
+export function invalidateRankLibrary() {
+  performerGeneration++;
+  performerCache = null;
+  performerRequest = null;
+  invalidatePerformerMedia();
+}
+export function queryPerformers(withCardData = false, { refresh = true } = {}): Promise<RankPerformer[]> {
+  if (performerRequest) {
+    if (withCardData && !performerRequest.cardData) {
+      if (performerRequest.started) return performerRequest.promise.then(() => queryPerformers(true));
+      performerRequest.cardData = true;
+    }
+    return performerRequest.promise;
+  }
+  if (!refresh && performerCache && (!withCardData || performerCache.cardData))
+    return Promise.resolve(performerCache.performers);
+  if (refresh) invalidateRankLibrary();
+  const generation = performerGeneration;
+  const request = { cardData: withCardData, started: false, promise: null as unknown as Promise<RankPerformer[]> };
+  request.promise = Promise.resolve()
+    .then(async () => {
+      request.started = true;
+      const performers: RankPerformer[] = [];
+      for (let page = 1; ; page++) {
+        const data = await DirtyPlugins.graphql<{
+          findPerformers?: {
+            count: number;
+            performers: RankPerformer[];
+          };
+        }>(
+          "query DirtyRankPerformers($filter:FindFilterType){" +
+            "findPerformers(filter:$filter){count performers{" +
+            "id name gender image_path scene_count" +
+            (request.cardData
+              ? " disambiguation birthdate country favorite rating100 o_counter image_count gallery_count group_count performer_count alias_list tags{id name} stash_ids{endpoint stash_id}"
+              : "") +
+            "}}}",
+          { filter: { page, per_page: 500, sort: "name", direction: "ASC" } },
+        );
+        const batch = data.findPerformers?.performers || [];
+        performers.push(...batch);
+        if (batch.length < 500 || performers.length >= data.findPerformers!.count) break;
+      }
+      if (generation === performerGeneration) {
+        performerCache = { performers, cardData: request.cardData };
+        setOverallReferencePerformers(performers);
+      }
+      return performers;
+    })
+    .finally(() => {
+      if (performerRequest === request) performerRequest = null;
+    });
+  performerRequest = request;
+  return request.promise;
 }
 export function setOverallReferencePerformers(performers: RankPerformer[]) {
   // Always supplied by the unfiltered query, never by a page or search result.
@@ -142,82 +209,6 @@ export function setOverallReferencePerformers(performers: RankPerformer[]) {
 }
 export function loadNativePreviewPlayer() {
   return DirtyPlugins.native.loadComponent("ScenePlayer").catch(() => null);
-}
-export function loadPreferredMedia(performerId: string, fullScene: boolean, signal?: AbortSignal) {
-  const cacheKey = String(performerId) + (fullScene ? ":scene" : ":preferred");
-  if (performerMediaCache.has(cacheKey)) return Promise.resolve(performerMediaCache.get(cacheKey));
-  const request = DirtyPlugins.graphql<{
-    top?: {
-      scenes: PreviewMedia[];
-    };
-    markers?: {
-      scene_markers: Array<{
-        id: string;
-        title: string;
-        seconds: number;
-        end_seconds?: number;
-        scene: PreviewMedia;
-      }>;
-    };
-  }>(
-    "query DirtyRankPreferredMedia($filter:FindFilterType,$sceneFilter:SceneFilterType,$markerFilter:SceneMarkerFilterType,$includeMarkers:Boolean!){" +
-      "top:findScenes(filter:$filter,scene_filter:$sceneFilter){scenes{" +
-      "id title rating100 paths{stream} sceneStreams{url mime_type label}" +
-      "}}" +
-      "markers:findSceneMarkers(filter:{per_page:-1},scene_marker_filter:$markerFilter) @include(if:$includeMarkers){scene_markers{" +
-      "id title seconds end_seconds scene{id title rating100 paths{stream} sceneStreams{url mime_type label}}" +
-      "}}}",
-    {
-      filter: { per_page: 1, sort: "rating", direction: "DESC" },
-      sceneFilter: { performers: { value: [String(performerId)], modifier: "INCLUDES" } },
-      markerFilter: { performers: { value: [String(performerId)], modifier: "INCLUDES" } },
-      includeMarkers: !fullScene,
-    },
-    { signal },
-  )
-    .then(data => {
-      const markers =
-        data.markers && Array.isArray(data.markers.scene_markers) ? data.markers.scene_markers.slice() : [];
-      // Best-rated scene first (unrated last), then the earliest marker in it.
-      const sceneRating = (marker: (typeof markers)[number]) => {
-        const rating = Number(marker.scene && marker.scene.rating100);
-        return Number.isFinite(rating) ? rating : -1;
-      };
-      markers.sort(
-        (left, right) =>
-          sceneRating(right) - sceneRating(left) || Number(left.seconds || 0) - Number(right.seconds || 0),
-      );
-      if (!fullScene && markers[0] && markers[0].scene) {
-        return Object.assign({}, markers[0].scene, {
-          marker: {
-            id: markers[0].id,
-            title: markers[0].title,
-            seconds: Number(markers[0].seconds) || 0,
-            end_seconds: Number(markers[0].end_seconds) || null,
-          },
-        });
-      }
-      return (data.top && data.top.scenes && data.top.scenes[0]) || null;
-    })
-    .then(media => {
-      // Pending requests belong to their card so cancellation cannot affect another preview.
-      if (media && (!signal || !signal.aborted)) performerMediaCache.set(cacheKey, media);
-      return media;
-    });
-  return request;
-}
-export function scenePlaybackUrl(scene: PreviewMedia | null | undefined) {
-  const streams = scene && Array.isArray(scene.sceneStreams) ? scene.sceneStreams : [];
-  const directPath = scene && scene.paths && scene.paths.stream;
-  const preferred =
-    streams.find(stream => stream.mime_type === "video/mp4" && /direct/i.test(stream.label || "")) ||
-    streams.find(stream => stream.mime_type === "video/mp4" && /720p/i.test(stream.label || "")) ||
-    streams.find(stream => stream.mime_type === "video/mp4");
-  // Stash's original stream can be a format the browser cannot play (e.g. WMV).
-  return (preferred && preferred.url) || directPath || "";
-}
-export function needsNativePreview(scene: PreviewMedia | null | undefined) {
-  return /\/stream\.(mp4|webm)(?:\?|$)/i.test(scenePlaybackUrl(scene));
 }
 export function parseState(performer: Pick<RankPerformer, "id"> | null) {
   const state = performer && ratingStateIndex.get(String(performer.id));
@@ -276,12 +267,35 @@ function scoredCategories(performer: RankPerformer, cohort: string, settings: Ra
   );
 }
 export function updatePerformerState(performer: RankPerformer, state: RankPerformerState) {
-  if (performer && state) {
-    ratingStateIndex.set(String(performer.id), state);
-    ratingIndexRevision = Math.max(ratingIndexRevision, Number(state.revision) || 0);
-    notifyRatingListeners();
-  }
+  updatePerformerStates([{ id: performer.id, state }]);
   return performer;
+}
+/** Publish the complete response after accepting each performer's latest state. */
+export function updatePerformerStates(updates: Array<{ id: string; state: RankPerformerState }>) {
+  const changedPools = new Set<string>();
+  const changedPerformers = new Set<string>();
+  for (const { id, state } of updates) {
+    const performerId = String(id);
+    const current = ratingStateIndex.get(performerId);
+    const revision = Number(state.revision) || 0;
+    // The full snapshot also covers performers with no pools. The global maximum
+    // may belong to another performer and must not reject this performer's reply.
+    if (revision <= (current ? Number(current.revision) || 0 : ratingSnapshotRevision)) continue;
+    const previousPools = current?.pools || {};
+    const nextPools = state.pools || {};
+    for (const poolKey of new Set([...Object.keys(previousPools), ...Object.keys(nextPools)])) {
+      const previous = previousPools[poolKey];
+      const next = nextPools[poolKey];
+      if (JSON.stringify(previous) !== JSON.stringify(next))
+        confidencePoolRevisions.set(poolKey, (confidencePoolRevisions.get(poolKey) || 0) + 1);
+      if (previous?.rating !== next?.rating || previous?.matches !== next?.matches) changedPools.add(poolKey);
+    }
+    ratingStateIndex.set(performerId, state);
+    ratingIndexRevision = Math.max(ratingIndexRevision, revision);
+    changedPerformers.add(performerId);
+  }
+  if (changedPerformers.size) notifyRatingListeners(changedPools, changedPerformers);
+  return changedPerformers.size > 0;
 }
 export function categoryEligible(
   performer: RankPerformer,
@@ -319,69 +333,92 @@ export function rankPerformers(
       return poolFor(right, categoryId, cohort, settings).rating - poolFor(left, categoryId, cohort, settings).rating;
     });
 }
+function categoryScoreRating(id: string, cache: Omit<CategoryScoreCache, "index">) {
+  if (overallReferencePerformers) {
+    const reference = overallReferencePerformers.get(id);
+    if (!reference || !cache.genders.has(String(reference.gender || "").toUpperCase())) return null;
+  }
+  const pool = poolFor({ id }, cache.categoryId, cache.cohort, cache.settings);
+  return pool.matches > 0 ? pool.rating : null;
+}
+function categoryScoreKey(categoryId: string, cohort: string, settings: RankSettings) {
+  return keyFor(categoryId, cohort) + "|" + settings.initialRating + "|" + boxGenders(settings, cohort).join(",");
+}
+function categoryScoreContext(categoryId: string, cohort: string, settings: RankSettings) {
+  return { categoryId, cohort, settings: { ...settings }, genders: new Set(boxGenders(settings, cohort)) };
+}
+function categoryScoreEntries(context: Omit<CategoryScoreCache, "index">) {
+  const entries: { id: string; rating: number }[] = [];
+  ratingStateIndex.forEach((_state, id) => {
+    const rating = categoryScoreRating(id, context);
+    if (rating !== null) entries.push({ id, rating });
+  });
+  return entries;
+}
+function scoreContexts(settings: RankSettings, cohorts: string[]) {
+  return cohorts.flatMap(cohort =>
+    categoriesFor(settings, cohort)
+      .filter(category => category.enabled && Number(category.weight) > 0)
+      .map(category => ({ key: categoryScoreKey(category.id, cohort, settings), categoryId: category.id, cohort })),
+  );
+}
+export function overallScoresReady(settings: RankSettings, cohorts: string[]) {
+  return scoreContexts(settings, cohorts).every(({ key }) => overallCategoryScoreCache.has(key));
+}
+/** Shared cache preparation survives route changes; mutations cancel only obsolete work. */
+export async function prepareOverallScores(settings: RankSettings, cohorts: string[], signal?: AbortSignal) {
+  while (!signal?.aborted) {
+    const jobs = scoreContexts(settings, cohorts).map(({ key, categoryId, cohort }) => {
+      if (overallCategoryScoreCache.has(key)) return Promise.resolve();
+      const pending = scorePreparations.get(key);
+      if (pending) return pending.promise;
+      const context = categoryScoreContext(categoryId, cohort, settings);
+      const controller = new AbortController();
+      const job = { controller, promise: null as unknown as Promise<void> };
+      scorePreparations.set(key, job);
+      job.promise = buildCategoryScoreIndexAsync(categoryScoreEntries(context), controller.signal)
+        .then(index => {
+          if (scorePreparations.get(key) === job) overallCategoryScoreCache.set(key, { ...context, index });
+        })
+        .finally(() => {
+          if (scorePreparations.get(key) === job) scorePreparations.delete(key);
+        });
+      return job.promise;
+    });
+    try {
+      await Promise.all(jobs);
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") throw error;
+      // A newer accepted state or population invalidated an unfinished index.
+      continue;
+    }
+    if (overallScoresReady(settings, cohorts)) return;
+  }
+}
 export function overallCategoryScoreFor(
   performer: RankPerformer,
   categoryId: string,
   cohort: string,
   settings: RankSettings,
 ) {
-  const cacheKey =
-    keyFor(categoryId, cohort) + "|" + settings.initialRating + "|" + boxGenders(settings, cohort).join(",");
+  const cacheKey = categoryScoreKey(categoryId, cohort, settings);
   if (!overallCategoryScoreCache.has(cacheKey)) {
-    const entries: {
-      id: string;
-      rating: number;
-    }[] = [];
-    ratingStateIndex.forEach((_state, performerId) => {
-      if (overallReferencePerformers) {
-        const reference = overallReferencePerformers.get(performerId);
-        if (
-          !reference ||
-          !categoryIncludes(reference, categoryById(settings, categoryId, cohort) || {}, cohort, settings)
-        )
-          return;
-      }
-      const pool = poolFor({ id: performerId }, categoryId, cohort, settings);
-      if (pool.matches > 0) entries.push({ id: performerId, rating: pool.rating });
+    const pending = scorePreparations.get(cacheKey);
+    pending?.controller.abort();
+    scorePreparations.delete(cacheKey);
+    const context = categoryScoreContext(categoryId, cohort, settings);
+    overallCategoryScoreCache.set(cacheKey, {
+      ...context,
+      index: buildCategoryScoreIndex(categoryScoreEntries(context)),
     });
-    entries.sort((left, right) => left.rating - right.rating);
-    const groups: Array<{
-      rating: number;
-      ids: string[];
-      below: number;
-    }> = [];
-    entries.forEach(entry => {
-      let group = groups[groups.length - 1];
-      if (!group || group.rating !== entry.rating) {
-        group = { rating: entry.rating, ids: [], below: groups.length ? group.below + group.ids.length : 0 };
-        groups.push(group);
-      }
-      group.ids.push(entry.id);
-    });
-    const scores = new Map();
-    groups.forEach(group => {
-      let position = 50;
-      let strength = 50;
-      if (entries.length > 1) {
-        // Average ties, excluding the performer itself from both comparisons.
-        position = (100 * (group.below + (group.ids.length - 1) / 2)) / (entries.length - 1);
-        const expected = groups.reduce((sum, opponent) => {
-          // Rating-only logistic expected score (no RD penalty). Extreme gaps
-          // saturate safely; draws count half. Grouping also avoids repeat work.
-          return sum + opponent.ids.length / (1 + Math.exp((opponent.rating - group.rating) / GLICKO_SCALE));
-        }, 0);
-        strength = (100 * (expected - 0.5)) / (entries.length - 1);
-      }
-      const value = { rating: 0.8 * position + 0.2 * strength, position, strength };
-      group.ids.forEach(id => {
-        scores.set(id, value);
-      });
-    });
-    overallCategoryScoreCache.set(cacheKey, scores);
   }
   // Missing categories and pools with no comparison evidence stay neutral.
   return (
-    overallCategoryScoreCache.get(cacheKey)!.get(String(performer.id)) || { rating: 50, position: 50, strength: 50 }
+    overallCategoryScoreCache.get(cacheKey)!.index.performers.get(String(performer.id))?.score || {
+      rating: 50,
+      position: 50,
+      strength: 50,
+    }
   );
 }
 export function overallPoolFor(performer: RankPerformer, cohort: string, settings: RankSettings) {
@@ -430,15 +467,11 @@ export function overallPoolFor(performer: RankPerformer, cohort: string, setting
 }
 export function rankOverallPerformers(performers: RankPerformer[], cohort: string, settings: RankSettings) {
   return performers
-    .filter(performer => {
-      return (
-        categoriesForPerformer(settings, cohort, performer).length > 0 &&
-        overallPoolFor(performer, cohort, settings).matches > 0
-      );
-    })
-    .sort((left, right) => {
-      return overallPoolFor(right, cohort, settings).rating - overallPoolFor(left, cohort, settings).rating;
-    });
+    .filter(performer => categoriesForPerformer(settings, cohort, performer).length > 0)
+    .map(performer => ({ performer, pool: overallPoolFor(performer, cohort, settings) }))
+    .filter(entry => entry.pool.matches > 0)
+    .sort((left, right) => right.pool.rating - left.pool.rating)
+    .map(entry => entry.performer);
 }
 export function leaderboardPoolFor(
   performer: RankPerformer,

@@ -72,7 +72,7 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
         <ui.StateView
           title="Could not load DirtyRank"
           detail={error}
-          actions={<RankButton onClick={load}>Retry</RankButton>}
+          actions={<RankButton onClick={() => load()}>Retry</RankButton>}
         />
       </main>
     );

@@ -15,6 +15,7 @@ import * as dataLoader from "../domain/data";
 import type * as R from "react";
 import type { PageProps } from "../props";
 import type { ChartInstance, StatsPerformer, StatsScene } from "../types";
+let originMapRegistered = false;
 export function StatsPage(props: PageProps): R.ReactElement | null {
   const chartTheme = useChartTheme();
   const pageData = dataLoader.usePageData<StatsScene & StatsPerformer>(),
@@ -55,7 +56,10 @@ export function StatsPage(props: PageProps): R.ReactElement | null {
       node: chartNode.current,
       chartRef,
       beforeInit: () => {
-        charts.registerMap("dirtyStatsWorld", world);
+        if (!originMapRegistered) {
+          charts.registerMap("dirtyStatsWorld", world);
+          originMapRegistered = true;
+        }
       },
       configure: chart => {
         chart.on("click", event => {
@@ -71,7 +75,7 @@ export function StatsPage(props: PageProps): R.ReactElement | null {
         setChartError(err.message);
       },
     };
-  }, [loading, error, chartTheme]);
+  }, [loading, error]);
   React.useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
@@ -85,7 +89,7 @@ export function StatsPage(props: PageProps): R.ReactElement | null {
       backgroundColor: themeColor("background"),
     });
     Object.assign(option.series[0], mapLayout(chartNode.current, true));
-    chart.setOption(option, true);
+    chart.setOption(option);
   }, [stats, labels, loading, error, selectedCountry, chartTheme]);
   return (
     <section className="dirty-stats-content">

@@ -19,6 +19,10 @@ const PERFORMER_IDS =
 const STUDIO_IDS =
   "query MultiscreenStudios($filter:FindFilterType,$studio_filter:StudioFilterType){findStudios(filter:$filter,studio_filter:$studio_filter){studios{id}}}";
 const INCREMENT_O = "mutation MultiscreenIncrementSceneO($id:ID!){sceneIncrementO(id:$id)}";
+const playbackSort = (settings: Settings, contextualSort: string) =>
+  settings.randomize || contextualSort === "random"
+    ? "random_" + Math.floor(Math.random() * 2147483647)
+    : contextualSort;
 
 export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
   const graphqlRequest: Hub["graphql"] = (query, variables, options) => DirtyPlugins.graphql(query, variables, options);
@@ -32,7 +36,7 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
   ): QueryVariables {
     const contextualSort = typeof filter.sort === "string" ? filter.sort : NON_RANDOM_SCENE_SORT;
     return {
-      filter: { ...filter, page: 1, per_page: -1, sort: settings.randomize ? "random" : contextualSort },
+      filter: { ...filter, page: 1, per_page: getSceneLimit(settings), sort: playbackSort(settings, contextualSort) },
       [key]: objectFilter,
     };
   }
@@ -54,7 +58,7 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
     } else return null;
     if (!ids.length) return null;
     return {
-      filter: { page: 1, per_page: -1, sort: getSceneSort(settings) },
+      filter: { page: 1, per_page: getSceneLimit(settings), sort: playbackSort(settings, NON_RANDOM_SCENE_SORT) },
       scene_filter: {
         [entity === "studio" ? "studios" : "performers"]: {
           value: ids,

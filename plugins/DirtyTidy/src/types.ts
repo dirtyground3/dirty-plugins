@@ -35,7 +35,7 @@ export interface Summary {
 export interface Preview {
   settings?: Record<string, unknown>;
   strategy_hash: string;
-  plan_digest?: string;
+  plan_digest: string;
   summary: Summary;
   operations: Operation[];
   total: number;

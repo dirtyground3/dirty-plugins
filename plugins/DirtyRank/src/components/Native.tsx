@@ -1,9 +1,5 @@
-import {
-  getOverallSortRevision,
-  getOverallSortSettings,
-  sortPerformersByOverall,
-  subscribeToOverallSortSettings,
-} from "../domain/rank";
+import { getOverallSortSettings, sortPerformersByOverall } from "../domain/rank";
+import { useOverallScores } from "./useOverallScores";
 import { CONFIGURATION_CHANGED_EVENT, settingsFromConfiguration } from "../domain/settings";
 import { DirtyPlugins, PluginApi, React, Router, ui } from "../runtime";
 import type * as R from "react";
@@ -79,8 +75,8 @@ export function DirtyRankPerformerListShell(props: { children?: R.ReactNode }): 
 }
 
 export function DirtyRankSortedPerformerList(props: NativeProps): R.JSX.Element | null {
-  const [revision, setRevision] = React.useState(getOverallSortRevision());
-  React.useEffect(() => subscribeToOverallSortSettings(setRevision), []);
+  const settings = getOverallSortSettings();
+  const scores = useOverallScores(settings, settings.enabledCohorts);
 
   const listProps = props.listProps;
   const filter = listProps.filter;
@@ -88,14 +84,24 @@ export function DirtyRankSortedPerformerList(props: NativeProps): R.JSX.Element 
   const pageSize = Number(filter[OVERALL_SORT_PAGE_SIZE]) || 40;
   const direction = filter[OVERALL_SORT_DIRECTION] || "ASC";
   const pagePerformers = React.useMemo(() => {
+    if (!scores.ready) return [];
     const sorted = sortPerformersByOverall(
       Array.isArray(listProps.performers) ? listProps.performers : [],
       direction,
-      getOverallSortSettings(),
+      settings,
     );
     const start = Math.max(0, (currentPage - 1) * pageSize);
     return sorted.slice(start, start + pageSize);
-  }, [currentPage, direction, listProps.performers, pageSize, revision]);
+  }, [currentPage, direction, listProps.performers, pageSize, scores.ready, scores.revision, settings]);
+
+  if (!scores.ready)
+    return (
+      <ui.StateView
+        title={scores.error ? "Could not calculate DirtyRank scores" : "Calculating DirtyRank scores…"}
+        detail={scores.error}
+        actions={scores.error ? <ui.Button onClick={scores.retry}>Retry</ui.Button> : undefined}
+      />
+    );
 
   return props.next(Object.assign({}, listProps, { performers: pagePerformers }));
 }

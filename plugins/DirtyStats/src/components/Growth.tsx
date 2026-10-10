@@ -92,9 +92,10 @@ export function GrowthPage(props: PageProps): R.ReactElement | null {
   }, [queryKey, dateBasis, grouping]);
   const selectedScenes = React.useMemo(() => scenesInPeriod(scenes, dateBasis, period), [scenes, dateBasis, period]);
   const stats = React.useMemo(() => aggregateGrowth(scenes, null, dateBasis, grouping), [scenes, dateBasis, grouping]);
+  const daily = React.useMemo(() => aggregateGrowth(scenes, null, dateBasis), [scenes, dateBasis]);
   const forecast = React.useMemo(
-    () => forecastGrowth(aggregateGrowth(scenes, null, dateBasis), capacity && capacity.total, null, period),
-    [scenes, dateBasis, capacity, period],
+    () => forecastGrowth(daily, capacity && capacity.total, null, period),
+    [daily, capacity, period],
   );
   pageData.useLoad(
     {

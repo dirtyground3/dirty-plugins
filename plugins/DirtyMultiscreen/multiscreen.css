@@ -23,6 +23,17 @@
   background: #000;
 }
 
+.ms-queue-status {
+  position: absolute;
+  z-index: 5;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.5rem;
+  color: var(--dirty-ui-text);
+  background: var(--dirty-ui-surface);
+}
+
 .ms-title {
   position: absolute;
   top: 0.45rem;

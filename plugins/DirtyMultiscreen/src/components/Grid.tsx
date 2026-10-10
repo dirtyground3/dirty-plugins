@@ -1,8 +1,9 @@
 import { React } from "../runtime";
 import type { GridProps } from "../types";
-import { NativePlayerTile } from "./NativePlayerTile";
+import { NativePlayerPane } from "./PlayerPane";
 export function NativeMultiscreenGrid({
   columns,
+  continuation,
   nativePlayer,
   onVisibleSceneIdsChange,
   playback,
@@ -13,24 +14,19 @@ export function NativeMultiscreenGrid({
 }: GridProps) {
   const gridRef = React.useRef<HTMLDivElement | null>(null);
   const videosToResumeRef = React.useRef(new Set<HTMLVideoElement>());
-  const [cursors, setCursors] = React.useState(() => Array.from({ length: totalScreens }, () => 0));
-  const playlistKey = React.useMemo(
-    () => playlists.map(playlist => playlist.map(item => item.id).join(",")).join("|"),
-    [playlists],
+  const [visibleByPane, setVisibleByPane] = React.useState<Array<string | null>>([]);
+  const onSceneChange = React.useCallback((index: number, id: string | null) => {
+    setVisibleByPane(current => {
+      if (current[index] === id) return current;
+      const next = current.slice();
+      next[index] = id;
+      return next;
+    });
+  }, []);
+  const visibleSceneIds = React.useMemo(
+    () => Array.from(new Set(visibleByPane.slice(0, totalScreens).filter((id): id is string => !!id))),
+    [visibleByPane, totalScreens],
   );
-  React.useEffect(() => {
-    setCursors(Array.from({ length: totalScreens }, () => 0));
-  }, [playlistKey, totalScreens]);
-  const visibleSceneIds = React.useMemo(() => {
-    const sceneIds = Array.from({ length: totalScreens }, (_, screenIndex) => {
-      const playlist = playlists[screenIndex] ?? [];
-      if (playlist.length === 0) return null;
-      const currentIndex = Math.min(cursors[screenIndex] ?? 0, playlist.length - 1);
-      const item = playlist[currentIndex];
-      return item.scene?.id ?? null;
-    }).filter((sceneId): sceneId is string => !!sceneId);
-    return Array.from(new Set(sceneIds));
-  }, [cursors, playlists, totalScreens]);
   React.useEffect(() => {
     onVisibleSceneIdsChange(visibleSceneIds);
   }, [onVisibleSceneIdsChange, visibleSceneIds]);
@@ -72,42 +68,24 @@ export function NativeMultiscreenGrid({
       videosToResumeRef.current.clear();
     };
   }, [playback.pauseWhenHidden]);
-  const setCursor = React.useCallback(
-    (screenIndex: number, nextIndex: number) => {
-      setCursors(previousCursors => {
-        const nextCursors = Array.from({ length: totalScreens }, (_, index) => previousCursors[index] ?? 0);
-        nextCursors[screenIndex] = nextIndex;
-        return nextCursors;
-      });
-    },
-    [totalScreens],
-  );
   const gridStyle = {
     gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
     gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
   };
   return (
     <div className="ms-grid ms-native-grid" ref={gridRef} style={gridStyle}>
-      {Array.from({ length: totalScreens }, (_, screenIndex) => {
-        const playlist = playlists[screenIndex] ?? [];
-        if (playlist.length === 0) return <div className="ms-cell" key={`ms-native-${screenIndex}`} />;
-        const currentIndex = Math.min(cursors[screenIndex] ?? 0, playlist.length - 1);
-        const item = playlist[currentIndex];
-        const nextItem = () => setCursor(screenIndex, (currentIndex + 1) % playlist.length);
-        const previousItem = () => setCursor(screenIndex, currentIndex === 0 ? playlist.length - 1 : currentIndex - 1);
-        return (
-          <div className="ms-cell" key={`ms-native-${screenIndex}`}>
-            <NativePlayerTile
-              item={item}
-              nativePlayer={nativePlayer}
-              nextItem={nextItem}
-              playback={playback}
-              previousItem={previousItem}
-              useFindScene={useFindScene}
-            />
-          </div>
-        );
-      })}
+      {Array.from({ length: totalScreens }, (_, screenIndex) => (
+        <NativePlayerPane
+          key={`ms-native-${screenIndex}`}
+          screenIndex={screenIndex}
+          playlist={playlists[screenIndex] ?? []}
+          continuation={continuation}
+          nativePlayer={nativePlayer}
+          playback={playback}
+          useFindScene={useFindScene}
+          onSceneChange={onSceneChange}
+        />
+      ))}
     </div>
   );
 }

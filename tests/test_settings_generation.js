@@ -76,7 +76,20 @@ async function main() {
     },
   };
   assert.equal(generator.validateSchema("example", valid), valid);
+  assert.deepEqual(
+    generator.settingsTables(valid).integers,
+    ["count"],
+    "authored integer requirements reach TypeScript validation",
+  );
   const invalid = [
+    [{ settings: {}, constants: null }, /example\.settings\.json: constants must be an object/],
+    [{ settings: { broken: null } }, /example\.settings\.json: broken must be an object/],
+    [{ settings: { broken: [] } }, /broken must be an object/],
+    [{ settings: { broken: 3 } }, /broken must be an object/],
+    ...[null, [], "bad", { value: "a", label: "" }, { value: Infinity, label: "Bad" }].map(option => [
+      { settings: { mode: { type: "STRING", displayName: "Mode", description: "Mode.", options: [option] } } },
+      /example\.settings\.json: mode options must be a list/,
+    ]),
     [{ settings: {}, extra: true }, /unknown key extra/],
     [{ settings: { count: { ...valid.settings.count, default: 5 } } }, /outside min\/max/],
     [{ settings: { count: { ...valid.settings.count, default: 1.5 } } }, /whole number/],

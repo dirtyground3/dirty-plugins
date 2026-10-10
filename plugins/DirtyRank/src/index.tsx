@@ -16,7 +16,7 @@ import {
   PLUGIN_ID,
   ROUTE_PATH,
 } from "./constants";
-import { refreshOverallSortSettings } from "./domain/rank";
+import { loadRatingIndex, queryPerformers, refreshOverallSortSettings } from "./domain/rank";
 import { CONFIGURATION_CHANGED_EVENT } from "./domain/settings";
 import { DirtyPlugins, PluginApi, React } from "./runtime";
 import { DirtyRankSettings } from "./settingsPanel";
@@ -30,6 +30,9 @@ DirtyPlugins?.registerPlugin(PLUGIN_ID, () => {
   PluginApi.register.route(LEADERBOARDS_ROUTE_PATH + "/:statistic?", DirtyRankLeaderboardsRoute);
   DirtyPlugins.registerSettingsPanel(PLUGIN_ID, DirtyRankSettings);
   void refreshOverallSortSettings();
+  void Promise.all([loadRatingIndex(), queryPerformers(false, { refresh: false })]).catch(error =>
+    console.error("DirtyRank could not load its reference population", error),
+  );
   window.addEventListener(CONFIGURATION_CHANGED_EVENT, event => {
     const detail = (event as ConfigurationEvent).detail;
     if (!detail || detail.pluginId === PLUGIN_ID) void refreshOverallSortSettings();

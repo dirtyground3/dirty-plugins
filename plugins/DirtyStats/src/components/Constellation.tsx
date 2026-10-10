@@ -100,8 +100,11 @@ export function ConstellationPage(props: PageProps): R.ReactElement | null {
               " performers · " +
               stats.nodes.length +
               " shown · " +
+              stats.totalConnections +
+              " connections · " +
               stats.links.length +
-              " connections",
+              " shown" +
+              (stats.hiddenConnections ? " · " + stats.hiddenConnections + " hidden" : ""),
         loading,
         () => {
           setRefresh(refresh + 1);
@@ -172,6 +175,9 @@ export function ConstellationPage(props: PageProps): R.ReactElement | null {
       ) : null}
       {!loading && !error && stats.nodes.length ? (
         <p>
+          {stats.hiddenConnections
+            ? "The display keeps strongest connections and a spanning forest within 5,000 edges. Collaborator counts include hidden connections. "
+            : ""}
           Click a performer to show their scenes, or click a connection to show shared scenes. Click the same item again
           to clear it. Drag performers to rearrange the graph; scroll to zoom and drag the background to pan.
         </p>

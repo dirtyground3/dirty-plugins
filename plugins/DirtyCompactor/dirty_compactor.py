@@ -44,14 +44,14 @@ def settings():
 
 
 class Client(BaseClient):
-    def scenes(self, condition=None, ids=None):
+    def scenes(self, condition=None):
         condition = condition or {}
         page = 1
         while True:
             find = dict(condition.get("find") or {})
             find.update(page=page, per_page=100, sort="id", direction="ASC")
-            data = self.call("query($filter:FindFilterType,$scene:SceneFilterType,$ids:[Int!]){findScenes(filter:$filter,scene_filter:$scene,scene_ids:$ids){scenes{" + FIELDS + "}}}",
-                             {"filter": find, "scene": condition.get("scene") or {}, "ids": [int(x) for x in ids] if ids is not None else None})["findScenes"]["scenes"]
+            data = self.call("query($filter:FindFilterType,$scene:SceneFilterType){findScenes(filter:$filter,scene_filter:$scene){scenes{" + FIELDS + "}}}",
+                             {"filter": find, "scene": condition.get("scene") or {}})["findScenes"]["scenes"]
             yield from data
             if len(data) < 100:
                 break
@@ -59,6 +59,28 @@ class Client(BaseClient):
 
     def scene(self, scene_id):
         return self.call("query($id:ID!){findScene(id:$id){" + FIELDS + "}}", {"id": str(scene_id)})["findScene"]
+
+    def has_shared_files(self, scene_id, file_ids):
+        # Stash's explicit IDs bypass filters. Keep the ID inside scene_filter
+        # so it is combined with the file-owner criterion in the database.
+        result = self.call("query($id:ID!,$scene:SceneFilterType!){findScene(id:$id){files{id}} findScenes(scene_filter:$scene,filter:{per_page:1}){count}}", {
+            "id": str(scene_id),
+            "scene": {"id": {"value": int(scene_id), "modifier": "EQUALS"},
+                      "files_filter": {"scene_count": {"value": 1, "modifier": "GREATER_THAN"}}},
+        })
+        current = result["findScene"]
+        if current is None or sorted(str(file["id"]) for file in current["files"]) != sorted(file_ids):
+            raise PluginError("Scene files changed since preview")
+        return result["findScenes"]["count"] > 0
+
+    def matches_scene(self, scene_id, condition):
+        scene = {"id": {"value": int(scene_id), "modifier": "EQUALS"}}
+        if condition.get("scene"):
+            scene["AND"] = condition["scene"]
+        result = self.call("query($filter:FindFilterType,$scene:SceneFilterType!){findScenes(filter:$filter,scene_filter:$scene){count}}", {
+            "filter": dict(condition.get("find") or {}, per_page=1), "scene": scene,
+        })["findScenes"]
+        return result["count"] > 0
 
     def tool(self, name):
         general = self.call("{configuration{general{ffmpegPath ffprobePath}}}")["configuration"]["general"]
@@ -87,7 +109,53 @@ class Client(BaseClient):
             raise PluginError("Stash did not confirm deletion")
 
 
-def probe(executable, path):
+def packet_video_bitrate(executable, path, duration, stop=lambda: None, *, timeout=120):
+    """Sum packets without retaining output or blocking cancellation on a pipe read."""
+    process = subprocess.Popen([executable, "-v", "error", "-select_streams", "v:0", "-show_entries",
+                                "packet=size", "-of", "csv=p=0", str(path)],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
+    total = 0
+    cleanup = lambda: None
+    reader = None
+    def read():
+        nonlocal total
+        incomplete = False
+        for line in iter(lambda: process.stdout.readline(256), b""):
+            complete = line.endswith(b"\n") or len(line) < 256
+            if not incomplete and complete:
+                value = line.strip().split(b",", 1)[0]
+                if value.isdigit():
+                    total += int(value)
+            incomplete = not complete
+    try:
+        cleanup = contain_child_process(process)
+        reader = threading.Thread(target=read, daemon=True)
+        reader.start()
+        deadline = time.monotonic() + timeout
+        while process.poll() is None:
+            stop()
+            if time.monotonic() >= deadline:
+                raise PluginError("Video packet scan timed out")
+            try:
+                process.wait(timeout=0.2)
+            except subprocess.TimeoutExpired:
+                pass
+        stop()
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        cleanup()
+        if reader:
+            reader.join(timeout=2)
+        process.stdout.close()
+    if process.returncode:
+        raise PluginError("Video packet scan failed")
+    return total * 8 / duration
+
+
+def probe(executable, path, stop=lambda: None):
+    stop()
     result = subprocess.run([executable, "-v", "error", "-show_streams", "-show_format", "-show_chapters", "-of", "json", str(path)],
                             capture_output=True, timeout=120, creationflags=NO_WINDOW)
     if result.returncode:
@@ -113,21 +181,7 @@ def probe(executable, path):
     if not rate:
         # Matroska often omits stream bitrate. Sum compressed packet bytes,
         # not container bitrate (which includes audio and attachments).
-        packet_process = subprocess.Popen([executable, "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=size", "-of", "csv=p=0", str(path)],
-                                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
-        try:
-            total = 0
-            for line in packet_process.stdout:
-                value = line.strip().split(b",", 1)[0]
-                if value.isdigit():
-                    total += int(value)
-            if packet_process.wait() == 0:
-                rate = total * 8 / duration
-        finally:
-            packet_process.stdout.close()
-            if packet_process.poll() is None:
-                packet_process.kill()
-                packet_process.wait()
+        rate = packet_video_bitrate(executable, path, duration, stop)
     try:
         numerator, denominator = (v.get("avg_frame_rate") or "0/1").split("/")
         fps = float(numerator) / float(denominator) if float(denominator) else 0
@@ -317,7 +371,7 @@ def build_preview(client, preview):
                             op["savings"] = sum(f["identity"]["size"] for f in op["deleteFiles"])
                         else:
                             ffprobe = ffprobe or client.tool("ffprobe")
-                            media = probe(ffprobe, op["source"])
+                            media = probe(ffprobe, op["source"], lambda: check_cancel(preview["id"]))
                             op["media"] = media
                             op["dimensions"] = list(dimensions(media["width"], media["height"], rule))
                             op["mbps"] = target_mbps(rule, op["dimensions"][0], op["dimensions"][1], media.get("fps"), media["bitrate"])
@@ -440,16 +494,15 @@ def revalidate(client, run, op):
             op["sourceHash"] = file_hash(op["source"])
             save("run", run)
     for rule in run["settings"]["rules"]:
-        if rule.get("enabled") and next(iter(client.scenes(rule["condition"], [op["sceneId"]])), None):
+        if rule.get("enabled") and client.matches_scene(op["sceneId"], rule["condition"]):
             if rule["id"] != op["rule"]["id"]:
                 raise PluginError("Winning rule changed since preview")
             break
     else:
         raise PluginError("Scene no longer matches its rule")
     # Refresh ownership immediately before a destructive operation.
-    for other in client.scenes({"scene": {"file_count": {"value": 0, "modifier": "GREATER_THAN"}}}):
-        if str(other["id"]) != op["sceneId"] and any(str(f["id"]) in op["sceneFiles"] for f in other["files"]):
-            raise PluginError("A file is now shared with another scene")
+    if client.has_shared_files(op["sceneId"], op["sceneFiles"]):
+        raise PluginError("A file is now shared with another scene")
 
 
 def op_mbps(op):
@@ -504,7 +557,7 @@ def encode(client, run, op):
         output.unlink(missing_ok=True)
         op.update(encoder=ENCODERS[codec]["cpu"], fallback=True)
         run_process(command_for(ffmpeg, op, output, op["encoder"]), run["id"], "Encoding (CPU fallback)", op["media"]["duration"])
-    result = probe(ffprobe, output)
+    result = probe(ffprobe, output, lambda: check_cancel(run["id"]))
     original = op["media"]
     if [result["width"], result["height"]] != op["dimensions"] or abs(result["duration"] - original["duration"]) > max(0.25, original["duration"] * 0.001):
         raise PluginError("Output dimensions or duration failed validation")

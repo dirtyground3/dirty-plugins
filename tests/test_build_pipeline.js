@@ -2,7 +2,6 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const vm = require("node:vm");
 const { spawnSync } = require("node:child_process");
@@ -38,7 +37,8 @@ assert.equal(
 );
 
 // Exercise failures and TSX in a disposable checkout, never by changing real source.
-const temporaryRoot = path.resolve(os.tmpdir());
+// Child processes need the same writable sandbox boundary as the parent fixture.
+const temporaryRoot = path.resolve(lib.buildRoot);
 const fixture = fs.mkdtempSync(path.join(temporaryRoot, "dirty-build-fixture-"));
 function write(file, contents) {
   const filename = path.join(fixture, file);
@@ -53,12 +53,16 @@ function build(...args) {
   assert.equal(result.status, 0, result.stdout + result.stderr);
 }
 const stagedFile = path.join(fixture, ".build/plugins/DirtyCompactor/dirtyCompactor.js");
+function snapshot(directory) {
+  return files(directory).map(file => [file, fs.readFileSync(path.join(directory, file))]);
+}
 function fails(pattern, message) {
-  const before = fs.readFileSync(stagedFile);
+  const output = path.join(fixture, ".build/plugins");
+  const before = snapshot(output);
   const result = run("scripts/build.mjs");
   assert.notEqual(result.status, 0, message);
   assert.match(result.stderr, pattern);
-  assert.deepEqual(fs.readFileSync(stagedFile), before, "a failed build leaves the previous staging intact");
+  assert.deepEqual(snapshot(output), before, "a failed build leaves every previous install file intact");
 }
 function identity(directory) {
   return run(
@@ -76,7 +80,16 @@ try {
   for (const file of ["package.json", "package-lock.json", "tsconfig.json", "build_site.sh"]) {
     fs.copyFileSync(path.join(lib.root, file), path.join(fixture, file));
   }
-  fs.symlinkSync(path.join(lib.root, "node_modules"), path.join(fixture, "node_modules"), "junction");
+  const dependencies = path.join(lib.root, "node_modules");
+  const fixtureDependencies = path.join(fixture, "node_modules");
+  try {
+    fs.symlinkSync(dependencies, fixtureDependencies, "junction");
+  } catch (error) {
+    if (!["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) throw error;
+    // Constrained Windows sessions cannot create junctions. Reuse the installed,
+    // locked packages without a network install or changing the real checkout.
+    fs.cpSync(dependencies, fixtureDependencies, { recursive: true });
+  }
   assert.match(
     run("-e", "require('./scripts/build-lib.cjs').requireBuild()").stderr,
     /Missing staged plugins. Run `npm run build` first/,
@@ -101,9 +114,160 @@ try {
   fs.appendFileSync(path.join(fixture, "tsconfig.json"), "\n");
   assert.notEqual(identity("DirtyCompactor"), before);
 
+  function git(...args) {
+    const result = spawnSync("git", args, { cwd: fixture, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return result.stdout.trim();
+  }
+  function commit(date, message) {
+    const result = spawnSync(
+      "git",
+      [
+        "-c",
+        "user.name=Build fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-m",
+        message,
+      ],
+      { cwd: fixture, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } },
+    );
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return git("rev-parse", "--short", "HEAD");
+  }
+  git("init");
+  git("add", "plugins/DirtyRank/src/index.tsx", "plugins/DirtyPlugins/src/shared");
+  commit("2020-01-01T00:00:00Z", "initial source");
+  const identities = lib.registry.map(plugin => identity(plugin.directory));
+  fs.appendFileSync(path.join(fixture, "plugins/DirtyPlugins/src/shared/values.ts"), "\n// Shared fixture edit\n");
+  git("add", "plugins/DirtyPlugins/src/shared/values.ts");
+  const sharedCommit = commit("2020-01-02T00:00:00Z", "shared source");
+  const sharedIdentities = lib.registry.map(plugin => identity(plugin.directory));
+  for (let index = 0; index < identities.length; index++) assert.notEqual(sharedIdentities[index], identities[index]);
+  const metadata = JSON.parse(
+    run(
+      "-e",
+      "const lib=require('./scripts/build-lib.cjs'); console.log(JSON.stringify(lib.sourceMetadata(lib.pluginFor('DirtyRank'))))",
+    ).stdout,
+  );
+  assert(metadata.identity.startsWith(sharedCommit + "-"));
+  assert.equal(metadata.date, "2020-01-02 00:00:00");
+  for (const file of [
+    "state.sqlite3",
+    "state.sqlite3-wal",
+    "archive.bak",
+    "backups/private.txt",
+    "__pycache__/cache.pyc",
+  ])
+    write("plugins/DirtyRank/" + file, "synthetic ignored artifact");
+  write("plugins/DirtyPlugins/src/shared/state.sqlite3", "synthetic database");
+  git("add", "plugins/DirtyRank/state.sqlite3", "plugins/DirtyRank/archive.bak");
+  commit("2020-01-03T00:00:00Z", "synthetic runtime artifacts");
+  assert.deepEqual(
+    lib.registry.map(plugin => identity(plugin.directory)),
+    sharedIdentities,
+  );
+
   const manifestPath = path.join(fixture, "plugins/DirtyCompactor/dirtyCompactor.yml");
   const sourceManifest = fs.readFileSync(manifestPath, "utf8");
   const manifest = YAML.parse(sourceManifest);
+  for (const unsafe of [
+    "../../plugins/DirtyTidy/dirtyTidy.css",
+    "..\\..\\plugins\\DirtyTidy\\dirtyTidy.css",
+    path.join(fixture, "plugins/DirtyTidy/dirtyTidy.css"),
+    "/absolute.css",
+    "C:\\absolute.css",
+    "C:relative.css",
+  ]) {
+    fs.writeFileSync(
+      manifestPath,
+      YAML.stringify({ ...manifest, ui: { ...manifest.ui, css: [...manifest.ui.css, unsafe] } }),
+    );
+    fails(/relative without traversal/, "unsafe install paths cannot change the previous build");
+  }
+  write("plugins/DirtyCompactor/nested/theme.css", ".fixture { color: red; }\n");
+  fs.writeFileSync(
+    manifestPath,
+    YAML.stringify({ ...manifest, ui: { ...manifest.ui, css: [...manifest.ui.css, "nested/theme.css"] } }),
+  );
+  build();
+  assert.equal(
+    fs.readFileSync(path.join(fixture, ".build/plugins/DirtyCompactor/nested/theme.css"), "utf8"),
+    ".fixture { color: red; }\n",
+  );
+  fs.writeFileSync(manifestPath, sourceManifest);
+  build();
+
+  const escapedAsset = path.join(fixture, "plugins/DirtyCompactor/nested/escaped.css");
+  try {
+    fs.symlinkSync(path.join(fixture, "plugins/DirtyTidy/dirtyTidy.css"), escapedAsset);
+    fs.writeFileSync(
+      manifestPath,
+      YAML.stringify({ ...manifest, ui: { ...manifest.ui, css: [...manifest.ui.css, "nested/escaped.css"] } }),
+    );
+    fails(/install source resolves outside the plugin/, "a symlink cannot copy another plugin's asset");
+    fs.writeFileSync(manifestPath, sourceManifest);
+  } catch (error) {
+    if (!["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) throw error;
+  }
+
+  // Inject filesystem failures without changing the real build output.
+  const promotion = path.join(fixture, ".build/promotion-check");
+  const output = path.join(promotion, "plugins"),
+    staging = path.join(promotion, "staging");
+  fs.mkdirSync(output, { recursive: true });
+  fs.mkdirSync(staging);
+  fs.writeFileSync(path.join(output, "old.txt"), "previous build");
+  fs.writeFileSync(path.join(staging, "new.txt"), "new build");
+  const priorOutput = snapshot(output),
+    rename = fs.renameSync;
+  try {
+    fs.renameSync = (source, destination) => {
+      if (source === staging) throw new Error("Injected promotion failure");
+      return rename(source, destination);
+    };
+    assert.throws(() => lib.promoteBuild(staging, output), /Injected promotion failure/);
+  } finally {
+    fs.renameSync = rename;
+  }
+  assert.deepEqual(snapshot(output), priorOutput);
+  assert(!fs.existsSync(output + ".previous"));
+  let promotions = 0;
+  try {
+    fs.renameSync = (source, destination) => {
+      if (source === staging && ++promotions === 1) throw Object.assign(new Error("Transient lock"), { code: "EPERM" });
+      return rename(source, destination);
+    };
+    lib.promoteBuild(staging, output);
+  } finally {
+    fs.renameSync = rename;
+  }
+  assert.equal(promotions, 2, "transient Windows rename locks are retried before rollback");
+  assert.equal(fs.readFileSync(path.join(output, "new.txt"), "utf8"), "new build");
+  assert(!fs.existsSync(output + ".previous"));
+  fs.mkdirSync(staging);
+  fs.writeFileSync(path.join(staging, "next.txt"), "next build");
+  const retained = snapshot(output);
+  try {
+    fs.renameSync = (source, destination) => {
+      if (source === staging || source === output + ".previous") throw new Error("Injected locked path");
+      return rename(source, destination);
+    };
+    assert.throws(() => lib.promoteBuild(staging, output), /previous output retained at/);
+  } finally {
+    fs.renameSync = rename;
+  }
+  assert(!fs.existsSync(output));
+  assert.deepEqual(snapshot(output + ".previous"), retained);
+  lib.recoverBuild(output);
+  assert.deepEqual(snapshot(output), retained);
+  fs.mkdirSync(output + ".previous");
+  lib.recoverBuild(output);
+  assert.deepEqual(snapshot(output), retained);
+  assert(!fs.existsSync(output + ".previous"));
   manifest.ui.css.push("missing.css");
   fs.writeFileSync(manifestPath, YAML.stringify(manifest));
   fails(/missing install file missing\.css/, "manifest assets must exist");

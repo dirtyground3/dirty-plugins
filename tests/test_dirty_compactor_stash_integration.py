@@ -9,11 +9,13 @@ import argparse
 import base64
 from datetime import datetime, timezone
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import re
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -297,6 +299,7 @@ def exercise(fixture):
     subprocess.run([shutil.which("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", "color=blue:size=160x90:rate=25",
                     "-t", "1", "-c:v", "libx264", str(doomed)], check=True)
     fixture.scan()
+    verify_targeted_ownership(fixture)
     delete_rule = dict(rule, id="delete-synthetic", mode="automatic", action="delete",
                        condition={"all": False, "find": {"q": "delete-fixture"}, "scene": {}})
     fixture.settings([delete_rule], paused=False)
@@ -318,6 +321,35 @@ def exercise(fixture):
     run = fixture.op("startRun", id=preview["id"], reviewOutputs=True)
     fixture.wait_record("getRun", run["id"], {"awaitingReview"})
     return rule
+
+
+def verify_targeted_ownership(fixture):
+    # Direct attachment edits are confined to this fixture's synthetic database.
+    # They exercise a file gaining an owner without recreating the media.
+    spec = importlib.util.spec_from_file_location("compactor_ownership_fixture", runtime_path("DirtyCompactor", "dirty_compactor.py"))
+    backend = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(backend)
+    client = backend.Client({"Host": "127.0.0.1", "Port": fixture.port})
+    scenes = fixture.gql("{findScenes{scenes{id files{id}}}}") ["findScenes"]["scenes"]
+    assert len(scenes) == 3
+    first, unrelated, second = scenes
+    file_id = first["files"][0]["id"]
+    assert not client.has_shared_files(first["id"], [file_id])
+    assert client.matches_scene(first["id"], {"scene": {"id": {"value": int(first["id"]), "modifier": "EQUALS"}}})
+    assert not client.matches_scene(first["id"], {"scene": {"id": {"value": int(unrelated["id"]), "modifier": "EQUALS"}}})
+    assert client.matches_scene(first["id"], {"find": {"q": "Synthetic review fixture"}})
+    assert not client.matches_scene(first["id"], {"find": {"q": "Nonexistent selection"}})
+    with sqlite3.connect(fixture.root / "stash.sqlite") as connection:
+        connection.execute('INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES(?,?,0)', (second["id"], file_id))
+    try:
+        assert client.has_shared_files(first["id"], [file_id])
+        assert client.has_shared_files(second["id"], [file["id"] for file in second["files"]] + [file_id])
+        assert not client.has_shared_files(unrelated["id"], [file["id"] for file in unrelated["files"]]), "The ID criterion must combine with the owner-count filter"
+    finally:
+        with sqlite3.connect(fixture.root / "stash.sqlite") as connection:
+            connection.execute("DELETE FROM scenes_files WHERE scene_id=? AND file_id=?", (second["id"], file_id))
+    assert not client.has_shared_files(first["id"], [file_id]), "Ownership checks must see fresh attachments"
+    print("PASS: targeted scene/file ownership, native rule filters, unrelated scenes excluded, fresh attachment changes", flush=True)
 
 
 def main():

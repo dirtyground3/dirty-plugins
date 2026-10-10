@@ -15,14 +15,14 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.5 |
-| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.4 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.4 |
-| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.4 |
-| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 1.0.4 |
-| [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 1.0.4 |
-| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.5 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.4 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.6 |
+| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.5 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.5 |
+| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
+| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 1.0.5 |
+| [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 1.0.5 |
+| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.6 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.5 |
 
 ## Shared look and settings
 
@@ -497,6 +497,13 @@ from each manifest (its script, stylesheets and Python modules) plus the README,
 license and the few extra files named in `scripts/plugin-registry.json`; source,
 tests, databases, and runtime data are never staged.
 
+Builds retain the previous output in `.build/plugins.previous` until staging
+is promoted. A failed promotion restores that output; if restoration is also
+blocked, the error names the retained backup and the next build recovers it.
+Install paths must stay inside their plugin directory. Package update identities
+include the shared source compiled into each bundle, while runtime databases,
+bytecode, and backups are excluded from both content and history inputs.
+
 For development:
 
 ```powershell
@@ -553,6 +560,77 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyStats 1.0.6, DirtyRank and DirtyMultiscreen 1.0.5:** bounded library work.
+  - Constellations display at most 5,000 connections, prioritizing a strongest-first
+    spanning forest and then strongest remaining links. Counts include hidden links.
+  - Rank loads its complete reference population in 500-row pages, coalesces compatible
+    requests, and separates settings refreshes from library refreshes. Preferred playback
+    uses bounded queries and retains the earliest marker across best-rated scene ties.
+  - Multiscreen contextual queues continue in independent pages capped at 240 items.
+    Panes share pending requests; explicit selections stay complete; random playback
+    uses bounded page permutations. Failed loads retain the current video and can retry.
+- **DirtyPlugins 1.0.5:** backups use unique names and exclusive creation, preventing
+  same-second collisions and accidental replacement of an existing backup.
+- **DirtyTidy and DirtyCompactor 1.0.5:** planning work follows the active strategy.
+  - Tidy requests only needed template fields, reuses normalized paths within each
+    plan, and computes scene-level template values once while retaining file-level values.
+  - Quality samples budget encoder and VMAF threads per worker and use single-thread
+    decoding/filter pipelines. Up to three workers remain; smaller CPUs use fewer.
+    The measurement version changes so saved quality samples are recalculated.
+
+- **DirtyCompactor and DirtyFileExtractor 1.0.5:** subprocess reliability.
+  - Quality samples, packet scans, and marker encoders share Windows child
+    containment so forced parent termination stops them. Silent pipes cannot
+    block cancellation/deadlines; diagnostics remain bounded.
+  - Packet scans observe preview/run cancellation. Marker extraction stops and
+    reaps its child before removing partial output, and callback cancellation
+    can still abort before publication. Forced Stash termination can leave a
+    partial file and an empty reservation, without leaving its encoder running.
+
+- **DirtyStats and DirtyCaptions 1.0.6, DirtyRank and DirtyMultiscreen 1.0.5:** frontend responsiveness.
+  - Dashboard charts retain their instances and zoom/pan while options change.
+    Origin also retains zoom/pan on country, label and theme changes and registers its map once.
+    Unrelated edits reuse widget aggregates. Only added or changed datasets load;
+    removed requests are cancelled and their data is released. Growth widgets share
+    capacity discovery, and full-view forecast selections reuse daily aggregation.
+  - Rank reuses category entries and confidence estimates until their population,
+    settings, or rating pool changes. Score rebuilds evaluate each rating pair once,
+    preserving tied scores and the existing formula.
+    Accepted votes retain comparison sums and replace only changed performers'
+    contributions; larger updates and snapshots rebuild the affected scores.
+    Cold comparisons reuse one shifted weight per rating and yield between bounded
+    batches. Overall leaderboards and native sorting wait for complete scores;
+    changes cancel obsolete calculations, and ordering calculates each overall value once.
+  - Advancing a Multiscreen pane retains other panes' marker and audio subscriptions.
+    Embedded captions load silently in every native player, including Multiscreen panes.
+    Slow caption status polls remain visible without overlapping requests, and successful
+    polling clears recovered errors.
+
+- **DirtyCaptions 1.0.6, DirtyCompactor and DirtyFileExtractor 1.0.5:** backend efficiency.
+  - Captions reuses short database reads during indexing, reads pending revisions
+    per scene page, and limits queue batches in SQLite. Unchanged media still
+    requires no file access; cancellation, leases, and queue revisions stay fresh.
+  - Compactor polling reads no longer reserve the shared database's writer lock.
+    Ownership checks before encoding and replacement query the affected scene
+    instead of downloading the library. Native rule criteria and the attachment
+    set are checked again; files with another owner remain blocked.
+  - Extractor resolves scenes in batches of 25 and markers/images in batches
+    of 100 while preserving order, missing-item reporting, and collision planning.
+    FFmpeg configuration is
+    resolved once per run, including runs with multiple failed marker clips.
+
+- **DirtyPlugins, DirtyRank, and DirtyTidy 1.0.5:** workflow and state correctness.
+  - Tidy manual confirmation identifies an immutable preview. A later preview
+    with the same strategy cannot add unseen moves; each confirmed source and
+    destination is checked again before execution. Automation still approves
+    a strategy for future library changes. Generate a new preview after updating.
+  - Hub settings events refresh the affected plugin while preserving raw edits,
+    pending saves, and custom-panel workflows. Numeric autosave now enforces
+    authored bounds, integer requirements, and steps.
+  - Rank reads ratings/settings with their revision from one database snapshot,
+    rejects stale individual replies, and publishes each vote/undo response
+    once after updating both performers. Unaffected score caches are retained.
 
 - **DirtyCaptions 1.0.5:** playback uses the caption index.
   - Opening a scene whose file the index found without subtitle streams no

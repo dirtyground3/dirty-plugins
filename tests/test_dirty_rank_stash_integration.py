@@ -65,6 +65,46 @@ def exercise(fixture):
     marker = fixture.gql('mutation($input:SceneMarkerCreateInput!){sceneMarkerCreate(input:$input){id}}',
                          {"input": {"title": "Synthetic interval", "seconds": 2, "end_seconds": 4,
                                     "primary_tag_id": tag, "scene_id": scenes[0]["id"]}})["sceneMarkerCreate"]["id"]
+    # Exercise the compiled media module's actual queries against native rating/null filters and marker sorting.
+    fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}',
+                {"input": {"id": scenes[1]["id"], "rating100": 100}})
+    earlier = fixture.gql('mutation($input:SceneMarkerCreateInput!){sceneMarkerCreate(input:$input){id}}',
+                         {"input": {"title": "Earlier tied scene", "seconds": 1, "end_seconds": 3,
+                                    "primary_tag_id": tag, "scene_id": scenes[1]["id"]}})["sceneMarkerCreate"]["id"]
+    script = r'''
+const assert = require('node:assert/strict');
+const { requireSource } = require('./tests/plugin_paths');
+const url = process.argv[1], performer = process.argv[2], expected = process.argv[3];
+const calls = [];
+global.window = { PluginApi: {}, DirtyPlugins: { graphql: async (query, variables) => {
+  calls.push(variables);
+  const response = await fetch(url + '/graphql', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query, variables }) });
+  const result = await response.json();
+  if (result.errors) throw new Error(JSON.stringify(result.errors));
+  return result.data;
+} } };
+const media = requireSource('DirtyRank', 'src/domain/media.ts');
+(async () => {
+  const preferred = await media.loadPreferredMedia(performer, false);
+  assert.equal(preferred.marker.id, expected);
+  assert.equal(calls.length, 2);
+  assert(calls.every(variables => variables.filter.per_page === 1));
+  const full = await media.loadPreferredMedia(performer, true);
+  assert.equal(full.rating100, 100);
+  assert.equal(full.marker, undefined);
+  media.invalidatePerformerMedia();
+  process.stdout.write('PASS: compiled bounded preferred-media queries, tied rating and earliest marker\n');
+})().catch(error => { console.error(error); process.exitCode = 1; });
+'''
+    subprocess.run([shutil.which("node"), "-e", script, fixture.url, people[0]["id"], earlier], check=True)
+    for scene in scenes:
+        fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}',
+                    {"input": {"id": scene["id"], "rating100": None}})
+    subprocess.run([shutil.which("node"), "-e", script.replace("assert.equal(full.rating100, 100);", "assert.equal(full.rating100, null);"),
+                    fixture.url, people[0]["id"], earlier], check=True)
+    for index, scene in enumerate(scenes):
+        fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}',
+                    {"input": {"id": scene["id"], "rating100": 100 - index * 10}})
     snapshot = operation(fixture, "getSettings")
     settings = {**snapshot["settings"], "categories": json.dumps({"FEMALE": [{"id": "appearance", "name": "Appearance"}]}),
                 "includePerformersWithoutImages": True, "autoPlayTopScenes": False, "showRatingsBeforeVote": True,

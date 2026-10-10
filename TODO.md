@@ -71,16 +71,11 @@ Git history of `docs/build-migration-status.md`, under the named checkpoint.
 
 ## High / Medium bugs
 
-- [ ] **8. DirtyStats map loses zoom/pan on every interaction** (verified;
-  still present 2026-10-10)
-  - File: `plugins/DirtyStats/src/components/Origin.tsx` — the option effect
-    calls `chart.setOption(option, true)`; `charts.registerMap` sits in
-    `beforeInit` and reruns on each init.
-  - `chart.setOption(..., true)` (notMerge) rebuilds the map on label
-    toggles/country clicks, discarding roam state that the README promises
-    exports.
-  - Fix: drop `true`; update only `series[0].data` and `visualMap.max`;
-    register the map once.
+- [x] **8. DirtyStats map loses zoom/pan on every interaction** (fixed 2026-10-10)
+  - Origin uses incremental option updates and registers its map once.
+    Country, label and theme changes retain the chart's zoom/pan; theme changes
+    update styles on the mounted instance. Refresh/loading still owns its lifetime.
+  - Regression covers country selection, label toggles, theme changes and remount.
 
 - [ ] **9. DirtyTidy Windows/Unicode edge cases** (reported; narrowed
   2026-10-10)
@@ -171,7 +166,9 @@ Git history of `docs/build-migration-status.md`, under the named checkpoint.
   - Fixed: per-item failures are collected in `failed` and reported together
     with `copied`/`skipped`/`missing`, so one error no longer discards the
     results accumulated so far.
-  - Open: FFmpeg has no timeout/cancellation.
+  - Fixed 2026-10-10: marker encoders have duration-scaled deadlines, callback cancellation,
+    bounded diagnostics and Windows child containment. Ordinary failures reap the
+    child before removing partial output; forced parent termination stops its child.
   - Open: the run does not abort after N consecutive transport failures.
 
 - [ ] **18. DirtyFileExtractor marker fallback differs from Multiscreen** (reported; still present 2026-10-10)
@@ -184,35 +181,39 @@ Git history of `docs/build-migration-status.md`, under the named checkpoint.
 
 ## Performance
 
-- [ ] **P1. DirtyStats constellation is O(scenes x cast^2) with uncapped links** (dead `sceneIds` removed 2026-10-09; the link cap remains)
-  - Files: `plugins/DirtyStats/src/domain/analytics.ts`
-    (`aggregateConstellation`), `plugins/DirtyStats/src/domain/chartOptions.ts`
-    (`constellationOption`).
-  - Pair weights are already counted in a `Map`, but every link is fed to a
-    force layout, which can freeze the main thread at the 1000-performer
-    setting.
-  - Fix: cap emitted links, surface "N connections hidden"; consider
-    chunking/worker.
+- [x] **P1. DirtyStats constellation display edge budget** (resolved 2026-10-10)
+  - Displays at most 5,000 links, preserving a strongest-first spanning forest
+    before filling with strongest remaining edges. The toolbar reports total,
+    shown and hidden links; collaborator counts include hidden connections.
+  - The 1,000-performer regression retains connectivity and exact 499,500-pair
+    totals. Pair aggregation remains quadratic; chunking/worker work needs measurements.
 
-- [ ] **P2. DirtyRank recomputes unmemoized 1000-iteration confidence searches per render/vote**
-  - Files: `plugins/DirtyRank/src/domain/matchmaking.ts`
-    (`categoryConfidence`), `plugins/DirtyRank/src/components/Primitives.tsx`
-    (three unmemoized calls of `leaderboardData`/`categoryConfidence`),
-    `plugins/DirtyRank/src/battleSession.ts`. The leaderboard page
-    (`components/Leaderboards.tsx`) already memoizes `leaderboardData`.
-  - `categoryConfidence` runs per entry/boundary up to 1000 Glicko
-    simulations; `leaderboardData` filters + sorts the whole cohort for 12
-    rows. Tens of ms per click on large libraries.
-  - Fix: `useMemo` on stable deps; partial selection for top-K.
+- [ ] **P2. DirtyRank large-cohort cold scoring and confidence work** (partly resolved 2026-10-10)
+  - Category entries and confidence estimates now reuse population/settings/pool
+    revisions across unrelated renders. Cold scores evaluate each distinct rating
+    pair once, and accepted votes update retained comparison sums before publication.
+    Ties, neutral populations, stale replies and 1,000 repeated updates retain parity.
+  - The local 5,000-performer two-person vote drops from 167.474 to 0.684 ms;
+    three cached categories drop from 206.235 to 0.753 ms. These are synthetic Node
+    medians, not browser/library guarantees; see `docs/code-analysis-status.md`.
+  - Cold score weights now reuse one exponential per distinct rating. Preparation
+    yields after at most 32,768 comparisons, coalesces callers, cancels obsolete pools
+    and gates Overall/native sorting until scores are complete. Ordering computes
+    each overall pool once. A 5,000-performer/three-category browser fixture retains
+    exact checksums and processes input timer events throughout the calculation.
+  - Exact comparisons remain quadratic; local Node preparation takes 234.789 ms
+    total with a 1.846 ms longest-task median. Confidence changes still require Glicko
+    simulations. Measure larger populations, confidence costs and top-K selection
+    before adding further workers or changing algorithms.
 
-- [ ] **P3. DirtyRank fetches the whole library/marker set repeatedly**
-  - File: `plugins/DirtyRank/src/domain/rank.ts` (the performer query and the
-    marker query both use `per_page: -1`).
-  - `per_page:-1` with heavy fields on every route load and every
-    configuration-changed event; marker query downloads all markers with
-    full nested scenes just to pick one clip.
-  - Fix: bounded `per_page` with server-side sort; module-level cache with
-    TTL/revision.
+- [x] **P3. DirtyRank repeated library/marker queries** (resolved 2026-10-10)
+  - Complete reference populations load in 500-row pages with compatible
+    in-flight request coalescing. Settings refresh does not reload them.
+  - Route entry refreshes native library data; explicit invalidation guards
+    cached/in-flight publication and clears preferred-media caches.
+  - Preferred media queries request one row each and preserve the earliest marker
+    across scenes tied at the best rating, including null ratings. The compiled
+    queries pass an isolated Stash fixture; complete global populations are retained.
 
 - [ ] **P4. DirtyStats card list serializes all ids every render**
   - File: `plugins/DirtyStats/src/components/Cards.tsx` (both card lists
@@ -220,11 +221,9 @@ Git history of `docs/build-migration-status.md`, under the named checkpoint.
   - `JSON.stringify(ids)` on every parent render; use a cheap key or reset
     page in the parent.
 
-- [ ] **P5. DirtyStats re-aggregates the whole library when the forecast period changes**
-  - File: `plugins/DirtyStats/src/components/Growth.tsx` (the `forecast` memo
-    depends on `period` and calls `aggregateGrowth` again).
-  - Memoize the day-grouped aggregate on `[scenes, dateBasis]` only; reuse
-    `stats.points` for day grouping.
+- [x] **P5. Growth period changes reuse daily aggregation** (resolved 2026-10-10)
+  - Daily points depend on scenes/date basis; forecast parameters reuse those
+    points. Regressions verify aggregate counts and identical forecast values.
 
 - [ ] **P6. DirtyStats refetches all pages when only native sort changes**
   - Files: `plugins/DirtyStats/src/domain/data.ts` (`usePageLoad`,
@@ -241,43 +240,40 @@ Git history of `docs/build-migration-status.md`, under the named checkpoint.
   - Every page now loads through the shared helpers, which centralize abort
     checks and `isDisposed` guards.
 
-- [ ] **P8. Multiscreen contextual queries bypass the page cap and clone lists per screen**
-  - Files: `plugins/DirtyMultiscreen/src/queries.ts` (four `per_page: -1`
-    filters), `plugins/DirtyMultiscreen/src/components/Grid.tsx` (per-screen
-    playlists).
-  - `per_page:-1` for studio/performer contexts, then the full item array is
-    copied per screen (up to 36 copies).
-  - Fix: apply `getSceneLimit`, page/lazy per screen, bounded working set.
+- [x] **P8. Multiscreen contextual working sets** (resolved 2026-10-10)
+  - Contextual queues continue in independent pages of at most 240 items per
+    pane. Pending page requests are shared; superseded/unmounted responses cannot
+    publish. Complete explicit selections remain one source with bounded queues.
+  - Ordered unsplit playback shares its source; random playback uses independent
+    page permutations. Repeatable page seeds keep split assignments consistent.
+  - Regressions traverse 1,001 contextual/selected items, assert queue sizes, and
+    exercise empty initial pages, failures/retries and cancellation.
 
-- [ ] **P9. Multiscreen per-tile MutationObservers and effect churn**
-  - Files: `plugins/DirtyMultiscreen/src/components/LoadedNativePlayer.tsx`
-    (`observeSubtree`, effects that depend on `nextItem`),
-    `plugins/DirtyMultiscreen/src/components/Grid.tsx` (`nextItem` is a new
-    function on every render).
-  - Two subtree observers per tile (up to 72); the marker effect re-subscribes
-    on every render because `nextItem` is recreated.
-  - Fix: refs for volatile values, stable deps, one grid-level observer, or
-    hook `player.on("timeupdate")`.
+- [x] **P9. Multiscreen cross-pane subscription churn** (resolved 2026-10-10)
+  - Stable callbacks read current navigation. Advancing one pane retains the other
+    pane's exact player listener/observer identities.
+  - Marker/video observation remains conditional; audio observation always runs.
+    Combining them would blur these lifetimes, so separate observers remain deliberate.
 
-- [ ] **P10. DirtyTidy repeated path normalization and oversized snapshots**
+- [x] **P10. DirtyTidy repeated path normalization and oversized snapshots** (fixed 2026-10-10)
   - Files: `plugins/DirtyTidy/dirty_tidy_templates.py` (`_normalized_path`),
     `plugins/DirtyTidy/dirty_tidy.py` (plan building).
-  - `realpath/normcase` recomputed per file per root (~1M walks at scale);
-    the full library is decorated with fields the strategy never uses. Backend
-    paging and `includeAll` were removed on 2026-10-09, so the entire plan is
-    always serialized to the browser.
-  - Fix: memoize `_normalized_path`, precompute normalized roots, derive
-    GraphQL fields from `template_variable_names()`, cache scene variables,
-    use server-side paging.
+  - Plans cache normalized paths locally and compute scene template values once.
+    Snapshot fields follow enabled templates and required Stash IDs; identities,
+    file paths/basenames and labels remain mandatory. The next plan recomputes paths.
+  - The complete preview remains part of the immutable reviewed-plan contract.
+    Browser paging would require a separate durable reviewed-plan design.
 
 - [ ] **P12. Hub and storage micro-inefficiencies**
   - Files: `plugins/DirtyPlugins/src/components/Route.tsx` (the
     configuration-changed listener),
     `plugins/DirtyPlugins/dirty_plugins_storage.py` (`connect`,
     `backup_database`).
-  - Settings page reloads the full snapshot on every configuration event; WAL
-    is only set when the schema version changes; backup filename is
-    second-granular (two backups in one second reuse the file).
+  - Fixed 2026-10-10: settings reloads target the affected plugin and preserve
+    mounted custom workflow state. Backup names include UUIDs and exclusive
+    creation refuses an existing destination; same-second backups remain distinct.
+  - WAL is still configured on schema initialization; any lifecycle change should
+    be justified separately against shared-database behavior.
   - Fixed: `pluginInput` copies the stored configuration before writing draft
     values, so React state is no longer mutated in place.
 
@@ -321,10 +317,11 @@ Git history of `docs/build-migration-status.md`, under the named checkpoint.
 - [ ] **R7. DirtyTidy manifest/docs and capture mode** (narrowed 2026-10-10)
   - Files: `plugins/DirtyTidy/dirtyTidy.yml`,
     `schemas/dirtyTidy.settings.json` (constants only),
-    `plugins/DirtyTidy/dirtyTidy.css` (`.dirty-tidy-path`).
+    `plugins/DirtyTidy/src/components/PreviewTable.tsx` (capture masking).
   - Open: the staged manifest has no typed `settings:` block, so the generic
-    card renders nothing if the custom panel fails to register; no docs-capture
-    rules hide `.dirty-tidy-path` (absolute private paths).
+    card renders nothing if the custom panel fails to register.
+  - Fixed evidence: PreviewTable replaces paths with “Path hidden” and hides notes
+    in capture mode. The missing CSS blur rule does not establish a current path leak.
   - Fixed: DirtyRank and DirtyStats support `?docsCapture=1` through the hub's
     `captureEnabled`.
 

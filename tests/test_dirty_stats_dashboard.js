@@ -7,7 +7,13 @@ const context = {
   console,
   window: {
     PluginApi: {
-      React: { createElement: element, Fragment: "fragment" },
+      React: {
+        createElement: element,
+        Fragment: "fragment",
+        useState: value => [value, () => {}],
+        useEffect() {},
+        useMemo: callback => callback(),
+      },
       libraries: { ReactRouterDOM: { Link: "Link" } },
     },
     DirtyPlugins: { react: {}, captureUrl: path => path, getPluginSettings: async () => ({}) },
@@ -415,8 +421,8 @@ for (const size of ["small", "medium", "large"]) {
   }
 }
 const resizeOptions = [];
-let chartEffect,
-  resizeCallback,
+const chartEffects = [];
+let resizeCallback,
   observedNode,
   disconnected = false,
   disposed = false;
@@ -424,6 +430,7 @@ let chartEffect,
 context.window.echarts.init = () => ({
   setOption: option => resizeOptions.push(option),
   getDataURL: () => "",
+  getOption: () => ({}),
   resize() {},
   isDisposed: () => disposed,
   dispose() {
@@ -444,12 +451,13 @@ context.window.removeEventListener = () => {};
 context.window.PluginApi.React.useState = value => [value, () => {}];
 context.window.PluginApi.React.useRef = value => ({ current: value });
 context.window.PluginApi.React.useEffect = effect => {
-  chartEffect = effect;
+  chartEffects.push(effect);
 };
 const chartNodes = nodes(originChartComponent(originChartProps));
 const originNode = chartNodes.find(node => node.props.className === "dirty-stats-dashboard-chart");
 originNode.props.ref.current = { clientWidth: 1000, clientHeight: 250 };
-const cleanupChart = chartEffect();
+const cleanupChart = chartEffects[0]();
+chartEffects[1]();
 assert.equal(resizeOptions[0].series[0].layoutSize, 440, "the initial Large map fits around its legend");
 assert.equal(observedNode, originNode.props.ref.current);
 observedNode.clientHeight = 500;

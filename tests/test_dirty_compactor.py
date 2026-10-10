@@ -30,11 +30,23 @@ class FakeClient:
         self.jobs = []
         self.deleted = []
 
-    def scenes(self, condition=None, ids=None):
-        return iter(copy.deepcopy([s for s in self.data if ids is None or s["id"] in ids]))
+    def scenes(self, condition=None):
+        return iter(copy.deepcopy(self.data))
 
     def scene(self, scene_id):
         return copy.deepcopy(next((s for s in self.data if s["id"] == str(scene_id)), None))
+
+    def has_shared_files(self, scene_id, file_ids):
+        scene = self.scene(scene_id)
+        if scene is None or sorted(file["id"] for file in scene["files"]) != sorted(file_ids):
+            raise compactor.PluginError("Scene files changed since preview")
+        files = {file["id"] for file in scene["files"]}
+        return any(other["id"] != str(scene_id) and any(file["id"] in files for file in other["files"]) for other in self.data)
+
+    def matches_scene(self, scene_id, condition):
+        scene = self.scene(scene_id)
+        query = (condition.get("find") or {}).get("q", "")
+        return bool(scene and query.lower() in scene["title"].lower())
 
     def tool(self, name):
         return shutil.which(name)
@@ -134,6 +146,47 @@ class CompactorRulesTests(unittest.TestCase):
         size = next(arg for arg in commands[0] if arg.startswith("color=size="))
         width, height = (int(part) for part in size.split("=")[2].split(":")[0].split("x"))
         self.assertGreaterEqual(width * height, 256 * 200, "128x128 is below NVENC's minimum frame size")
+
+    def test_quality_samples_bound_encoder_decoder_filters_and_metric_threads(self):
+        commands = []
+        with tempfile.TemporaryDirectory() as temporary:
+            clip = Path(temporary) / "sample.mkv"
+            def run(command, stop):
+                commands.append(command)
+                if "matroska" in command:
+                    clip.write_bytes(b"sample")
+                return "VMAF score: 96.5"
+            with patch.object(compactor.quality, "_run", side_effect=run):
+                self.assertEqual(compactor.quality.measure("ffmpeg", "source.mp4", (0, 4), (640, 360), "libx264", 24,
+                    clip, threads=5), (96.5, 6))
+            encode, metric = commands
+            self.assertEqual(encode[encode.index("-threads:v:0") + 1], "5")
+            self.assertEqual(encode[encode.index("-filter_threads") + 1], "1")
+            self.assertEqual(metric[metric.index("-filter_complex_threads") + 1], "1")
+            for command in commands:
+                for index, value in enumerate(command):
+                    if value == "-i":
+                        self.assertEqual(command[index - 2:index], ["-threads", "1"])
+            self.assertIn("libvmaf=n_threads=5", metric[metric.index("-lavfi") + 1])
+
+    def test_quality_workers_respect_small_cpu_counts(self):
+        quality = compactor.quality
+        with tempfile.TemporaryDirectory() as temporary:
+            for cores in (1, 2, 16):
+                pools = []
+                original_pool = quality.ThreadPoolExecutor
+                def pool(*args, **kwargs):
+                    pools.append(kwargs["max_workers"])
+                    return original_pool(*args, **kwargs)
+                budgets = []
+                def measure(*args):
+                    budgets.append(args[-1])
+                    return (99, 100)
+                with patch.object(quality.os, "cpu_count", return_value=cores), patch.object(quality, "ThreadPoolExecutor", side_effect=pool), patch.object(quality, "measure", side_effect=measure):
+                    result = quality.search("ffmpeg", "source.mp4", {"duration": 100}, (640, 360), "h264", "libx264", 95, Path(temporary) / str(cores))
+                self.assertGreaterEqual(result["vmaf"], 95)
+                self.assertTrue(all(workers == min(3, cores) for workers in pools))
+                self.assertTrue(all(budget == max(1, cores // min(3, cores)) for budget in budgets))
 
     def test_visual_quality_needs_a_known_target(self):
         compactor.validate_settings({"rules": [rule(action="reencode", quality="visual", vmaf=95)]})
@@ -284,6 +337,15 @@ class CompactorPipelineTests(unittest.TestCase):
         self.assertIn("changed", result["operations"][0]["reason"])
         self.assertEqual(self.source.read_bytes(), self.original + b"changed")
 
+    def test_scene_no_longer_matching_native_filter_is_not_replaced(self):
+        self.set_rules([rule(condition={"find": {"q": "Synthetic scene"}, "scene": {}})])
+        run = self.start()
+        self.client.data[0]["title"] = "No longer selected"
+        compactor.dispatch(self.client, {"mode": "acceptOutput", "id": run["id"], "operationId": run["operations"][0]["id"]})
+        result = compactor.worker(self.client, run["id"], accept=True)
+        self.assertIn("no longer matches", result["operations"][0]["reason"])
+        self.assertEqual(self.source.read_bytes(), self.original)
+
     def test_tampered_output_is_not_installed(self):
         run = self.start()
         op = run["operations"][0]
@@ -306,6 +368,62 @@ class CompactorPipelineTests(unittest.TestCase):
         self.assertEqual(len(self.preview()["operations"]), 2)
         self.client.data.append({"id": "2", "title": "Shared", "files": [{"id": "7", "path": str(self.source)}]})
         self.assertTrue(all(o["status"] == "blocked" for o in self.preview()["operations"]))
+
+    def share_source(self):
+        self.client.data.append({"id": "2", "title": "New owner", "files": [{"id": "7", "path": str(self.source)}]})
+
+    def test_new_owner_after_preview_blocks_encoding(self):
+        result = compactor.start_run(self.client, self.preview(), {"reviewOutputs": False})
+        self.share_source()
+        with patch.object(compactor, "encode", side_effect=AssertionError("Shared files must not be encoded")):
+            run = compactor.worker(self.client, result["id"])
+        self.assertIn("shared", run["operations"][0]["reason"])
+        self.assertEqual(self.source.read_bytes(), self.original)
+
+    def test_new_owner_during_encoding_blocks_replacement(self):
+        original = compactor.encode
+        def encode_then_share(*args):
+            original(*args)
+            self.share_source()
+        with patch.object(compactor, "encode", side_effect=encode_then_share):
+            run = self.start(review=False)
+        self.assertIn("shared", run["operations"][0]["reason"])
+        self.assertEqual(self.source.read_bytes(), self.original)
+
+    def test_new_owner_between_commit_checks_blocks_replacement(self):
+        run = self.start()
+        compactor.dispatch(self.client, {"mode": "acceptOutput", "id": run["id"], "operationId": run["operations"][0]["id"]})
+        original = self.client.has_shared_files
+        checks = 0
+        def share_on_final_check(scene_id, file_ids):
+            nonlocal checks
+            checks += 1
+            if checks == 3:  # worker, commit before staging, commit after staging
+                self.share_source()
+            return original(scene_id, file_ids)
+        with patch.object(self.client, "has_shared_files", side_effect=share_on_final_check):
+            run = compactor.worker(self.client, run["id"], accept=True)
+        self.assertEqual(checks, 3)
+        self.assertIn("shared", run["operations"][0]["reason"])
+        self.assertEqual(self.source.read_bytes(), self.original)
+
+    def test_file_transferred_to_another_scene_during_revalidation_is_retained(self):
+        run = self.start()
+        compactor.dispatch(self.client, {"mode": "acceptOutput", "id": run["id"], "operationId": run["operations"][0]["id"]})
+        original = self.client.scene
+        transferred = False
+        def transfer_after_scene_read(scene_id):
+            nonlocal transferred
+            snapshot = original(scene_id)
+            if not transferred:
+                transferred = True
+                self.share_source()
+                self.client.data[0]["files"] = []
+            return snapshot
+        with patch.object(self.client, "scene", side_effect=transfer_after_scene_read):
+            result = compactor.worker(self.client, run["id"], accept=True)
+        self.assertIn("Scene files changed", result["operations"][0]["reason"])
+        self.assertEqual(self.source.read_bytes(), self.original)
 
     def test_restore_after_reconciliation_failure(self):
         run = self.start(review=False)
@@ -505,6 +623,20 @@ class CompactorPipelineTests(unittest.TestCase):
         compactor.dispatch(self.client, {"mode": "cancelPreview", "id": "cancel-me"})
         compactor.dispatch(self.client, {"mode": "plan", "id": "cancel-me"})
         self.assertEqual(compactor.get("preview", "cancel-me")["status"], "cancelled")
+
+    def test_cancellation_inside_last_scene_packet_scan_cancels_preview(self):
+        preview = {"id": "cancel-packets", "status": "queued", "settings": compactor.settings(), "automatic": False}
+        compactor.save("preview", preview)
+        def packets(executable, path, duration, stop):
+            compactor.records.put("cancel", preview["id"], {"requested": True})
+            stop()
+            self.fail("The packet scan must observe cancellation")
+        with patch.object(compactor, "plausible_bitrate", return_value=0), \
+                patch.object(compactor, "container_video_bitrate", return_value=0), \
+                patch.object(compactor, "packet_video_bitrate", side_effect=packets):
+            compactor.dispatch(self.client, {"mode": "plan", "id": preview["id"]})
+        self.assertEqual(compactor.get("preview", preview["id"])["status"], "cancelled")
+        self.assertEqual(self.source.read_bytes(), self.original)
 
     def test_preview_reports_progress_per_rule(self):
         stages = []

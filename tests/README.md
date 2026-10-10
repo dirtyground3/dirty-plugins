@@ -66,6 +66,9 @@ Rebuild after changing plugin source, schemas or scripts: tests read
   state keyed by tree position, effects after each render and cleanups for
   components that leave the tree. `test_ui_harness.js` checks the harness
   itself. Suites own their scenario data.
+  Function identity determines remounts, state/dependencies compare with `Object.is`,
+  and a nonsettling `flush` throws instead of silently stopping. Virtual source contents
+  participate in the module cache (`test_plugin_paths.js`).
 - `rank_modules.js` exposes Rank's domain modules as one namespace
   (`requireRankDomain`, `runRankDomain`); `stats_modules.js` loads every Stats
   module as one bundle (`core`, `dashboard`, `load`) with ECharts left
@@ -82,6 +85,12 @@ Rebuild after changing plugin source, schemas or scripts: tests read
   bundle through `compactor_harness.js`, with Stash-owned element/hooks and the
   real staged hub save/job helpers. It covers registration, draft/save ordering,
   native filter payloads and preview/run/review actions.
+  `test_dirty_compactor_store.py` covers polling during shared writer activity,
+  concurrent Rank votes/settings saves/caption heartbeats, and exclusive claims/CAS.
+  Backend tests preserve originals when ownership changes after preview, during
+  encoding, or between the two commit checks. The isolated fixture checks that
+  scene ID criteria combine with `files_filter.scene_count`; explicit `findFiles`
+  IDs bypass the accompanying filter on Stash 0.31.1.
 - The opt-in isolated Stash integration also compares the aggregated served
   bundle with staging. It uses synthetic FFmpeg media and a temporary database,
   never port 9999:
@@ -122,6 +131,8 @@ Rebuild after changing plugin source, schemas or scripts: tests read
   /path/to/stash`: synthetic scene/image/marker copies, dry runs, collisions,
   progress/cancellation, unchanged originals and the exact served bundle.
   Add `--serve --stop-file <path>` for browser review and graceful cleanup.
+  Backend tests also cover bounded batches, requested order/missing IDs, duplicate
+  selections, and one FFmpeg configuration lookup across multiple clip failures.
 
 - Tidy's settings/preview helpers, manual workflow and automation monitor are
   compiled on demand from source. `test_dirty_tidy_ui.js` renders
@@ -139,6 +150,10 @@ Rebuild after changing plugin source, schemas or scripts: tests read
   native enum/custom-field URL/bookmark contract. Checks cover owned track
   cleanup, guard failures, retry/late responses, status-poll races and action
   locking.
+  `test_dirty_captions_index.py` checks connection/page counts for 1,000 unchanged
+  scenes, bounded queue batches, concurrent cancellation and newer pending revisions.
+  Repeat the timing sample with `python -B tests/benchmark_captions_index.py` after
+  building; the benchmark uses fake GraphQL and requires no media files.
   `python -B tests/test_dirty_captions_stash_integration.py --binary /path/to/stash`
   checks synthetic multilingual WebVTT, no subtitle sidecars, partial fields,
   unchanged-file skipping, forced errors/recovery, Scan identity deduplication,
@@ -160,13 +175,28 @@ Rebuild after changing plugin source, schemas or scripts: tests read
   demand (`rank_modules.js`). Registration tests execute the sole compiled
   IIFE, including a failing registration step (logged once, never retried) and
   a reloaded bundle.
+  `test_dirty_rank_cache.js` checks confidence/entry reuse, revision-driven invalidation,
+  exact tied/extreme scores, incremental updates, 1,000 repeated changes and logistic
+  evaluation counts. After building,
+  `node tests/benchmark_rank_scores.js 27e810f` compares synthetic cold/warm scoring
+  with the report's baseline commit; timings are never assertions.
   `python -B tests/test_dirty_rank_stash_integration.py --binary /path/to/stash`
   verifies synthetic portraits/media/markers, rating/undo, HTTP seeking and
   the exact served bundle. Add `--serve --stop-file <path>` for browser review.
+  `test_dirty_rank_cold.js` checks shifted-weight parity, bounded task yields,
+  cancellation/port cleanup, shared preparation, changes during calculation,
+  native loading/unmount and one overall pool calculation per sorted performer.
+  `node tests/rank_cold_browser_fixture.js .build/rank-cold-browser-stop` serves
+  a standalone 5,000-performer/three-category browser check on a random loopback
+  port; create the stop file to close it. It uses only synthetic ratings and
+  never connects to Stash. Start with a fresh stop-file name.
 
 - Stats' suites load its modules through `stats_modules.js` to test the
   registry, data/chart lifetimes, settings, analytics, native filters and
   dashboard components.
+  `test_dirty_stats_frontend.js` measures aggregate reuse and chart lifetime through
+  edits/theme changes, retained zoom/pan, per-resource cancellation/pruning, shared
+  capacity requests, stale replies, and Growth period selection.
   Registration tests run the sole compiled IIFE with its modular ECharts and
   map inputs (every configured series type must be registered in
   `src/echarts.ts`), a map-free release bundle and a reloaded bundle. Run
@@ -189,7 +219,16 @@ optimistic undo, failed saves and keyboard handling directly through the
 extracted hook. The media suite checks rendered behavior.
 
 The build-pipeline suite checks that every plugin stages exactly its derived
-install files and compares every copied one byte-for-byte with source. Its
+install files and compares every copied one byte-for-byte with source.
+
+`test_media_processes.py` runs synthetic children through the separate quality,
+packet, and marker runners: silent timeouts, cancellation, bounded diagnostics,
+reaping before partial deletion, and completed/failed publication. On Windows it
+forcibly terminates each synthetic parent and verifies that its contained child
+exits. These checks do not open media or connect to Stash.
+
+The build-pipeline fixture lives under `.build/` and uses a dependency junction where supported; otherwise it
+copies the installed packages without a network install. Its
 disposable checkout checks that a failed build leaves the previous staging
 intact, unsafe package cleanup, missing assets, extra manifest scripts, a
 missing hub dependency, settings left in a manifest that has a schema,
@@ -204,6 +243,19 @@ its recorded budget in `fixtures/bundle-sizes.json` and carries no source map.
 The build's boundary rules keep foreign inputs, including chart code outside
 Stats, out of every bundle. Raise a budget only with a reason recorded in the
 fixture's note.
+
+Manual synthetic benchmarks: `node tests/benchmark_rank_scores.js 27e810f`,
+`node tests/benchmark_rank_cold.js`,
+`node tests/benchmark_rank_updates.js`,
+`python -B tests/benchmark_captions_index.py`, and
+`python -B tests/benchmark_compactor_quality.py 2`. The quality benchmark needs
+FFmpeg with libvmaf and compares one/two/three workers, automatic versus explicit
+thread limits, wall time, Windows child CPU time and VMAF scores. These use
+generated inputs and never read the live library. Use workspace-local TEMP/TMP
+in restricted Windows sessions as described above.
+The Rank update benchmark compares a two-person vote against the former affected-cache
+invalidation policy using the same evaluator; other categories remain warm in both runs.
+It reports seven-sample medians after two warm-ups for one and three cached categories.
 
 After `./build_site.sh _site/main`, run `npm run test:packages` to verify all
 eight ZIPs, their root manifests, staged bytes, dependencies, source/build

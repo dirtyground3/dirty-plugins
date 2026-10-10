@@ -20,6 +20,7 @@ export interface SaveController<T, R> {
 /** Debounce edits and serialize writes; persistence/conflict policy stays with callers. */
 export function createSaveController<T, R>(options: SaveControllerOptions<T, R>): SaveController<T, R> {
   let timer: ReturnType<typeof window.setTimeout> | null = null;
+  let pending: { value: T; edit: number } | null = null;
   let generation = 0,
     disposed = false;
   let chain: Promise<R | null | void> = Promise.resolve();
@@ -33,6 +34,7 @@ export function createSaveController<T, R>(options: SaveControllerOptions<T, R>)
     generation += 1;
     if (timer !== null) clearTimer(timer);
     timer = null;
+    pending = null;
   }
   function enqueue(value: T, edit: number) {
     const write = chain
@@ -67,9 +69,11 @@ export function createSaveController<T, R>(options: SaveControllerOptions<T, R>)
       return;
     }
     publish("pending");
+    pending = { value, edit };
     timer = scheduleTimer(
       () => {
         timer = null;
+        pending = null;
         enqueue(value, edit);
       },
       options.delay === undefined ? 350 : options.delay,
@@ -78,7 +82,16 @@ export function createSaveController<T, R>(options: SaveControllerOptions<T, R>)
   return {
     schedule,
     cancelPending,
-    flush: () => chain,
+    flush: () => {
+      if (pending) {
+        const request = pending;
+        if (timer !== null) clearTimer(timer);
+        timer = null;
+        pending = null;
+        enqueue(request.value, request.edit);
+      }
+      return chain;
+    },
     saved: () => saved,
     dispose: () => {
       cancelPending();

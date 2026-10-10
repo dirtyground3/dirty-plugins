@@ -170,6 +170,7 @@ const scene = { id: "top", title: "Top scene", rating100: 100, paths: { stream: 
 const markerScene = { id: "curated", title: "Curated", rating100: 80, paths: { stream: "/curated.mp4" } };
 const data = {
   top: { scenes: [scene] },
+  marked: { scenes: [markerScene] },
   markers: { scene_markers: [{ id: "marker", seconds: 12, end_seconds: 18, scene: markerScene }] },
 };
 let nextId = 0;
@@ -1322,6 +1323,8 @@ async function verifyNamedGenderBoxes() {
           target: { value: boxes[index].id },
         });
         tree = renderLeaderboard();
+        await flush();
+        tree = renderLeaderboard();
         const selector = find(tree, component("RankStatisticSelector"));
         selector.type(selector.props).props.onSelect(category);
         tree = renderLeaderboard();
@@ -2257,10 +2260,16 @@ async function verifyLeaderboardDisplays() {
       return tree;
     };
   }
+  async function loaded(render) {
+    for (let i = 0; i < 10; i++) {
+      const tree = render();
+      if (find(tree, node => node.type === LeaderboardPodium)) return tree;
+      await flush();
+    }
+    throw new Error("Leaderboard loading/scoring did not finish");
+  }
   let render = route();
-  render();
-  await flush();
-  let tree = render();
+  let tree = await loaded(render);
   assert.strictEqual(find(tree, node => node.type === LeaderboardPodium).props.topCount, 3);
   const header = find(
     tree,
@@ -2307,9 +2316,7 @@ async function verifyLeaderboardDisplays() {
   tree = render();
   assert.strictEqual(find(tree, node => node.type === plugin.testing.RankStatisticSelector).props.value, "appearance");
   render = route();
-  render();
-  await flush();
-  tree = render();
+  tree = await loaded(render);
   assert.strictEqual(
     find(tree, node => node.type === plugin.testing.RankStatisticSelector).props.value,
     "appearance",
@@ -2327,9 +2334,7 @@ async function verifyLeaderboardDisplays() {
 
   configuration = { leaderboardTopCount: 5, leaderboardView: "table" };
   render = route();
-  render();
-  await flush();
-  tree = render();
+  tree = await loaded(render);
   assert.strictEqual(find(tree, node => node.type === LeaderboardPodium).props.topCount, 5);
   assert.strictEqual(find(tree, node => node.type === LeaderboardTable).props.entries[0].rank, 6);
   assert(
@@ -2357,9 +2362,7 @@ async function verifyLeaderboardDisplays() {
     state.effects.splice(0).forEach(effect => effect());
   }
   render = route();
-  render();
-  await flush();
-  tree = render();
+  tree = await loaded(render);
   assert(
     find(tree, node => node.type === LeaderboardPodium),
     "the featured display shows without filters",
@@ -2372,11 +2375,11 @@ async function verifyLeaderboardDisplays() {
   assert(!find(tree, node => node.type === LeaderboardPodium), "filtering hides the global podium");
   const filteredResults = find(tree, node => node.type === LeaderboardTable);
   assert.deepStrictEqual(
-    filteredResults.props.entries.map(entry => entry.performer.name),
+    Array.from(filteredResults.props.entries, entry => entry.performer.name),
     ["Performer 4"].concat(Array.from({ length: 10 }, (_, i) => "Performer " + (40 + i))),
   );
   assert.deepStrictEqual(
-    filteredResults.props.entries.map(entry => entry.rank),
+    Array.from(filteredResults.props.entries, entry => entry.rank),
     [4].concat(Array.from({ length: 10 }, (_, i) => 40 + i)),
   );
   assert.strictEqual(filteredResults.props.page, 1);
@@ -2417,10 +2420,8 @@ async function verifyLeaderboardDisplays() {
   ]) {
     configuration = { leaderboardTopCount: saved };
     render = route();
-    render();
-    await flush();
     assert.strictEqual(
-      find(render(), node => node.type === LeaderboardPodium).props.topCount,
+      find(await loaded(render), node => node.type === LeaderboardPodium).props.topCount,
       expected,
       "saved selections should be restored or safely defaulted",
     );

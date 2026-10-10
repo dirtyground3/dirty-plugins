@@ -92,6 +92,22 @@ class DirtyPluginsSettingsStorageTests(unittest.TestCase):
         storage.backup_database(destination, self.database)
         self.assertEqual(storage.get_plugin_settings("example", destination), {"enabled": True})
 
+    def test_same_second_backups_are_distinct_and_never_overwrite(self):
+        storage.set_plugin_settings("example", {"value": 1}, self.database)
+        timestamp = storage.datetime(2020, 1, 1, tzinfo=storage.timezone.utc)
+        with mock.patch.object(storage, "datetime") as clock:
+            clock.now.return_value = timestamp
+            first = storage.backup_database(path=self.database)
+            storage.set_plugin_settings("example", {"value": 2}, self.database)
+            second = storage.backup_database(path=self.database)
+        self.assertNotEqual(first, second)
+        self.assertEqual(storage.get_plugin_settings("example", first), {"value": 1})
+        self.assertEqual(storage.get_plugin_settings("example", second), {"value": 2})
+        before = first.read_bytes()
+        with self.assertRaises(FileExistsError):
+            storage.backup_database(first, self.database)
+        self.assertEqual(first.read_bytes(), before)
+
     def test_plugin_settings_snapshot_pairs_revision_and_values(self):
         storage.set_plugin_settings("example", {"enabled": True}, self.database)
         snapshot = storage.get_plugin_settings_snapshot("example", self.database)
@@ -121,6 +137,36 @@ class DirtyPluginsSettingsStorageTests(unittest.TestCase):
             self.assertEqual(connection.execute("SELECT 1").fetchone()[0], 1)
         finally:
             connection.close()
+
+    def test_metadata_reads_reuse_a_connection_and_observe_later_commits(self):
+        storage.set_metadata("queue", "1", "old", self.database)
+        connection = storage.connect(self.database)
+        try:
+            with mock.patch.object(storage, "connect", side_effect=AssertionError("Unexpected connection")):
+                self.assertEqual(storage.get_metadata("queue", "1", connection=connection), "old")
+                self.assertTrue(storage.has_metadata("queue", connection=connection))
+                self.assertFalse(storage.has_metadata("empty", connection=connection))
+                self.assertEqual(storage.list_metadata("queue", connection=connection), {"1": "old"})
+            self.assertFalse(connection.in_transaction)
+            storage.set_metadata("queue", "1", "new", self.database)
+            self.assertEqual(storage.get_metadata("queue", "1", connection=connection), "new")
+            self.assertFalse(connection.in_transaction, "Reads must not pin an old WAL snapshot")
+        finally:
+            connection.close()
+
+    def test_metadata_limits_and_page_keys_bound_the_result(self):
+        with storage.transaction(self.database) as connection:
+            for key in ("1", "2", "3", "quoted'key"):
+                storage._put_metadata(connection, "queue", key, "revision-" + key)
+            storage._put_metadata(connection, "other", "1", "unrelated")
+        self.assertEqual(storage.list_metadata("queue", self.database, limit=2), {"1": "revision-1", "2": "revision-2"})
+        self.assertEqual(storage.list_metadata("queue", self.database, limit=0), {})
+        self.assertEqual(storage.list_metadata("queue", self.database, keys=["3", "missing", "3", "quoted'key"]),
+                         {"3": "revision-3", "quoted'key": "revision-quoted'key"})
+        with mock.patch.object(storage, "connect", side_effect=AssertionError("Empty keys must require no query")):
+            self.assertEqual(storage.list_metadata("queue", keys=[]), {})
+        with self.assertRaisesRegex(ValueError, "batched"):
+            storage.list_metadata("queue", self.database, keys=range(901))
 
     def test_read_transactions_stay_deferred_and_write_transactions_are_immediate(self):
         for immediate, expected in ((False, "BEGIN"), (True, "BEGIN IMMEDIATE")):

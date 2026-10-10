@@ -154,6 +154,10 @@ assert.ok(
   renderedMap.renderToSVGString().includes('fill="' + a.themeColor("grid") + '"'),
   "zero-count countries render with the neutral fill",
 );
+renderedMap.setOption({ series: [{ roam: true, zoom: 3, center: [12, 24] }] });
+renderedMap.setOption({ ...realOriginOption, series: [{ ...realOriginOption.series[0], label: { show: false } }] });
+assert.equal(renderedMap.getOption().series[0].zoom, 3, "incremental map updates preserve real ECharts zoom");
+assert.deepEqual(renderedMap.getOption().series[0].center, [12, 24]);
 renderedMap.dispose();
 assert.equal(a.statsSettings.visualTheme, "classic", "fresh installs use the hub's Midnight default");
 assert.deepEqual(JSON.parse(JSON.stringify(a.constellationGender("TRANSGENDER_FEMALE"))), {
@@ -251,6 +255,49 @@ assert.equal(capped.nodes.length, 3, "maximum performers caps the node set");
 assert.equal(capped.totalPerformers, 6, "the cap must not change the reported total");
 assert.equal(capped.links.length, 3, "only visible performers form links");
 assert.equal(a.aggregateConstellation([largeScene], 0, 1).nodes.length, 6, "zero displays all performers");
+const denseScene = {
+  id: "dense",
+  performers: Array.from({ length: 1000 }, (_, index) => ({
+    id: String(index),
+    name: "P" + String(index).padStart(4, "0"),
+  })),
+};
+const dense = a.aggregateConstellation([denseScene], 0, 1);
+assert.equal(dense.nodes.length, 1000);
+assert.equal(dense.totalConnections, 499500);
+assert.equal(dense.links.length, 5000);
+assert.equal(dense.hiddenConnections, 494500);
+assert(
+  dense.nodes.every(node => node.collaborators === 999),
+  "underlying collaborator counts include hidden edges",
+);
+const connected = new Set([dense.nodes[0].id]);
+let added;
+do {
+  added = false;
+  for (const link of dense.links)
+    if (connected.has(link.source) || connected.has(link.target)) {
+      if (!connected.has(link.source) || !connected.has(link.target)) added = true;
+      connected.add(link.source);
+      connected.add(link.target);
+    }
+} while (added);
+assert.equal(connected.size, 1000, "the edge budget retains connectivity of the dense graph");
+const bridgedScenes = [
+  ...Array.from({ length: 10 }, (_, index) => ({
+    id: "strong" + index,
+    performers: largeScene.performers.slice(0, 3),
+  })),
+  { id: "bridge", performers: [largeScene.performers[0], largeScene.performers[3]] },
+];
+const bridged = a.aggregateConstellation(bridgedScenes, 0, 1, 3);
+assert.equal(bridged.links.length, 3);
+assert.equal(bridged.totalConnections, 4);
+assert(
+  bridged.links.some(link => link.target === "p3"),
+  "a weak bridge is retained before redundant strong edges",
+);
+assert.deepEqual(JSON.parse(JSON.stringify(bridged.links.map(link => link.value))), [10, 10, 1]);
 assert.equal(
   a.aggregateConstellation(
     [

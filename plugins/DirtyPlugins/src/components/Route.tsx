@@ -10,7 +10,9 @@ import { React } from "../runtime";
 import { createSaveController, type SaveController } from "../save";
 import {
   createDrafts,
+  loadPluginConfiguration,
   loadSettingsSnapshot,
+  mergePluginDraft,
   notifyConfigurationChanged,
   requestedPluginId,
   serializeFieldValue,
@@ -25,7 +27,7 @@ import { StateView } from "./Controls";
 import { PluginCard } from "./PluginCard";
 
 type PluginSaveController = SaveController<
-  Record<string, FieldValue>,
+  { draft: Record<string, FieldValue>; fields: string[] },
   { input: Record<string, unknown>; revision: number }
 >;
 const SAVE_MESSAGES: Record<string, string> = {
@@ -34,10 +36,11 @@ const SAVE_MESSAGES: Record<string, string> = {
   saved: "Saved automatically.",
 };
 
-function pluginInput(plugin: Plugin, draft: Record<string, FieldValue>, snapshot: Snapshot) {
+function pluginInput(plugin: Plugin, draft: Record<string, FieldValue>, snapshot: Snapshot, fields?: string[]) {
   const input = Object.assign({}, asObject(snapshot.configuration[plugin.id]));
   (plugin.settings || []).forEach(setting => {
-    input[setting.name] = serializeFieldValue(setting, draft[setting.name]);
+    if (!fields || fields.includes(setting.name))
+      input[setting.name] = serializeFieldValue(plugin.id, setting, draft[setting.name]);
   });
   return input;
 }
@@ -101,16 +104,27 @@ export function DirtyPluginsRoute() {
   const [error, setError] = React.useState<string | null>(null);
   const [statuses, setStatuses] = React.useState<Statuses>({});
   const [actionRevision, setActionRevision] = React.useState(0);
-  const [, setSettingsPanelRevision] = React.useState(0);
+  const [settingsPanelRevision, setSettingsPanelRevision] = React.useState(0);
   const saveControllersRef = React.useRef<Record<string, PluginSaveController>>({});
   const snapshotRef = React.useRef(snapshot);
   snapshotRef.current = snapshot;
+  const draftsRef = React.useRef(drafts);
+  draftsRef.current = drafts;
+  const savedDraftsRef = React.useRef(savedDrafts);
+  savedDraftsRef.current = savedDrafts;
+  const mountedRef = React.useRef(true);
+  const reloadGenerationRef = React.useRef(0);
+  const pluginLoadsRef = React.useRef<Record<string, number>>({});
+  const editedFieldsRef = React.useRef<Record<string, Set<string>>>({});
   const [activePluginId, setActivePluginId] = React.useState(requestedPluginId);
   const standardDirty = React.useMemo(
     () => standardDraftsAreDirty(snapshot, drafts, savedDrafts),
-    [snapshot, drafts, savedDrafts],
+    [snapshot, drafts, savedDrafts, settingsPanelRevision],
   );
-  const hasUnsavedChanges = standardDirty || Object.keys(customDirty).some(pluginId => Boolean(customDirty[pluginId]));
+  const hasUnsavedChanges =
+    standardDirty ||
+    Object.values(editedFieldsRef.current).some(fields => fields.size > 0) ||
+    Object.keys(customDirty).some(pluginId => Boolean(customDirty[pluginId]));
   const reportCustomDirty = React.useCallback((pluginId: string, dirty: boolean) => {
     setCustomDirty(current => {
       if (Boolean(current[pluginId]) === Boolean(dirty)) return current;
@@ -121,27 +135,91 @@ export function DirtyPluginsRoute() {
     });
   }, []);
 
-  const reload = React.useCallback(() => {
-    setLoading(true);
-    setError(null);
-    return loadSettingsSnapshot()
-      .then(nextSnapshot => {
-        const nextDrafts = createDrafts(nextSnapshot);
-        setSnapshot(nextSnapshot);
-        setDrafts(nextDrafts);
-        setSavedDrafts(nextDrafts);
-        setCustomDirty({});
-        setActivePluginId(currentPluginId =>
-          nextSnapshot.plugins.some(plugin => plugin.id === currentPluginId)
-            ? currentPluginId
-            : nextSnapshot.plugins[0] && nextSnapshot.plugins[0].id,
-        );
-      })
-      .catch(loadError => {
-        setError(loadError.message || String(loadError));
-      })
-      .then(() => setLoading(false));
+  const applySnapshot = React.useCallback((incoming: Snapshot, pluginIds: string[]) => {
+    const current = snapshotRef.current;
+    const nextSnapshot = {
+      ...incoming,
+      configuration: { ...current?.configuration },
+      pluginRevisions: { ...current?.pluginRevisions },
+    };
+    const incomingDrafts = createDrafts(incoming);
+    const nextDrafts = { ...draftsRef.current };
+    const nextSaved = { ...savedDraftsRef.current };
+    incoming.plugins.forEach(plugin => {
+      if (!pluginIds.includes(plugin.id)) return;
+      if ((incoming.pluginRevisions[plugin.id] || 0) < (current?.pluginRevisions[plugin.id] || 0)) return;
+      nextSnapshot.configuration[plugin.id] = incoming.configuration[plugin.id];
+      nextSnapshot.pluginRevisions[plugin.id] = incoming.pluginRevisions[plugin.id];
+      nextDrafts[plugin.id] = mergePluginDraft(
+        plugin,
+        nextDrafts[plugin.id],
+        nextSaved[plugin.id],
+        incomingDrafts[plugin.id],
+        editedFieldsRef.current[plugin.id] || new Set(),
+      );
+      nextSaved[plugin.id] = incomingDrafts[plugin.id];
+    });
+    snapshotRef.current = nextSnapshot;
+    draftsRef.current = nextDrafts;
+    savedDraftsRef.current = nextSaved;
+    setSnapshot(nextSnapshot);
+    setDrafts(nextDrafts);
+    setSavedDrafts(nextSaved);
+    setActivePluginId(currentPluginId =>
+      incoming.plugins.some(plugin => plugin.id === currentPluginId) ? currentPluginId : incoming.plugins[0]?.id,
+    );
   }, []);
+
+  const reload = React.useCallback(
+    async (pluginId?: string) => {
+      const targeted = pluginId && snapshotRef.current?.plugins.some(plugin => plugin.id === pluginId);
+      const generation = targeted ? reloadGenerationRef.current : ++reloadGenerationRef.current;
+      const pluginLoads = { ...pluginLoadsRef.current };
+      const request = targeted ? (pluginLoadsRef.current[pluginId] || 0) + 1 : 0;
+      if (targeted) pluginLoadsRef.current[pluginId] = request;
+      const isCurrent = () =>
+        mountedRef.current &&
+        generation === reloadGenerationRef.current &&
+        (!targeted || pluginLoadsRef.current[pluginId] === request);
+      if (!snapshotRef.current) setLoading(true);
+      setError(null);
+      try {
+        // Finish this plugin's pending/in-flight writes before reading its persisted baseline.
+        const controllers = targeted
+          ? [saveControllersRef.current[pluginId]]
+          : Object.values(saveControllersRef.current);
+        await Promise.all(controllers.map(controller => controller?.flush()));
+        if (!isCurrent()) return;
+        if (targeted) {
+          const configuration = await loadPluginConfiguration(pluginId);
+          if (!isCurrent()) return;
+          const current = snapshotRef.current!;
+          applySnapshot(
+            {
+              ...current,
+              configuration: { ...current.configuration, [pluginId]: configuration.settings },
+              pluginRevisions: { ...current.pluginRevisions, [pluginId]: configuration.revision },
+            },
+            [pluginId],
+          );
+        } else {
+          const incoming = await loadSettingsSnapshot();
+          if (!isCurrent()) return;
+          applySnapshot(
+            incoming,
+            incoming.plugins
+              .filter(plugin => (pluginLoadsRef.current[plugin.id] || 0) === (pluginLoads[plugin.id] || 0))
+              .map(plugin => plugin.id),
+          );
+        }
+      } catch (loadError) {
+        if (isCurrent()) setError((loadError as Error).message || String(loadError));
+      } finally {
+        if (isCurrent()) setLoading(false);
+      }
+    },
+    [applySnapshot],
+  );
 
   React.useEffect(() => {
     reload();
@@ -149,8 +227,10 @@ export function DirtyPluginsRoute() {
 
   React.useEffect(() => {
     function onConfigurationChanged(event: Event) {
-      if ((event as CustomEvent<{ preserveSettingsPage?: boolean }>).detail?.preserveSettingsPage) return;
-      reload();
+      const detail = (event as CustomEvent<{ pluginId?: string; preserveSettingsPage?: boolean }>).detail;
+      if (detail?.preserveSettingsPage) return;
+      if (detail?.pluginId && !snapshotRef.current?.plugins.some(plugin => plugin.id === detail.pluginId)) return;
+      reload(detail?.pluginId);
     }
     const onFieldActionsChanged = () => setActionRevision(revision => revision + 1);
     const onSettingsPanelsChanged = () => setSettingsPanelRevision(revision => revision + 1);
@@ -168,6 +248,8 @@ export function DirtyPluginsRoute() {
 
   React.useEffect(() => {
     return () => {
+      mountedRef.current = false;
+      reloadGenerationRef.current += 1;
       Object.keys(saveControllersRef.current).forEach(id => saveControllersRef.current[id].dispose());
     };
   }, []);
@@ -176,29 +258,28 @@ export function DirtyPluginsRoute() {
     if (!saveControllersRef.current[plugin.id])
       saveControllersRef.current[plugin.id] = createSaveController({
         delay: 350,
-        validate: draft => {
+        validate: request => {
           try {
-            pluginInput(plugin, draft, snapshotRef.current!);
+            pluginInput(plugin, request.draft, snapshotRef.current!);
             return "";
           } catch (error) {
             return (error as Error).message;
           }
         },
-        save: draft => {
+        save: request => {
           const current = snapshotRef.current!;
-          const input = pluginInput(plugin, draft, current);
+          const input = pluginInput(plugin, request.draft, current, request.fields);
           const expected = current.pluginRevisions && current.pluginRevisions[plugin.id];
           return configurePlugin(plugin.id, input, expected).then(result => ({ input, revision: result.revision }));
         },
-        onSaved: (draft, result, current) => {
+        onSaved: (_request, result, current) => {
           const nextSnapshot = {
             ...snapshotRef.current!,
             configuration: { ...snapshotRef.current!.configuration, [plugin.id]: result.input },
             pluginRevisions: { ...snapshotRef.current!.pluginRevisions, [plugin.id]: result.revision },
           };
-          snapshotRef.current = nextSnapshot;
-          setSnapshot(nextSnapshot);
-          setSavedDrafts(saved => ({ ...saved, [plugin.id]: { ...draft } }));
+          applySnapshot(nextSnapshot, [plugin.id]);
+          if (current) editedFieldsRef.current[plugin.id]?.clear();
           if (current) notifyConfigurationChanged(plugin.id, { preserveSettingsPage: true });
         },
         onStatus: status => {
@@ -214,9 +295,17 @@ export function DirtyPluginsRoute() {
 
   function updateField(pluginId: string, settingName: string, value: FieldValue) {
     const plugin = snapshot && snapshot.plugins.find(item => item.id === pluginId);
-    const nextPluginDraft = { ...drafts[pluginId], [settingName]: value };
-    setDrafts(current => ({ ...current, [pluginId]: nextPluginDraft }));
-    if (plugin) saveController(plugin).schedule(nextPluginDraft);
+    const nextPluginDraft = { ...draftsRef.current[pluginId], [settingName]: value };
+    const nextDrafts = { ...draftsRef.current, [pluginId]: nextPluginDraft };
+    draftsRef.current = nextDrafts;
+    setDrafts(nextDrafts);
+    const fields = editedFieldsRef.current[pluginId] || (editedFieldsRef.current[pluginId] = new Set());
+    fields.add(settingName);
+    if (plugin)
+      saveController(plugin).schedule({
+        draft: nextPluginDraft,
+        fields: [...fields],
+      });
   }
 
   function selectPlugin(pluginId: string) {
@@ -254,9 +343,9 @@ export function DirtyPluginsRoute() {
   const activeSettingsPanel = activePlugin && settingsPanels[activePlugin.id];
   usePageTitle(activePlugin && activePlugin.id !== "dirtyPlugins" ? activePlugin.name : "Dirty Plugins", "Settings");
 
-  const ready = !loading && !error && snapshot;
+  const ready = snapshot;
   const retryButton = (
-    <button type="button" className="btn btn-secondary dirty-ui-button" onClick={reload}>
+    <button type="button" className="btn btn-secondary dirty-ui-button" onClick={() => reload()}>
       Retry
     </button>
   );
@@ -317,7 +406,7 @@ export function DirtyPluginsRoute() {
                 React.createElement(activeSettingsPanel, {
                   configuration: asObject(snapshot!.configuration[activePlugin.id]),
                   onDirtyChange: reportCustomDirty,
-                  onConfigurationChanged: reload,
+                  onConfigurationChanged: () => reload(activePlugin.id),
                   plugin: activePlugin,
                 })
               ) : (

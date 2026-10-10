@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import closing
 from pathlib import Path
 import shutil
 import sys
@@ -31,8 +32,8 @@ def enabled():
     return storage.get_plugin_settings(PLUGIN_ID).get("indexEnabled", True) not in (False, "false", 0)
 
 
-def read_record(namespace, key):
-    return json.loads(storage.get_metadata(namespace, str(key)) or "{}")
+def read_record(namespace, key, connection=None):
+    return json.loads(storage.get_metadata(namespace, str(key), connection=connection) or "{}")
 
 
 def status():
@@ -67,8 +68,8 @@ def stash_identity(file):
     }}
 
 
-def cached_file(file, records=None):
-    cached = read_record(FILES, file["id"]) if records is None else records.get(str(file["id"]), {})
+def cached_file(file, records=None, connection=None):
+    cached = read_record(FILES, file["id"], connection) if records is None else records.get(str(file["id"]), {})
     source = stash_identity(file)
     previous = cached.get("stash")
     if source is not None and previous:
@@ -122,8 +123,8 @@ def tool_path(client):
     return tool
 
 
-def inspect_file(file, tool, force=False):
-    cached = None if force else cached_file(file)
+def inspect_file(file, tool, force=False, connection=None):
+    cached = None if force else cached_file(file, connection=connection)
     if cached:
         if cached.get("failed"):
             raise CaptionError("A previous caption check failed. Use Reprobe all files to retry unchanged files.")
@@ -147,8 +148,8 @@ def update_state(lease_token, **values):
     return storage.update_json_metadata(NAMESPACE, "state", update)
 
 
-def active(token):
-    state = read_record(NAMESPACE, "state")
+def active(token, connection=None):
+    state = read_record(NAMESPACE, "state", connection)
     return state.get("token") == token and not state.get("cancel")
 
 
@@ -182,16 +183,16 @@ def needs_scene(scene, file_records, scene_records):
     return False
 
 
-def inspect_scene(client, scene, tool, force=False, token=None, force_files=None):
+def inspect_scene(client, scene, tool, force=False, token=None, force_files=None, connection=None):
     records, fresh_records, probed, failed = [], [], 0, False
     for file in scene.get("files", []):
-        if token and not active(token):
+        if token and not active(token, connection):
             return None
         try:
             force_file = force and (force_files is None or str(file["id"]) not in force_files)
             if force_file and force_files is not None:
                 force_files.add(str(file["id"]))
-            record, fresh = inspect_file(file, tool, force_file)
+            record, fresh = inspect_file(file, tool, force_file, connection)
             records.append(record)
             fresh_records.append(fresh)
             probed += int(fresh)
@@ -226,7 +227,7 @@ def inspect_scene(client, scene, tool, force=False, token=None, force_files=None
     current = latest.get("custom_fields") or {}
     partial = {key: value for key, value in fields.items() if current.get(key) != value}
     remove = [key for key in OWN_FIELDS if key not in fields and key in current]
-    if token and not active(token):
+    if token and not active(token, connection):
         return None
     if partial or remove:
         client.call("mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}", {"input": {
@@ -255,7 +256,7 @@ def recover(client):
 
 def schedule(client):
     token = uuid.uuid4().hex
-    pending = bool(storage.list_metadata(PENDING))
+    pending = storage.has_metadata(PENDING)
     def claim(state):
         if state.get("paused"):
             return state
@@ -380,9 +381,10 @@ def after_scan(client, args):
 
 class WorkerContext:
     """Resources shared by pending hooks and a full traversal, for one lease."""
-    def __init__(self, client, token: str):
+    def __init__(self, client, token: str, connection):
         self.client = client
         self.token = token
+        self.connection = connection
         self.counts = {"checked": 0, "probed": 0, "skipped": 0, "errors": 0}
         self.probe_tool = None
         self.force_files: set[str] = set()
@@ -400,21 +402,21 @@ class WorkerContext:
         self.counts["errors"] += int(outcome["error"])
         update_state(self.token, **self.counts)
         for file in scene.get("files", []):
-            self.file_records[str(file["id"])] = read_record(FILES, file["id"])
-        self.scene_records[str(scene["id"])] = read_record(SCENES, scene["id"])
+            self.file_records[str(file["id"])] = read_record(FILES, file["id"], self.connection)
+        self.scene_records[str(scene["id"])] = read_record(SCENES, scene["id"], self.connection)
 
     def refresh_records(self):
-        self.file_records = {key: json.loads(value) for key, value in storage.list_metadata(FILES).items()}
-        self.scene_records = {key: json.loads(value) for key, value in storage.list_metadata(SCENES).items()}
+        self.file_records = {key: json.loads(value) for key, value in storage.list_metadata(FILES, connection=self.connection).items()}
+        self.scene_records = {key: json.loads(value) for key, value in storage.list_metadata(SCENES, connection=self.connection).items()}
 
 
 def process_pending_batch(context: WorkerContext, force=False):
-    for scene_id, revision in list(storage.list_metadata(PENDING).items())[:100]:
-        if not active(context.token):
+    for scene_id, revision in storage.list_metadata(PENDING, limit=100, connection=context.connection).items():
+        if not active(context.token, context.connection):
             break
         scene = context.client.call(SCENE_QUERY, {"id": scene_id}).get("findScene")
         if scene:
-            outcome = inspect_scene(context.client, scene, context.tool, force, context.token, context.force_files)
+            outcome = inspect_scene(context.client, scene, context.tool, force, context.token, context.force_files, context.connection)
             if outcome is None:
                 break
             context.account_outcome(scene, outcome)
@@ -430,7 +432,7 @@ def traverse_full_scan(context: WorkerContext, force: bool):
     cursor = 0
     process_pending_batch(context, force)
     context.refresh_records()
-    while active(token):
+    while active(token, context.connection):
         result = context.client.call("query($filter:FindFilterType!,$scene:SceneFilterType!){findScenes(filter:$filter,scene_filter:$scene){count scenes{id custom_fields files{" + FILE_FIELDS + "}}}}", {
             "filter": {"per_page": 100, "page": 1, "sort": "id", "direction": "ASC"},
             "scene": {"id": {"value": cursor, "modifier": "GREATER_THAN"}},
@@ -440,15 +442,16 @@ def traverse_full_scan(context: WorkerContext, force: bool):
             break
         if not cursor:
             update_state(token, total=result["count"])
+        pending_page = storage.list_metadata(PENDING, keys=[scene["id"] for scene in scenes], connection=context.connection)
         for scene in scenes:
-            if not active(token):
+            if not active(token, context.connection):
                 break
-            pending = storage.get_metadata(PENDING, str(scene["id"]))
+            pending = pending_page.get(str(scene["id"]))
             cursor = max(cursor, int(scene["id"]))
             if not force and pending is None and not needs_scene(scene, context.file_records, context.scene_records):
                 context.counts["skipped"] += 1
                 continue
-            outcome = inspect_scene(context.client, scene, context.tool, force, token, context.force_files)
+            outcome = inspect_scene(context.client, scene, context.tool, force, token, context.force_files, context.connection)
             if outcome is None:
                 break
             context.account_outcome(scene, outcome)
@@ -459,7 +462,7 @@ def traverse_full_scan(context: WorkerContext, force: bool):
         if len(scenes) < 100:
             break
         update_state(token, **context.counts)
-    if active(token):
+    if active(token, context.connection):
         update_state(token, scanning=False, lastFullScan=time.time(), **context.counts)
 
 
@@ -473,19 +476,26 @@ def complete_worker_lease(token):
 
 
 def worker(client, token):
-    if not active(token):
-        if token and read_record(NAMESPACE, "state").get("token") == token:
+    # SELECTs finish immediately: no scan-wide transaction can hide cancellation
+    # or pin a WAL snapshot while probing media or making GraphQL requests.
+    with closing(storage.connect()) as connection:
+        return run_worker(WorkerContext(client, token, connection))
+
+
+def run_worker(context: WorkerContext):
+    client, token, connection = context.client, context.token, context.connection
+    if not active(token, connection):
+        if token and read_record(NAMESPACE, "state", connection).get("token") == token:
             update_state(token, token=None, expires=0, status="Cancelled", finished=time.time())
         return status()
     update_state(token, status="Running", started=time.time(), finished=None)
-    context = WorkerContext(client, token)
     try:
-        while active(token):
-            state = read_record(NAMESPACE, "state")
+        while active(token, connection):
+            state = read_record(NAMESPACE, "state", connection)
             if state.get("full"):
                 traverse_full_scan(context, state.get("force", False))
                 continue
-            if not storage.list_metadata(PENDING):
+            if not storage.has_metadata(PENDING, connection=connection):
                 if complete_worker_lease(token).get("token") != token:
                     break
                 continue
@@ -494,11 +504,11 @@ def worker(client, token):
         update_state(token, token=None, expires=0, status="Interrupted", full=True, scanning=False)
         raise
     finally:
-        state = read_record(NAMESPACE, "state")
+        state = read_record(NAMESPACE, "state", connection)
         if state.get("token") == token:
             update_state(token, token=None, expires=0, status="Cancelled", scanning=False, full=True, finished=time.time())
     # Catch hooks arriving just before the lease was released.
-    if enabled() and (storage.list_metadata(PENDING) or read_record(NAMESPACE, "state").get("full")):
+    if enabled() and (storage.has_metadata(PENDING, connection=connection) or read_record(NAMESPACE, "state", connection).get("full")):
         schedule(client)
     return status()
 

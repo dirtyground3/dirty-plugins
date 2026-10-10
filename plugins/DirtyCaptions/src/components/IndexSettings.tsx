@@ -13,18 +13,29 @@ export function IndexSettings() {
     revision = React.useRef(0),
     request = React.useRef(0);
   React.useEffect(() => {
+    alive.current = true;
+    let polling = false;
     function poll() {
-      if (!alive.current || locked.current) return;
+      if (!alive.current || locked.current || polling) return;
+      polling = true;
       const version = revision.current,
         id = ++request.current;
-      hub.runPluginOperation<Status>(PLUGIN_ID, { mode: "indexStatus" }).then(
-        result => {
-          if (alive.current && version === revision.current && id === request.current) setStatus(result);
-        },
-        failure => {
-          if (alive.current && version === revision.current && id === request.current) setError(failure.message);
-        },
-      );
+      hub
+        .runPluginOperation<Status>(PLUGIN_ID, { mode: "indexStatus" })
+        .then(
+          result => {
+            if (alive.current && version === revision.current && id === request.current) {
+              setStatus(result);
+              setError("");
+            }
+          },
+          failure => {
+            if (alive.current && version === revision.current && id === request.current) setError(failure.message);
+          },
+        )
+        .finally(() => {
+          polling = false;
+        });
     }
     poll();
     // This polls only worker status while the settings addon is mounted.

@@ -13,13 +13,13 @@ export function useWorkflow(props: SettingsProps): Workflow {
       getSettings: () => DirtyPlugins.getPluginSettings(PLUGIN_ID),
       runPreview: settings => DirtyPlugins.runPluginOperation<Preview>(PLUGIN_ID, { mode: "preview", settings }),
       configurePlugin: settings => DirtyPlugins.configurePlugin(PLUGIN_ID, settings),
-      queueExecution: async strategyHash => {
+      queueExecution: async (strategyHash, planDigest) => {
         const data = await DirtyPlugins.graphql<{ runPluginTask: string }>(
           "mutation DirtyTidyExecute($pluginId:ID!,$description:String,$args:Map){runPluginTask(plugin_id:$pluginId,description:$description,args_map:$args)}",
           {
             pluginId: PLUGIN_ID,
             description: "DirtyTidy: apply confirmed file organization plan",
-            args: { mode: "execute", expectedStrategyHash: strategyHash },
+            args: { mode: "execute", expectedStrategyHash: strategyHash, expectedPlanDigest: planDigest },
           },
         );
         return data.runPluginTask;

@@ -1,8 +1,8 @@
 import { isMarkerLaunchContext } from "../domain/context";
 import { getMarkerItem, getSceneItem } from "../domain/items";
-import { createMultiscreenPlaylists } from "../domain/playlists";
+import { pagePlaylists } from "../domain/playlists";
 import { useMarkerQuery, useNativePlayerComponent, useSceneQuery } from "../hooks";
-import { getPlaybackSettings, normalizeSettings } from "../domain/settings";
+import { getPlaybackSettings, getSceneLimit, normalizeSettings } from "../domain/settings";
 import { contexts, DirtyPlugins, PluginApi, React } from "../runtime";
 import { icon, PluginIconButton, StateView } from "./Controls";
 import { VisibleOCounterButton } from "./Counter";
@@ -66,11 +66,68 @@ export function MultiscreenRoute() {
     [markersQuery.result.scene_markers, settings.markerDuration],
   );
   const items = markerMode ? markerItems : sceneItems;
-  const playlists = React.useMemo(
-    () => createMultiscreenPlaylists(items, settings.totalScreens, settings.randomize, settings.splitScenes),
-    [items, settings.randomize, settings.splitScenes, settings.totalScreens],
-  );
   const activeQuery = markerMode ? markersQuery : scenesQuery;
+  const explicitSelection = launchContext?.source === "selection" || launchContext?.source === "marker-selection";
+  const pageSize = getSceneLimit(settings);
+  const seed = React.useMemo(() => Math.floor(Math.random() * 4294967296), [items]);
+  const initialPage = explicitSelection ? 1 : activeQuery.page;
+  const initialItems = React.useMemo(
+    () => (explicitSelection ? items.slice(0, pageSize) : items),
+    [items, explicitSelection, pageSize],
+  );
+  const playlists = React.useMemo(
+    () =>
+      pagePlaylists(initialItems, settings.totalScreens, settings.randomize, settings.splitScenes, seed, initialPage),
+    [initialItems, settings.totalScreens, settings.randomize, settings.splitScenes, seed, initialPage],
+  );
+  const pageCount = Math.ceil((explicitSelection ? items.length : activeQuery.result.count) / pageSize);
+  const continuation = React.useMemo(
+    () =>
+      launchContext && pageCount > 1
+        ? {
+            initialPage,
+            pageCount,
+            loadPage: async (page: number) => {
+              let nextItems;
+              if (explicitSelection) nextItems = items.slice((page - 1) * pageSize, page * pageSize);
+              else if (page === initialPage) nextItems = items;
+              else if (markerMode) {
+                const data = await markersQuery.loadPage(page);
+                nextItems = data.scene_markers
+                  .map(marker => getMarkerItem(marker, settings.markerDuration))
+                  .filter(item => item !== null);
+              } else {
+                const data = await scenesQuery.loadPage(page);
+                nextItems = data.scenes.map(getSceneItem).filter(item => item !== null);
+              }
+              return pagePlaylists(
+                nextItems,
+                settings.totalScreens,
+                settings.randomize,
+                settings.splitScenes,
+                seed,
+                page,
+              );
+            },
+          }
+        : undefined,
+    [
+      launchContext,
+      pageCount,
+      initialPage,
+      explicitSelection,
+      items,
+      pageSize,
+      markerMode,
+      markersQuery.loadPage,
+      scenesQuery.loadPage,
+      settings.totalScreens,
+      settings.randomize,
+      settings.splitScenes,
+      settings.markerDuration,
+      seed,
+    ],
+  );
   const loading = settingsQuery.loading || activeQuery.loading || nativePlayerQuery.loading;
   const error = settingsQuery.error ?? activeQuery.error ?? nativePlayerQuery.error;
   const itemType = markerMode ? "markers" : "scenes";
@@ -103,6 +160,7 @@ export function MultiscreenRoute() {
           columns={settings.columns}
           totalScreens={settings.totalScreens}
           playlists={playlists}
+          continuation={continuation}
           playback={playbackSettings}
           nativePlayer={nativePlayerQuery.component}
           onVisibleSceneIdsChange={setVisibleNativeSceneIds}

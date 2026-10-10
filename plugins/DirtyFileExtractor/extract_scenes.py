@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -30,6 +31,10 @@ PLUGIN_ID = "extractScenes"
 VALID_COLLISION_POLICIES = {"rename", "skip", "overwrite"}
 COPY_CHUNK_SIZE = 4 * 1024 * 1024
 PROGRESS_INTERVAL_SECONDS = 0.5
+SELECTION_BATCH_SIZE = 100
+# Stash's IDs lookup fails a batch containing a deleted scene. ID criteria
+# preserve missing-item reporting; 25 terms stay below SQLite's parser depth.
+SCENE_SELECTION_BATCH_SIZE = 25
 
 
 for folder in ("dirtyPlugins", "DirtyPlugins"):  # installed plugin ID, then source directory
@@ -40,7 +45,7 @@ for folder in ("dirtyPlugins", "DirtyPlugins"):  # installed plugin ID, then sou
 else:
     raise RuntimeError("DirtyPlugins shared storage is not installed")
 import dirty_plugins_storage as shared_storage
-from dirty_plugins_client import StashClient as BaseClient
+from dirty_plugins_client import StashClient as BaseClient, contain_child_process
 from dirty_plugins_protocol import Reporter
 import dirty_plugins_protocol as protocol
 
@@ -52,19 +57,27 @@ class PluginError(RuntimeError):
 class StashClient(BaseClient):
     def __init__(self, server_connection):
         super().__init__(server_connection, timeout=60, error_type=PluginError)
+        self._ffmpeg_path = None
+        self._ffmpeg_error = None
 
-    def scene(self, scene_id: str) -> dict[str, Any] | None:
+    def scenes(self, scene_ids: Iterable[str]) -> list[dict[str, Any]]:
         query = """
-          query ExtractScenesScene($id: ID!) {
-            findScene(id: $id) {
-              id
-              title
-              files { id path basename }
+          query DirtyFileExtractorScenes($scene: SceneFilterType!, $filter: FindFilterType!) {
+            findScenes(scene_filter: $scene, filter: $filter) {
+              scenes { id title files { id path basename } }
             }
           }
         """
-        data = self.call(query, {"id": str(scene_id)})
-        return data.get("findScene")
+        condition = None
+        for value in reversed(list(scene_ids)):
+            criterion = {"id": {"value": int(value), "modifier": "EQUALS"}}
+            if condition is not None:
+                criterion["OR"] = condition
+            condition = criterion
+        if condition is None:
+            return []
+        data = self.call(query, {"scene": condition, "filter": {"per_page": SCENE_SELECTION_BATCH_SIZE}})
+        return (data.get("findScenes") or {}).get("scenes") or []
 
     def markers(self, marker_ids: Iterable[str]) -> list[dict[str, Any]]:
         query = """
@@ -104,15 +117,23 @@ class StashClient(BaseClient):
         return result.get("images") or []
 
     def ffmpeg_path(self) -> str:
-        data = self.call("query DirtyFileExtractorFFmpegPath { configuration { general { ffmpegPath } } }")
-        configured = str(((data.get("configuration") or {}).get("general") or {}).get("ffmpegPath") or "").strip()
-        executable = configured or shutil.which("ffmpeg")
-        if not executable:
-            raise PluginError(
-                "FFmpeg is required to extract markers but was not found in Stash's "
-                "configuration or PATH"
-            )
-        return executable
+        if self._ffmpeg_error is not None:
+            raise PluginError(self._ffmpeg_error)
+        if self._ffmpeg_path is None:
+            try:
+                data = self.call("query DirtyFileExtractorFFmpegPath { configuration { general { ffmpegPath } } }")
+                configured = str(((data.get("configuration") or {}).get("general") or {}).get("ffmpegPath") or "").strip()
+                self._ffmpeg_path = configured or shutil.which("ffmpeg")
+                if not self._ffmpeg_path:
+                    raise PluginError(
+                        "FFmpeg is required to extract markers but was not found in Stash's configuration or PATH"
+                    )
+            except Exception as error:
+                # Every failed marker keeps its own result, without repeating
+                # the same failed configuration lookup for the rest of the run.
+                self._ffmpeg_error = str(error)
+                raise
+        return self._ffmpeg_path
 
     def extract_marker_clip(self, source: Path, destination: Path, start_seconds: float, end_seconds: float, on_progress: Any) -> None:
         extract_marker_clip(self.ffmpeg_path(), source, destination, start_seconds, end_seconds, on_progress)
@@ -212,7 +233,7 @@ def _parse_ffmpeg_time(value: str) -> float:
         return 0.0
 
 
-def extract_marker_clip(ffmpeg_path: str, source: Path, destination: Path, start_seconds: float, end_seconds: float, on_progress: Any) -> None:
+def extract_marker_clip(ffmpeg_path: str, source: Path, destination: Path, start_seconds: float, end_seconds: float, on_progress: Any, *, timeout: float | None = None) -> None:
     """Create an accurate MP4 clip for one marker through FFmpeg."""
     duration = float(end_seconds) - float(start_seconds)
     if start_seconds < 0 or duration <= 0:
@@ -225,27 +246,57 @@ def extract_marker_clip(ffmpeg_path: str, source: Path, destination: Path, start
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", "-y", str(temporary),
     ]
+    process = None
     try:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        cleanup = lambda: None
+        reader = None
         output_lines: list[str] = []
-        assert process.stdout is not None
-        for raw_line in process.stdout:
-            line = raw_line.strip()
-            if line.startswith("out_time="):
-                elapsed = _parse_ffmpeg_time(line.split("=", 1)[1])
-                on_progress(min(max(elapsed / duration, 0.0), 1.0))
-            elif line and not line.startswith("progress="):
-                output_lines.append(line)
-                output_lines = output_lines[-20:]
-        process.stdout.close()
-        return_code = process.wait()
-        if return_code != 0:
+        progress = 0.0
+        def read():
+            nonlocal progress
+            for raw_line in iter(lambda: process.stdout.readline(4096), b""):
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if line.startswith("out_time="):
+                    elapsed = _parse_ffmpeg_time(line.split("=", 1)[1])
+                    progress = min(max(elapsed / duration, 0.0), 1.0)
+                elif line and not line.startswith("progress="):
+                    output_lines.append(line)
+                    del output_lines[:-20]
+        try:
+            cleanup = contain_child_process(process)
+            reader = threading.Thread(target=read, daemon=True)
+            reader.start()
+            # Long clips get more time; every clip has a hard one-hour ceiling.
+            deadline = time.monotonic() + (timeout if timeout is not None else max(120, min(3600, duration * 20)))
+            while process.poll() is None:
+                on_progress(progress)
+                if time.monotonic() >= deadline:
+                    raise PluginError("FFmpeg marker extraction timed out")
+                try:
+                    process.wait(timeout=0.2)
+                except subprocess.TimeoutExpired:
+                    pass
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            cleanup()
+            if reader:
+                reader.join(timeout=2)
+            process.stdout.close()
+        if process.returncode != 0:
             detail = "\n".join(output_lines).strip()
-            raise PluginError(f"FFmpeg marker extraction failed with exit code {return_code}" + (f": {detail}" if detail else ""))
-        os.replace(temporary, destination)
+            raise PluginError(f"FFmpeg marker extraction failed with exit code {process.returncode}" + (f": {detail}" if detail else ""))
+        # Callback cancellation still aborts before the output is published.
         on_progress(1.0)
+        os.replace(temporary, destination)
     except FileNotFoundError as exc:
-        raise PluginError(f"FFmpeg executable was not found: {ffmpeg_path}") from exc
+        _discard_partial(temporary)
+        if process is None:
+            raise PluginError(f"FFmpeg executable was not found: {ffmpeg_path}") from exc
+        raise
     except BaseException:
         _discard_partial(temporary)
         raise
@@ -270,17 +321,17 @@ def resolve_selected_items(
     items: list[dict[str, Any]] = []
     missing: list[dict[str, str]] = []
 
-    for scene_id in selections.get("scene", []):
-        scene = client.scene(scene_id)
+    scene_ids = selections.get("scene", [])
+    scenes_by_id = _selected_by_id(client.scenes, scene_ids, SCENE_SELECTION_BATCH_SIZE)
+    for scene_id in scene_ids:
+        scene = scenes_by_id.get(scene_id)
         if scene:
             items.append(_scene_item(scene))
         else:
             missing.append({"scene_id": scene_id, "reason": "scene not found"})
 
     marker_ids = selections.get("marker", [])
-    markers_by_id = {
-        str(marker.get("id")): marker for marker in client.markers(marker_ids)
-    } if marker_ids else {}
+    markers_by_id = _selected_by_id(client.markers, marker_ids)
     for marker_id in marker_ids:
         marker = markers_by_id.get(marker_id)
         if not marker:
@@ -296,9 +347,7 @@ def resolve_selected_items(
         })
 
     image_ids = selections.get("image", [])
-    images_by_id = {
-        str(image.get("id")): image for image in client.images(image_ids)
-    } if image_ids else {}
+    images_by_id = _selected_by_id(client.images, image_ids)
     for image_id in image_ids:
         image = images_by_id.get(image_id)
         if not image:
@@ -308,6 +357,14 @@ def resolve_selected_items(
                       "folder_id": image_id, "files": image.get("visual_files") or []})
 
     return items, missing
+
+
+def _selected_by_id(fetch, ids, batch_size=SELECTION_BATCH_SIZE):
+    unique = list(dict.fromkeys(ids))
+    result = {}
+    for offset in range(0, len(unique), batch_size):
+        result.update((str(item["id"]), item) for item in fetch(unique[offset:offset + batch_size]))
+    return result
 
 
 def _normalize_extraction_settings(settings: dict[str, Any]) -> ExtractionOptions:

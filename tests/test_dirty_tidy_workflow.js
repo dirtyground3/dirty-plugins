@@ -33,10 +33,10 @@ function setup(options = {}) {
         summary: { ready: 1 },
         operations: [],
       })),
-    queueExecution: async hash => {
+    queueExecution: async (hash, digest) => {
       events.push("queue");
-      queued.push(hash);
-      if (options.queue) return options.queue(hash);
+      queued.push({ hash, digest });
+      if (options.queue) return options.queue(hash, digest);
       return "123";
     },
     notify: value => notifications.push(value),
@@ -63,11 +63,33 @@ function setup(options = {}) {
   await w.applyPlan(true);
   await apply;
   assert.deepEqual(h.events, ["save", "queue"]);
-  assert.equal(h.queued[0], "a".repeat(64));
+  assert.deepEqual(h.queued[0], { hash: "a".repeat(64), digest: "b".repeat(64) });
   assert.equal(w.dirty(), false);
   assert.equal(w.state.preview, null);
   assert.equal(w.state.confirming, false);
   assert.match(w.state.status, /Queued as Stash job 123/);
+
+  let previewNumber = 0;
+  const independentPreview = async settings => ({
+    settings,
+    strategy_hash: "a".repeat(64),
+    plan_digest: String(++previewNumber).repeat(64),
+    total: previewNumber,
+    summary: { ready: previewNumber },
+    operations: [],
+  });
+  const firstTab = setup({ preview: independentPreview }),
+    secondTab = setup({ preview: independentPreview });
+  await firstTab.workflow.generatePreview();
+  firstTab.workflow.openConfirmation();
+  await secondTab.workflow.generatePreview();
+  await firstTab.workflow.applyPlan(true);
+  assert.deepEqual(firstTab.queued, [{ hash: "a".repeat(64), digest: "1".repeat(64) }]);
+  assert.equal(secondTab.workflow.state.preview.plan_digest, "2".repeat(64));
+  secondTab.workflow.openConfirmation();
+  await secondTab.workflow.generatePreview();
+  assert.equal(secondTab.workflow.state.confirming, false, "a new preview requires a new confirmation");
+  assert.equal(secondTab.workflow.state.preview.plan_digest, "3".repeat(64));
 
   const automation = setup({ settings: { automationMode: "scan" } });
   await automation.workflow.generatePreview();
@@ -106,7 +128,13 @@ function setup(options = {}) {
     previewing = setup({ preview: () => result.promise });
   const pendingPreview = previewing.workflow.generatePreview();
   previewing.workflow.changed({ renamePattern: "new edit" });
-  result.resolve({ settings: { renamePattern: "stale" }, strategy_hash: "old", summary: {}, operations: [] });
+  result.resolve({
+    settings: { renamePattern: "stale" },
+    strategy_hash: "old",
+    plan_digest: "old",
+    summary: {},
+    operations: [],
+  });
   await pendingPreview;
   assert.equal(previewing.workflow.state.preview, null);
   assert.equal(previewing.workflow.state.draft.renamePattern, "new edit");
@@ -122,7 +150,12 @@ function setup(options = {}) {
     const wait = deferred(),
       destroyed = setup({ save: () => wait.promise, preview: () => wait.promise });
     if (phase === "apply")
-      destroyed.workflow.state.preview = { strategy_hash: "a", summary: { ready: 1 }, operations: [] };
+      destroyed.workflow.state.preview = {
+        strategy_hash: "a",
+        plan_digest: "b",
+        summary: { ready: 1 },
+        operations: [],
+      };
     const task =
       phase === "save"
         ? destroyed.workflow.saveStrategy()
@@ -130,7 +163,7 @@ function setup(options = {}) {
           ? destroyed.workflow.generatePreview()
           : destroyed.workflow.applyPlan(true);
     destroyed.workflow.destroy();
-    wait.resolve({ settings: {}, strategy_hash: "a", summary: {}, operations: [] });
+    wait.resolve({ settings: {}, strategy_hash: "a", plan_digest: "b", summary: {}, operations: [] });
     await task;
     assert.equal(destroyed.queued.length, 0);
     assert.equal(destroyed.notifications.length, 0);

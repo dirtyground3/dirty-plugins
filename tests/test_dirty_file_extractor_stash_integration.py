@@ -5,11 +5,13 @@ Never connects to the live port 9999 or reads its media/database.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import shutil
 import subprocess
 import time
+from unittest import mock
 
 from plugin_paths import runtime_path
 from test_dirty_compactor_stash_integration import Fixture, wait_for, add_build_mode_argument, select_build_mode, verify_served_bundle
@@ -43,6 +45,22 @@ def verify_frontend(fixture):
     print("PASS: " + detail, flush=True)
 
 
+def verify_selection_batches(fixture, scene_id, marker_id, image_id):
+    spec = importlib.util.spec_from_file_location("extractor_selection_fixture", runtime_path("DirtyFileExtractor", "extract_scenes.py"))
+    backend = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(backend)
+    client = backend.StashClient({"Host": "127.0.0.1", "Port": fixture.port})
+    missing = [str(n) for n in range(100000, 100999)]
+    selections = backend.selections_from_args({"scene_ids": missing[:500] + [scene_id, scene_id] + missing[500:],
+                                               "marker_ids": [marker_id], "image_ids": [image_id]})
+    with mock.patch.object(client, "call", wraps=client.call) as calls:
+        items, absent = backend.resolve_selected_items(client, selections)
+    assert calls.call_count == 42, "Forty scene batches plus one marker and one image batch"
+    assert [(item["kind"], item["id"]) for item in items] == [("scene", scene_id), ("marker", marker_id), ("image", image_id)]
+    assert [item["scene_id"] for item in absent] == missing
+    print("PASS: 1,000 selected scene IDs use forty real Stash requests, missing/duplicate/mixed selection order preserved", flush=True)
+
+
 def exercise(fixture):
     scene_file = fixture.root / "media" / "synthetic.mp4"
     image_file = fixture.root / "media" / "synthetic.png"
@@ -59,6 +77,7 @@ def exercise(fixture):
     performer = fixture.gql('mutation{performerCreate(input:{name:"Synthetic performer"}){id}}')["performerCreate"]["id"]
     fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}', {"input": {"id": scene["id"], "performer_ids": [performer]}})
     selection = {"scene_ids": [scene["id"]], "marker_ids": [marker["id"]], "image_ids": [image["id"]]}
+    verify_selection_batches(fixture, scene["id"], marker["id"], image["id"])
     dry = fixture.root / "dry-run-output"
     set_settings(fixture, destinationFolder=str(dry), dryRun=True, createSceneFolders=True, collisionPolicy="rename", maxCopySpeedMBps=0)
     finish(fixture, queue(fixture, selection)); assert not dry.exists()

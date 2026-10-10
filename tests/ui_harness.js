@@ -43,9 +43,14 @@ function events(target = {}) {
 
 // Owners expose slots/cursor/effects; suites decide when to render and flush.
 // Like React, state setters are stable and useMemo/useCallback keep their value
-// until a dependency changes. onChange runs after every state update.
+// until a dependency changes. onChange runs when a state value changes.
 function createHooks(getOwner, onChange = () => {}) {
-  const changedDeps = (old, deps) => !old || !deps || deps.some((dep, i) => dep !== old.deps[i]);
+  const changedDeps = (old, deps) =>
+    !old ||
+    !deps ||
+    !old.deps ||
+    deps.length !== old.deps.length ||
+    deps.some((dep, i) => !Object.is(dep, old.deps[i]));
   const hooks = {
     useState(initial) {
       const owner = getOwner(),
@@ -53,7 +58,9 @@ function createHooks(getOwner, onChange = () => {}) {
       if (!(index in owner.slots)) {
         const slot = { state: typeof initial === "function" ? initial() : initial };
         slot.set = value => {
-          slot.state = typeof value === "function" ? value(slot.state) : value;
+          const next = typeof value === "function" ? value(slot.state) : value;
+          if (Object.is(next, slot.state)) return;
+          slot.state = next;
           onChange();
         };
         owner.slots[index] = slot;
@@ -93,12 +100,14 @@ function createHooks(getOwner, onChange = () => {}) {
 
 /**
  * Renders plain element trees the way React would for these suites: hook state is keyed by
- * tree position (and element key when keyedAddress is set), effects run after each render,
+ * tree position and component identity (and element key when keyedAddress is set), effects run after each render,
  * and components that leave the tree run their cleanups. host(node, address) may adjust a
  * host element (for example assign a ref) and return extra children to render.
  */
 function createRenderer({ host, keyedAddress = false } = {}) {
   const owners = new Map();
+  const componentIds = new WeakMap();
+  let nextComponentId = 0;
   let owner,
     changed = true,
     tree;
@@ -118,7 +127,8 @@ function createRenderer({ host, keyedAddress = false } = {}) {
       if (!node || typeof node !== "object" || !node.type) return node;
       if (keyedAddress && node.props?.key != null) address += "[" + node.props.key + "]";
       if (typeof node.type === "function") {
-        const key = address + ":" + node.type.name;
+        if (!componentIds.has(node.type)) componentIds.set(node.type, ++nextComponentId);
+        const key = address + ":" + node.type.name + "#" + componentIds.get(node.type);
         seen.add(key);
         if (!owners.has(key)) owners.set(key, { slots: [], cursor: 0, effects: [], address: key });
         owner = owners.get(key);
@@ -160,6 +170,7 @@ function createRenderer({ host, keyedAddress = false } = {}) {
         if (changed) renderRoot();
         await Promise.resolve();
       }
+      if (changed) throw new Error("UI renderer did not settle after " + rounds + " flush rounds");
       return tree;
     },
     unmount() {

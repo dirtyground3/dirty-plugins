@@ -57,6 +57,31 @@ def exercise(fixture):
     for selected in (list(ids.values())[::-1], [ids["Gamma"], ids["Alpha"]]):
         found = fixture.gql('query($ids:[ID!]){findScenes(ids:$ids,filter:{per_page:-1}){scenes{id}}}', {"ids": selected})["findScenes"]["scenes"]
         assert {scene["id"] for scene in found} == set(selected)
+    script = r'''
+const assert = require('node:assert/strict');
+const { requireSource } = require('./tests/plugin_paths');
+const url = process.argv[1];
+const graphql = async (query, variables) => {
+  const response = await fetch(url + '/graphql', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query, variables }) });
+  const result = await response.json();
+  if (result.errors) throw new Error(JSON.stringify(result.errors));
+  return result.data;
+};
+const queries = requireSource('DirtyMultiscreen', 'src/queries.ts').createQueries({ graphql });
+const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').normalizeSettings({ randomize: true });
+(async () => {
+  const variables = await queries.getSceneQueryVariables(settings, { source: 'filter', filter: {}, sceneFilter: {} });
+  assert(variables.filter.per_page <= 240);
+  assert.match(variables.filter.sort, /^random_\d+$/);
+  const first = await graphql(queries.findScenesQuery, { ...variables, filter: { ...variables.filter, per_page: 2 } });
+  const second = await graphql(queries.findScenesQuery, { ...variables, filter: { ...variables.filter, per_page: 2, page: 2 } });
+  assert.equal(new Set([...first.findScenes.scenes, ...second.findScenes.scenes].map(scene => scene.id)).size, 4);
+  const repeat = await graphql(queries.findScenesQuery, { ...variables, filter: { ...variables.filter, per_page: 2 } });
+  assert.deepEqual(repeat.findScenes.scenes, first.findScenes.scenes);
+  process.stdout.write('PASS: compiled bounded contextual query and stable seeded random continuation\n');
+})().catch(error => { console.error(error); process.exitCode = 1; });
+'''
+    subprocess.run([shutil.which("node"), "-e", script, fixture.url], check=True)
     for key, value in (("performers", performer), ("studios", studio)):
         result = fixture.gql('query($filter:SceneFilterType){findScenes(scene_filter:$filter,filter:{per_page:0}){count}}', {"filter": {key: {"value": [value], "modifier": "INCLUDES", **({"depth": 0} if key == "studios" else {})}}})
         assert result["findScenes"]["count"] == 2
