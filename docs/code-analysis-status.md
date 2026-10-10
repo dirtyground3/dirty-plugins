@@ -19,6 +19,7 @@ Updated: 2026-10-10
 - [x] Complete backend batch 2, including fresh ownership/filter checks against isolated Stash.
 - [x] Complete all seven implementation batches and findings 1–16.
 - [x] Final combined suite, isolated acceptance, real browser review, package contents and native package installation.
+- [x] Merge and push the release to `main`, verify GitHub Pages deployment, and install/reload all eight plugins in local Stash.
 
 ## Implementation checklist
 
@@ -479,7 +480,29 @@ sandbox attempt could not resolve `registry.npmjs.org`.
   its own result, and dry runs never resolve the executable.
 - DirtyPlugins, DirtyRank, and DirtyTidy are bumped once to 1.0.5; README versions and release
   notes are updated. Batch 2 bumps Compactor and Extractor to 1.0.5 and Captions to 1.0.6.
-  The hub stays at its single 1.0.5 bump across these uncommitted batches.
+  The hub stays at its single 1.0.5 bump across these implementation batches.
+
+## Release and local installation (complete)
+
+- The reviewed 115-file source/documentation/test payload is committed as `dd9d2a6`
+  on `codex/code-analysis-release`, merged into `main` as `247da94`, and pushed.
+  GitHub API credentials could not create a pull request, so the authorized merge
+  used the repository's working SSH remote. The merged tree matches the reviewed release.
+- [Deployment run 38087700832](https://github.com/dirtyground3/dirty-plugins/actions/runs/38087700832)
+  passed dependency installation, the full suite, package verification and GitHub Pages deployment.
+- A fresh release build supplied all 69 installable files. They were copied from staging
+  to the eight existing plugin-ID directories under `C:/Users/FABIO/.stash/plugins`.
+  Every installed file passed its SHA-256 check; runtime data was excluded from the copy.
+- Before installation, the existing plugin files were backed up under
+  `C:/Users/FABIO/.stash/plugin-backups/code-analysis-20261010T212911Z-a33bda56ab6a47d88a550821bb417725`.
+  The same backup includes a shared SQLite snapshot made with a read-only source connection;
+  the snapshot's `PRAGMA quick_check` passed.
+- Stash had no active queued jobs before installation. `reloadPlugins` succeeded,
+  and all eight plugins are enabled at the expected versions: Captions/Stats 1.0.6,
+  the other six 1.0.5. All sixteen served JavaScript/CSS assets match staged bytes,
+  including Stash's normal trailing newline. The installed hub backend's settings read passed.
+- Existing browser tabs need a hard refresh (Ctrl+F5). Regenerate Tidy manual previews
+  created before this update. No live library modification workflows were run during verification.
 
 ## Remaining work
 
@@ -496,5 +519,5 @@ stored data was removed. Tidy continues to return its complete immutable reviewe
 Rank's exact comparison count and Stats' cast-pair aggregation remain quadratic. Rank now
 yields cold comparison batches and updates warmed score sums after accepted votes. Larger
 populations, changed-pool confidence simulations and Stats worker aggregation still need
-measurements before further changes. Broader live-library/browser/theme coverage
-and publishing/installing this release remain separate from the completed synthetic acceptance.
+measurements before further changes. Broader live-library/browser/theme coverage remains
+separate from the completed synthetic acceptance. This release is published and installed locally.
