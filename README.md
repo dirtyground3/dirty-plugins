@@ -21,7 +21,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.4 |
 | [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 1.0.4 |
 | [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 1.0.4 |
-| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.4 |
+| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.5 |
 | [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.4 |
 
 ## Shared look and settings
@@ -553,6 +553,17 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyCaptions 1.0.5:** playback uses the caption index.
+  - Opening a scene whose file the index found without subtitle streams no
+    longer probes the file. Stash's stored size, modification time and hashes
+    decide whether the saved result still applies.
+  - Playback no longer queues a caption-index job when the index already
+    holds the same result. Unknown files and results that differ are still
+    saved and queued.
+  - A request that gets no answer from Stash, as can happen when changing
+    scenes quickly, is no longer reported. It is repeated after 1, 2, 4, 8
+    and 16 seconds. Errors returned by Stash still show **Retry captions**.
 
 - **DirtyStats 1.0.5 and 1.0.4 for the other plugins:** internal simplification
   with no changes to settings or stored data.

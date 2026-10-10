@@ -89,6 +89,17 @@ def exercise(fixture):
     indexed = {scene["id"]: scene for scene in all_scenes(fixture)}
     assert indexed[captions["id"]]["custom_fields"] == {"personal": "keep", "Contains embedded captions": "Yes", "Contains embedded text captions": "Yes", "Caption index status": "Ready"}
     assert indexed[no_captions["id"]]["custom_fields"]["Contains embedded captions"] == "No"
+    # Playback answers from the map: unavailable but unchanged media without subtitles
+    # needs no file access, and a result the map already holds queues no index job.
+    held_empty = fixture.root / "held-synthetic-empty.mp4"
+    empty.rename(held_empty)
+    try:
+        assert op(fixture, "captions", sceneId=no_captions["id"])["tracks"] == []
+    finally:
+        held_empty.rename(empty)
+    assert len(op(fixture, "captions", sceneId=captions["id"])["tracks"]) == 2
+    assert op(fixture, "indexStatus")["jobId"] == first["jobId"]
+    print("PASS: playback of indexed media reads the file map, skips files without subtitles and queues no job", flush=True)
     # Physically unavailable but unchanged media proves the fast path skips file
     # access based on Stash's stored map. This is confined to this fixture.
     held = fixture.root / "held-synthetic.mp4"

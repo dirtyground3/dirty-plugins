@@ -401,6 +401,30 @@ class CaptionIndexTests(unittest.TestCase):
         self.assertNotIn("PRIVATE DIALOGUE", storage.get_metadata(index.FILES, scene["files"][0]["id"]))
         self.assertEqual(client.scenes["1"]["custom_fields"][index.ANY_FIELD], "Yes")
 
+    def test_playback_of_indexed_files_uses_the_map_without_media_access_or_new_work(self):
+        client = Client([self.scene(1), self.scene(2), self.scene(3)])
+        self.probe.side_effect = [[], [{"codec_name": "mov_text"}], index.CaptionError("cannot read file")]
+        index.request_refresh(client)
+        self.execute(client)
+        absent, text, failed = (client.scenes[key]["files"][0] for key in ("1", "2", "3"))
+        with mock.patch.object(index, "fingerprint", side_effect=AssertionError("Media was accessed")),              mock.patch.object(entry, "read_captions", side_effect=AssertionError("Media was probed")):
+            result = entry.captions(client, {"mode": "captions", "sceneId": "1"})
+            index.record_playback(client, client.scenes["2"], text, [{"codec_name": "mov_text"}], index.file_identity(text["path"]))
+        self.assertEqual((result["tracks"], result["warnings"]), ([], []))
+        self.assertEqual(len(client.queued), 1, "A result the map already holds queues no work")
+        self.assertTrue(index.indexed_file(text)["text"])
+        self.assertIsNone(index.indexed_file(failed), "A failed check is not a known absence")
+        # A probe that disagrees with the map corrects it and the scene's fields.
+        index.record_playback(client, client.scenes["2"], text, [], index.file_identity(text["path"]))
+        self.assertEqual(len(client.queued), 2)
+        self.execute(client)
+        self.assertEqual(client.scenes["2"]["custom_fields"][index.ANY_FIELD], "No")
+        # Stash reports a changed file, or maintenance is off: playback reads the file again.
+        absent["size"] += 1
+        self.assertIsNone(index.indexed_file(absent))
+        storage.set_plugin_settings("dirtyCaptions", {"indexEnabled": False})
+        self.assertIsNone(index.indexed_file(text))
+
     def test_force_reprobe_and_cancel_resume(self):
         client = Client([self.scene(1)])
         index.request_refresh(client)

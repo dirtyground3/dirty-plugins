@@ -54,10 +54,21 @@ caption cache. No subtitle text is persisted in SQLite, no sidecars are written,
 and no media rescan is needed. Settings, file fingerprints, and caption-index
 metadata are stored in the shared database.
 
+With **Maintain caption index automatically** on, playback asks the index
+first. A file the index checked and found without subtitle streams is answered
+from the saved file map: the file is not opened, statted or probed. Stash's
+stored size, modification time and hashes decide whether the saved result
+still applies. Files with subtitle streams, files not indexed yet and failed
+checks are probed as before.
+
 Limits are 16 text tracks, 8 MiB of converted text, and a 120-second extraction
 budget per scene, with probing limited to 30 seconds. Failed tracks do not hide
 successful ones. Extraction or loading failures show a **Retry captions**
 action; unsupported formats and fixed limits are reported as warnings.
+
+A request that gets no answer from Stash, for example a connection dropped
+while changing scenes quickly, is not reported. It is repeated after 1, 2, 4,
+8 and 16 seconds, then abandoned silently until the scene is opened again.
 
 ## Settings
 
@@ -69,7 +80,7 @@ shared hub:
 | **Load embedded captions** | On | Detect and extract embedded text tracks when a native scene player opens. Turning this off removes DirtyCaptions tracks from open players. |
 | **Show captions automatically** | On | Select an embedded track when no other captions are showing. Turn this off to select tracks manually in the CC menu. |
 | **Preferred language** | Blank | Use the browser language. An explicit code such as `en`, `eng`, `fr`, or `fra` takes priority. |
-| **Maintain caption index automatically** | On | Queue checks for new or updated scenes and reuse subtitle metadata discovered during playback. The first Stash tab opened starts the initial library check. |
+| **Maintain caption index automatically** | On | Queue checks for new or updated scenes and reuse subtitle metadata discovered during playback. Playback skips files the index found without subtitles. The first Stash tab opened starts the initial library check. |
 | **Refresh caption index after Scan** | Off | With automatic index maintenance enabled, index new or changed files after each successful Scan. Skip known unchanged media. Keep a Stash tab open until Scan finishes, as with DirtyTidy automation. |
 
 FFmpeg and ffprobe use the paths configured in Stash's General settings, or
@@ -124,8 +135,10 @@ metadata without repeating successful probes.
 
 Scene creation and update hooks queue checks even with the browser closed;
 deletion hooks remove the scene's index record. Adding or removing a previously
-indexed file recalculates scene flags from cached results. Playback reuses its
-existing probe result and queues a check of the other attached files.
+indexed file recalculates scene flags from cached results. Playback of a file
+the index does not know, or whose probe differs from the saved result, saves
+that probe and queues a check of the other attached files. Playback of a file
+with the same saved result queues nothing.
 
 Enable **Refresh caption index after Scan** to index only new or changed files
 reported by a successful Stash Scan. Like DirtyTidy automation, this listens
@@ -178,13 +191,14 @@ browser-native fullscreen on mobile depends on its text-track support.
 | Extraction or loading fails | Open **Settings → Logs** and look for **[Plugin / DirtyCaptions]**. Check the configured FFmpeg/ffprobe paths and server access to the scene file, then use **Retry captions**. |
 | ASS/SSA styling looks different | Conversion preserves dialogue and timing, with reduced styling. A dedicated ASS renderer is needed for the original appearance. |
 | A scene is missing from a caption filter | Wait for the initial caption-index job or run **Refresh caption index**. Choose **Embedded captions → Unverified** and check the Stash log for inaccessible files. |
-| A replaced file keeps its old caption result | Run a Stash Scan to update its stored identity, or use **Reprobe all files** to bypass the map. |
+| A replaced file keeps its old caption result, or shows no captions during playback | Run a Stash Scan to update its stored identity, or use **Reprobe all files** to bypass the map. |
 | A previously inaccessible file remains unverified after restoring access | Use **Reprobe all files** to retry saved failed checks. |
 
 ## How it works
 
 The Python entry point resolves the scene file through Stash using its scene
-and file IDs. FFprobe lists subtitle streams; FFmpeg converts each supported
+and file IDs. An unchanged file that the caption index found without subtitle
+streams returns no tracks at once. Otherwise FFprobe lists subtitle streams; FFmpeg converts each supported
 text track to WebVTT through stdout. The backend opens the source for reading
 and does not create temporary subtitle files or modify media.
 

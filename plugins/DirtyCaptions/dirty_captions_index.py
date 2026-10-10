@@ -87,10 +87,19 @@ def cached_file(file, records=None):
     return None
 
 
-def save_file(file, streams, identity):
+def indexed_file(file):
+    """Return the saved result of a file Stash reports unchanged; never open the media."""
+    cached = cached_file(file) if enabled() else None
+    return cached if cached and not cached.get("failed") else None
+
+
+def stream_flags(streams):
     # Retain only the facts needed by filters, never dialogue or full probe output.
-    record = {"fingerprint": identity, "stash": stash_identity(file), "any": bool(streams),
-              "text": any(item.get("codec_name") in TEXT_CODECS for item in streams)}
+    return {"any": bool(streams), "text": any(item.get("codec_name") in TEXT_CODECS for item in streams)}
+
+
+def save_file(file, streams, identity):
+    record = dict(stream_flags(streams), fingerprint=identity, stash=stash_identity(file))
     storage.set_metadata(FILES, str(file["id"]), json.dumps(record))
     return record
 
@@ -307,6 +316,9 @@ def record_playback(client, scene, file, streams, original):
     if not enabled():
         return
     try:
+        known = indexed_file(file)
+        if known and all(known[key] == value for key, value in stream_flags(streams).items()):
+            return  # The map already holds this result: nothing to save or queue.
         identity = fingerprint(file["path"])
         if identity[1:] != list(original):
             return

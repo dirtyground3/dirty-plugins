@@ -80,9 +80,9 @@ function createCaptionsHarness(options = {}) {
     DirtyPlugins: hub,
     navigator: { language: "en-US" },
     location: { search: options.capture ? "?docsCapture=1" : "" },
-    setTimeout: fn => {
+    setTimeout: (fn, delay) => {
       const id = ++nextTimer;
-      timers.set(id, { fn, kind: "timeout" });
+      timers.set(id, { fn, kind: "timeout", delay });
       return id;
     },
     clearTimeout: id => timers.delete(id),
@@ -182,6 +182,17 @@ function createCaptionsHarness(options = {}) {
     },
     async tick(delay) {
       for (const value of [...timers.values()]) if (value.kind === "interval" && value.delay === delay) value.fn();
+      await flush();
+    },
+    /** Fire the pending timeouts, which must be waiting exactly the given delays. */
+    async elapse(...delays) {
+      const waits = [...timers].filter(([, value]) => value.kind === "timeout");
+      if (String(waits.map(([, value]) => value.delay)) !== String(delays))
+        throw Error("Pending timeouts: " + waits.map(([, value]) => value.delay));
+      for (const [id, value] of waits) {
+        timers.delete(id);
+        value.fn();
+      }
       await flush();
     },
     async scene(value) {

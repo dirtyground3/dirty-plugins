@@ -160,6 +160,57 @@ async function main() {
   assert.equal(retryPlayer.registrations.length, 1);
   await retry.unmount();
 
+  // A dropped connection is never reported: both requests are repeated with a doubled wait.
+  const dropped = () => TypeError("NetworkError when attempting to fetch resource.");
+  const quiet = h => !text(h.tree).includes("NetworkError") && !h.button("Retry captions");
+  let settingsDrops = 1,
+    captionDrops = 2;
+  const flakyPlayer = player(),
+    flaky = createCaptionsHarness({
+      player: flakyPlayer,
+      load: async () => {
+        if (settingsDrops-- > 0) throw dropped();
+        return {};
+      },
+      operation: async args => {
+        if (args.mode !== "captions") return { status: "Finished" };
+        if (captionDrops-- > 0) throw dropped();
+        return result;
+      },
+    });
+  flaky.load();
+  await flaky.flush();
+  for (const delay of [1000, 1000, 2000]) {
+    assert(quiet(flaky));
+    assert.equal(flakyPlayer.registrations.length, 0);
+    await flaky.elapse(delay);
+  }
+  assert(quiet(flaky));
+  assert.equal(flakyPlayer.registrations.length, 1);
+  await flaky.unmount();
+  assert.equal(flaky.timers.size, 0);
+
+  const unreachable = async args => {
+    if (args.mode === "captions") throw dropped();
+    return { status: "Finished" };
+  };
+  const offline = createCaptionsHarness({ player: player(), operation: unreachable });
+  offline.load();
+  await offline.flush();
+  for (const delay of [1000, 2000, 4000, 8000, 16000]) {
+    assert(text(offline.tree).includes("Loading embedded captions"));
+    await offline.elapse(delay);
+  }
+  assert(quiet(offline) && !text(offline.tree).includes("Loading"), "giving up stays silent");
+  assert.equal(offline.calls.filter(args => args.mode === "captions").length, 6);
+  await offline.elapse();
+  await offline.unmount();
+  const leaving = createCaptionsHarness({ player: player(), operation: unreachable });
+  leaving.load();
+  await leaving.flush();
+  await leaving.unmount();
+  assert.equal(leaving.timers.size, 0, "a pending retry is cancelled with its scene");
+
   const firstStatus = deferred(),
     action = deferred();
   let statusCalls = 0;

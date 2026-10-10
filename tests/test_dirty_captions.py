@@ -32,9 +32,10 @@ class FakeClient:
 
 class CaptionTests(unittest.TestCase):
     def setUp(self):
-        self.playback_index = mock.patch.object(captions.caption_index, "record_playback")
-        self.playback_index.start()
-        self.addCleanup(self.playback_index.stop)
+        # Keep these tests off the shared database: the file is unknown to the index.
+        for name in ("indexed_file", "record_playback"):
+            mock.patch.object(captions.caption_index, name, return_value=None).start()
+        self.addCleanup(mock.patch.stopall)
 
     def test_only_stash_resolved_files_can_be_read(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -49,6 +50,16 @@ class CaptionTests(unittest.TestCase):
                     captions.captions(client, {"mode": "captions", "sceneId": "1479", "fileId": "other"})
                 with self.assertRaisesRegex(media.CaptionError, "scene ID"):
                     captions.captions(client, {"mode": "captions", "sceneId": "../../private"})
+
+    def test_file_indexed_without_subtitles_is_answered_without_media_access(self):
+        client = FakeClient(Path("missing") / "scene.mp4")
+        with mock.patch.object(captions.caption_index, "indexed_file", return_value={"any": False, "text": False}),              mock.patch.object(client, "call", wraps=client.call) as call,              mock.patch.object(captions, "read_captions", side_effect=AssertionError("Media was probed")):
+            result = captions.captions(client, {"mode": "captions", "sceneId": "1479"})
+        self.assertEqual(result, {"tracks": [], "warnings": [], "retryable": False, "sceneId": "1479", "fileId": "1493"})
+        self.assertEqual(call.call_count, 1, "Only the scene is read; tool paths are not requested")
+        with mock.patch.object(captions.caption_index, "indexed_file", return_value={"any": True, "text": False}):
+            with self.assertRaisesRegex(media.CaptionError, "unavailable"):
+                captions.captions(client, {"mode": "captions", "sceneId": "1479"})
 
     def test_bitmap_subtitles_are_reported_without_conversion(self):
         probe = json.dumps({"streams": [{"index": 2, "codec_name": "hdmv_pgs_subtitle"}]}).encode()
@@ -94,9 +105,10 @@ class CaptionTests(unittest.TestCase):
 @unittest.skipUnless(FFMPEG and FFPROBE, "FFmpeg and ffprobe required")
 class CaptionMediaTests(unittest.TestCase):
     def setUp(self):
-        self.playback_index = mock.patch.object(captions.caption_index, "record_playback")
-        self.playback_index.start()
-        self.addCleanup(self.playback_index.stop)
+        # Keep these tests off the shared database: the file is unknown to the index.
+        for name in ("indexed_file", "record_playback"):
+            mock.patch.object(captions.caption_index, name, return_value=None).start()
+        self.addCleanup(mock.patch.stopall)
 
     def test_mp4_mov_text_languages_unicode_and_no_sidecars(self):
         with tempfile.TemporaryDirectory() as folder:

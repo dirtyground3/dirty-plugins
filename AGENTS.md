@@ -262,6 +262,10 @@ internal scans. Do not add timer-based library checks.
 The persistent file-ID map must skip unchanged media before statting or probing
 files. Discover changes using Stash's stored size, mod_time, and content hashes;
 do not calculate hashes again. Preserve a separate forced reprobe action.
+Playback reads the same map first: an unchanged file without subtitle streams
+returns no tracks without media access, and a probe that matches the saved
+result queues no index work. The player retries a request that got no answer
+with a doubled wait and never reports it.
 Caption choices belong in one Embedded captions criterion in the native scene
 filter dialog. Reuse native enum criterion prototypes and value controls,
 preserve unrelated custom fields in either criterion order,

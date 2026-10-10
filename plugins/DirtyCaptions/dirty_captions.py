@@ -32,6 +32,10 @@ def captions(client, args):
     file = next((item for item in scene["files"] if str(item["id"]) == file_id), None)
     if not file:
         raise CaptionError("The requested file does not belong to this scene.")
+    known = caption_index.indexed_file(file)
+    if known and not known["any"]:
+        # The index found no subtitle streams in this unchanged file: answer without touching it.
+        return {"tracks": [], "warnings": [], "retryable": False, "sceneId": scene_id, "fileId": file_id}
     path = Path(file["path"])
     if not path.is_file():
         raise CaptionError("The scene file is unavailable on the Stash server.")
