@@ -26,7 +26,8 @@ class FakeClient:
     def call(self, query, variables=None):
         if "findScene" in query:
             return {"findScene": {"id": "1479", "files": [{"id": "1493", "path": str(self.path)}]}}
-        return {"configuration": {"general": {"ffmpegPath": FFMPEG, "ffprobePath": FFPROBE}}}
+        # Tests that mock the tool calls still need configured paths on hosts without FFmpeg.
+        return {"configuration": {"general": {"ffmpegPath": FFMPEG or "ffmpeg", "ffprobePath": FFPROBE or "ffprobe"}}}
 
 
 class CaptionTests(unittest.TestCase):
