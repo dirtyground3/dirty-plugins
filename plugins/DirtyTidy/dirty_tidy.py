@@ -7,16 +7,18 @@ import hashlib
 import json
 import os
 import re
+import stat
 import sys
 import uuid
 from collections import Counter, defaultdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dirty_tidy_metadata import CONSTANTS  # noqa: E402
 from dirty_tidy_templates import (
-    _clean_text, scene_variables, _normalized_path,
+    _clean_text, scene_variables, scene_template_variables, template_variable_names, _normalized_path,
     find_source_root, render_destination_folder, render_destination_filename, validate_destination,
 )
 
@@ -53,6 +55,40 @@ import dirty_plugins_protocol as protocol
 SCENE_QUERY_PAGE_SIZE = 100
 
 
+def snapshot_fields(settings: dict[str, Any]) -> str:
+    """Fetch the reviewed strategy's inputs, plus the identities/labels needed by the plan."""
+    templates = settings["hierarchyLevels"] if settings["moveEnabled"] else []
+    if settings["renameEnabled"]:
+        templates = [*templates, settings["renamePattern"]]
+    names = {name for template in templates for name in template_variable_names(template)}
+    scene_fields = ["id title"]
+    for tokens, fields in (
+        ({"date", "year", "month", "day"}, "date"),
+        ({"rating", "grade", "rating_bucket"}, "rating100"),
+        ({"organized"}, "organized"),
+        ({"studio", "parent_studio"}, "studio { name parent_studio { name } }"),
+        ({"performers", "first_performer", "female_performers", "females_performers", "male_performers",
+          "first_female_performer", "first_male_performer", "performer_count"}, "performers { name gender }"),
+        ({"tags", "first_tag"}, "tags { name }"),
+        ({"group", "group_position"}, "groups { scene_index group { name } }"),
+    ):
+        if names & tokens:
+            scene_fields.append(fields)
+    requires_stash_id = any(settings[action + "Enabled"] and settings[action + "RequireStashId"]
+                            for action in ("move", "rename"))
+    if "stash_id" in names or requires_stash_id:
+        scene_fields.append("stash_ids { stash_id }")
+    file_fields = ["id path basename"]
+    for tokens, fields in (
+        ({"duration", "duration_bucket"}, "duration"),
+        ({"resolution", "height"}, "height"),
+        ({"video_codec"}, "video_codec"),
+    ):
+        if names & tokens:
+            file_fields.append(fields)
+    return " ".join([*scene_fields, "files { " + " ".join(file_fields) + " }"])
+
+
 class PluginError(RuntimeError):
     """An error that should be shown cleanly in Stash."""
 
@@ -61,26 +97,18 @@ class StashClient(BaseClient):
     def __init__(self, server_connection):
         super().__init__(server_connection, timeout=120, error_type=PluginError)
 
-    def library_snapshot(self) -> tuple[list[str], list[dict[str, Any]]]:
+    def library_snapshot(self, settings: dict[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
         query = """
           query DirtyTidyScenes($filter: FindFilterType) {
             configuration { general { stashes { path } } }
             findScenes(filter: $filter) {
               count
               scenes {
-                id title date rating100 organized
-                stash_ids { stash_id }
-                studio { name parent_studio { name } }
-                performers { name gender }
-                tags { name }
-                groups { scene_index group { name } }
-                files {
-                  id path basename duration width height video_codec
-                }
+                %s
               }
             }
           }
-        """
+        """ % snapshot_fields(settings)
         scenes: list[dict[str, Any]] = []
         roots: list[str] = []
         page = 1
@@ -98,6 +126,14 @@ class StashClient(BaseClient):
                 break
             page += 1
         return roots, scenes
+
+    def file_path(self, file_id: str) -> str:
+        data = self.call(
+            "query DirtyTidyFile($ids:[ID!]) { findFiles(ids:$ids) { files { id path } } }",
+            {"ids": [str(file_id)]},
+        )
+        files = (data.get("findFiles") or {}).get("files") or []
+        return next((str(item.get("path") or "") for item in files if str(item.get("id")) == str(file_id)), "")
 
     def move_file(self, operation: dict[str, Any]) -> bool:
         input_value: dict[str, Any] = {
@@ -197,38 +233,85 @@ def operation_key(operation: dict[str, Any]) -> tuple[str, str, str]:
     return normalized["file_id"], normalized["source_path"], normalized["destination_path"]
 
 
-def plan_digest(strategy_digest: str, operations: Iterable[dict[str, Any]]) -> str:
-    """Identify the exact ready operations in a preview or execution snapshot."""
-    ready = sorted(operation_key(operation) for operation in operations if operation.get("status") == "ready")
+def source_fingerprint(path: str) -> list[int] | None:
+    """Identify a regular source file without reading its media contents."""
+    try:
+        info = os.stat(path)
+    except OSError:
+        return None
+    if not stat.S_ISREG(info.st_mode):
+        return None
+    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
+
+
+def reviewed_operations(operations: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        ({**_normalized_operation(operation), "source_fingerprint": operation["source_fingerprint"]}
+         for operation in operations if operation.get("status") == "ready"),
+        key=lambda operation: (operation["file_id"], operation["source_path"], operation["destination_path"]),
+    )
+
+
+def reviewed_digest(strategy_digest: str, operations: Iterable[dict[str, Any]]) -> str:
+    # Stored paths are already canonical. Do not resolve them again: a later
+    # symlink change must not reinterpret an earlier preview's authorization.
+    ready = sorted(
+        (operation["file_id"], operation["source_path"], operation["destination_path"], operation["source_fingerprint"])
+        for operation in operations
+    )
     encoded = json.dumps({"strategyHash": strategy_digest, "operations": ready}, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def plan_digest(strategy_digest: str, operations: Iterable[dict[str, Any]]) -> str:
+    """Identify the exact ready operations and source files in a preview."""
+    return reviewed_digest(strategy_digest, reviewed_operations(operations))
+
+
 def save_reviewed_plan(plan: dict[str, Any]) -> None:
-    """Persist the plan a user confirmed so execution cannot exceed it."""
-    operations = [_normalized_operation(operation) for operation in plan.get("operations") or [] if operation.get("status") == "ready"]
-    payload = json.dumps({"strategyHash": plan.get("strategy_hash") or "", "planDigest": plan.get("plan_digest") or "",
-                          "operations": operations}, ensure_ascii=False, separators=(",", ":"))
-    shared_storage.set_metadata(REVIEW_NAMESPACE, str(plan.get("strategy_hash") or ""), payload)
+    """Retain an immutable preview, including when another tab previews later."""
+    operations = reviewed_operations(plan["operations"])
+    digest = reviewed_digest(plan["strategy_hash"], operations)
+    if digest != plan["plan_digest"]:
+        raise PluginError("The preview changed before it could be recorded. Generate a new preview.")
+    payload = {"strategyHash": plan["strategy_hash"], "planDigest": digest, "operations": operations}
+
+    def retain(current):
+        if current and current != payload:
+            raise PluginError("The recorded preview does not match its identity. Generate a new preview.")
+        return current or payload
+
+    shared_storage.update_json_metadata(REVIEW_NAMESPACE, digest, retain)
 
 
-def load_reviewed_plan(strategy_digest: str) -> set[tuple[str, str, str]] | None:
-    """Return the confirmed operation keys for a strategy, if one was saved."""
-    raw = shared_storage.get_metadata(REVIEW_NAMESPACE, str(strategy_digest or ""))
+def load_reviewed_plan(preview_digest: str, strategy_digest: str) -> dict[tuple[str, str, str], list[int]] | None:
+    """Return only the operations and source identities in this exact preview."""
+    if not re.fullmatch(r"[0-9a-f]{64}", preview_digest):
+        return None
+    raw = shared_storage.get_metadata(REVIEW_NAMESPACE, preview_digest)
     if not raw:
         return None
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
         return None
-    if not isinstance(payload, dict):
+    if not isinstance(payload, dict) or payload.get("strategyHash") != strategy_digest or payload.get("planDigest") != preview_digest:
         return None
     operations = payload.get("operations")
     if not isinstance(operations, list):
         return None
+    for operation in operations:
+        if not isinstance(operation, dict) or any(not isinstance(operation.get(key), str) or not operation[key]
+                                                  for key in ("file_id", "source_path", "destination_path")):
+            return None
+        fingerprint = operation.get("source_fingerprint")
+        if not isinstance(fingerprint, list) or len(fingerprint) != 4 or any(type(value) is not int for value in fingerprint):
+            return None
+    if reviewed_digest(strategy_digest, operations) != preview_digest:
+        return None
     return {
-        (str(operation.get("file_id") or ""), str(operation.get("source_path") or ""), str(operation.get("destination_path") or ""))
-        for operation in operations if isinstance(operation, dict)
+        (operation["file_id"], operation["source_path"], operation["destination_path"]): operation["source_fingerprint"]
+        for operation in operations
     }
 
 
@@ -239,10 +322,10 @@ def scene_has_stash_id(scene: dict[str, Any]) -> bool:
     return any(isinstance(stash_id, dict) and bool(str(stash_id.get("stash_id") or "").strip()) for stash_id in stash_ids)
 
 
-def build_operation(scene: dict[str, Any], file_info: dict[str, Any], roots: list[str], settings: dict[str, Any]) -> dict[str, Any]:
+def build_operation(scene: dict[str, Any], file_info: dict[str, Any], roots: list[str], settings: dict[str, Any], *, normalize=None, scene_values=None) -> dict[str, Any]:
     source_path = str(file_info.get("path") or "")
     source_basename = str(file_info.get("basename") or Path(source_path).name)
-    source_root = find_source_root(source_path, roots)
+    source_root = find_source_root(source_path, roots, normalize=normalize)
     warnings: list[str] = []
     invalid_tokens: set[str] = set()
     missing_tokens: set[str] = set()
@@ -267,12 +350,14 @@ def build_operation(scene: dict[str, Any], file_info: dict[str, Any], roots: lis
         operation["status"] = "blocked"
         warnings.append("The file is not inside a configured Stash source.")
         return operation
-    if not os.path.isfile(source_path):
+    fingerprint = source_fingerprint(source_path)
+    if fingerprint is None:
         operation["status"] = "warning"
         warnings.append("Skipped because the Stash file record points to a missing or inaccessible source file.")
         return operation
+    operation["source_fingerprint"] = fingerprint
 
-    variables = scene_variables(scene, file_info, source_root, settings["multiValueSeparator"])
+    variables = scene_variables(scene, file_info, source_root, settings["multiValueSeparator"], scene_values=scene_values)
     has_stash_id = scene_has_stash_id(scene)
     move_allowed = settings["moveEnabled"] and (not settings["moveRequireStashId"] or has_stash_id)
     rename_allowed = settings["renameEnabled"] and (not settings["renameRequireStashId"] or has_stash_id)
@@ -316,7 +401,7 @@ def build_operation(scene: dict[str, Any], file_info: dict[str, Any], roots: lis
         warnings.append("Used Unknown for: " + ", ".join(sorted(missing_tokens)))
     if skipped_rename_tokens:
         warnings.append("Skipped empty filename variables: " + ", ".join(sorted(skipped_rename_tokens)))
-    validation = validate_destination(source_path, source_root, source_basename, destination_folder, destination_basename, operation["status"])
+    validation = validate_destination(source_path, source_root, source_basename, destination_folder, destination_basename, operation["status"], normalize=normalize)
     operation["status"] = validation.status
     operation["actions"] = validation.actions
     warnings.extend(validation.warnings)
@@ -325,12 +410,19 @@ def build_operation(scene: dict[str, Any], file_info: dict[str, Any], roots: lis
 
 def build_plan(roots: list[str], scenes: list[dict[str, Any]], raw_settings: dict[str, Any]) -> dict[str, Any]:
     settings = normalize_settings(raw_settings)
-    operations = [build_operation(scene, file_info, roots, settings) for scene in scenes for file_info in scene.get("files") or []]
+    # These caches live only for this plan. Execution builds a fresh plan and
+    # retains its per-operation filesystem/identity checks before moving files.
+    normalize = lru_cache(maxsize=None)(_normalized_path)
+    operations = []
+    for scene in scenes:
+        scene_values = scene_template_variables(scene, settings["multiValueSeparator"])
+        operations.extend(build_operation(scene, file_info, roots, settings, normalize=normalize, scene_values=scene_values)
+                          for file_info in scene.get("files") or [])
 
     destinations: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for operation in operations:
         if operation["status"] == "ready":
-            destinations[_normalized_path(operation["destination_path"])].append(operation)
+            destinations[normalize(operation["destination_path"])].append(operation)
     for duplicates in destinations.values():
         if len(duplicates) < 2:
             continue
@@ -376,7 +468,7 @@ def build_plan(roots: list[str], scenes: list[dict[str, Any]], raw_settings: dic
 
 def preview_plan(client: StashClient, raw_settings: dict[str, Any], record_review: bool = False) -> dict[str, Any]:
     # The settings panel filters and pages the complete plan locally.
-    roots, scenes = client.library_snapshot()
+    roots, scenes = client.library_snapshot(normalize_settings(raw_settings))
     plan = build_plan(roots, scenes, raw_settings)
     if record_review:
         save_reviewed_plan(plan)
@@ -393,13 +485,18 @@ def execute_plan(
     *,
     apply_approved_strategy: bool = False,
 ) -> dict[str, Any]:
+    settings = normalize_settings(raw_settings)
+    digest = strategy_hash(settings)
+    if not expected_hash or expected_hash != digest:
+        raise PluginError("The confirmed preview is stale. Generate and confirm a new preview.")
+    reviewed = None if apply_approved_strategy else load_reviewed_plan(expected_plan_digest, expected_hash)
+    if not apply_approved_strategy and reviewed is None:
+        raise PluginError("The confirmed preview could not be found. Generate and confirm a new preview before running.")
     if plan is None:
-        roots, scenes = client.library_snapshot()
+        roots, scenes = client.library_snapshot(settings)
         plan = build_plan(roots, scenes, raw_settings)
     if not expected_hash or expected_hash != plan["strategy_hash"]:
         raise PluginError("The confirmed preview is stale. Generate and confirm a new preview.")
-    if expected_plan_digest and expected_plan_digest != plan["plan_digest"]:
-        raise PluginError("The approved plan changed after it was approved. Generate a new preview and approve it again.")
 
     ready = [operation for operation in plan["operations"] if operation["status"] == "ready"]
     unreviewed = 0
@@ -407,20 +504,19 @@ def execute_plan(
     if apply_approved_strategy:
         # Automation approves the rules for future libraries, including newly
         # scanned scenes. It must not be tied to the preview's file list.
-        settings = normalize_settings(raw_settings)
         if settings["automationMode"] not in {"scan", "generate"} or settings["approvedStrategyHash"] != plan["strategy_hash"]:
             raise PluginError("The current strategy has not been approved for automation.")
     else:
         # Manual execution only applies the exact operations the user confirmed.
         # A file that was warning/blocked at preview time (or appeared later) must
         # never move unseen.
-        reviewed_keys = load_reviewed_plan(expected_hash)
-        if reviewed_keys is None:
-            raise PluginError("The confirmed preview could not be found. Generate and confirm a new preview before running.")
-        confirmed = [operation for operation in ready if operation_key(operation) in reviewed_keys]
+        assert reviewed is not None
+        confirmed = [operation for operation in ready if reviewed.get(operation_key(operation)) == operation["source_fingerprint"]]
         unreviewed = len(ready) - len(confirmed)
-        reviewed_missing = len(reviewed_keys) - len(confirmed)
+        reviewed_missing = len(reviewed) - len(confirmed)
         ready = confirmed
+
+    ready_with_keys = [(operation, operation_key(operation)) for operation in ready]
 
     approval = "approved strategy" if apply_approved_strategy else "confirmed preview"
     reporter.info(
@@ -431,10 +527,23 @@ def execute_plan(
     )
     completed: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
-    for index, operation in enumerate(ready, start=1):
+    for index, (operation, confirmed_key) in enumerate(ready_with_keys, start=1):
         reporter.info(f"[{index}/{len(ready)}] {operation['source_path']} -> {operation['destination_path']}")
         entry = {key: operation[key] for key in ("file_id", "source_path", "destination_path")}
         try:
+            # A long run must not rely on its initial snapshot. Recheck the file
+            # ID's current Stash path and the filesystem immediately before move.
+            current_path = client.file_path(operation["file_id"])
+            if not current_path or _normalized_path(current_path) != confirmed_key[1] or operation_key(operation) != confirmed_key:
+                raise PluginError("The source or destination path changed after the plan was checked.")
+            if source_fingerprint(operation["source_path"]) != operation["source_fingerprint"]:
+                raise PluginError("The source file changed or became inaccessible after the plan was checked.")
+            validation = validate_destination(
+                operation["source_path"], operation["source"], operation["source_basename"],
+                operation["destination_folder"], operation["destination_basename"], "ready",
+            )
+            if validation.status != "ready":
+                raise PluginError("The destination is no longer safe: " + " ".join(validation.warnings))
             if not client.move_file(operation):
                 raise PluginError("Stash did not confirm the move.")
             completed.append(entry)
@@ -448,6 +557,7 @@ def execute_plan(
     return {
         "strategy_hash": plan["strategy_hash"],
         "plan_digest": plan["plan_digest"],
+        "confirmed_plan_digest": "" if apply_approved_strategy else expected_plan_digest,
         "completed": len(completed),
         "failed": len(failed),
         "unreviewed": unreviewed,
@@ -528,7 +638,10 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
             settings = shared_storage.get_plugin_settings(PLUGIN_ID)
         return preview_plan(client, settings, record_review=True)
     if mode == "execute":
-        return execute_plan(client, shared_storage.get_plugin_settings(PLUGIN_ID), str(args.get("expectedStrategyHash") or ""), reporter)
+        return execute_plan(
+            client, shared_storage.get_plugin_settings(PLUGIN_ID), str(args.get("expectedStrategyHash") or ""),
+            reporter, str(args.get("expectedPlanDigest") or ""),
+        )
     if mode == "automation":
         settings = normalize_settings(shared_storage.get_plugin_settings(PLUGIN_ID))
         trigger = str(args.get("automationTrigger") or "").strip().lower()
@@ -544,7 +657,7 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
         approved_hash = settings["approvedStrategyHash"]
         if not approved_hash:
             return skip("DirtyTidy skipped automation because this strategy has not been approved.")
-        roots, scenes = client.library_snapshot()
+        roots, scenes = client.library_snapshot(settings)
         plan = build_plan(roots, scenes, settings)
         if approved_hash != plan["strategy_hash"]:
             return skip("DirtyTidy skipped automation because the saved settings no longer match the approved strategy.")

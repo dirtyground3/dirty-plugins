@@ -36,6 +36,10 @@ export function LoadedNativePlayer({
   const rangeEndHandledRef = React.useRef(false);
   const audioStateRef = React.useRef(audioState);
   const onAudioStateChangeRef = React.useRef(onAudioStateChange);
+  const navigationRef = React.useRef({ nextItem, previousItem });
+  navigationRef.current = { nextItem, previousItem };
+  const advance = React.useCallback(() => navigationRef.current.nextItem(), []);
+  const goBack = React.useCallback(() => navigationRef.current.previousItem(), []);
   const sceneId = item.scene?.id ?? item.id;
   audioStateRef.current = audioState;
   onAudioStateChangeRef.current = onAudioStateChange;
@@ -50,8 +54,8 @@ export function LoadedNativePlayer({
       setTimestampRef.current?.(item.playbackRange?.start ?? 0);
       return;
     }
-    nextItem();
-  }, [item.playbackRange, nextItem, playback.loop]);
+    advance();
+  }, [item.playbackRange, advance, playback.loop]);
   React.useEffect(() => {
     const tile = tileRef.current;
     const playbackRange = item.playbackRange;
@@ -69,7 +73,7 @@ export function LoadedNativePlayer({
       if (playback.loop) {
         setTimestampRef.current?.(playbackRange.start);
       } else {
-        nextItem();
+        advance();
       }
     };
     const attachVideoElement = () => {
@@ -85,7 +89,7 @@ export function LoadedNativePlayer({
       observer.disconnect();
       videoElement?.removeEventListener("timeupdate", handleTimeUpdate);
     };
-  }, [item.playbackRange, nextItem, playback.loop]);
+  }, [item.playbackRange, advance, playback.loop]);
   React.useEffect(() => {
     const tile = tileRef.current;
     if (!tile) return;
@@ -157,8 +161,8 @@ export function LoadedNativePlayer({
         hideScrubberOverride={true}
         initialTimestamp={initialTimestamp}
         onComplete={handleComplete}
-        onNext={nextItem}
-        onPrevious={previousItem}
+        onNext={advance}
+        onPrevious={goBack}
         permitLoop={playback.loop}
         scene={scene}
         sendSetTimestamp={setTimestamp => {

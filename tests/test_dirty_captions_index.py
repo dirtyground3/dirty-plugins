@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import hashlib
 import importlib.util
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -85,6 +86,96 @@ class CaptionIndexTests(unittest.TestCase):
 
     def execute(self, client):
         return index.worker(client, client.queued[-1]["token"])
+
+    def unchanged_client(self, count):
+        # Entirely synthetic database identities: unchanged scans must never
+        # require any corresponding media to exist on disk.
+        scenes = [{"id": str(n), "custom_fields": {index.ANY_FIELD: "No", index.TEXT_FIELD: "No", index.STATUS_FIELD: "Ready"},
+                   "files": [{"id": str(n), "path": "unused.mp4", "size": 1, "mod_time": "2026-10-10T00:00:00Z", "fingerprints": []}]}
+                  for n in range(1, count + 1)]
+        with storage.transaction() as connection:
+            for scene in scenes:
+                storage._put_metadata(connection, index.FILES, scene["id"], json.dumps({
+                    "stash": index.stash_identity(scene["files"][0]), "any": False, "text": False}))
+                storage._put_metadata(connection, index.SCENES, scene["id"], json.dumps({"files": [scene["id"]]}))
+        return Client(scenes)
+
+    def test_thousand_unchanged_scenes_use_page_reads_and_few_connections(self):
+        client = self.unchanged_client(1000)
+        index.request_refresh(client)
+        with mock.patch.object(storage, "connect", wraps=storage.connect) as connect, \
+             mock.patch.object(storage, "list_metadata", wraps=storage.list_metadata) as reads, \
+             mock.patch.object(index, "fingerprint", side_effect=AssertionError("Media access")), \
+             mock.patch.object(index, "tool_path", side_effect=AssertionError("Probe configuration")), \
+             mock.patch.object(client, "call", wraps=client.call) as graphql:
+            result = self.execute(client)
+        self.assertEqual((result["checked"], result["probed"], result["skipped"]), (0, 0, 1000))
+        self.assertLessEqual(connect.call_count, 20, "Connection count must scale with pages, not scenes")
+        pages = [call for call in reads.call_args_list if call.args[0] == index.PENDING and "keys" in call.kwargs]
+        self.assertEqual(len(pages), 10)
+        self.assertTrue(all(len(call.kwargs["keys"]) == 100 for call in pages))
+        self.assertEqual(graphql.call_count, 11)
+        self.probe.assert_not_called()
+
+    def test_pending_batches_bound_large_queues_and_drain_every_revision(self):
+        client = Client([])
+        with storage.transaction() as connection:
+            storage._put_metadata(connection, index.NAMESPACE, "state", json.dumps({"token": "lease"}))
+            for n in range(250):
+                storage._put_metadata(connection, index.PENDING, str(n), "revision")
+        connection = storage.connect()
+        try:
+            context = index.WorkerContext(client, "lease", connection)
+            original = storage.list_metadata
+            sizes = []
+            def bounded(namespace, *args, **kwargs):
+                rows = original(namespace, *args, **kwargs)
+                if namespace == index.PENDING:
+                    self.assertEqual(kwargs["limit"], 100)
+                    sizes.append(len(rows))
+                return rows
+            with mock.patch.object(storage, "list_metadata", side_effect=bounded):
+                for remaining in (150, 50, 0):
+                    index.process_pending_batch(context)
+                    self.assertEqual(len(original(index.PENDING)), remaining)
+            self.assertEqual(sizes, [100, 100, 50])
+            self.assertFalse(connection.in_transaction)
+        finally:
+            connection.close()
+
+    def test_pending_revision_changed_during_processing_survives_the_batch(self):
+        client = self.unchanged_client(1)
+        storage.set_metadata(index.PENDING, "1", "old")
+        storage.set_metadata(index.NAMESPACE, "state", json.dumps({"token": "lease"}))
+        original = client.call
+        def requeue(query, variables=None):
+            storage.set_metadata(index.PENDING, "1", "new")
+            return original(query, variables)
+        connection = storage.connect()
+        try:
+            context = index.WorkerContext(client, "lease", connection)
+            with mock.patch.object(client, "call", side_effect=requeue):
+                index.process_pending_batch(context)
+            self.assertEqual(storage.get_metadata(index.PENDING, "1", connection=connection), "new")
+            index.process_pending_batch(context)
+            self.assertFalse(storage.has_metadata(index.PENDING, connection=connection))
+        finally:
+            connection.close()
+
+    def test_worker_sees_cancellation_committed_after_fetching_a_page(self):
+        client = self.unchanged_client(101)
+        index.request_refresh(client)
+        original = client.call
+        def cancel_after_fetch(query, variables=None):
+            result = original(query, variables)
+            if "findScenes" in query:
+                index.run(client, {"mode": "indexCancel"})
+            return result
+        with mock.patch.object(client, "call", side_effect=cancel_after_fetch):
+            result = self.execute(client)
+        self.assertEqual(result["status"], "Cancelled")
+        self.assertEqual((result["checked"], result["probed"], result["skipped"]), (0, 0, 0))
+        self.probe.assert_not_called()
 
     def test_initial_scan_indexes_every_file_and_preserves_other_fields(self):
         scene = self.scene(1, 2)

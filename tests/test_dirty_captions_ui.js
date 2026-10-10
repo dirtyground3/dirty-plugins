@@ -123,6 +123,8 @@ async function main() {
     });
   lateHarness.load();
   await lateHarness.flush();
+  assert(!text(lateHarness.tree).includes("Loading"), "pending captions load silently in the player");
+  assert.equal(pendingPlayer.registrations.length, 0);
   await lateHarness.unmount();
   late.resolve(result);
   await lateHarness.flush();
@@ -198,7 +200,7 @@ async function main() {
   offline.load();
   await offline.flush();
   for (const delay of [1000, 2000, 4000, 8000, 16000]) {
-    assert(text(offline.tree).includes("Loading embedded captions"));
+    assert(quiet(offline) && !text(offline.tree).includes("Loading"), "caption retries never display loading text");
     await offline.elapse(delay);
   }
   assert(quiet(offline) && !text(offline.tree).includes("Loading"), "giving up stays silent");
@@ -242,6 +244,39 @@ async function main() {
   await locked.click("Stop refresh");
   await locked.unmount();
   assert.equal(locked.timers.size, 0);
+
+  const polls = [];
+  const slow = createCaptionsHarness({
+    operation: args => {
+      if (args.mode !== "indexStatus") return Promise.resolve({});
+      const pending = deferred();
+      polls.push(pending);
+      return pending.promise;
+    },
+  });
+  slow.load();
+  await slow.flush();
+  await slow.tick(3000);
+  await slow.tick(3000);
+  assert.equal(polls.length, 1, "slow status requests are never overlapped or superseded by interval ticks");
+  polls[0].resolve({ status: "Running", checked: 7 });
+  await slow.flush();
+  assert(text(slow.tree).includes("Running · 7"), "a response lasting over three seconds still publishes");
+  await slow.tick(3000);
+  polls[1].reject(Error("temporary status failure"));
+  await slow.flush();
+  assert(text(slow.tree).includes("temporary status failure"));
+  await slow.tick(3000);
+  polls[2].resolve({ status: "Finished", checked: 9 });
+  await slow.flush();
+  assert(!text(slow.tree).includes("temporary status failure"), "a recovered status clears the old error");
+  await slow.tick(3000);
+  await slow.unmount();
+  const publications = slow.statuses.length;
+  polls[3].resolve({ status: "Running", checked: 10 });
+  await slow.flush();
+  assert.equal(slow.statuses.length, publications, "unmounted status responses do not publish");
+  assert.equal(slow.timers.size, 0);
 
   const failed = createCaptionsHarness({
     patch: name => {

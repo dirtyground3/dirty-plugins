@@ -20,6 +20,7 @@ interface StandardSettings {
   defaults: Record<string, unknown>;
   options: Record<string, { value: string; label: string }[]>;
   limits: Record<string, { min?: number; max?: number; step?: number }>;
+  integers: string[];
 }
 const STANDARD_SETTINGS: Record<string, StandardSettings> = {
   dirtyPlugins: hubSettings,
@@ -34,3 +35,4 @@ export const PLUGIN_SETTING_ORDER = standardTable(settings => settings.order);
 export const PLUGIN_DEFAULTS = standardTable(settings => settings.defaults);
 export const FIELD_OPTIONS = standardTable(settings => settings.options);
 export const FIELD_LIMITS = standardTable(settings => settings.limits);
+export const FIELD_INTEGERS = standardTable(settings => new Set(settings.integers));

@@ -267,6 +267,58 @@ class DirtyRankOperationTests(unittest.TestCase):
         self.assertEqual(connect.call_count, 1)
         self.assertEqual(payload["states"], {})
 
+    def test_load_all_keeps_revision_and_pools_on_one_snapshot(self):
+        first = dirty_rank.record_battle(self.repository, self.battle_args(), self.settings, self.now)
+        original_revision = self.repository.revision
+        interleaved = False
+
+        def revision_then_write(connection):
+            nonlocal interleaved
+            revision = original_revision(connection)
+            if not interleaved:
+                interleaved = True
+                self.assertTrue(connection.in_transaction)
+                dirty_rank.record_battle(
+                    self.repository, self.battle_args("battle-2"), self.settings, self.now
+                )
+            return revision
+
+        with mock.patch.object(self.repository, "revision", side_effect=revision_then_write):
+            snapshot = self.repository.all_states()
+
+        self.assertTrue(interleaved)
+        self.assertEqual(snapshot["revision"], 1)
+        self.assertEqual(snapshot["states"]["1"], first["left"]["state"])
+        self.assertEqual(snapshot["states"]["2"], first["right"]["state"])
+        latest = self.repository.all_states()
+        self.assertEqual(latest["revision"], 2)
+        self.assertEqual(latest["states"]["1"]["pools"]["appearance|FEMALE"]["matches"], 2)
+
+    def test_get_settings_keeps_revision_and_values_on_one_snapshot(self):
+        database = self.repository.path
+        storage = dirty_rank.shared_storage
+        storage.set_plugin_settings(dirty_rank.PLUGIN_ID, {"initialRating": 1000}, path=database)
+        original_revision = storage.get_plugin_revision
+        interleaved = False
+
+        def revision_then_write(*args, **kwargs):
+            nonlocal interleaved
+            revision = original_revision(*args, **kwargs)
+            if not interleaved:
+                interleaved = True
+                self.assertTrue(kwargs["connection"].in_transaction)
+                storage.set_plugin_settings(dirty_rank.PLUGIN_ID, {"initialRating": 1200}, path=database)
+            return revision
+
+        with mock.patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}):
+            with mock.patch.object(storage, "get_plugin_revision", side_effect=revision_then_write):
+                snapshot = dirty_rank.run({"args": {"mode": "getSettings"}})
+            latest = dirty_rank.run({"args": {"mode": "getSettings"}})
+
+        self.assertTrue(interleaved)
+        self.assertEqual(snapshot, {"revision": 1, "settings": {"initialRating": 1000}})
+        self.assertEqual(latest, {"revision": 2, "settings": {"initialRating": 1200}})
+
     def test_renamed_labels_move_ratings_history_and_undo_through_id_swaps(self):
         database = Path(self.temp_dir.name) / "rename-chain.sqlite3"
         repository = dirty_rank.RatingRepository(database)

@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 
 from plugin_paths import runtime_path
@@ -59,6 +60,30 @@ def verify_frontend(fixture):
     print("PASS: " + detail, flush=True)
 
 
+def measure_snapshot_payload(fixture, values):
+    sys.path.insert(0, str(runtime_path("DirtyTidy")))
+    from dirty_tidy import StashClient, normalize_settings
+
+    client = StashClient({"Port": fixture.port})
+    client.call = fixture.gql
+    _roots, selected = client.library_snapshot(normalize_settings(values))
+    baseline = fixture.gql('''{findScenes(filter:{per_page:-1,sort:"id",direction:ASC}){scenes{
+        id title date rating100 organized stash_ids{stash_id}
+        studio{name parent_studio{name}} performers{name gender} tags{name}
+        groups{scene_index group{name}} files{id path basename duration width height video_codec}
+    }}}''')["findScenes"]["scenes"]
+    assert len(selected) == len(baseline)
+    for current, previous in zip(selected, baseline):
+        assert {key: current[key] for key in ("id", "title", "date", "studio")} == {
+            key: previous[key] for key in ("id", "title", "date", "studio")}
+        assert current["files"] == [{key: file[key] for key in ("id", "path", "basename")}
+                                    for file in previous["files"]]
+    encoded = lambda rows: len(json.dumps(rows, separators=(",", ":")).encode("utf-8"))
+    before, after = encoded(baseline), encoded(selected)
+    assert after < before
+    print(f"PASS: strategy snapshot retains plan inputs; synthetic decoded scene JSON {before} -> {after} bytes", flush=True)
+
+
 def exercise(fixture):
     originals = [synthetic(fixture, name, color) for name, color in
                  (("manual", "blue"), ("unknown", "green"), ("collision", "red"), ("missing", "yellow"))]
@@ -76,6 +101,7 @@ def exercise(fixture):
               "maxFilenameLength": 180, "multiValueSeparator": ", ", "automationMode": "manual",
               "approvedStrategyHash": "", "approvedPlanDigest": ""}
     settings(fixture, values)
+    measure_snapshot_payload(fixture, values)
     destination = fixture.root / "media" / "Organized" / "Unknown" / "Unknown"
     destination.mkdir(parents=True)
     sentinel = destination / "Collision.mp4"
@@ -95,7 +121,7 @@ def exercise(fixture):
     changed = dict(values, maxFilenameLength=179)
     settings(fixture, changed)
     try:
-        operation(fixture, "dirtyTidy", mode="execute", expectedStrategyHash=plan["strategy_hash"])
+        operation(fixture, "dirtyTidy", mode="execute", expectedStrategyHash=plan["strategy_hash"], expectedPlanDigest=plan["plan_digest"])
     except RuntimeError as error:
         assert "stale" in str(error), error
     else:
@@ -106,12 +132,15 @@ def exercise(fixture):
     later = synthetic(fixture, "later", "purple")
     hashes[later.name] = hashlib.sha256(later.read_bytes()).hexdigest()
     fixture.scan()
-    result = operation(fixture, "dirtyTidy", mode="execute", expectedStrategyHash=plan["strategy_hash"])
+    later_plan = preview(fixture, values)
+    assert later_plan["strategy_hash"] == plan["strategy_hash"] and later_plan["plan_digest"] != plan["plan_digest"]
+    assert later_plan["summary"]["ready"] == 4, later_plan
+    result = operation(fixture, "dirtyTidy", mode="execute", expectedStrategyHash=plan["strategy_hash"], expectedPlanDigest=plan["plan_digest"])
     assert result["completed"] == 2 and result["failed"] == 0 and result["unreviewed"] == 2, result
     assert later.exists() and missing.exists() and sentinel.read_bytes() == b"synthetic collision sentinel"
     assert (destination / "Manual.mp4").exists() and (destination / "unknown.mp4").exists()
     assert not (fixture.root / "media" / "manual.mp4").exists()
-    print("PASS: stale approval rejected; native confined move/rename applies only reviewed operations, skips restored/new unreviewed files and collisions", flush=True)
+    print("PASS: stale approval rejected; earlier preview stays immutable after a later preview; native confined move/rename skips restored/new unreviewed files and collisions", flush=True)
 
     automated = dict(values, hierarchyLevels=["Automated", "{studio}"], automationMode="scan")
     reviewed = preview(fixture, automated)

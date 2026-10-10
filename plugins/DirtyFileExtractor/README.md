@@ -116,7 +116,12 @@ cancellation, original identity and the exact served bundle. After
 
 Stash's hard task cancellation can leave a temporary `.part` file and an empty
 reserved destination. It does not finalize that copy or process later items.
-This existing backend behavior is preserved by the frontend migration.
+On Windows, marker encoders are contained in a parent-owned job so forced task
+cancellation also stops the encoder. Ordinary errors, callback cancellation,
+and timeouts reap the encoder before removing its partial output. Silent output
+cannot block the deadline: clips have at least two minutes, twenty times their
+duration where longer, and at most one hour to encode. Diagnostics retain at
+most twenty bounded lines.
 After a local build/copy, reload plugins and hard-refresh the Stash browser.
 
 ## License

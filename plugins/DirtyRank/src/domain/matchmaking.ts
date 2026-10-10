@@ -1,4 +1,12 @@
-import { categoryEligible, pairToken, poolFor, precisionTier, rankPerformers, recentPairWindow } from "./rank";
+import {
+  categoryEligible,
+  confidenceRevisionFor,
+  pairToken,
+  poolFor,
+  precisionTier,
+  rankPerformers,
+  recentPairWindow,
+} from "./rank";
 import { expectedDeviationAfterBattle, pairInformationGain } from "./rating";
 import { settingsFromConfiguration } from "./settings";
 import type {
@@ -14,6 +22,24 @@ import type {
 } from "../types";
 const ORDER_CONFIDENCE_Z = 0.84,
   MATCHMAKER_FOCUS_LIMIT = 48;
+type CategorySummary = { key: string; entries: RankEntry[]; confidence?: RankConfidence };
+// Library arrays are immutable snapshots. Weak ownership releases replaced populations.
+const categorySummaries = new WeakMap<RankPerformer[], Map<string, CategorySummary>>();
+function categorySummary(performers: RankPerformer[], category: RankCategory, cohort: string, settings: RankSettings) {
+  let summaries = categorySummaries.get(performers);
+  if (!summaries) {
+    summaries = new Map();
+    categorySummaries.set(performers, summaries);
+  }
+  const scope = category.id + "|" + cohort;
+  const key = confidenceRevisionFor(category.id, cohort) + "|" + JSON.stringify([category, settings]);
+  let summary = summaries.get(scope);
+  if (!summary || summary.key !== key) {
+    summary = { key, entries: buildCategoryEntries(performers, category, cohort, settings) };
+    summaries.set(scope, summary);
+  }
+  return summary;
+}
 export function representativeOpponent(pool: RankPool, opponentDeviation: number, settings: RankSettings) {
   return { rating: pool.rating, deviation: opponentDeviation, volatility: settings.initialVolatility, matches: 1 };
 }
@@ -63,6 +89,14 @@ export function confidenceProgress(completedBattles: number, remainingBattles: n
   return total > 0 ? (completedBattles / total) * 100 : 0;
 }
 export function categoryEntries(
+  performers: RankPerformer[],
+  category: RankCategory,
+  cohort: string,
+  settings: RankSettings,
+) {
+  return categorySummary(performers, category, cohort, settings).entries;
+}
+function buildCategoryEntries(
   performers: RankPerformer[],
   category: RankCategory,
   cohort: string,
@@ -132,7 +166,11 @@ export function categoryConfidence(
   cohort: string,
   settings: RankSettings,
 ): RankConfidence {
-  const entries = categoryEntries(performers, category, cohort, settings);
+  const cached = categorySummary(performers, category, cohort, settings);
+  if (!cached.confidence) cached.confidence = buildCategoryConfidence(cached.entries, settings);
+  return cached.confidence;
+}
+function buildCategoryConfidence(entries: RankEntry[], settings: RankSettings): RankConfidence {
   const activeWeights = new Map<string, number>();
   entries.forEach(entry => {
     activeWeights.set(String(entry.performer.id), 0.02);

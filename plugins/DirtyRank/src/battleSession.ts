@@ -15,7 +15,7 @@ import {
   poolFor,
   queryPerformers,
   runOperation,
-  updatePerformerState,
+  updatePerformerStates,
 } from "./domain/rank";
 import {
   CONFIGURATION_CHANGED_EVENT,
@@ -61,6 +61,9 @@ export function useBattleSession(props: {
   DirtyPlugins.react.usePageTitle("DirtyRank", gauntletMode ? "Gauntlet" : kingsMode ? "King of the Hill" : "Battles");
   const [settings, setSettings] = React.useState<RankSettings | null>(null);
   const [performers, setPerformers] = React.useState<RankPerformer[]>([]);
+  const performersRef = React.useRef(performers),
+    libraryLoaded = React.useRef(false);
+  performersRef.current = performers;
   const gauntletTarget = React.useMemo(() => findTarget(performers), [gauntletMode, gauntletTargetId, performers]);
   const cohort = settings ? battleCohortFor(settings, gauntletTarget, requestedCohort) : "";
   const requestedContextRef = React.useRef<{ cohort: string; categoryId?: string }>({ cohort: "" });
@@ -85,58 +88,66 @@ export function useBattleSession(props: {
   const preparedPairRef = React.useRef<PreparedPair | null>(null);
   const preparedImagesRef = React.useRef<HTMLImageElement[]>([]);
 
-  const load = React.useCallback(() => {
-    const request = ++loadRequestRef.current;
-    setLoading(true);
-    setError("");
-    return Promise.all([
-      DirtyPlugins.getPluginSettings(PLUGIN_ID),
-      queryPerformers(true),
-      loadRatingIndex(),
-      loadNativePerformerCard(),
-    ])
-      .then(values => {
-        if (!mountedRef.current || request !== loadRequestRef.current) return;
-        const nextSettings = settingsFromConfiguration(values[0]);
-        const gauntletTarget = findTarget(values[1]);
-        if (gauntletMode && !gauntletTarget) throw new Error("The selected Gauntlet performer could not be found.");
-        const requestedContext = requestedContextRef.current;
-        const nextCohort = battleCohortFor(nextSettings, gauntletTarget, requestedContext.cohort);
-        if (!nextCohort) {
-          throw new Error(
-            "Enable a category that includes " +
-              cohortLabel(gauntletTarget ? gauntletTarget.gender : nextSettings.defaultCohort) +
-              " performers in DirtyRank settings.",
-          );
-        }
-        const enabled = categoriesForPerformer(nextSettings, nextCohort, gauntletTarget);
-        if (!enabled.length)
-          throw new Error("Enable at least one DirtyRank category for the selected performer cohort.");
-        setSettings(nextSettings);
-        setPerformers(values[1]);
-        setCategoryId(current => {
-          if (enabled.some(item => item.id === requestedContext.categoryId)) return requestedContext.categoryId!;
-          return preferredCategoryId(nextSettings, nextCohort, current);
+  const load = React.useCallback(
+    (settingsOnly = false) => {
+      settingsOnly = settingsOnly && libraryLoaded.current;
+      const request = ++loadRequestRef.current;
+      setLoading(true);
+      setError("");
+      return Promise.all([
+        DirtyPlugins.getPluginSettings(PLUGIN_ID),
+        settingsOnly ? Promise.resolve(null) : queryPerformers(true),
+        settingsOnly ? Promise.resolve(null) : loadRatingIndex(),
+        loadNativePerformerCard(),
+      ])
+        .then(values => {
+          if (!mountedRef.current || request !== loadRequestRef.current) return;
+          const nextSettings = settingsFromConfiguration(values[0]);
+          const gauntletTarget = findTarget(values[1] || performersRef.current);
+          if (!settingsOnly && gauntletMode && !gauntletTarget)
+            throw new Error("The selected Gauntlet performer could not be found.");
+          const requestedContext = requestedContextRef.current;
+          const nextCohort = battleCohortFor(nextSettings, gauntletTarget, requestedContext.cohort);
+          if (!nextCohort) {
+            throw new Error(
+              "Enable a category that includes " +
+                cohortLabel(gauntletTarget ? gauntletTarget.gender : nextSettings.defaultCohort) +
+                " performers in DirtyRank settings.",
+            );
+          }
+          const enabled = categoriesForPerformer(nextSettings, nextCohort, gauntletTarget);
+          if (!enabled.length)
+            throw new Error("Enable at least one DirtyRank category for the selected performer cohort.");
+          setSettings(nextSettings);
+          if (values[1]) {
+            libraryLoaded.current = true;
+            setPerformers(values[1]);
+          }
+          setCategoryId(current => {
+            if (enabled.some(item => item.id === requestedContext.categoryId)) return requestedContext.categoryId!;
+            return preferredCategoryId(nextSettings, nextCohort, current);
+          });
+          setPairInfo(null);
+          setDecision(null);
+          undoHistoryRef.current = [];
+          defeatedKingsRef.current = [];
+          setUndoHistory([]);
+        })
+        .catch(caught => {
+          if (mountedRef.current && request === loadRequestRef.current) setError(caught.message || String(caught));
+        })
+        .finally(() => {
+          if (mountedRef.current && request === loadRequestRef.current) setLoading(false);
         });
-        setPairInfo(null);
-        setDecision(null);
-        undoHistoryRef.current = [];
-        defeatedKingsRef.current = [];
-        setUndoHistory([]);
-      })
-      .catch(caught => {
-        if (mountedRef.current && request === loadRequestRef.current) setError(caught.message || String(caught));
-      })
-      .finally(() => {
-        if (mountedRef.current && request === loadRequestRef.current) setLoading(false);
-      });
-  }, [gauntletMode, gauntletTargetId]);
+    },
+    [gauntletMode, gauntletTargetId],
+  );
 
   React.useEffect(() => {
     mountedRef.current = true;
     void load();
     function changed(event: ConfigurationEvent) {
-      if (!event.detail || event.detail.pluginId === PLUGIN_ID) void load();
+      if (!event.detail || event.detail.pluginId === PLUGIN_ID) void load(true);
     }
     window.addEventListener(CONFIGURATION_CHANGED_EVENT, changed);
     return () => {
@@ -390,12 +401,11 @@ export function useBattleSession(props: {
       });
   }
 
-  function replaceStates(result: RankOperationResult, source: RankPerformer[]) {
-    return source.map(performer => {
-      if (result.left && performer.id === result.left.id) return updatePerformerState(performer, result.left!.state);
-      if (result.right && performer.id === result.right.id) return updatePerformerState(performer, result.right!.state);
-      return performer;
-    });
+  function publishStates(result: RankOperationResult) {
+    const updates = [result.left, result.right].filter((update): update is NonNullable<typeof update> =>
+      Boolean(update),
+    );
+    if (updatePerformerStates(updates)) setPerformers(current => current.slice());
   }
 
   function submit(outcome: string) {
@@ -445,19 +455,9 @@ export function useBattleSession(props: {
       saved => {
         const result = saved!;
         if (!mountedRef.current || operationStatus.undone) return;
-        const afterLeft = poolFor(
-          updatePerformerState(left, result.left!.state),
-          battleCategoryId,
-          cohort,
-          battleSettings,
-        );
-        const afterRight = poolFor(
-          updatePerformerState(right, result.right!.state),
-          battleCategoryId,
-          cohort,
-          battleSettings,
-        );
-        setPerformers(current => replaceStates(result, current));
+        publishStates(result);
+        const afterLeft = poolFor(left, battleCategoryId, cohort, battleSettings);
+        const afterRight = poolFor(right, battleCategoryId, cohort, battleSettings);
         setFeedback({
           text:
             left.name +
@@ -520,7 +520,7 @@ export function useBattleSession(props: {
       result => {
         operationStatusRef.current.delete(lastBattle.id);
         if (!mountedRef.current || !result) return;
-        setPerformers(current => replaceStates(result, current));
+        publishStates(result);
         setFeedback({ text: "Battle undone." });
       },
       caught => {

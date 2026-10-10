@@ -1,5 +1,5 @@
 {
-  "note": "Minified release bundle sizes in bytes (all remeasured 2026-10-10 after the second simplification pass: hub-owned registration, one shared host binding, plain modules). Budgets allow up to 5% growth rounded up to whole KiB. Raise one only with the reason recorded in this note.",
+  "note": "Minified release bundle sizes in bytes (all remeasured 2026-10-10 after the second simplification pass: hub-owned registration, one shared host binding, plain modules). Budgets allow up to 5% growth rounded up to whole KiB. Raise one only with the reason recorded in this note. Code-analysis implementation: Multiscreen remeasured at 27,062 bytes (+3,187) for independent bounded page queues, request coalescing/abort, reproducible permutations and retry feedback; its budget is 28 KiB (5% rounded up). Rank remeasured at 117,950 bytes for retained vote comparison sums, shifted cold weights, bounded task yielding, shared cancellable preparation and complete-score rendering; its budget is 121 KiB (5% rounded up). Other budgets are unchanged.",
   "plugins": {
     "DirtyCaptions": {
       "measured": 14215,
@@ -14,16 +14,16 @@
       "budget": 10240
     },
     "DirtyMultiscreen": {
-      "measured": 23875,
-      "budget": 25600
+      "measured": 27062,
+      "budget": 28672
     },
     "DirtyPlugins": {
       "measured": 42287,
       "budget": 45056
     },
     "DirtyRank": {
-      "measured": 111262,
-      "budget": 117760
+      "measured": 117950,
+      "budget": 123904
     },
     "DirtyStats": {
       "measured": 1151287,

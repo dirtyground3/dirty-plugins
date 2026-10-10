@@ -13,6 +13,9 @@ const {
   registry,
   FORBIDDEN_INSTALL_FILE,
   pluginDirectory,
+  installPath,
+  recoverBuild,
+  promoteBuild,
   readManifest,
   installFiles,
   compileOptions,
@@ -45,16 +48,22 @@ function validatePlugin(plugin, manifest, schemas) {
   }
   const files = installFiles(plugin, manifest);
   const exec = (manifest.exec || [])
-    .filter(argument => argument.startsWith("{pluginDir}/"))
+    .filter(argument => /^\{pluginDir\}[\\/]/.test(argument))
     .map(argument => argument.slice(12));
+  for (const file of [...exec, ...Object.values(manifest.ui?.assets || {}), ...(plugin.runtimeDirectories || [])])
+    installPath(pluginDirectory(plugin), file);
   const assets = Object.values(manifest.ui?.assets || {}).filter(asset => !plugin.runtimeDirectories?.includes(asset));
   for (const file of [...exec, ...assets])
     if (!files.includes(file)) fail("manifest references a file that is not installed: " + file);
   for (const file of files) {
-    if (FORBIDDEN_INSTALL_FILE.test(file)) fail("source or runtime data in install files: " + file);
+    const source = installPath(pluginDirectory(plugin), file);
+    if (FORBIDDEN_INSTALL_FILE.test(file.replaceAll("\\", "/")))
+      fail("source or runtime data in install files: " + file);
     if (file === plugin.entry || plugin.generatedFiles?.includes(file)) continue;
-    if (!fs.statSync(path.join(pluginDirectory(plugin), file), { throwIfNoEntry: false })?.isFile())
-      fail("missing install file " + file);
+    if (!fs.statSync(source, { throwIfNoEntry: false })?.isFile()) fail("missing install file " + file);
+    const relative = path.relative(fs.realpathSync(pluginDirectory(plugin)), fs.realpathSync(source));
+    if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative))
+      fail("install source resolves outside the plugin: " + file);
   }
   return files;
 }
@@ -106,10 +115,11 @@ function boundaries(plugin) {
   };
 }
 
-/** Stage every plugin into .build/staging, then replace .build/plugins in one rename. */
+/** Stage every plugin, retain the previous build, then promote with rollback on failure. */
 export async function buildPlugins(mode = "release") {
   if (!["release", "development"].includes(mode)) throw new Error("Unknown build mode: " + mode);
   const staging = path.join(buildRoot, "staging");
+  recoverBuild(pluginsRoot);
   fs.rmSync(staging, { recursive: true, force: true });
   const schemas = writeGenerated();
   // The hub lists the suite in tab order; it must name exactly the registered plugins.
@@ -126,14 +136,14 @@ export async function buildPlugins(mode = "release") {
   for (const plugin of registry) {
     const manifest = readManifest(plugin);
     const files = validatePlugin(plugin, manifest, schemas);
-    const destination = path.join(staging, plugin.directory);
+    const destination = installPath(staging, plugin.directory);
     fs.mkdirSync(destination, { recursive: true });
     for (const file of files) {
-      const output = path.join(destination, file);
+      const output = installPath(destination, file);
       fs.mkdirSync(path.dirname(output), { recursive: true });
       if (file === plugin.entry || file === plugin.id + ".yml") continue;
       if (plugin.generatedFiles?.includes(file)) fs.writeFileSync(output, pythonModule(plugin.id, schemas[plugin.id]));
-      else fs.copyFileSync(path.join(pluginDirectory(plugin), file), output);
+      else fs.copyFileSync(installPath(pluginDirectory(plugin), file), output);
     }
     await esbuild.build({
       ...compileOptions(plugin, "src/index.tsx", "browser", mode),
@@ -144,8 +154,7 @@ export async function buildPlugins(mode = "release") {
     if (settings && Object.keys(settings).length) manifest.settings = settings;
     fs.writeFileSync(path.join(destination, plugin.id + ".yml"), YAML.stringify(manifest));
   }
-  fs.rmSync(pluginsRoot, { recursive: true, force: true });
-  fs.renameSync(staging, pluginsRoot);
+  promoteBuild(staging, pluginsRoot);
   console.log("Staged " + registry.length + " plugins in .build/plugins (" + mode + " build)");
 }
 

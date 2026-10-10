@@ -14,9 +14,35 @@ function createSession(options = {}) {
   const document = events({ activeElement: null });
   const owner = { slots: [], effects: [], cursor: 0 },
     calls = [],
-    paths = [];
+    paths = [],
+    publications = [];
   let nextId = 0;
   const hooks = createHooks(() => owner);
+  const useState = hooks.useState,
+    setters = new Map();
+  let updatingState = false;
+  hooks.useState = initial => {
+    const [state, set] = useState(initial);
+    if (!setters.has(set)) {
+      setters.set(set, value => {
+        set(
+          typeof value === "function"
+            ? current => {
+                updatingState = true;
+                try {
+                  value(current);
+                  return value(current);
+                } finally {
+                  updatingState = false;
+                }
+              }
+            : value,
+        );
+      });
+    }
+    return [state, setters.get(set)];
+  };
+  const ratingStates = new Map();
   const people = [
     { id: "left", name: "Left" },
     { id: "right", name: "Right" },
@@ -49,14 +75,19 @@ function createSession(options = {}) {
     loadNativePerformerCard: async () => null,
     loadRatingIndex: async () => null,
     pairToken: (left, right) => left.id + ":" + right.id,
-    poolFor: person => person.pool || { rating: 1000 },
+    poolFor: person => ratingStates.get(person.id) || { rating: 1000 },
     preferredCategoryId: () => category.id,
     queryPerformers: async () => people,
     ratingDelta: (after, before) => String(after - before),
     rememberCategory() {},
     selectPair: () => ({ pair: people, eligible: 2, ranks: { left: 1, right: 2 } }),
     settingsFromConfiguration: value => value,
-    updatePerformerState: (person, state) => ({ ...person, pool: state }),
+    updatePerformerStates: updates => {
+      assert.equal(updatingState, false, "rating publication must happen outside replayable React state updaters");
+      updates.forEach(update => ratingStates.set(update.id, update.state));
+      publications.push(Array.from(updates, update => ({ id: update.id, rating: ratingStates.get(update.id).rating })));
+      return true;
+    },
     getRatingIndexRevision: () => 0,
     runOperation: args =>
       new Promise((resolve, reject) => {
@@ -85,6 +116,8 @@ function createSession(options = {}) {
     document,
     calls,
     paths,
+    publications,
+    poolFor: fakes.poolFor,
     owner,
     render,
     unmount() {
@@ -149,10 +182,21 @@ const result = rating => ({ left: { id: "left", state: { rating } }, right: { id
   assert.equal(host.calls[2].args.mode, "undo");
   assert.equal(host.calls[2].args.battleId, host.calls[1].args.battleId, "undo follows its own record in the queue");
   session = host.render();
-  assert.equal(session.performers[0].pool.rating, 1001, "an undone record response cannot publish stale ratings");
+  assert.equal(
+    host.poolFor(session.performers[0]).rating,
+    1001,
+    "an undone record response cannot publish stale ratings",
+  );
+  assert.equal(host.publications.length, 1, "an accepted vote publishes its complete pair only once");
+  assert.deepEqual(host.publications[0], [
+    { id: "left", rating: 1001 },
+    { id: "right", rating: 1001 },
+  ]);
   host.calls[2].resolve(result(1001));
   await flush();
   session = host.render();
+  assert.equal(host.publications.length, 2, "undo publishes its complete pair only once with replayed React updaters");
+  assert.equal(host.publications[1].length, 2);
   assert.equal(session.pendingVotes, 0);
   assert.equal(host.window.handlers.get("beforeunload").size, 0, "saving removes the exit guard");
   host.unmount();

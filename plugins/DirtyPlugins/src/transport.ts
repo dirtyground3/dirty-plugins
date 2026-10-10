@@ -7,7 +7,7 @@ const pluginRevisionCache: Record<string, number> = Object.create(null);
 
 export function rememberPluginRevision(pluginId: string, revision: unknown) {
   const value = Number(revision);
-  if (Number.isFinite(value)) pluginRevisionCache[pluginId] = value;
+  if (Number.isFinite(value)) pluginRevisionCache[pluginId] = Math.max(pluginRevisionCache[pluginId] || 0, value);
 }
 
 export function graphql<T = Record<string, unknown>>(

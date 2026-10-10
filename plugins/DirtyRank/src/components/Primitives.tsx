@@ -163,11 +163,15 @@ export function GauntletConfidenceIndicator(
   );
   const deviations = opponents.map(entry => entry.pool.deviation).sort((left, right) => left - right);
   const opponentDeviation = deviations[Math.floor(deviations.length / 2)] || props.settings.initialDeviation;
-  const remaining = estimatedMatchesToConfidence(
-    pool,
-    props.settings.provisionalDeviation,
-    representativeOpponent(pool, opponentDeviation, props.settings),
-    props.settings,
+  const remaining = React.useMemo(
+    () =>
+      estimatedMatchesToConfidence(
+        pool,
+        props.settings.provisionalDeviation,
+        representativeOpponent(pool, opponentDeviation, props.settings),
+        props.settings,
+      ),
+    [pool.rating, pool.deviation, pool.volatility, pool.matches, opponentDeviation, props.settings],
   );
   const ranked = rankPerformers(
     props.performers.filter(performer => categoryEligible(performer, props.category, props.settings, props.cohort)),

@@ -4,7 +4,8 @@ import { themeColor } from "../settings";
 import type * as R from "react";
 import { useChart } from "../domain/charts";
 import type { ChartProps, StateProps } from "../props";
-import type { ChartOption, DashboardWidgetModel } from "../types";
+import type { ChartInstance, ChartOption, DashboardWidgetModel } from "../types";
+let dashboardMapRegistered = false;
 export function State(props: StateProps): R.ReactElement | null {
   if (ui.StateView) return <ui.StateView {...props} />;
   return (
@@ -18,6 +19,9 @@ export function State(props: StateProps): R.ReactElement | null {
 
 export function Chart(props: ChartProps): R.ReactElement | null {
   const node = React.useRef<HTMLDivElement>(null);
+  const chartRef = React.useRef<ChartInstance | null>(null);
+  const current = React.useRef(props);
+  current.current = props;
   const [error, setError] = React.useState("");
   useChart(() => {
     if (!node.current || !props.option) return;
@@ -27,26 +31,54 @@ export function Chart(props: ChartProps): R.ReactElement | null {
     }
     return {
       node: node.current,
-      beforeInit: () => {
-        if (props.map && world) charts.registerMap("dirtyStatsDashboardWorld", world);
-      },
-      configure: chart => {
-        let option = props.option;
-        if (props.map)
-          option = Object.assign({}, option, {
-            series: [Object.assign({}, option.series[0], mapLayout(node.current, option.visualMap.show))],
-          });
-        // Replace the complete dashboard option; full views retain their own incremental updates.
-        chart.setOption(option, true);
-        setError("");
-      },
+      chartRef,
+      configure: () => {},
       resize: chart => {
-        if (props.map) chart.setOption({ series: [mapLayout(node.current, props.option.visualMap.show)] });
+        const latest = current.current;
+        if (latest.map) chart.setOption({ series: [mapLayout(node.current, latest.option.visualMap.show)] });
       },
       onError: error => {
         setError(error.message);
       },
     };
+  }, []);
+  React.useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !props.option) return;
+    try {
+      if (props.map && world && !dashboardMapRegistered) {
+        charts.registerMap("dirtyStatsDashboardWorld", world);
+        dashboardMapRegistered = true;
+      }
+      const previous = chart.getOption() || {};
+      let option = props.option;
+      if (option.dataZoom && previous.dataZoom)
+        option = {
+          ...option,
+          dataZoom: option.dataZoom.map((zoom: ChartOption, index: number) => {
+            const saved = previous.dataZoom[index];
+            return saved ? { ...zoom, start: saved.start, end: saved.end } : zoom;
+          }),
+        };
+      if (props.map) {
+        const series = option.series[0],
+          saved = previous.series?.[0];
+        option = {
+          ...option,
+          series: [
+            {
+              ...series,
+              ...mapLayout(node.current, option.visualMap.show),
+              ...(series.roam && saved?.roam ? { center: saved.center, zoom: saved.zoom } : {}),
+            },
+          ],
+        };
+      }
+      chart.setOption(option, true);
+      setError("");
+    } catch (error) {
+      setError((error as Error).message);
+    }
   }, [props.option, props.map]);
   return (
     <React.Fragment>

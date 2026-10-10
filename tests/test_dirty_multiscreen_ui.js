@@ -339,6 +339,53 @@ async function counters() {
   await partial.flush();
   await partial.unmount();
 }
+async function stablePaneSubscriptions() {
+  const scenes = ["a", "b"].map(id => ({ id, title: id, paths: { stream: "/" + id }, files: [{ duration: 10 }] }));
+  const markers = scenes.map((scene, index) => ({
+    id: "marker-" + index,
+    scene,
+    title: "Marker " + index,
+    seconds: 1,
+    end_seconds: 4,
+  }));
+  const h = await start({
+    scenes,
+    markers,
+    launch: { source: "marker-selection", selectedIds: markers.map(marker => marker.id) },
+    settings: { rows: 1, columns: 2, totalScreens: 2, randomize: false, splitScenes: false, loopScenes: false },
+  });
+  const panes = h.nodes(node => node.type === "native-player");
+  const media = [...h.media.values()].filter(pair => pair.video.isConnected);
+  const other = media[1];
+  const observed = h.observers.filter(observer => observer.connected && observer.target === other.tile);
+  const timeListener = [...other.video.handlers.get("timeupdate")][0];
+  const volumeListener = [...other.player.handlers.get("volumechange")][0];
+  const next = panes[1].props.onNext;
+  const complete = panes[1].props.onComplete;
+  const count = h.observers.length;
+  panes[0].props.onNext();
+  await h.flush();
+  assert.ok(
+    observed.every(observer => observer.connected),
+    "advancing another pane retains its observers",
+  );
+  assert.equal([...other.video.handlers.get("timeupdate")][0], timeListener);
+  assert.equal([...other.player.handlers.get("volumechange")][0], volumeListener);
+  const fresh = h.nodes(node => node.type === "native-player");
+  assert.equal(fresh[1].props.onNext, next);
+  assert.equal(fresh[1].props.onComplete, complete);
+  assert.equal(h.observers.length, count + 2, "only the replaced marker's two observers mount");
+  other.video.currentTime = 4;
+  other.video.emit("timeupdate");
+  await h.flush();
+  assert.equal(
+    h.nodes(node => node.type === "native-player")[1].props.scene.id,
+    "b",
+    "retained listener uses current navigation",
+  );
+  await h.unmount();
+  assert.ok(h.observers.every(observer => !observer.connected));
+}
 async function gridsAndAsync() {
   const h = await start({
     settings: {
@@ -405,14 +452,146 @@ async function staleCounts() {
   await h.unmount();
   assert.equal(h.timers.size, 0);
 }
+async function pagedPlayback() {
+  const scenes = Array.from({ length: 1001 }, (_, index) => ({
+    id: String(index),
+    title: "Scene " + index,
+    paths: { stream: "/" + index },
+  }));
+  const pageRequests = [];
+  let hold,
+    fail = false;
+  const h = await start({
+    scenes,
+    launch: { source: "filter", filter: { sort: "title" }, sceneFilter: {} },
+    graphql: async (_query, variables) => {
+      pageRequests.push(variables.filter);
+      if (hold) await hold.promise;
+      if (fail) throw new Error("Queue unavailable");
+      const { page, per_page: size } = variables.filter;
+      return { findScenes: { count: scenes.length, scenes: scenes.slice((page - 1) * size, page * size) } };
+    },
+  });
+  const players = () => h.nodes(node => node.type === "native-player");
+  assert.equal(pageRequests.length, 1);
+  assert(pageRequests[0].per_page <= 240);
+  const size = pageRequests[0].per_page;
+  for (let i = 0; i < size - 1; i++) {
+    players().forEach(player => player.props.onNext());
+    await h.flush();
+  }
+  hold = deferred();
+  players().forEach(player => player.props.onNext());
+  await h.flush();
+  assert.equal(pageRequests.length, 2, "panes share an in-flight page request");
+  assert(
+    players().every(player => player.props.scene.id === String(size - 1)),
+    "current videos remain while the next page loads",
+  );
+  hold.resolve();
+  hold = null;
+  await h.flush();
+  assert(players().every(player => player.props.scene.id === String(size)));
+  players()[0].props.onPrevious();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, String(size - 1));
+  assert.equal(players()[1].props.scene.id, String(size), "a pane advances independently");
+  fail = true;
+  players()[0].props.onNext();
+  await h.flush();
+  assert.match(h.text(), /Queue unavailable/);
+  assert.equal(players()[0].props.scene.id, String(size - 1));
+  fail = false;
+  h.nodes(node => node.type === "button" && /Retry/.test(h.text()))
+    .at(-1)
+    .props.onClick();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, String(size));
+  // Advance one pane through every selected scene; retained queues stay bounded.
+  const seen = new Set(Array.from({ length: size + 1 }, (_, i) => String(i)));
+  for (let i = size + 1; i < scenes.length; i++) {
+    players()[0].props.onNext();
+    await h.flush();
+    seen.add(players()[0].props.scene.id);
+    const queueStates = [...h.owners.values()]
+      .flatMap(owner => owner.slots)
+      .map(slot => slot?.state)
+      .filter(state => state?.items);
+    assert.equal(queueStates.length, 2, "each pane owns one current queue");
+    assert(queueStates.every(slot => slot.items.length <= size));
+  }
+  assert.equal(seen.size, scenes.length, "continuation reaches the complete contextual library");
+  players()[0].props.onNext();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "0", "the final page wraps to the start");
+  await h.unmount();
+
+  const selection = await start({
+    scenes,
+    settings: { rows: 1, columns: 2, totalScreens: 2, randomize: true },
+    launch: { source: "selection", selectedIds: scenes.map(scene => scene.id) },
+  });
+  assert.equal(
+    selection.calls.filter(call => call.query.includes("MultiscreenScenes")).length,
+    1,
+    "explicit selections remain one complete source",
+  );
+  const selectedSeen = new Set();
+  for (let i = 0; i < scenes.length; i++) {
+    const player = selection.nodes(node => node.type === "native-player")[0];
+    selectedSeen.add(player.props.scene.id);
+    player.props.onNext();
+    await selection.flush();
+  }
+  assert.equal(selectedSeen.size, scenes.length, "bounded independent permutations retain every off-page selection");
+  await selection.unmount();
+
+  const empty = await start({
+    scenes,
+    launch: { source: "filter", filter: {}, sceneFilter: {} },
+    graphql: async (_query, variables) => ({
+      findScenes: { count: 60, scenes: variables.filter.page === 1 ? [{ id: "unplayable" }] : scenes.slice(24, 48) },
+    }),
+  });
+  assert.equal(empty.calls.length, 2, "an unplayable initial page does not hide later playable scenes");
+  assert.equal(empty.nodes(node => node.type === "native-player")[0].props.scene.id, "24");
+  await empty.unmount();
+
+  const pending = deferred(),
+    signals = [];
+  const late = await start({
+    scenes,
+    launch: { source: "filter", filter: {}, sceneFilter: {} },
+    graphql: async (_query, variables, options) => {
+      if (variables.filter.page > 1) {
+        signals.push(options.signal);
+        await pending.promise;
+      }
+      return {
+        findScenes: { count: 1001, scenes: scenes.slice((variables.filter.page - 1) * 24, variables.filter.page * 24) },
+      };
+    },
+  });
+  for (let i = 0; i < 24; i++) {
+    late.nodes(node => node.type === "native-player")[0].props.onNext();
+    await late.flush();
+  }
+  await late.unmount();
+  assert(signals[0].aborted, "leaving playback aborts pending continuation");
+  pending.resolve();
+  await late.flush();
+  assert.equal(late.nodes(node => node.type === "native-player").length, 0);
+}
 (async () => {
   await registration();
   await contextsAndCounts();
   await playbackAndCleanup();
   await markersAndLoops();
+  await stablePaneSubscriptions();
   await counters();
   await gridsAndAsync();
   await staleCounts();
+  await pagedPlayback();
   console.log("DirtyMultiscreen compiled registration, navigation, players, grid, counters and cleanup passed");
 })().catch(error => {
   console.error(error);

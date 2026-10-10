@@ -7,6 +7,7 @@ import {
   RankButton,
   RankStatisticSelector,
 } from "./Primitives";
+import { useOverallScores } from "./useOverallScores";
 import {
   battleCategoryPath,
   leaderboardIdFromPath,
@@ -433,21 +434,26 @@ export function DirtyRankLeaderboardsRoute(): R.JSX.Element | null {
 
   const loadRequest = React.useRef(0),
     mounted = React.useRef(true);
-  const load = React.useCallback(() => {
+  const libraryLoaded = React.useRef(false);
+  const load = React.useCallback((settingsOnly = false) => {
+    settingsOnly = settingsOnly && libraryLoaded.current;
     const request = ++loadRequest.current;
     setLoading(true);
     setError("");
     return Promise.all([
       DirtyPlugins.getPluginSettings(PLUGIN_ID),
-      queryPerformers(true),
-      loadRatingIndex(),
+      settingsOnly ? Promise.resolve(null) : queryPerformers(true),
+      settingsOnly ? Promise.resolve(null) : loadRatingIndex(),
       loadNativePerformerCard(),
     ])
       .then(values => {
         if (!mounted.current || request !== loadRequest.current) return;
         const nextSettings = settingsFromConfiguration(values[0]);
         setSettings(nextSettings);
-        setPerformers(values[1]);
+        if (values[1]) {
+          libraryLoaded.current = true;
+          setPerformers(values[1]);
+        }
       })
       .catch(caught => {
         if (mounted.current && request === loadRequest.current) setError(caught.message || String(caught));
@@ -461,7 +467,7 @@ export function DirtyRankLeaderboardsRoute(): R.JSX.Element | null {
     mounted.current = true;
     void load();
     function changed(event: ConfigurationEvent) {
-      if (!event.detail || event.detail.pluginId === PLUGIN_ID) void load();
+      if (!event.detail || event.detail.pluginId === PLUGIN_ID) void load(true);
     }
     window.addEventListener(CONFIGURATION_CHANGED_EVENT, changed);
     return () => {
@@ -481,9 +487,10 @@ export function DirtyRankLeaderboardsRoute(): R.JSX.Element | null {
   const viewMode = settings ? settings.leaderboardView : "gallery";
   const topCount = settings ? settings.leaderboardTopCount : 3;
   const selectedCategory = enabledCategories.find(category => category.id === leaderboardId) || null;
+  const scores = useOverallScores(settings, [cohort], !loading && leaderboardId === OVERALL_LEADERBOARD_ID);
   const data = React.useMemo(
-    () => (settings ? leaderboardData(performers, leaderboardId, cohort, settings) : null),
-    [cohort, leaderboardId, performers, settings],
+    () => (settings && !loading && scores.ready ? leaderboardData(performers, leaderboardId, cohort, settings) : null),
+    [cohort, leaderboardId, performers, settings, loading, scores.ready, scores.revision],
   );
   const allEntries = React.useMemo(() => (data ? leaderboardEntries(data.ranked) : []), [data]);
   const standingEntries = React.useMemo(() => {
@@ -501,19 +508,19 @@ export function DirtyRankLeaderboardsRoute(): R.JSX.Element | null {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
-  if (loading)
+  if (loading || (!scores.ready && !scores.error))
     return (
       <main className="dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide">
         <ui.StateView title="Loading DirtyRank leaderboards…" />
       </main>
     );
-  if (error || !settings || !data) {
+  if (error || scores.error || !settings || !data) {
     return (
       <main className="dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide">
         <ui.StateView
           title="Could not load DirtyRank leaderboards"
-          detail={error || "DirtyRank settings are unavailable."}
-          actions={<RankButton onClick={load}>Retry</RankButton>}
+          detail={error || scores.error || "DirtyRank settings are unavailable."}
+          actions={<RankButton onClick={() => (scores.error ? scores.retry() : load())}>Retry</RankButton>}
         />
       </main>
     );

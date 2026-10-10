@@ -90,7 +90,6 @@ export function CaptionsController({ scene }: { scene: Scene; capture: boolean }
           }
           if (waiting) return;
           waiting = true;
-          setStatus({ message: "Loading embedded captions…", retry: false });
           request(
             () => tracks.requestCaptions(scene),
             data => {

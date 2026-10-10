@@ -7,6 +7,10 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - Configurable number of screens, rows, and columns.
 - Random or ordered scene playback.
 - Optional scene splitting across panes.
+- Contextual playback continues through independently loaded pages of at most 240 items per pane.
+  A pending page is shared between panes, and the current video remains visible if loading fails.
+  Explicit selections include items selected on other native pages. Random playback permutes
+  each bounded page independently per pane; split assignments remain stable between page requests.
 - Random starting positions, looping, and start-muted behavior.
 - Marker playback with a configurable fallback duration.
 - Optional pause when the browser tab is hidden.

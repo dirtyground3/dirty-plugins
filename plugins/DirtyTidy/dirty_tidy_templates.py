@@ -121,12 +121,7 @@ def _duration_bucket(value: Any) -> str:
     return "60m+"
 
 
-def scene_variables(
-    scene: dict[str, Any],
-    file_info: dict[str, Any],
-    source_root: str,
-    separator: str,
-) -> dict[str, str]:
+def scene_template_variables(scene: dict[str, Any], separator: str) -> dict[str, str]:
     date, year, month, day = _date_parts(scene.get("date"))
     performer_items = scene.get("performers") if isinstance(scene.get("performers"), list) else []
     performers = _names(performer_items)
@@ -149,13 +144,6 @@ def scene_variables(
     groups.sort(key=lambda item: (item.get("scene_index") is None, item.get("scene_index") or 0))
     primary_group = groups[0] if groups else {}
     group_value = primary_group.get("group") if isinstance(primary_group.get("group"), dict) else {}
-    basename = str(file_info.get("basename") or Path(str(file_info.get("path") or "")).name)
-    extension = Path(basename).suffix
-    original_name = basename[: -len(extension)] if extension else basename
-    try:
-        duration_minutes = str(max(0, round(float(file_info.get("duration")) / 60)))
-    except (TypeError, ValueError):
-        duration_minutes = UNKNOWN_VALUE
     rating = scene.get("rating100")
     stash_ids = _stash_ids(scene.get("stash_ids"))
     return {
@@ -184,6 +172,22 @@ def scene_variables(
         "first_tag": tags[0] if tags else UNKNOWN_VALUE,
         "group": _clean_text(group_value.get("name")),
         "group_position": _clean_text(primary_group.get("scene_index")),
+    }
+
+
+def scene_variables(
+    scene: dict[str, Any], file_info: dict[str, Any], source_root: str, separator: str,
+    *, scene_values: dict[str, str] | None = None,
+) -> dict[str, str]:
+    basename = str(file_info.get("basename") or Path(str(file_info.get("path") or "")).name)
+    extension = Path(basename).suffix
+    original_name = basename[: -len(extension)] if extension else basename
+    try:
+        duration_minutes = str(max(0, round(float(file_info.get("duration")) / 60)))
+    except (TypeError, ValueError):
+        duration_minutes = UNKNOWN_VALUE
+    return {
+        **(scene_values if scene_values is not None else scene_template_variables(scene, separator)),
         "resolution": _resolution(file_info.get("height")),
         "height": _clean_text(file_info.get("height")),
         "video_codec": _clean_text(file_info.get("video_codec")),
@@ -193,7 +197,6 @@ def scene_variables(
         "original_name": _clean_text(original_name),
         "extension": extension.lstrip(".") or UNKNOWN_VALUE,
     }
-
 
 def _render_template(
     template: str,
@@ -284,18 +287,20 @@ def _normalized_path(path: str) -> str:
     return os.path.normcase(os.path.realpath(os.path.abspath(os.path.normpath(path))))
 
 
-def path_is_within(path: str, root: str) -> bool:
+def path_is_within(path: str, root: str, *, normalize=None) -> bool:
+    normalize = normalize or _normalized_path
     try:
-        return os.path.commonpath([_normalized_path(path), _normalized_path(root)]) == _normalized_path(root)
+        return os.path.commonpath([normalize(path), normalize(root)]) == normalize(root)
     except ValueError:
         return False
 
 
-def find_source_root(path: str, roots: Iterable[str]) -> str | None:
-    candidates = [root for root in roots if root and path_is_within(path, root)]
+def find_source_root(path: str, roots: Iterable[str], *, normalize=None) -> str | None:
+    normalize = normalize or _normalized_path
+    candidates = [root for root in roots if root and path_is_within(path, root, normalize=normalize)]
     if not candidates:
         return None
-    return max(candidates, key=lambda value: len(_normalized_path(value)))
+    return max(candidates, key=lambda value: len(normalize(value)))
 
 
 @dataclass
@@ -346,17 +351,18 @@ class DestinationValidation:
     warnings: list[str]
 
 
-def validate_destination(source_path, source_root, source_basename, folder, basename, status) -> DestinationValidation:
+def validate_destination(source_path, source_root, source_basename, folder, basename, status, *, normalize=None) -> DestinationValidation:
     """Preserve status precedence: identical paths are unchanged even with warnings."""
+    normalize = normalize or _normalized_path
     destination = str(Path(folder) / basename)
     result = DestinationValidation(status, [], [])
-    if not path_is_within(destination, source_root):
+    if not path_is_within(destination, source_root, normalize=normalize):
         result.status = "blocked"
         result.warnings.append("The destination would leave the file's Stash source.")
-    if _normalized_path(source_path) == _normalized_path(destination):
+    if normalize(source_path) == normalize(destination):
         result.status = "unchanged"
         return result
-    if _normalized_path(str(Path(source_path).parent)) != _normalized_path(folder):
+    if normalize(str(Path(source_path).parent)) != normalize(folder):
         result.actions.append("move")
     if source_basename != basename:
         result.actions.append("rename")

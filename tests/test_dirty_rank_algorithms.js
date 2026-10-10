@@ -1139,4 +1139,107 @@ function performer(id, rating, deviation, matches) {
   delete global.window.localStorage;
 }
 
+{
+  const settings = algorithms.settingsFromConfiguration({
+    categories: {
+      FEMALE: [{ name: "Appearance" }, { name: "Performance" }],
+      MALE: [{ name: "Appearance" }],
+    },
+  });
+  const people = [
+    { id: "pair-left", name: "Left", gender: "FEMALE", image_path: "/portrait.svg" },
+    { id: "pair-right", name: "Right", gender: "FEMALE", image_path: "/portrait.svg" },
+    { id: "other-left", name: "Other left", gender: "MALE", image_path: "/portrait.svg" },
+    { id: "other-right", name: "Other right", gender: "MALE", image_path: "/portrait.svg" },
+  ];
+  const state = (revision, appearance, performance, cohort = "FEMALE") => ({
+    revision,
+    pools: {
+      ["appearance|" + cohort]: pool(appearance, 70, 10),
+      ...(performance === undefined ? {} : { ["performance|" + cohort]: pool(performance, 70, 10) }),
+    },
+  });
+  algorithms.setOverallReferencePerformers(people);
+  algorithms.applyRatingIndex({
+    revision: 3000,
+    states: {
+      "pair-left": state(3000, 1100, 1000),
+      "pair-right": state(3000, 1200, 1200),
+      "other-left": state(3000, 1100, undefined, "MALE"),
+      "other-right": state(3000, 1200, undefined, "MALE"),
+    },
+  });
+  const score = (person, category, cohort) => algorithms.overallCategoryScoreFor(person, category, cohort, settings);
+  const beforeAppearance = score(people[0], "appearance", "FEMALE");
+  const beforePerformance = score(people[0], "performance", "FEMALE");
+  const beforeOtherCohort = score(people[2], "appearance", "MALE");
+  assert.match(algorithms.overallCategoryScoresTitle(people[0], "__overall__", "FEMALE", settings), /Appearance: #2/);
+  const publications = [];
+  const unsubscribe = algorithms.subscribeToOverallSortSettings(() => {
+    publications.push(
+      people.slice(0, 2).map(person => algorithms.poolFor(person, "appearance", "FEMALE", settings).rating),
+    );
+  });
+  const updates = [
+    { id: "pair-left", state: state(3001, 1300, 1000) },
+    { id: "pair-right", state: state(3001, 900, 1200) },
+  ];
+  assert.strictEqual(algorithms.updatePerformerStates(updates), true);
+  assert.deepStrictEqual(publications, [[1300, 900]], "one publication exposes both accepted vote states together");
+  assert.notStrictEqual(score(people[0], "appearance", "FEMALE"), beforeAppearance, "the changed pool cache rebuilds");
+  assert.strictEqual(
+    score(people[0], "performance", "FEMALE"),
+    beforePerformance,
+    "an unchanged category retains its cache",
+  );
+  assert.strictEqual(
+    score(people[2], "appearance", "MALE"),
+    beforeOtherCohort,
+    "an unrelated cohort retains its cache",
+  );
+  assert.match(algorithms.overallCategoryScoresTitle(people[0], "__overall__", "FEMALE", settings), /Appearance: #1/);
+  assert.match(algorithms.overallCategoryScoresTitle(people[1], "__overall__", "FEMALE", settings), /Appearance: #2/);
+  assert.strictEqual(algorithms.updatePerformerStates(updates), false, "an identical revision is not republished");
+  algorithms.updatePerformerState(people[0], state(3000, 800, 1000));
+  assert.strictEqual(
+    algorithms.poolFor(people[0], "appearance", "FEMALE", settings).rating,
+    1300,
+    "a stale individual vote cannot regress a performer",
+  );
+  assert.strictEqual(publications.length, 1, "stale and repeated updates publish nothing");
+
+  algorithms.updatePerformerState(people[2], state(3003, 1250, undefined, "MALE"));
+  algorithms.updatePerformerState(people[1], state(3002, 1000, 1200));
+  assert.strictEqual(
+    algorithms.poolFor(people[1], "appearance", "FEMALE", settings).rating,
+    1000,
+    "another performer's global maximum cannot reject this performer's newer state",
+  );
+
+  algorithms.updatePerformerState(people[0], { revision: 3002, pools: { "performance|FEMALE": pool(1000, 70, 10) } });
+  assert.strictEqual(
+    score(people[1], "appearance", "FEMALE").rating,
+    50,
+    "undo removing a pool invalidates the category population",
+  );
+  algorithms.applyRatingIndex({ revision: 3004, states: { "pair-right": state(3004, 1400, 1200) } });
+  const beforeStaleUndo = publications.length;
+  algorithms.updatePerformerStates([
+    { id: "pair-left", state: state(3003, 1100, 1000) },
+    { id: "pair-right", state: state(3003, 1200, 1200) },
+  ]);
+  assert.strictEqual(
+    algorithms.poolFor(people[1], "appearance", "FEMALE", settings).rating,
+    1400,
+    "a stale undo cannot regress the latest full snapshot",
+  );
+  assert.strictEqual(
+    algorithms.poolFor(people[0], "appearance", "FEMALE", settings).matches,
+    0,
+    "a stale reply cannot resurrect a performer absent from the full snapshot",
+  );
+  assert.strictEqual(publications.length, beforeStaleUndo);
+  unsubscribe();
+}
+
 console.log("DirtyRank information-gain and overall scoring algorithm tests passed");

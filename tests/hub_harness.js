@@ -179,6 +179,7 @@ function createHubHarness(options = {}) {
       if (renderer.changed) render();
       await new Promise(setImmediate);
     }
+    if (renderer.changed) throw new Error("Hub render did not settle after 30 rounds");
     return renderer.tree;
   }
   async function tick(delay = 400) {
@@ -207,6 +208,7 @@ function createHubHarness(options = {}) {
     errors,
     timers,
     settings,
+    revisions,
     nodes: predicate => findAll(renderer.tree, predicate),
     text: () => text(renderer.tree),
     get route() {

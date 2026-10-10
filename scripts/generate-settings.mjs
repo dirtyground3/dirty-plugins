@@ -10,6 +10,7 @@ import lib from "./build-lib.cjs";
 const { root, buildRoot, registry } = lib;
 const TYPES = ["BOOLEAN", "NUMBER", "STRING"];
 const SETTING_KEYS = ["type", "displayName", "description", "default", "integer", "min", "max", "step", "options"];
+const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
 
 export function schemaPath(pluginId) {
   return path.join(root, "schemas", pluginId + ".settings.json");
@@ -20,16 +21,16 @@ function fail(pluginId, message) {
 }
 
 export function validateSchema(pluginId, schema) {
-  if (!schema || typeof schema !== "object" || Array.isArray(schema)) fail(pluginId, "must be an object");
+  if (!isObject(schema)) fail(pluginId, "must be an object");
   for (const key of Object.keys(schema))
     if (!["settings", "constants"].includes(key)) fail(pluginId, "unknown key " + key);
-  if (!schema.settings || typeof schema.settings !== "object" || Array.isArray(schema.settings))
-    fail(pluginId, "settings must be an object");
-  if (schema.constants !== undefined && (typeof schema.constants !== "object" || Array.isArray(schema.constants))) {
+  if (!isObject(schema.settings)) fail(pluginId, "settings must be an object");
+  if (schema.constants !== undefined && !isObject(schema.constants)) {
     fail(pluginId, "constants must be an object");
   }
   for (const [name, setting] of Object.entries(schema.settings)) {
     const where = message => fail(pluginId, name + " " + message);
+    if (!isObject(setting)) where("must be an object");
     for (const key of Object.keys(setting)) if (!SETTING_KEYS.includes(key)) where("has unknown key " + key);
     if (!TYPES.includes(setting.type)) where("needs a type of " + TYPES.join(", "));
     for (const key of ["displayName", "description"])
@@ -48,8 +49,11 @@ export function validateSchema(pluginId, schema) {
         !values.length ||
         setting.options.some(
           option =>
+            !isObject(option) ||
             typeof option.label !== "string" ||
+            !option.label.trim() ||
             !["string", "number"].includes(typeof option.value) ||
+            (typeof option.value === "number" && !Number.isFinite(option.value)) ||
             Object.keys(option).some(key => key !== "value" && key !== "label"),
         )
       ) {
@@ -83,7 +87,15 @@ export function loadSchema(pluginId) {
 
 /** Language-neutral tables in schema order; every generator output derives from these. */
 export function settingsTables(schema) {
-  const tables = { order: [], defaults: {}, limits: {}, options: {}, real: [], constants: schema.constants || {} };
+  const tables = {
+    order: [],
+    defaults: {},
+    limits: {},
+    options: {},
+    integers: [],
+    real: [],
+    constants: schema.constants || {},
+  };
   for (const [name, setting] of Object.entries(schema.settings)) {
     tables.order.push(name);
     if (setting.default !== undefined) tables.defaults[name] = setting.default;
@@ -91,6 +103,7 @@ export function settingsTables(schema) {
     for (const key of ["min", "max", "step"]) if (setting[key] !== undefined) limits[key] = setting[key];
     if (Object.keys(limits).length) tables.limits[name] = limits;
     if (setting.options) tables.options[name] = setting.options;
+    if (setting.integer) tables.integers.push(name);
     if (setting.type === "NUMBER" && !setting.integer) tables.real.push(name);
   }
   return tables;
@@ -116,7 +129,7 @@ export function typescriptModule(pluginId, schema) {
   const tables = settingsTables(schema);
   return (
     header(pluginId, "//") +
-    ["order", "defaults", "limits", "options", "constants"]
+    ["order", "defaults", "limits", "options", "integers", "constants"]
       .map(name => "export const " + name + " = " + JSON.stringify(tables[name], null, 2) + ";\n")
       .join("")
   );

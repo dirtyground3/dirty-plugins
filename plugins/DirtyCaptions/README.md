@@ -11,8 +11,8 @@ MP4 `mov_text` captions.
 
 1. Install DirtyCaptions and update its DirtyPlugins dependency.
 2. Reload Stash plugins, then hard-refresh the Stash tab (**Ctrl+F5**).
-3. Open a scene with embedded text subtitles. Wait for **Loading embedded
-   captions…** to finish; the first extraction can take a few seconds or longer.
+3. Open a scene with embedded text subtitles. Captions load silently in the
+   background; the first extraction can take a few seconds or longer.
 4. Open the player's **CC** menu. An entry such as **English (embedded, track
    3)** identifies an embedded track. Select another language or **captions
    off** there.

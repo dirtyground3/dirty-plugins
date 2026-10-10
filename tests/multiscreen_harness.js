@@ -129,9 +129,9 @@ function createMultiscreenHarness(options = {}) {
             randomStart: false,
             loopScenes: false,
           },
-    graphql: async (query, variables) => {
+    graphql: async (query, variables, requestOptions) => {
       calls.push({ query, variables });
-      if (options.graphql) return options.graphql(query, variables);
+      if (options.graphql) return options.graphql(query, variables, requestOptions);
       if (query.includes("MultiscreenMarkers"))
         return { findSceneMarkers: { count: options.markers?.length || 0, scene_markers: options.markers || [] } };
       if (query.includes("MultiscreenScenes")) return { findScenes: { count: scenes.length, scenes } };
@@ -224,6 +224,7 @@ function createMultiscreenHarness(options = {}) {
     MutationObserver: Observer,
     console: { error: (...args) => errors.push(args) },
     URLSearchParams,
+    AbortController,
     Set,
   });
   const load = () => vm.runInContext(sourceFor("DirtyMultiscreen"), context);
@@ -239,6 +240,7 @@ function createMultiscreenHarness(options = {}) {
   }
   const flush = () => renderer.flush(render, 40);
   return {
+    owners: renderer.owners,
     window,
     document,
     grid,

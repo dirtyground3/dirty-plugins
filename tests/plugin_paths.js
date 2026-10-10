@@ -36,7 +36,7 @@ function compileSource(plugin, entry, { contents, external = [] } = {}) {
       outfile: "out.cjs",
       external,
     };
-    if (contents) {
+    if (contents !== undefined) {
       delete options.entryPoints;
       options.stdin = { contents, resolveDir: lib.pluginDirectory(configuration), loader: "ts", sourcefile: entry };
     }
@@ -49,14 +49,15 @@ const required = new Map();
 /** Evaluate a source module (or a test's own entry contents) once in this realm, like require(). */
 function requireSource(plugin, entry, { contents } = {}) {
   const filename = sourcePath(plugin, entry);
-  if (!required.has(filename)) {
+  const key = JSON.stringify([filename, contents]);
+  if (!required.has(key)) {
     const module = new Module(filename, null);
     module.filename = filename;
     module.paths = Module._nodeModulePaths(path.dirname(filename));
     module._compile(compileSource(plugin, entry, { contents }), filename);
-    required.set(filename, module.exports);
+    required.set(key, module.exports);
   }
-  return required.get(filename);
+  return required.get(key);
 }
 
 /**

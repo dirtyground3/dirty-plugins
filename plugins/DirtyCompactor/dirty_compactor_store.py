@@ -4,11 +4,16 @@ Compactor owns no second database. JSON snapshots are immutable at the run
 boundary; revision checks protect decisions made by multiple browser tabs.
 """
 import json
+from contextlib import closing
 
 import dirty_plugins_storage as storage
 
 
 def _schema(connection):
+    # Initialized on the first access only. Established polling reads must not
+    # execute DDL or reserve the shared database's writer lock.
+    if connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='dirty_compactor_records'").fetchone():
+        return
     connection.execute("""CREATE TABLE IF NOT EXISTS dirty_compactor_records (
         kind TEXT NOT NULL, id TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0,
         value_json TEXT NOT NULL, updated_at TEXT NOT NULL,
@@ -16,24 +21,23 @@ def _schema(connection):
 
 
 def get(kind, record_id, path=None):
-    with storage.transaction(path) as connection:
+    with closing(storage.connect(path)) as connection:
         _schema(connection)
         row = connection.execute(
             "SELECT value_json, revision FROM dirty_compactor_records WHERE kind=? AND id=?",
             (kind, record_id)).fetchone()
-        if row is None:
-            return None
-        value = json.loads(row[0])
-        value["_revision"] = row[1]
-        return value
+    if row is None:
+        return None
+    return dict(json.loads(row[0]), _revision=row[1])
 
 
 def list_records(kind, limit=50, path=None):
-    with storage.transaction(path) as connection:
+    with closing(storage.connect(path)) as connection:
         _schema(connection)
-        return [dict(json.loads(row[0]), _revision=row[1]) for row in connection.execute(
+        rows = connection.execute(
             "SELECT value_json, revision FROM dirty_compactor_records WHERE kind=? ORDER BY updated_at DESC LIMIT ?",
-            (kind, max(1, min(int(limit), 1000))))]
+            (kind, max(1, min(int(limit), 1000)))).fetchall()
+    return [dict(json.loads(row[0]), _revision=row[1]) for row in rows]
 
 
 def put(kind, record_id, value, expected=None, path=None):

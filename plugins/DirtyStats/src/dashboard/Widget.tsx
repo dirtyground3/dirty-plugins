@@ -1,7 +1,8 @@
 import { renderWidget } from "./Charts";
 import { FilterControl, SelectControl, WidgetOptions } from "./Controls";
-import { SIZES, SIZE_LABELS, WIDGETS, widgetHeightUnits, widgetTitle } from "../domain/dashboard";
+import { SIZES, SIZE_LABELS, WIDGETS, resourceKey, widgetHeightUnits, widgetTitle } from "../domain/dashboard";
 import { React, api, hub } from "../runtime";
+import { useChartTheme } from "../settings";
 import type * as R from "react";
 import type { DashboardWidgetProps } from "../props";
 export function DashboardWidget(props: DashboardWidgetProps): R.ReactElement | null {
@@ -9,6 +10,12 @@ export function DashboardWidget(props: DashboardWidgetProps): R.ReactElement | n
     definition = WIDGETS[widget.statistic];
   const title = widgetTitle(widget);
   const compact = widget.size !== "large" && !props.editing;
+  const theme = useChartTheme();
+  const resource = props.resources[resourceKey(widget)];
+  const body = React.useMemo(
+    () => renderWidget(widget, props.resources),
+    [widget.statistic, widget.size, widget.options, resource, theme],
+  );
   return (
     <article
       className={
@@ -95,7 +102,7 @@ export function DashboardWidget(props: DashboardWidgetProps): R.ReactElement | n
           </div>
         </div>
       ) : null}
-      <div className="dirty-stats-dashboard-widget-body">{renderWidget(widget, props.resources)}</div>
+      <div className="dirty-stats-dashboard-widget-body">{body}</div>
     </article>
   );
 }

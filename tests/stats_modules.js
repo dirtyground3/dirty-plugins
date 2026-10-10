@@ -32,6 +32,7 @@ const ENTRY = [
     "ages:domain/ages",
     "charts:domain/charts",
     "dashboardDomain:domain/dashboard",
+    "dashboardResources:dashboard/resources",
   ]
     .map(item => item.split(":"))
     .map(([name, path]) => "export * as " + name + ' from "./src/' + path + '";'),

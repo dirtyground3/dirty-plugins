@@ -55,6 +55,7 @@ const assert = require("node:assert/strict"),
   await h.click("Run now");
   assert.equal(h.requests[0].variables.args.mode, "execute");
   assert.equal(h.requests[0].variables.args.expectedStrategyHash, "b".repeat(64));
+  assert.equal(h.requests[0].variables.args.expectedPlanDigest, "c".repeat(64));
   assert.equal(h.dirty.at(-1), false);
   assert.match(text(h.tree), /Queued as Stash job 10/);
   await h.unmount();
@@ -76,6 +77,7 @@ const assert = require("node:assert/strict"),
     operation: args => ({
       settings: args.settings,
       strategy_hash: "b".repeat(64),
+      plan_digest: "c".repeat(64),
       total: 1,
       summary: { blocked: 1 },
       operations: [
@@ -105,6 +107,7 @@ const assert = require("node:assert/strict"),
     operation: args => ({
       settings: args.settings,
       strategy_hash: "b",
+      plan_digest: "c",
       total: 1,
       summary: { blocked: 1 },
       operations: [

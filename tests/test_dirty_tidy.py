@@ -47,6 +47,47 @@ def scene(file_path, **overrides):
 
 
 class DirtyTidyTests(unittest.TestCase):
+    def test_snapshot_fields_follow_only_enabled_strategy_inputs(self):
+        settings = dirty_tidy.normalize_settings({"moveEnabled": False, "renameEnabled": True,
+            "renameRequireStashId": False, "renamePattern": "{title}-{original_name}"})
+        self.assertEqual(dirty_tidy.snapshot_fields(settings), "id title files { id path basename }")
+        settings.update(moveEnabled=True, moveRequireStashId=True, hierarchyLevels=["{year}", "{first_performer}", "{parent_studio}"],
+                        renamePattern="{group}-{grade}-{height}-{duration_bucket}-{video_codec}")
+        fields = dirty_tidy.snapshot_fields(settings)
+        for needed in ("date", "performers { name gender }", "studio { name parent_studio { name } }", "groups { scene_index group { name } }",
+                       "rating100", "stash_ids { stash_id }", "height", "duration", "video_codec"):
+            self.assertIn(needed, fields)
+        self.assertNotIn("tags", fields)
+        self.assertNotIn("width", fields)
+        self.assertNotIn("organized", fields)
+
+    def test_plan_reuses_normalized_paths_and_scene_values_without_changing_operations(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            value = scene(root / "first.mp4", performers=[{"name": "One", "gender": "FEMALE"}], tags=[{"name": "Tag"}])
+            for index, name in enumerate(("second.mp4", "third.mp4"), 20):
+                value["files"].append({**value["files"][0], "id": str(index), "path": str(root / name), "basename": name})
+            for file in value["files"]:
+                Path(file["path"]).write_bytes(b"synthetic media")
+            settings = dirty_tidy.normalize_settings({"moveEnabled": True, "moveRequireStashId": False,
+                "hierarchyLevels": ["{first_performer}"], "renameEnabled": True, "renameRequireStashId": False,
+                "renamePattern": "{title}-{original_name}-{source}"})
+            roots = [str(root), str(root / "unrelated")]
+            with mock.patch.object(templates, "_normalized_path", wraps=templates._normalized_path) as baseline:
+                expected = [dirty_tidy.build_operation(value, file, roots, settings) for file in value["files"]]
+                previous_calls = baseline.call_count
+            with mock.patch.object(dirty_tidy, "_normalized_path", wraps=dirty_tidy._normalized_path) as normalized, \
+                 mock.patch.object(dirty_tidy, "scene_template_variables", wraps=dirty_tidy.scene_template_variables) as variables:
+                plan = dirty_tidy.build_plan(roots, [value], settings)
+                self.assertEqual(variables.call_count, 1)
+                self.assertLess(normalized.call_count, previous_calls / 2)
+                self.assertEqual(sum(call.args[0] == str(root) for call in normalized.call_args_list), 1)
+            self.assertEqual(plan["operations"], expected)
+            # A second plan recomputes filesystem identities instead of retaining the first cache.
+            with mock.patch.object(dirty_tidy, "_normalized_path", wraps=dirty_tidy._normalized_path) as normalized:
+                dirty_tidy.build_plan(roots, [value], settings)
+                self.assertEqual(sum(call.args[0] == str(root) for call in normalized.call_args_list), 1)
+
     def test_grade_maps_rating_to_alphabetically_sorted_letters(self):
         expected = {
             100: "A",
@@ -482,7 +523,7 @@ class DirtyTidyTests(unittest.TestCase):
             )
 
             class SnapshotClient:
-                def library_snapshot(self):
+                def library_snapshot(self, settings):
                     return [str(root)], [value]
 
             # The settings panel filters and pages locally; the backend returns everything.
@@ -748,8 +789,11 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
             self.scenes = scenes
             self.moves = []
 
-        def library_snapshot(self):
+        def library_snapshot(self, settings):
             return [str(self.root)], self.scenes
+
+        def file_path(self, file_id):
+            return next((item["path"] for value in self.scenes for item in value["files"] if item["id"] == file_id), "")
 
         def move_file(self, operation):
             self.moves.append(operation)
@@ -759,6 +803,136 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
         value = scene(path, id=scene_id, title=title)
         value["files"][0]["id"] = file_id
         return value
+
+    def authorization_fixture(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        environment = mock.patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(root / "dirty_plugins.sqlite3")})
+        environment.start()
+        self.addCleanup(environment.stop)
+        source = root / "first.mp4"
+        source.write_bytes(b"first")
+        client = self.SnapshotClient(root, [scene(source, title="First Scene")])
+        settings = {"moveEnabled": False, "renameEnabled": True, "renamePattern": "{title}"}
+        return root, client, settings
+
+    def test_later_preview_cannot_expand_an_earlier_confirmation(self):
+        root, client, settings = self.authorization_fixture()
+        first = dirty_tidy.preview_plan(client, settings, record_review=True)
+        later = root / "later.mp4"
+        later.write_bytes(b"later")
+        client.scenes.append(self._second_scene(later, "Later Scene", "2", "20"))
+        second = dirty_tidy.preview_plan(client, settings, record_review=True)
+        self.assertEqual(first["strategy_hash"], second["strategy_hash"])
+        self.assertNotEqual(first["plan_digest"], second["plan_digest"])
+
+        # This is the queued task contract, after another tab created preview B.
+        with mock.patch.object(dirty_tidy, "StashClient", return_value=client), \
+                mock.patch.object(dirty_tidy.shared_storage, "get_plugin_settings", return_value=settings):
+            result = dirty_tidy.run({"args": {
+                "mode": "execute", "expectedStrategyHash": first["strategy_hash"],
+                "expectedPlanDigest": first["plan_digest"],
+            }})
+        self.assertEqual(result["completed"], 1)
+        self.assertEqual(result["unreviewed"], 1)
+        self.assertEqual(result["reviewed_missing"], 0)
+        self.assertEqual(result["confirmed_plan_digest"], first["plan_digest"])
+        self.assertEqual([item["file_id"] for item in client.moves], ["10"])
+
+        # Repeating the same preview in another order retains its existing record.
+        before = dirty_tidy.shared_storage.get_metadata(dirty_tidy.REVIEW_NAMESPACE, second["plan_digest"])
+        client.scenes.reverse()
+        repeat = dirty_tidy.preview_plan(client, settings, record_review=True)
+        self.assertEqual(repeat["plan_digest"], second["plan_digest"])
+        self.assertEqual(dirty_tidy.shared_storage.get_metadata(dirty_tidy.REVIEW_NAMESPACE, repeat["plan_digest"]), before)
+
+    def test_manual_execution_requires_its_preview_identity_and_matching_strategy(self):
+        root, client, settings = self.authorization_fixture()
+        preview = dirty_tidy.preview_plan(client, settings, record_review=True)
+        for digest in ("", "not-a-digest", "0" * 64):
+            with self.subTest(digest=digest), self.assertRaises(dirty_tidy.PluginError):
+                dirty_tidy.execute_plan(client, settings, preview["strategy_hash"], dirty_tidy.Reporter(), digest)
+        other_settings = {**settings, "renamePattern": "different"}
+        with self.assertRaises(dirty_tidy.PluginError):
+            dirty_tidy.execute_plan(client, other_settings, dirty_tidy.strategy_hash(other_settings),
+                                    dirty_tidy.Reporter(), preview["plan_digest"])
+        self.assertEqual(client.moves, [])
+
+    def test_changed_missing_or_relocated_source_is_not_authorized_by_old_preview(self):
+        for change in ("content", "missing", "path", "metadata", "destination"):
+            with self.subTest(change=change):
+                root, client, settings = self.authorization_fixture()
+                preview = dirty_tidy.preview_plan(client, settings, record_review=True)
+                source = root / "first.mp4"
+                if change == "content":
+                    source.write_bytes(b"replacement media with a different size")
+                    # A new preview of the changed file must not replace the old
+                    # source identity, even though its operation key is identical.
+                    newer = dirty_tidy.preview_plan(client, settings, record_review=True)
+                    self.assertNotEqual(newer["plan_digest"], preview["plan_digest"])
+                elif change == "missing":
+                    source.unlink()
+                elif change == "path":
+                    relocated = root / "relocated.mp4"
+                    source.rename(relocated)
+                    client.scenes[0]["files"][0].update(path=str(relocated), basename=relocated.name)
+                elif change == "metadata":
+                    client.scenes[0]["title"] = "Different Destination"
+                else:
+                    (root / "First Scene.mp4").write_bytes(b"destination sentinel")
+                result = dirty_tidy.execute_plan(client, settings, preview["strategy_hash"],
+                                                dirty_tidy.Reporter(), preview["plan_digest"])
+                self.assertEqual(result["completed"], 0)
+                self.assertEqual(result["reviewed_missing"], 1)
+                self.assertEqual(client.moves, [])
+
+    def test_each_move_checks_for_changes_since_the_execution_snapshot(self):
+        for change in ("content", "missing", "path", "destination"):
+            with self.subTest(change=change):
+                root, client, settings = self.authorization_fixture()
+                preview = dirty_tidy.preview_plan(client, settings, record_review=True)
+                source = root / "first.mp4"
+
+                def changed_file_path(file_id):
+                    if change == "content":
+                        source.write_bytes(b"changed after execution planned")
+                    elif change == "missing":
+                        source.unlink()
+                    elif change == "path":
+                        return str(root / "different.mp4")
+                    else:
+                        (root / "First Scene.mp4").write_bytes(b"destination sentinel")
+                    return str(source)
+
+                client.file_path = changed_file_path
+                result = dirty_tidy.execute_plan(client, settings, preview["strategy_hash"],
+                                                dirty_tidy.Reporter(), preview["plan_digest"])
+                self.assertEqual(result["completed"], 0)
+                self.assertEqual(result["failed"], 1)
+                self.assertEqual(client.moves, [])
+                self.assertEqual(dirty_tidy.exit_code_for(result), 1)
+
+    def test_preview_records_reject_mutation_and_corrupted_contents(self):
+        root, client, settings = self.authorization_fixture()
+        preview = dirty_tidy.preview_plan(client, settings, record_review=True)
+        before = dirty_tidy.shared_storage.get_metadata(dirty_tidy.REVIEW_NAMESPACE, preview["plan_digest"])
+        preview["operations"][0]["destination_path"] = str(root / "unseen.mp4")
+        with self.assertRaises(dirty_tidy.PluginError):
+            dirty_tidy.save_reviewed_plan(preview)
+        self.assertEqual(dirty_tidy.shared_storage.get_metadata(dirty_tidy.REVIEW_NAMESPACE, preview["plan_digest"]), before)
+        corrupted = json.loads(before)
+        corrupted["operations"][0]["destination_path"] = str(root / "unseen.mp4")
+        dirty_tidy.shared_storage.set_metadata(dirty_tidy.REVIEW_NAMESPACE, preview["plan_digest"], json.dumps(corrupted))
+        with self.assertRaises(dirty_tidy.PluginError):
+            dirty_tidy.execute_plan(client, settings, preview["strategy_hash"], dirty_tidy.Reporter(), preview["plan_digest"])
+        self.assertEqual(client.moves, [])
+
+    def test_stash_path_validation_reads_only_the_affected_file(self):
+        client = dirty_tidy.StashClient({"Host": "localhost", "Port": 9999})
+        with mock.patch.object(client, "call", return_value={"findFiles": {"files": [{"id": "10", "path": "source.mp4"}]}}) as call:
+            self.assertEqual(client.file_path("10"), "source.mp4")
+            self.assertEqual(call.call_args.args[1], {"ids": ["10"]})
 
     def test_execute_applies_only_operations_from_the_confirmed_preview(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -789,7 +963,7 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
                 # The previously missing file becomes available after the preview.
                 late_file.write_bytes(b"late")
                 result = dirty_tidy.execute_plan(
-                    client, settings, preview["strategy_hash"], dirty_tidy.Reporter()
+                    client, settings, preview["strategy_hash"], dirty_tidy.Reporter(), preview["plan_digest"]
                 )
 
             self.assertEqual(result["completed"], 1)
@@ -818,7 +992,7 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
                 plan = dirty_tidy.build_plan([str(root)], [scene(source)], settings)
                 with self.assertRaises(dirty_tidy.PluginError):
                     dirty_tidy.execute_plan(
-                        client, settings, plan["strategy_hash"], dirty_tidy.Reporter()
+                        client, settings, plan["strategy_hash"], dirty_tidy.Reporter(), plan["plan_digest"]
                     )
 
     def test_an_all_failed_execute_reports_and_exits_as_a_failure(self):
@@ -846,7 +1020,7 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
                     client, settings, record_review=True
                 )
                 result = dirty_tidy.execute_plan(
-                    client, settings, preview["strategy_hash"], dirty_tidy.Reporter()
+                    client, settings, preview["strategy_hash"], dirty_tidy.Reporter(), preview["plan_digest"]
                 )
 
             self.assertEqual(result["completed"], 0)
@@ -860,7 +1034,7 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
         self.assertEqual(dirty_tidy.exit_code_for({"skipped": True}), 0)
         self.assertEqual(dirty_tidy.exit_code_for(None), 0)
 
-    def test_execute_rejects_a_stale_explicit_snapshot_digest(self):
+    def test_execute_rejects_an_unrecorded_preview_even_with_an_approved_strategy(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             database = root / "dirty_plugins.sqlite3"
@@ -1038,10 +1212,10 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
                 os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}
             ):
                 self.assertIsNone(
-                    dirty_tidy.load_reviewed_plan(plan["strategy_hash"])
+                    dirty_tidy.load_reviewed_plan(plan["plan_digest"], plan["strategy_hash"])
                 )
                 dirty_tidy.save_reviewed_plan(plan)
-                reviewed = dirty_tidy.load_reviewed_plan(plan["strategy_hash"])
+                reviewed = dirty_tidy.load_reviewed_plan(plan["plan_digest"], plan["strategy_hash"])
 
             self.assertEqual(
                 reviewed,
@@ -1052,7 +1226,7 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
                             for operation in plan["operations"]
                             if operation["status"] == "ready"
                         )
-                    )
+                    ): plan["operations"][0]["source_fingerprint"]
                 },
             )
 

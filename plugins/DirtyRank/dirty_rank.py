@@ -517,6 +517,7 @@ class RatingRepository:
 
     def all_states(self) -> dict[str, Any]:
         with self.connect() as connection:
+            connection.execute("BEGIN")
             revision = self.revision(connection)
             states: dict[str, Any] = {}
             for row in connection.execute("SELECT * FROM dirty_rank_pools ORDER BY performer_id"):
@@ -806,10 +807,12 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
         repository = RatingRepository(connection=connection)
         mode = str(args.get("mode") or "record")
         if mode == "getSettings":
-            return {
-                "revision": shared_storage.get_plugin_revision(PLUGIN_ID, connection=connection),
-                "settings": shared_storage.get_plugin_settings(PLUGIN_ID, connection=connection),
-            }
+            with repository.connect() as snapshot:
+                snapshot.execute("BEGIN")
+                return {
+                    "revision": shared_storage.get_plugin_revision(PLUGIN_ID, connection=snapshot),
+                    "settings": shared_storage.get_plugin_settings(PLUGIN_ID, connection=snapshot),
+                }
         if mode == "saveSettings":
             return save_settings(repository, connection, args)
         if mode == "loadAll":

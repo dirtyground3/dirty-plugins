@@ -66,11 +66,15 @@ async function main() {
   tick();
   await controller.flush();
   assert.equal(controller.saved().value, 5, "a rejected write does not poison the queue");
+  controller.schedule(7);
+  await controller.flush();
+  assert.equal(timers.size, 0, "flush consumes the pending debounce before a settings reload");
+  assert.equal(controller.saved().value, 7);
   controller.schedule(6);
   controller.dispose();
   tick();
   await controller.flush();
-  assert.deepEqual(writes, [2, 3, 4, 5], "disposal cancels pending writes");
+  assert.deepEqual(writes, [2, 3, 4, 5, 7], "disposal cancels pending writes");
   console.log("Shared settings debounce, serialization, validation, recovery and cleanup passed");
 }
 main().catch(error => {

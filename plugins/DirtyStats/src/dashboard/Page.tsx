@@ -2,6 +2,7 @@ import { State } from "./Chart";
 import { SelectControl, WidgetOptions } from "./Controls";
 import { DashboardFilterChooser, DashboardFilterDialog } from "./Filter";
 import { DashboardWidget } from "./Widget";
+import { useDashboardResources } from "./resources";
 import {
   DASHBOARD_VERSION,
   MAX_WIDGETS,
@@ -10,7 +11,6 @@ import {
   WIDGETS,
   WIDGET_ORDER,
   dashboardNeedsInitialSave,
-  fetchPages,
   filterSummary,
   nextWidgetId,
   normalizeFilter,
@@ -21,12 +21,12 @@ import {
   requiredResources,
   widgetTitle,
 } from "../domain/dashboard";
-import { React, hub, ui } from "../runtime";
+import { React, ui } from "../runtime";
 import { getStatsSettingExtra, setStatsSettingExtra, statsSettingsReady } from "../settings";
 import type * as R from "react";
 import type { DashboardPageProps } from "../props";
 import type { SavedFilter } from "../runtime";
-import type { Capacity, DashboardResource, DashboardWidgetModel, ResourceState } from "../types";
+import type { DashboardWidgetModel } from "../types";
 export function DashboardPage(props: DashboardPageProps): R.ReactElement | null {
   const [widgets, setWidgets] = React.useState<DashboardWidgetModel[]>([]);
   const [ready, setReady] = React.useState(false);
@@ -41,7 +41,7 @@ export function DashboardPage(props: DashboardPageProps): R.ReactElement | null 
   const [dragAnnouncement, setDragAnnouncement] = React.useState("");
   const dragCleanup = React.useRef<((announce: boolean) => void) | null>(null);
   const initialSave = React.useRef<boolean | null>(null);
-  const [resources, setResources] = React.useState<Record<string, ResourceState>>({});
+  const resources = useDashboardResources(requiredResources(widgets), ready);
   React.useEffect(() => {
     let active = true;
     Promise.resolve(statsSettingsReady).then(() => {
@@ -64,45 +64,6 @@ export function DashboardPage(props: DashboardPageProps): R.ReactElement | null 
     setStatsSettingExtra("dashboardSchemaVersion", DASHBOARD_VERSION);
     setStatsSettingExtra("dashboardWidgets", widgets);
   }, [ready, widgets]);
-  const resourcesKey = JSON.stringify(requiredResources(widgets));
-  React.useEffect(() => {
-    if (!ready) return;
-    const controller = new AbortController();
-    const requested: DashboardResource[] = JSON.parse(resourcesKey);
-    const publish = (key: string, state: ResourceState) => setResources(current => ({ ...current, [key]: state }));
-    requested.forEach(request => {
-      publish(request.key, { loading: true, rows: [], error: "", capacity: null });
-      fetchPages(request.group, request.filter, controller.signal, request.limit)
-        .then(async rows => {
-          let capacity: Capacity | null = null;
-          if (request.group === "growth" && !controller.signal.aborted) {
-            try {
-              const configuration = await hub.graphql<{
-                configuration: { general: { stashes: Array<{ path: string; excludeVideo: boolean }> } };
-              }>(
-                "query DirtyStatsDashboardSources{configuration{general{stashes{path excludeVideo}}}}",
-                {},
-                { signal: controller.signal },
-              );
-              const paths = configuration.configuration.general.stashes
-                .filter(source => !source.excludeVideo)
-                .map(source => source.path);
-              capacity = await hub.runPluginOperation<Capacity>("dirtyStats", { mode: "capacity", paths });
-            } catch (_capacityError) {
-              capacity = null;
-            }
-          }
-          if (!controller.signal.aborted) publish(request.key, { loading: false, rows, error: "", capacity });
-        })
-        .catch(error => {
-          if (!controller.signal.aborted)
-            publish(request.key, { loading: false, rows: [], error: error.message || String(error), capacity: null });
-        });
-    });
-    return () => {
-      controller.abort();
-    };
-  }, [ready, resourcesKey]);
   React.useEffect(
     () => () => {
       if (dragCleanup.current) dragCleanup.current(false);

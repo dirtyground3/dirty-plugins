@@ -9,6 +9,9 @@ volatility instead of relying on a capped integer score.
 - Standings gallery and podium use Stash's native performer cards, so installed
   themes and performer-card customizations apply automatically. DirtyRank scores
   and ranks appear separately below the cards; the cards keep their Stash ratings.
+- Overall leaderboards and native overall sorting prepare complete scores before
+  showing standings. Large calculations let the interface respond between batches;
+  votes update prepared comparison sums immediately. The rating formula stays the same.
 - Battle, leaderboard, and settings controls use the shared DirtyPlugins style
   primitives. Native performer cards and the native scene player keep their Stash
   styling and behaviour as themes change.

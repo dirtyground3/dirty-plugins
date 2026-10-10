@@ -29,10 +29,27 @@ export function createMultiscreenPlaylists<T>(
     return Array.from({ length: Math.max(0, totalScreens) }, () => [] as T[]);
   }
   if (splitItems) {
-    const sourceItems = randomize ? shuffleMultiscreenItems(items, random) : items.slice();
+    const sourceItems = randomize ? shuffleMultiscreenItems(items, random) : items;
     return splitMultiscreenItemsByIndex(sourceItems, totalScreens);
   }
   return Array.from({ length: Math.max(0, totalScreens) }, () =>
-    randomize ? shuffleMultiscreenItems(items, random) : items.slice(),
+    randomize ? shuffleMultiscreenItems(items, random) : items,
   );
+}
+
+/** Repeatable per-page permutations keep split assignments stable when panes advance independently. */
+export function pagePlaylists<T>(
+  items: T[],
+  totalScreens: number,
+  randomize: boolean,
+  split: boolean,
+  seed: number,
+  page: number,
+) {
+  let value = (seed + Math.imul(page, 2654435761)) >>> 0;
+  const random = () => {
+    value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
+    return value / 4294967296;
+  };
+  return createMultiscreenPlaylists(items, totalScreens, randomize, split, random);
 }

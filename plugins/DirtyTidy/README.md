@@ -52,7 +52,10 @@ automation (or approve without running), and queues the plan.
   one external Stash ID.
 - Stash's native `moveFiles` mutation performs the filesystem and database
   update together.
-- Execution requires the strategy hash produced by a fresh preview.
+- Manual execution requires the strategy hash and immutable identity of the
+  confirmed preview. A later preview in another tab cannot expand its file list.
+  Changed or missing sources and newly unsafe destinations are skipped; each
+  file's Stash path and filesystem state are checked again immediately before moving.
 - Changing a folder or filename strategy clears its automation approval.
 - Automated execution rechecks the saved mode and approved strategy hash before
   moving any file. Approval covers the rules, including future scenes, rather

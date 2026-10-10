@@ -120,6 +120,7 @@ export interface TileProps {
   useFindScene: UseFindScene;
 }
 export interface GridProps {
+  continuation?: { initialPage: number; pageCount: number; loadPage(page: number): Promise<Item[][]> };
   columns: number;
   rows: number;
   totalScreens: number;

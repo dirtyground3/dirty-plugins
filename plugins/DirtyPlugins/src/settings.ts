@@ -3,6 +3,7 @@ import {
   CONFIGURATION_CHANGED_EVENT,
   FIELD_ACTIONS_CHANGED_EVENT,
   FIELD_LIMITS,
+  FIELD_INTEGERS,
   FIELD_OPTIONS,
   MANAGED_PLUGIN_IDS,
   MANAGED_PLUGIN_ID_SET,
@@ -104,6 +105,17 @@ export function loadSettingsSnapshot(): Promise<Snapshot> {
   });
 }
 
+/** Configuration events already identify the plugin; keep the other settings and metadata untouched. */
+export function loadPluginConfiguration(pluginId: string) {
+  return runSharedOperation<{ settings: Record<string, unknown>; revision: number }>({
+    mode: "getSettings",
+    pluginId,
+  }).then(payload => {
+    rememberPluginRevision(pluginId, payload.revision);
+    return { settings: asObject(payload.settings), revision: payload.revision };
+  });
+}
+
 export function initialFieldValue(pluginId: string, setting: Setting, rawSettings: Record<string, unknown>) {
   if (Object.prototype.hasOwnProperty.call(rawSettings, setting.name)) return rawSettings[setting.name];
   const defaults = PLUGIN_DEFAULTS[pluginId] || {};
@@ -123,29 +135,70 @@ export function createDrafts(snapshot: Snapshot) {
   return drafts;
 }
 
-export function serializeFieldValue(setting: Setting, value: FieldValue) {
+export function serializeFieldValue(pluginId: string, setting: Setting, value: FieldValue) {
   if (setting.type === "BOOLEAN") return Boolean(value);
   if (setting.type === "NUMBER") {
-    const numberValue = Number(value);
-    if (!Number.isFinite(numberValue)) throw new Error((setting.display_name || setting.name) + " must be a number.");
+    const label = setting.display_name || setting.name;
+    const numberValue = typeof value === "number" || (typeof value === "string" && value.trim()) ? Number(value) : NaN;
+    if (!Number.isFinite(numberValue)) throw new Error(label + " must be a number.");
+    if (FIELD_INTEGERS[pluginId]?.has(setting.name) && !Number.isInteger(numberValue))
+      throw new Error(label + " must be a whole number.");
+    const limits = FIELD_LIMITS[pluginId]?.[setting.name];
+    if (limits?.min !== undefined && numberValue < limits.min)
+      throw new Error(label + " must be at least " + limits.min + ".");
+    if (limits?.max !== undefined && numberValue > limits.max)
+      throw new Error(label + " must be at most " + limits.max + ".");
+    if (limits?.step !== undefined) {
+      const steps = (numberValue - (limits.min ?? 0)) / limits.step;
+      if (Math.abs(steps - Math.round(steps)) > 1e-8)
+        throw new Error(label + " must use increments of " + limits.step + ".");
+    }
     return numberValue;
   }
   return String(value == null ? "" : value);
 }
 
+export function fieldValuesEqual(pluginId: string, setting: Setting, left: FieldValue, right: FieldValue) {
+  try {
+    return serializeFieldValue(pluginId, setting, left) === serializeFieldValue(pluginId, setting, right);
+  } catch (_error) {
+    return false;
+  }
+}
+
+/** Refresh clean fields while retaining raw edits, including invalid values. */
+export function mergePluginDraft(
+  plugin: Plugin,
+  draft: Record<string, FieldValue> | undefined,
+  saved: Record<string, FieldValue> | undefined,
+  incoming: Record<string, FieldValue>,
+  editedFields: ReadonlySet<string>,
+) {
+  const next = { ...incoming };
+  (plugin.settings || []).forEach(setting => {
+    if (
+      draft &&
+      (editedFields.has(setting.name) ||
+        !fieldValuesEqual(plugin.id, setting, draft[setting.name], saved?.[setting.name]))
+    )
+      next[setting.name] = draft[setting.name];
+  });
+  return next;
+}
+
 export function standardDraftsAreDirty(snapshot: Snapshot | null, drafts: Drafts, savedDrafts: Drafts) {
   if (!snapshot) return false;
-  return snapshot.plugins.some(plugin =>
-    (plugin.settings || []).some(setting => {
-      try {
-        return (
-          serializeFieldValue(setting, drafts[plugin.id] && drafts[plugin.id][setting.name]) !==
-          serializeFieldValue(setting, savedDrafts[plugin.id] && savedDrafts[plugin.id][setting.name])
+  return snapshot.plugins.some(
+    plugin =>
+      !settingsPanels[plugin.id] &&
+      (plugin.settings || []).some(setting => {
+        return !fieldValuesEqual(
+          plugin.id,
+          setting,
+          drafts[plugin.id]?.[setting.name],
+          savedDrafts[plugin.id]?.[setting.name],
         );
-      } catch (_error) {
-        return true;
-      }
-    }),
+      }),
   );
 }
 
