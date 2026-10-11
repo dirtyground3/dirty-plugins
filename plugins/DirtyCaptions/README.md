@@ -61,6 +61,11 @@ stored size, modification time and hashes decide whether the saved result
 still applies. Files with subtitle streams, files not indexed yet and failed
 checks are probed as before.
 
+Scene rating, tag and other metadata edits do not queue caption-index jobs.
+Scene creation, media changes, custom-field edits and updates without field
+information still maintain the index. This avoids redundant work when Advanced
+Rating saves criterion tags and then updates the overall scene rating.
+
 Limits are 16 text tracks, 8 MiB of converted text, and a 120-second extraction
 budget per scene, with probing limited to 30 seconds. Failed tracks do not hide
 successful ones. Extraction or loading failures show a **Retry captions**

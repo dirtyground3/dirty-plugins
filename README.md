@@ -21,7 +21,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 1.0.5 |
 | [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 1.0.5 |
-| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.6 |
+| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
 | [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.5 |
 
 ## Shared look and settings
@@ -530,8 +530,6 @@ DevTools stepping and other browsers are not covered by automated checks.
 Bundles target ES2020; release bundles are minified (no property mangling,
 component names and legal comments kept), development bundles stay readable.
 
-[simplification.md](simplification.md) records the latest simplification pass.
-
 Build the package source locally after `npm ci`, on a system with Bash and `zip`:
 
 ```bash
@@ -560,6 +558,10 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyCaptions 1.0.7:** scene rating, rating-tag and other metadata saves no
+  longer queue caption-index work. Media changes, custom-field edits and hooks
+  without field information still update the index; bulk scene inputs are handled.
 
 - **DirtyStats 1.0.6, DirtyRank and DirtyMultiscreen 1.0.5:** bounded library work.
   - Constellations display at most 5,000 connections, prioritizing a strongest-first

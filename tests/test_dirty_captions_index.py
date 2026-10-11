@@ -546,6 +546,42 @@ class CaptionIndexTests(unittest.TestCase):
         self.assertFalse(storage.list_metadata(index.SCENES))
         self.assertEqual(client.queued, [])
 
+    def test_rating_and_metadata_updates_skip_work_before_loading_settings(self):
+        client = Client([self.scene(1)])
+        with mock.patch.object(index, "enabled", side_effect=AssertionError("Unnecessary settings lookup")), \
+             mock.patch.object(client, "call", side_effect=AssertionError("Unnecessary GraphQL")):
+            for fields in (["id", "tag_ids"], ["id", "rating100"], ["id", "tag_ids", "rating100"],
+                           ["id", "title", "performer_ids", "studio_id", "stash_ids"],
+                           ["id", "rating100", "resume_time", "o_counter"]):
+                with self.subTest(fields=fields):
+                    index.hook(client, {"id": "1", "type": "Scene.Update.Post",
+                                        "input": {"id": "1"}, "inputFields": fields})
+            # scenesUpdate supplies an array rather than a single input object.
+            index.hook(client, {"id": "1", "type": "Scene.Update.Post", "input": [{"id": "1"}],
+                                "inputFields": ["id", "tag_ids"]})
+        self.assertEqual(client.queued, [])
+        self.assertEqual(client.writes, [])
+        self.assertFalse(storage.list_metadata(index.PENDING))
+        self.assertEqual(self.probe.call_count, 0)
+
+    def test_media_custom_fields_and_unknown_updates_still_queue_work(self):
+        client = Client([self.scene(1)])
+        for fields in (["id", "primary_file_id"], ["id", "custom_fields"], ["id", "new_media_field"], []):
+            with self.subTest(fields=fields):
+                index.hook(client, {"id": "1", "type": "Scene.Update.Post", "input": [{"id": "1"}],
+                                    "inputFields": fields})
+                self.assertIsNotNone(storage.get_metadata(index.PENDING, "1"))
+        self.assertEqual(len(client.queued), 1)
+        self.execute(client)
+        self.assertEqual(self.probe.call_count, 1)
+
+    def test_scene_creation_with_metadata_fields_still_indexes_media(self):
+        client = Client([self.scene(1)])
+        index.hook(client, {"id": "1", "type": "Scene.Create.Post", "inputFields": ["id", "title"]})
+        self.assertEqual(len(client.queued), 1)
+        self.execute(client)
+        self.assertEqual(self.probe.call_count, 1)
+
     def test_revision_delete_preserves_new_work(self):
         storage.set_metadata(index.PENDING, "1", "old")
         storage.set_metadata(index.PENDING, "1", "new")

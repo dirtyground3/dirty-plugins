@@ -305,10 +305,19 @@ def hook(client, context):
         storage.delete_metadata(SCENES, scene_id)
         storage.delete_metadata(PENDING, scene_id)
         return status()
-    source = context.get("input") or {}
+    source = context.get("input")
+    source = source if isinstance(source, dict) else {}
     fields = set(context.get("inputFields") or [])
-    playback_fields = {"id", "clientMutationId", "resume_time", "play_count", "play_duration", "o_counter"}
-    if source.get("clientMutationId") == MUTATION_ID or (fields and fields <= playback_fields) or not enabled():
+    # Native and Advanced Rating saves cannot change embedded subtitle streams.
+    # Stash waits for post hooks, and Advanced Rating may save rating100 again:
+    # avoid a pending write and worker launch for each metadata-only mutation.
+    metadata_fields = {
+        "id", "clientMutationId", "title", "code", "details", "director", "url", "urls", "date",
+        "rating100", "organized", "studio_id", "gallery_ids", "performer_ids", "groups", "movies",
+        "tag_ids", "cover_image", "stash_ids", "resume_time", "play_count", "play_duration", "o_counter",
+    }
+    metadata_only = context.get("type") == "Scene.Update.Post" and fields and fields <= metadata_fields
+    if source.get("clientMutationId") == MUTATION_ID or metadata_only or not enabled():
         return status()
     return enqueue_scene(client, scene_id)
 

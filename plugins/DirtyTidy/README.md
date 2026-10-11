@@ -98,7 +98,7 @@ pagination, and status colours. Strategy changes are saved explicitly (**Save**
 or the run confirmation) rather than automatically, because they move files. With `?docsCapture=1`, preview paths and note details
 appear as placeholders for safe screenshots.
 
-Planned improvements and known bugs are tracked in [TODO.md](TODO.md).
+Planned improvements and known bugs are tracked in the repository's [TODO.md](../../TODO.md).
 
 ## Development
 

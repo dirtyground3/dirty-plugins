@@ -89,6 +89,15 @@ def exercise(fixture):
     indexed = {scene["id"]: scene for scene in all_scenes(fixture)}
     assert indexed[captions["id"]]["custom_fields"] == {"personal": "keep", "Contains embedded captions": "Yes", "Contains embedded text captions": "Yes", "Caption index status": "Ready"}
     assert indexed[no_captions["id"]]["custom_fields"]["Contains embedded captions"] == "No"
+    rating_tag = fixture.gql('mutation{tagCreate(input:{name:"Synthetic rating criterion"}){id}}')["tagCreate"]["id"]
+    for update in ({"tag_ids": [rating_tag]}, {"rating100": 80}, {"title": "Synthetic captions metadata edit"}):
+        fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}',
+                    {"input": {"id": captions["id"], **update}})
+        assert op(fixture, "indexStatus")["jobId"] == first["jobId"], "Metadata saves must not launch caption jobs"
+        assert not fixture.gql("{jobQueue{id}}")["jobQueue"]
+    fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}',
+                {"input": {"id": captions["id"], "tag_ids": [], "rating100": None, "title": captions["title"]}})
+    print("PASS: rating, rating-tag and title saves launch no caption work", flush=True)
     # Playback answers from the map: unavailable but unchanged media without subtitles
     # needs no file access, and a result the map already holds queues no index job.
     held_empty = fixture.root / "held-synthetic-empty.mp4"

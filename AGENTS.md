@@ -238,7 +238,6 @@ the hub's capture mode and its typed API.
   each plugin whose runtime files (bundle, manifest content, styles, backends)
   change, once per release, and update the README version table and release
   notes. README-only and staging-only changes keep versions.
-  `simplification.md` records the 2026-10-10 simplification pass.
 
 ## Local install (this machine)
 
@@ -297,8 +296,7 @@ user must hard-refresh (Ctrl+F5) the Stash tab.
 
 ## Non-goals
 
-These simplifications keep coming up and do not pay off; see also
-`simplification.md` ("Not recommended").
+These simplifications keep coming up and do not pay off.
 
 - Another save framework. The shared save controller and `useSettingsDraft`
   exist; Rank's revisions, Stats' key merging and Compactor's blocking after a
