@@ -15,7 +15,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.7 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.8 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.5 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.5 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
@@ -42,7 +42,7 @@ review pages for the shared controls are in [`tests/fixtures/`](tests/fixtures/)
 
 ### DirtyStats
 
-- Opens from the Prairie Grid icon (red, blue, and yellow tiles) in Stash's
+- Opens from the bubble chart icon (red, blue, and white circles) in Stash's
   utility navigation.
 - A customizable **Dashboard**: add any statistic (more than once if you like),
   drag to reorder, rename, choose Small, Medium, or Large, and give each widget
@@ -271,7 +271,7 @@ link to the shared Dirty Plugins settings page. Each installed plugin has its
 own tab there.
 
 - **General:** choose the suite theme and create database backups.
-- **DirtyStats:** no settings are needed. Open the Prairie Grid icon in the
+- **DirtyStats:** no settings are needed. Open the bubble chart icon in the
   utility navigation and choose **Edit dashboard** to arrange your widgets.
 - **DirtyRank:** set up gender boxes, their categories and weights, and the
   desired confidence goal. The crossed-swords and trophy buttons open Battles
@@ -558,6 +558,9 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyStats 1.0.8:** the navigation icon is now a bubble chart, so it no
+  longer looks like the DirtyMultiscreen grid.
 
 - **DirtyStats 1.0.7:** added **Performer vs scene rating** as a full view and
   dashboard widget. Compare each performer's rating with the average of their

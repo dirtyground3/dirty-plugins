@@ -146,13 +146,14 @@ export function NavIcon(): R.ReactElement | null {
       label="Open DirtyStats dashboard"
       className="dirty-stats-nav dirty-stats-nav-button"
       icon={
-        <svg viewBox="0 0 24 24" aria-hidden={true}>
+        <svg viewBox="2 2 20 20" aria-hidden={true}>
           <rect x={2} y={2} width={20} height={20} rx={0.3} fill="var(--dirty-ui-icon-white)" />
           <rect x={3} y={3} width={18} height={18} fill="var(--dirty-ui-icon-black)" />
-          <rect x={3} y={3} width={11} height={10} fill="var(--dirty-ui-icon-red)" />
-          <rect x={16} y={3} width={5} height={5} fill="var(--dirty-ui-icon-white)" />
-          <rect x={16} y={10} width={5} height={11} fill="var(--dirty-ui-icon-blue)" />
-          <rect x={3} y={15} width={11} height={6} fill="var(--dirty-ui-icon-white)" />
+          <rect x={5} y={5} width={0.9} height={14.5} fill="var(--dirty-ui-icon-white)" />
+          <rect x={5} y={18.6} width={14.5} height={0.9} fill="var(--dirty-ui-icon-white)" />
+          <circle cx={10} cy={13} r={3.6} fill="var(--dirty-ui-icon-red)" />
+          <circle cx={16} cy={8.2} r={2.6} fill="var(--dirty-ui-icon-blue)" />
+          <circle cx={16.5} cy={15} r={1.8} fill="var(--dirty-ui-icon-white)" />
         </svg>
       }
     />

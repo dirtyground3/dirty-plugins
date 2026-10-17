@@ -6,8 +6,8 @@ root and install `.build/plugins/DirtyStats/`; raw source is not installable.
 The staged plugin serves only `dirtyStats.js`, including the ECharts 5.6.0
 modules it uses and its world map data. Stash users need no Node or TypeScript tooling.
 
-Explore Stash statistics from the **Prairie Grid icon** (red, blue, and yellow
-tiles) in the utility navigation.
+Explore Stash statistics from the **bubble chart icon** (red, blue, and white
+circles) in the utility navigation.
 The icon opens a customizable **Dashboard** at
 `/plugins/dirty-stats/dashboard`. Choose **Edit dashboard** to add or remove any available statistic,
 reorder widgets by dragging their edit-mode handle or using arrow keys on it,
