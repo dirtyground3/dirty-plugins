@@ -9,6 +9,7 @@ import { QualityEfficiencyPage } from "./components/Quality";
 import { RatingPage } from "./components/Ratings";
 import { DirtyStatsRoute, NavIcon } from "./components/Route";
 import { PerformerScatterPage } from "./components/Scatter";
+import { PerformerSceneRatingsPage } from "./components/PerformerSceneRatings";
 import { StudioValuePage } from "./components/Studios";
 import { TagDnaPage } from "./components/Tags";
 import { entries, route } from "./domain/registry";
@@ -42,6 +43,8 @@ hub?.registerPlugin(PLUGIN_ID, () => {
       return <RatingPage filter={props.filter} performerMode={true} />;
     if (path === entries.performerScatter.route && props?.extraCriteria?.dirtyStats)
       return <PerformerScatterPage filter={props.filter} />;
+    if (path === entries.performerSceneRatings.route && props?.extraCriteria?.dirtyStats)
+      return <PerformerSceneRatingsPage filter={props.filter} />;
     if (path === entries.birthdays.route && props?.extraCriteria?.dirtyStats)
       return <BirthdayPage filter={props.filter} />;
     if (path !== route || !props?.extraCriteria?.dirtyStats) return next.apply(null, args);

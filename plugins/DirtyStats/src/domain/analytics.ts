@@ -11,6 +11,8 @@ import type {
   StatsConstellationNode,
   StatsCountRatingPoint,
   StatsPerformer,
+  StatsPerformerSceneRatingPoint,
+  StatsPerformerWithSceneRatings,
   StatsQualityPoint,
   StatsRepeatRow,
   StatsScatterPoint,
@@ -534,6 +536,43 @@ export function aggregateScatter(performers: StatsPerformer[], minRating: number
     missingScenes,
     highlights: points.filter(point => point.highlight).length,
   };
+}
+
+export function aggregatePerformerSceneRatings(performers: StatsPerformerWithSceneRatings[]) {
+  const unique = new Map(performers.map(performer => [String(performer.id), performer]));
+  const points: StatsPerformerSceneRatingPoint[] = [];
+  let missingRating = 0,
+    missingScenes = 0;
+  unique.forEach((performer, id) => {
+    const rating = ratingNumber(performer);
+    if (rating == null) {
+      missingRating++;
+      return;
+    }
+    const scenes = new Map((performer.scenes || []).map(scene => [String(scene.id), scene]));
+    let sum = 0,
+      ratedScenes = 0;
+    scenes.forEach(scene => {
+      const value = ratingNumber(scene);
+      if (value != null) {
+        sum += value;
+        ratedScenes++;
+      }
+    });
+    if (!ratedScenes) {
+      missingScenes++;
+      return;
+    }
+    points.push({
+      id,
+      name: String(performer.name || "Performer #" + id),
+      rating,
+      averageRating: sum / ratedScenes,
+      ratedScenes,
+      unratedScenes: scenes.size - ratedScenes,
+    });
+  });
+  return { points, missingRating, missingScenes };
 }
 
 function studioSymbolSize(bytes: number, maxBytes: number) {

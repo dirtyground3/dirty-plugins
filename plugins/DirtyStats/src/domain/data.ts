@@ -8,6 +8,9 @@ import type {
   StatsScene,
 } from "../types";
 
+export const PERFORMER_SCENE_RATINGS_QUERY =
+  "query DirtyStatsPerformerSceneRatings($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name rating100 scenes{id rating100}}}}";
+
 /**
  * @template T
  * @param {StatsPageRequest<T>} request

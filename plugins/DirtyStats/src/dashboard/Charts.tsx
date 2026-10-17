@@ -5,6 +5,7 @@ import {
   aggregate,
   aggregateConstellation,
   aggregateCountRating,
+  aggregatePerformerSceneRatings,
   aggregateQualityEfficiency,
   aggregateRatings,
   aggregateRepeatOffenders,
@@ -21,6 +22,7 @@ import {
   tagDnaSeriesData,
 } from "../domain/analytics";
 import { WIDGETS, resourceKey } from "../domain/dashboard";
+import { performerSceneRatingSeriesData } from "../domain/chartOptions";
 import { aggregateGrowth, forecastGrowth, formatBytes } from "../domain/growth";
 import { React, world } from "../runtime";
 import { themeColor, themePalette } from "../settings";
@@ -331,6 +333,58 @@ export function performerScatterWidget(
     itemStyle: { color: point.highlight ? themeColor("accent") : themeColor("primary") },
   }));
   return scatterWidget(points, widget, ["Rating", "Scenes"], stats.highlights);
+}
+
+export function performerSceneRatingsWidget(
+  performers: StatsPerformer[],
+  widget: DashboardWidgetModel,
+): R.ReactElement | null {
+  const stats = aggregatePerformerSceneRatings(performers);
+  const chartAxes = axes(widget.size, "Performer rating (out of 10)", "Average scene rating (out of 10)");
+  const option: ChartOption = {
+    backgroundColor: "transparent",
+    grid: chartAxes.grid,
+    xAxis: { ...chartAxes.xAxis, min: 0, max: 10 },
+    yAxis: { ...chartAxes.yAxis, min: 0, max: 10 },
+    tooltip: {
+      trigger: "item",
+      renderMode: "richText",
+      formatter: (p: ChartEvent) =>
+        p.data.name +
+        "\nPerformer rating " +
+        p.value[0] +
+        "/10\nAverage scene rating " +
+        p.value[1].toFixed(2) +
+        "/10\n" +
+        p.data.ratedScenes +
+        " rated scenes",
+    },
+    series: [
+      {
+        type: "scatter",
+        symbolSize: widget.size === "small" ? 5 : 8,
+        progressive: 4000,
+        data: performerSceneRatingSeriesData(stats, null),
+        markLine: {
+          silent: true,
+          symbol: "none",
+          label: { show: false },
+          lineStyle: { type: "dotted", color: themeColor("accent"), width: 1.5 },
+          data: [[{ coord: [0, 0] }, { coord: [10, 10] }]],
+        },
+      },
+    ],
+  };
+  return (
+    <React.Fragment>
+      {widgetHeader(widget, metric("performers", stats.points.length))}
+      {stats.points.length ? (
+        <Chart option={option} label="Performer rating versus average scene rating" />
+      ) : (
+        <State title="No rated data" detail="Performers need both a rating and at least one rated scene." />
+      )}
+    </React.Fragment>
+  );
 }
 
 export function countRatingWidget(scenes: StatsScene[], widget: DashboardWidgetModel): R.ReactElement | null {
@@ -769,6 +823,7 @@ export function renderWidget(
   if (widget.statistic === "ratings") return ratingWidget(rows, widget, "scene");
   if (widget.statistic === "performerRatings") return ratingWidget(rows, widget, "performer");
   if (widget.statistic === "performerScatter") return performerScatterWidget(rows, widget);
+  if (widget.statistic === "performerSceneRatings") return performerSceneRatingsWidget(rows, widget);
   if (widget.statistic === "countRating") return countRatingWidget(rows, widget);
   if (widget.statistic === "repeatOffenders") return repeatOffenderWidget(rows, widget);
   if (widget.statistic === "qualityEfficiency") return qualityEfficiencyWidget(rows, widget);

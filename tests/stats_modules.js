@@ -15,6 +15,7 @@ const COMPONENTS = [
   "Birthdays",
   "Ratings",
   "Scatter",
+  "PerformerSceneRatings",
   "Counters",
   "Quality",
   "Studios",

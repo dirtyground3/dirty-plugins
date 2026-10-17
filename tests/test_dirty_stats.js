@@ -435,6 +435,42 @@ assert.equal(scatter.missingRating, 1);
 assert.equal(scatter.missingScenes, 1);
 assert.equal(a.aggregateScatter([{ id: "1", rating100: 50, scene_count: 1 }], 0, 0).points[0].highlight, false);
 assert.equal(a.aggregateScatter([], 8, 10).points.length, 0);
+const performerSceneRatings = a.aggregatePerformerSceneRatings([
+  { id: "1", rating100: 1, scenes: [{ id: "old", rating100: 100 }] },
+  {
+    id: "1",
+    name: "Rated performer",
+    rating100: 85,
+    scenes: [
+      { id: "a", rating100: 80 },
+      { id: "a", rating100: 80 },
+      { id: "b", rating100: "95" },
+      { id: "c", rating100: null },
+      { id: "d", rating100: 101 },
+      { id: "e", rating100: "" },
+    ],
+  },
+  {
+    id: "2",
+    rating100: 0,
+    scenes: [
+      { id: "a", rating100: 0 },
+      { id: "b", rating100: 100 },
+    ],
+  },
+  { id: "3", rating100: null, scenes: [{ id: "b", rating100: 90 }] },
+  { id: "4", rating100: 90, scenes: [{ id: "c", rating100: null }] },
+  { id: "5", rating100: 75 },
+]);
+assert.deepEqual(JSON.parse(JSON.stringify(performerSceneRatings)), {
+  points: [
+    { id: "1", name: "Rated performer", rating: 8.5, averageRating: 8.75, ratedScenes: 2, unratedScenes: 3 },
+    { id: "2", name: "Performer #2", rating: 0, averageRating: 5, ratedScenes: 2, unratedScenes: 0 },
+  ],
+  missingRating: 1,
+  missingScenes: 2,
+});
+assert.equal(a.aggregatePerformerSceneRatings([]).points.length, 0);
 assert.equal(a.nearestScatterOption([0, 5, 6, 7, 8, 9], 7.4), 7);
 assert.equal(a.nearestScatterOption([0, 5, 6, 7, 8, 9], 4.6), 5);
 assert.equal(a.nearestScatterOption([0, 5, 10, 20, 50, 100], 13), 10);
@@ -1402,6 +1438,7 @@ async function testNativeRouteLoading() {
     "ratings",
     "performerRatings",
     "performerScatter",
+    "performerSceneRatings",
     "countRating",
     "repeatOffenders",
     "qualityEfficiency",

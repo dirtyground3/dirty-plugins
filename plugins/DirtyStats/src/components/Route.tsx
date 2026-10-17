@@ -12,6 +12,7 @@ import {
   growthRoute,
   performerRatingRoute,
   performerScatterRoute,
+  performerSceneRatingsRoute,
   qualityEfficiencyRoute,
   ratingRoute,
   repeatOffenderRoute,
@@ -32,34 +33,37 @@ export function DirtyStatsRoute(): R.ReactElement | null {
       ? "dashboard"
       : location.pathname === performerScatterRoute
         ? "performerScatter"
-        : location.pathname === countRatingRoute
-          ? "countRating"
-          : location.pathname === repeatOffenderRoute
-            ? "repeatOffenders"
-            : location.pathname === qualityEfficiencyRoute
-              ? "qualityEfficiency"
-              : location.pathname === studioRoute
-                ? "studios"
-                : location.pathname === tagDnaRoute
-                  ? "tags"
-                  : location.pathname === constellationRoute
-                    ? "constellation"
-                    : location.pathname === birthdayRoute
-                      ? "birthdays"
-                      : location.pathname === performerRatingRoute
-                        ? "performerRatings"
-                        : location.pathname === ratingRoute
-                          ? "ratings"
-                          : location.pathname === ageRoute
-                            ? "ages"
-                            : location.pathname === growthRoute
-                              ? "growth"
-                              : "origin";
+        : location.pathname === performerSceneRatingsRoute
+          ? "performerSceneRatings"
+          : location.pathname === countRatingRoute
+            ? "countRating"
+            : location.pathname === repeatOffenderRoute
+              ? "repeatOffenders"
+              : location.pathname === qualityEfficiencyRoute
+                ? "qualityEfficiency"
+                : location.pathname === studioRoute
+                  ? "studios"
+                  : location.pathname === tagDnaRoute
+                    ? "tags"
+                    : location.pathname === constellationRoute
+                      ? "constellation"
+                      : location.pathname === birthdayRoute
+                        ? "birthdays"
+                        : location.pathname === performerRatingRoute
+                          ? "performerRatings"
+                          : location.pathname === ratingRoute
+                            ? "ratings"
+                            : location.pathname === ageRoute
+                              ? "ages"
+                              : location.pathname === growthRoute
+                                ? "growth"
+                                : "origin";
   hub.react.usePageTitle("DirtyStats", STATISTIC_LABELS[statistic]);
   const sceneView =
     statistic !== "origin" &&
     statistic !== "performerRatings" &&
     statistic !== "performerScatter" &&
+    statistic !== "performerSceneRatings" &&
     statistic !== "birthdays";
   // Readiness belongs to the view that loaded its native components. A route
   // change renders before its effect runs, so a shared boolean can mount the

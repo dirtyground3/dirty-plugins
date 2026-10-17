@@ -85,7 +85,7 @@ scroll inside the widget.
 The statistic selector offers **Performer origin**, **Content growth**,
 **Age at scene**, **Scene ratings**, **Performer ratings**,
 **Performer cards**,
-**Rating vs scenes**, **Count vs rating**, **Repeat-offender curve**, **Quality efficiency**, **Studio value map**,
+**Rating vs scenes**, **Performer vs scene rating**, **Count vs rating**, **Repeat-offender curve**, **Quality efficiency**, **Studio value map**,
 **Tag DNA**, **Cast constellation**, and **Performer birthdays**.
 Display choices such as map numbers, rating rounding, growth options, and the
 constellation, scatter, and studio limits are saved to the DirtyStats plugin
@@ -130,6 +130,17 @@ space inside the plot also moves the nearer guide: clicks near the bottom
 the maximum scenes, snapped to the options offered by the controls. Unrated
 performers and performers without a scene count are omitted and reported.
 PNG export is available inside the chart.
+
+**Performer vs scene rating** compares each performer's own rating on the x-axis
+with the average rating of their scenes on the y-axis, both out of ten. It uses
+native performer filters and their saved defaults. Each distinct rated scene
+featuring the performer contributes equally to the average; unrated scenes are
+excluded. A dotted diagonal marks equal ratings: performers above it have a
+higher scene average than their own rating, and performers below it have a lower
+scene average. Performers without a rating or without rated scenes are omitted and
+reported. Hover a dot to see both ratings and the rated/unrated scene counts.
+Click a dot to show that performer below, or click it again to clear the
+selection. The view includes PNG export and is also available as a dashboard widget.
 
 **Count vs rating** is a scatter plot using native scene filters and their saved
 defaults. Each dot is a distinct scene: the x-axis is the scene's rating out of

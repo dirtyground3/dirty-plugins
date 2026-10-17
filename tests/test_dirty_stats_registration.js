@@ -167,6 +167,16 @@ assert.equal(
   true,
 );
 // A failed registration is logged once and never retried by a reloaded bundle.
+f.window.location.pathname = "/plugins/dirty-stats/performer-scene-ratings";
+assert.equal(
+  f.patches[0].handler({ filter, extraCriteria: { dirtyStats: true } }, () => original).type.name,
+  "PerformerSceneRatingsPage",
+);
+assert.equal(
+  f.patches[0].handler({ filter, extraCriteria: {} }, () => original),
+  original,
+);
+
 for (const failure of [{ route: true }, { patch: "PerformerList" }, { patch: "SceneList" }]) {
   const partial = fixture(failure);
   partial.load();

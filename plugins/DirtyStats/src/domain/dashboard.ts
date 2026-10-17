@@ -9,7 +9,7 @@ import type {
   StatsScene,
   WidgetOptions,
 } from "../types";
-import { fetchAllPages } from "./data";
+import { fetchAllPages, PERFORMER_SCENE_RATINGS_QUERY } from "./data";
 import { widgetOrder, widgets } from "./registry";
 export const SIZES = ["small", "medium", "large"];
 export const SIZE_LABELS = { small: "Small", medium: "Medium", large: "Large" };
@@ -186,6 +186,13 @@ export async function fetchPages(group: string, savedFilter: SavedFilter, signal
     root = "findPerformers";
     variables = () => ({
       filter: Object.assign({ sort: "name", direction: "ASC" }, savedFilter.find, { page: 1, per_page: limit }),
+      performerFilter: savedFilter.object,
+    });
+  } else if (group === "performerSceneRatings") {
+    query = PERFORMER_SCENE_RATINGS_QUERY;
+    root = "findPerformers";
+    variables = (number: number) => ({
+      filter: Object.assign({}, savedFilter.find, { page: number, per_page: 100, sort: "id", direction: "ASC" }),
       performerFilter: savedFilter.object,
     });
   } else if (group === "performers") {

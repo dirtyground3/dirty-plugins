@@ -68,6 +68,15 @@ const statistics: Record<string, Required<StatsDefinition>> = {
     options: { minRating: 9, maxScenes: 10 },
     choices: { minRating: [0, 5, 6, 7, 8, 9], maxScenes: [0, 5, 10, 20, 50, 100] },
   },
+  performerSceneRatings: {
+    label: "Performer vs scene rating",
+    route: route + "/performer-scene-ratings",
+    entity: "performers",
+    group: "performerSceneRatings",
+    size: "medium",
+    options: {},
+    choices: {},
+  },
   performerCards: {
     label: "Performer cards",
     route,
@@ -164,6 +173,7 @@ export const ageRoute = routeOf("ages");
 export const ratingRoute = routeOf("ratings");
 export const performerRatingRoute = routeOf("performerRatings");
 export const performerScatterRoute = routeOf("performerScatter");
+export const performerSceneRatingsRoute = routeOf("performerSceneRatings");
 export const countRatingRoute = routeOf("countRating");
 export const repeatOffenderRoute = routeOf("repeatOffenders");
 export const qualityEfficiencyRoute = routeOf("qualityEfficiency");

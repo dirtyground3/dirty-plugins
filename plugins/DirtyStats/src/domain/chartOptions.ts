@@ -15,6 +15,7 @@ import type {
   StatsConstellationLink,
   StatsConstellationNode,
   StatsCountRatingPoint,
+  StatsPerformerSceneRatingPoint,
   StatsQualityPoint,
   StatsRepeatRow,
   StatsScatterPoint,
@@ -336,6 +337,72 @@ export function scatterOption(
                 ? { xAxis: guide.value, label: { formatter: "Rating " + guide.value + "+" } }
                 : { yAxis: guide.value, label: { formatter: guide.value + " scenes" } },
             ),
+        },
+      },
+    ],
+  };
+}
+
+export function performerSceneRatingSeriesData(
+  stats: { points: StatsPerformerSceneRatingPoint[] },
+  selected: string | null,
+) {
+  return stats.points.map(point => ({
+    ...point,
+    value: [point.rating, point.averageRating],
+    itemStyle: {
+      color: themeColor("primary"),
+      opacity: 0.85,
+      borderColor: point.id === selected ? "#fff" : "transparent",
+      borderWidth: point.id === selected ? 2 : 0,
+    },
+  }));
+}
+
+export function performerSceneRatingOption(
+  stats: { points: StatsPerformerSceneRatingPoint[] },
+  selected: string | null,
+) {
+  const base = scatterOption({ points: [] }, null, 0, 0);
+  return {
+    ...base,
+    grid: { ...base.grid, left: 24, top: 32 },
+    tooltip: {
+      trigger: "item",
+      renderMode: "richText",
+      formatter: (p: ChartEvent) =>
+        p.data.name +
+        "\nPerformer rating " +
+        p.value[0] +
+        "/10" +
+        "\nAverage scene rating " +
+        p.value[1].toFixed(2) +
+        "/10" +
+        "\n" +
+        p.data.ratedScenes +
+        " rated scenes" +
+        "\n" +
+        p.data.unratedScenes +
+        " unrated scenes excluded",
+    },
+    xAxis: { ...base.xAxis, name: "Performer rating (out of 10)" },
+    yAxis: {
+      ...base.xAxis,
+      name: "Average scene rating (out of 10)",
+      nameGap: 45,
+    },
+    series: [
+      {
+        type: "scatter",
+        symbolSize: 9,
+        progressive: 4000,
+        data: performerSceneRatingSeriesData(stats, selected),
+        markLine: {
+          silent: true,
+          symbol: "none",
+          label: { show: false },
+          lineStyle: { type: "dotted", color: themeColor("accent"), width: 1.5 },
+          data: [[{ coord: [0, 0] }, { coord: [10, 10] }]],
         },
       },
     ],

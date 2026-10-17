@@ -72,6 +72,14 @@ export interface StatsCountRatingPoint {
   rating: number;
   count: number;
 }
+export interface StatsPerformerSceneRatingPoint {
+  id: string;
+  name: string;
+  rating: number;
+  averageRating: number;
+  ratedScenes: number;
+  unratedScenes: number;
+}
 export interface StatsRepeatRow {
   id: string;
   title: string;
@@ -157,6 +165,9 @@ export interface StatsPerformer {
   country?: string;
   rating100?: number | string | null;
   scene_count?: number | string | null;
+}
+export interface StatsPerformerWithSceneRatings extends StatsPerformer {
+  scenes?: Array<Pick<StatsScene, "id" | "rating100">>;
 }
 export interface StatsScene {
   id: string;

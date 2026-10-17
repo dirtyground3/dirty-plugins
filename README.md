@@ -15,7 +15,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.6 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.7 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.5 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.5 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
@@ -559,6 +559,10 @@ main/
 
 ## Release notes
 
+- **DirtyStats 1.0.7:** added **Performer vs scene rating** as a full view and
+  dashboard widget. Compare each performer's rating with the average of their
+  rated scenes, with a dotted equal-rating diagonal, native performer filters,
+  performer selection and PNG export.
 - **DirtyCaptions 1.0.7:** scene rating, rating-tag and other metadata saves no
   longer queue caption-index work. Media changes, custom-field edits and hooks
   without field information still update the index; bulk scene inputs are handled.

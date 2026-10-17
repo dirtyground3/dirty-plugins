@@ -28,7 +28,7 @@ const plain = value => JSON.parse(JSON.stringify(value));
 
 assert.equal(
   Object.keys(dashboard.registry).length,
-  14,
+  15,
   "every DirtyStats statistic and performer cards must be available as a widget",
 );
 assert.equal(dashboard.defaults.length, 5, "a curated dashboard should be created on first use");

@@ -84,6 +84,132 @@ function environment(overrides = {}) {
   return { renderer, window, modules, instances, observers, registrations };
 }
 
+test("performer versus scene ratings paginates native filters, selects performers, and refreshes", async () => {
+  const requests = [];
+  const rows = [
+    {
+      id: "1",
+      name: "One",
+      rating100: 80,
+      scenes: [
+        { id: "a", rating100: 90 },
+        { id: "b", rating100: null },
+      ],
+    },
+    {
+      id: "2",
+      name: "Two",
+      rating100: 95,
+      scenes: [
+        { id: "a", rating100: 90 },
+        { id: "c", rating100: 80 },
+      ],
+    },
+  ];
+  const e = environment({
+    graphql(query, variables, options) {
+      requests.push({ query, variables, signal: options.signal });
+      return Promise.resolve({ findPerformers: { count: 2, performers: [rows[variables.filter.page - 1]] } });
+    },
+  });
+  const { PerformerSceneRatingsPage } = runSource(
+    "DirtyStats",
+    "src/components/PerformerSceneRatings.tsx",
+    { window: e.window, AbortController },
+    {
+      external: ["./echarts", "./Cards"],
+      modules: {
+        "./echarts": { charts: e.window.echarts },
+        "./Cards": { PerformerCards: props => element("performer-cards", props) },
+      },
+    },
+  );
+  const filter = { makeFindFilter: () => ({ q: "favorite", page: 7 }), makeFilter: () => ({ favorite: true }) };
+  const render = () => e.renderer.render(element(PerformerSceneRatingsPage, { filter }));
+  render();
+  await e.renderer.flush(render);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].variables.filter.per_page, 100);
+  assert.equal(requests[0].variables.filter.q, "favorite");
+  assert.equal(requests[0].variables.performerFilter.favorite, true);
+  assert.equal(requests[1].variables.filter.page, 2);
+  const chart = e.instances[0];
+  assert.equal(chart.option.xAxis.min, 0);
+  assert.equal(chart.option.xAxis.max, 10);
+  assert.equal(chart.option.yAxis.min, 0);
+  assert.equal(chart.option.yAxis.max, 10);
+  assert.match(chart.option.yAxis.name, /Average scene rating/);
+  const guide = chart.option.series[0].markLine;
+  assert.equal(guide.lineStyle.type, "dotted");
+  assert.equal(guide.silent, true, "the reference line does not intercept performer selection");
+  assert.deepEqual(JSON.parse(JSON.stringify(guide.data)), [[{ coord: [0, 0] }, { coord: [10, 10] }]]);
+  assert.deepEqual(Array.from(chart.option.series[0].data[1].value), [9.5, 8.5]);
+  const point = chart.option.series[0].data[0];
+  assert.match(chart.option.tooltip.formatter({ data: point, value: point.value }), /Average scene rating 9.00\/10/);
+  let tree = render();
+  const cards = () => findAll(tree, node => node.type === "performer-cards")[0];
+  assert.equal(cards().props.performers.length, 2);
+  chart.handlers.get("click")({ componentType: "series", data: point });
+  await e.renderer.flush(render);
+  tree = render();
+  assert.equal(cards().props.performers[0].id, "1");
+  assert.equal(cards().props.performers.length, 1);
+  assert.equal(chart.option.series[0].data[0].itemStyle.borderWidth, 2);
+  chart.handlers.get("click")({ componentType: "series", data: point });
+  await e.renderer.flush(render);
+  tree = render();
+  assert.equal(cards().props.performers.length, 2);
+  findAll(tree, node => node.type === "button" && node.children.includes("Refresh"))[0].props.onClick();
+  await e.renderer.flush(render);
+  assert.equal(requests.length, 4, "refresh reloads all performer pages");
+  e.renderer.unmount();
+  assert.ok(requests.every(request => request.signal.aborted));
+});
+
+test("performer scene rating widget loads its own dataset and renders the same averages", async () => {
+  const calls = [];
+  const performer = {
+    id: "1",
+    rating100: 80,
+    scenes: [
+      { id: "a", rating100: 90 },
+      { id: "b", rating100: 80 },
+    ],
+  };
+  const e = environment({
+    graphql(query, variables) {
+      calls.push({ query, variables });
+      return Promise.resolve({ findPerformers: { count: 1, performers: [performer] } });
+    },
+  });
+  const domain = e.modules.dashboardDomain;
+  const widget = domain.normalizeWidgets([
+    { statistic: "performerSceneRatings", size: "large", filter: { find: { q: "one" }, object: { favorite: true } } },
+  ])[0];
+  const controller = new AbortController();
+  const rows = await domain.fetchPages("performerSceneRatings", widget.filter, controller.signal, 0);
+  assert.equal(calls[0].variables.filter.per_page, 100);
+  assert.equal(calls[0].variables.filter.q, "one");
+  assert.equal(calls[0].variables.performerFilter.favorite, true);
+  const resources = { [domain.resourceKey(widget)]: { loading: false, error: "", rows } };
+  function Widget() {
+    return e.modules.dashboardCharts.renderWidget(widget, resources);
+  }
+  const render = () => e.renderer.render(element(Widget));
+  render();
+  await e.renderer.flush(render);
+  assert.deepEqual(Array.from(e.instances[0].option.series[0].data[0].value), [8, 8.5]);
+  assert.equal(e.instances[0].option.yAxis.max, 10);
+  const guide = e.instances[0].option.series[0].markLine;
+  assert.equal(guide.lineStyle.type, "dotted");
+  assert.deepEqual(JSON.parse(JSON.stringify(guide.data)), [[{ coord: [0, 0] }, { coord: [10, 10] }]]);
+  assert.notEqual(
+    domain.resourceKey(widget),
+    domain.resourceKey(domain.normalizeWidgets([{ statistic: "performerScatter", filter: widget.filter }])[0]),
+  );
+  e.renderer.unmount();
+});
+
 test("dashboard bodies reuse their own aggregate across title, drag, and unrelated resources", async () => {
   const e = environment();
   const { normalizeWidgets, resourceKey } = e.modules.dashboardDomain;
