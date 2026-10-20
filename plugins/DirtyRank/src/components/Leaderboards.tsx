@@ -379,6 +379,7 @@ export function DirtyRankLeaderboardsRoute(): R.JSX.Element | null {
   const [nativeError, setNativeError] = React.useState("");
   const filterTrigger = React.useRef<HTMLButtonElement>(null);
   const filterClose = React.useRef<HTMLButtonElement>(null);
+  const filterFocus = React.useRef<HTMLElement | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -549,6 +550,11 @@ export function DirtyRankLeaderboardsRoute(): R.JSX.Element | null {
               aria-haspopup="dialog"
               aria-expanded={filterOpen}
               onClick={() => {
+                // The hidden dialog keeps the native list mounted; start in its toolbar search box.
+                filterFocus.current =
+                  document.querySelector<HTMLElement>(
+                    "#dirty-rank-performer-filter-dialog .filtered-list-toolbar > .search-term-input input",
+                  ) || filterClose.current;
                 setFilterOpen(true);
               }}
             >
@@ -639,7 +645,7 @@ export function DirtyRankLeaderboardsRoute(): R.JSX.Element | null {
           backdropClassName="dirty-ui-native-filter-overlay"
           className="dirty-ui-native-filter-dialog dirty-ui-panel"
           ariaLabel="Performer filters"
-          initialFocusRef={filterClose}
+          initialFocusRef={filterFocus}
           openerRef={filterTrigger}
           allowNativePopup={true}
           onClose={() => {

@@ -2302,6 +2302,28 @@ async function verifyLeaderboardDisplays() {
     find(tree, node => node.type === context.window.PluginApi.components.FilteredPerformerList),
     "the filter dialog uses Stash's native performer filters",
   );
+  const filterDialog = () => find(render(), node => node.type === runtime.react.Dialog);
+  const openFilter = () =>
+    find(render(), node => node.type === "button" && node.props["aria-haspopup"] === "dialog").props.onClick();
+  const searchBox = { tagName: "INPUT" };
+  context.document.querySelector = selector =>
+    selector.endsWith(".filtered-list-toolbar > .search-term-input input") ? searchBox : null;
+  openFilter();
+  assert.strictEqual(filterDialog().props.open, true);
+  assert.strictEqual(
+    filterDialog().props.initialFocusRef.current,
+    searchBox,
+    "opening the filter starts in the native search box",
+  );
+  filterDialog().props.onClose();
+  const done = find(filterDialog(), node => node.type === "button" && visibleText(node) === "Done").props.ref;
+  done.current = { tagName: "BUTTON" };
+  context.document.querySelector = () => null;
+  openFilter();
+  assert.strictEqual(filterDialog().props.initialFocusRef.current, done.current, "without a search box, focus Done");
+  filterDialog().props.onClose();
+  done.current = null;
+  delete context.document.querySelector;
   const statSelector = plugin.testing.RankStatisticSelector({
     value: "__overall__",
     label: "Overall",
