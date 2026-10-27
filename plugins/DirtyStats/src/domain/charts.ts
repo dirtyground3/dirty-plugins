@@ -52,6 +52,7 @@ export function mountChart(descriptor: StatsChartDescriptor, dependencies: Stats
 
 /** ECharts with reduced motion honored and exports on the current theme background. */
 export function initStatsChart(node: HTMLElement, options?: ChartOption) {
+  if (!charts) throw new Error("The chart library is not loaded. Reload the Stash page.");
   const chart = charts.init(node, null, options || { renderer: "canvas" }),
     setOption = chart.setOption.bind(chart),
     getDataURL = chart.getDataURL.bind(chart);

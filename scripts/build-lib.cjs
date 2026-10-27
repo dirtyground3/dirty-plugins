@@ -114,7 +114,7 @@ function readManifest(plugin, directory = pluginDirectory(plugin)) {
   return YAML.parse(fs.readFileSync(installPath(directory, plugin.id + ".yml"), "utf8"));
 }
 
-/** Install files: the manifest and its assets, same-directory Python, generated and listed extras, README and LICENSE. */
+/** Install files: the manifest and its assets, same-directory Python, compiled chunks, generated and listed extras, README and LICENSE. */
 function installFiles(plugin, manifest) {
   const python = fs.readdirSync(pluginDirectory(plugin)).filter(name => name.endsWith(".py"));
   return [
@@ -123,6 +123,7 @@ function installFiles(plugin, manifest) {
       ...((manifest.ui && manifest.ui.javascript) || []),
       ...((manifest.ui && manifest.ui.css) || []),
       ...python,
+      ...Object.values(plugin.chunks || {}),
       ...(plugin.generatedFiles || []),
       ...(plugin.extraFiles || []),
       "README.md",

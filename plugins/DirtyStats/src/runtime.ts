@@ -1,10 +1,26 @@
-import world from "../vendor/world.js";
-import { charts } from "./echarts";
 import type { ChartInstance, WorldData } from "./types";
 
 export { React, PluginApi as api, hub, ui } from "../../DirtyPlugins/src/shared/host";
-export { charts, world };
 export const PLUGIN_ID = "dirtyStats";
+
+/** ECharts and the world map, set once loadCharts() resolves. */
+export let charts: ChartEngine | null = null;
+export let world: WorldData | null = null;
+let chartsLoading: Promise<void> | null = null;
+/** Install the chart module: the loaded chart file, or a test's fake engine. */
+export function installCharts(module: { charts: ChartEngine; world: WorldData }) {
+  charts = module.charts;
+  world = module.world;
+}
+/** Load the separately compiled chart file once; a failed load is retried by the next call. */
+export function loadCharts() {
+  if (!chartsLoading)
+    chartsLoading = import("./echarts").then(installCharts, error => {
+      chartsLoading = null;
+      throw error;
+    });
+  return chartsLoading;
+}
 
 export interface StatsFilter {
   makeFindFilter(): Record<string, unknown>;

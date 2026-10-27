@@ -18,6 +18,8 @@ import {
 import { CanvasRenderer } from "echarts/renderers";
 import type { ChartEngine } from "./runtime";
 
+// Compiled as its own file (assets/dirtyStatsCharts.js) that runtime.loadCharts() imports
+// when a Stats page opens, so other Stash pages never load the chart library or the map.
 // Only the series, components and renderer the Stats views configure. This
 // registers into the bundle's private ECharts registry; it touches no host API.
 use([
@@ -41,3 +43,4 @@ use([
 ]);
 
 export const charts = { init, registerMap } as unknown as ChartEngine;
+export { default as world } from "../vendor/world.js";

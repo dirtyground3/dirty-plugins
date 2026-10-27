@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import time
+import urllib.request
 
 from plugin_paths import runtime_path
 from test_dirty_compactor_stash_integration import Fixture, add_build_mode_argument, select_build_mode, verify_served_bundle
@@ -38,9 +39,12 @@ def verify_frontend(fixture):
     loaded = [plugin for plugin in fixture.gql('{plugins{id version enabled}}')["plugins"] if plugin["id"] == "dirtyStats"]
     assert len(loaded) == 1 and loaded[0]["enabled"] and loaded[0]["version"] == expected_version
     detail = verify_served_bundle(fixture, "DirtyStats", "dirtyStats", "dirtyStats.js",
-                                  {"DirtyStatsRoute": "Route", "GrowthPage": "Growth", "DashboardPage": "src/dashboard/Page"},
-                                  required=("src/echarts.ts", "vendor/world.js", "echarts/lib/chart/map/install.js"))
-    print("PASS: enabled " + expected_version + "; " + detail, flush=True)
+                                  {"DirtyStatsRoute": "Route", "GrowthPage": "Growth", "DashboardPage": "src/dashboard/Page"})
+    # ECharts and the world map are a separate file that Stats pages import from the plugin's assets.
+    with urllib.request.urlopen(fixture.url + "/plugin/dirtyStats/assets/dirtyStatsCharts.js") as response:
+        assert response.read() == runtime_path("DirtyStats", "assets/dirtyStatsCharts.js").read_bytes()
+        assert response.headers.get_content_type() == "text/javascript", "module imports need a JavaScript type"
+    print("PASS: enabled " + expected_version + "; " + detail + "; chart file served as an asset", flush=True)
 
 
 def exercise(fixture):

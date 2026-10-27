@@ -15,18 +15,28 @@ assert.deepEqual(
 );
 let total = 0;
 for (const plugin of lib.registry) {
-  const budget = recorded[plugin.directory].budget;
-  const code = fs.readFileSync(runtimePath(plugin.directory, plugin.entry));
-  total += code.length;
-  assert(
-    code.length <= budget,
-    plugin.directory +
-      " release bundle grew to " +
-      code.length +
-      " bytes (budget " +
-      budget +
-      "); explain the growth and record the new size",
-  );
-  assert(!code.includes("sourceMappingURL"), plugin.directory + " release bundle must not carry a source map");
+  const record = recorded[plugin.directory];
+  // Chunks load on demand, so each is recorded separately from the bundle every page loads.
+  const files = [
+    [plugin.entry, record],
+    ...Object.values(plugin.chunks || {}).map(output => [output, record.chunks?.[output]]),
+  ];
+  for (const [file, { budget } = {}] of files) {
+    assert(budget, plugin.directory + " records a release size for " + file);
+    const code = fs.readFileSync(runtimePath(plugin.directory, file));
+    total += code.length;
+    assert(
+      code.length <= budget,
+      plugin.directory +
+        "/" +
+        file +
+        " grew to " +
+        code.length +
+        " bytes (budget " +
+        budget +
+        "); explain the growth and record the new size",
+    );
+    assert(!code.includes("sourceMappingURL"), plugin.directory + "/" + file + " must not carry a source map");
+  }
 }
 console.log("Release bundle sizes within budget (" + total + " bytes total) and map-free");

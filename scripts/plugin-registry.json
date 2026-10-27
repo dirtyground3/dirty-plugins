@@ -46,6 +46,9 @@
     "directory": "DirtyStats",
     "id": "dirtyStats",
     "entry": "dirtyStats.js",
+    "chunks": {
+      "src/echarts.ts": "assets/dirtyStatsCharts.js"
+    },
     "bundledPackages": [
       "echarts",
       "zrender",

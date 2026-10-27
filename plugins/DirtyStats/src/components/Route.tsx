@@ -19,7 +19,7 @@ import {
   studioRoute,
   tagDnaRoute,
 } from "../domain/registry";
-import { React, api, hub } from "../runtime";
+import { React, api, charts, hub, loadCharts } from "../runtime";
 import { setStatsSettingExtra, statsThemeClass, useStatsSetting, statsSettingsReady } from "../settings";
 import type * as R from "react";
 export function DirtyStatsRoute(): R.ReactElement | null {
@@ -72,6 +72,24 @@ export function DirtyStatsRoute(): R.ReactElement | null {
     ready = state[0] === statistic,
     setReadyStatistic = state[1];
   const [error, setError] = React.useState("");
+  // Every Stats view renders inside this route, so it waits here for the separate chart file.
+  const [chartsReady, setChartsReady] = React.useState(Boolean(charts));
+  const [chartsError, setChartsError] = React.useState("");
+  React.useEffect(() => {
+    if (chartsReady) return;
+    let active = true;
+    loadCharts().then(
+      () => {
+        if (active) setChartsReady(true);
+      },
+      (err: Error) => {
+        if (active) setChartsError((err.message || String(err)) + " Reload the Stash page to try again.");
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
   React.useEffect(() => {
     let active = true;
     setReadyStatistic(null);
@@ -105,6 +123,16 @@ export function DirtyStatsRoute(): R.ReactElement | null {
     const query = nativeFilterQuery(location.search);
     if (query) setStatsSettingExtra("statisticFilter_" + statistic, query);
   }, [ready, statistic, location.search]);
+  if (!chartsReady)
+    return (
+      <main ref={page} className={"dirty-stats-page " + themeClass}>
+        {chartsError ? (
+          <StatsState detail={chartsError} role="alert" title="Could not load the charts" />
+        ) : (
+          <StatsState title="Loading charts…" />
+        )}
+      </main>
+    );
   if (statistic === "dashboard") {
     return (
       <main ref={page} className={"dirty-stats-page dirty-stats-dashboard-page " + themeClass}>

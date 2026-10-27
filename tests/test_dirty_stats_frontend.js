@@ -2,8 +2,20 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { createRenderer, element, events, findAll } = require("./ui_harness");
-const { load } = require("./stats_modules");
+const { chartModule, load } = require("./stats_modules");
 const { runSource } = require("./plugin_paths");
+
+/** A Stats component compiled with its own runtime, with the chart module installed as the route does. */
+function runComponent(file, globals, { external, modules }) {
+  const charts = chartModule(globals.window);
+  const exports = runSource("DirtyStats", "component-test-entry.ts", globals, {
+    contents: 'export * from "./' + file.replace(/\.tsx$/, "") + '";\nexport { installCharts } from "./src/runtime";',
+    external: ["./echarts", ...external],
+    modules: { "./echarts": charts, ...modules },
+  });
+  exports.installCharts(charts);
+  return exports;
+}
 
 function deferred() {
   let resolve, reject;
@@ -112,14 +124,12 @@ test("performer versus scene ratings paginates native filters, selects performer
       return Promise.resolve({ findPerformers: { count: 2, performers: [rows[variables.filter.page - 1]] } });
     },
   });
-  const { PerformerSceneRatingsPage } = runSource(
-    "DirtyStats",
+  const { PerformerSceneRatingsPage } = runComponent(
     "src/components/PerformerSceneRatings.tsx",
     { window: e.window, AbortController },
     {
-      external: ["./echarts", "./Cards"],
+      external: ["./Cards"],
       modules: {
-        "./echarts": { charts: e.window.echarts },
         "./Cards": { PerformerCards: props => element("performer-cards", props) },
       },
     },
@@ -296,14 +306,12 @@ test("dashboard charts preserve zoom/pan, update map geometry, and register the 
 test("full Origin retains map zoom across country, label, and theme changes and registers once", async () => {
   const e = environment({ createSaveController: () => ({ schedule() {} }) });
   const rows = [{ id: "one", country: "US" }];
-  const { StatsPage } = runSource(
-    "DirtyStats",
+  const { StatsPage } = runComponent(
     "src/components/Origin.tsx",
     { window: e.window },
     {
-      external: ["./echarts", "./Cards", "../domain/data", "../domain/charts", "../settings"],
+      external: ["./Cards", "../domain/data", "../domain/charts", "../settings"],
       modules: {
-        "./echarts": { charts: e.window.echarts },
         "./Cards": { PerformerCards: props => element("performer-cards", props) },
         "../domain/data": { usePageData: () => ({ rows, loading: false, error: "", useLoad() {} }) },
         "../domain/charts": e.modules.charts,
@@ -466,14 +474,12 @@ test("full Growth period selection reuses daily aggregation and preserves foreca
     forecasts = [],
     descriptors = [];
   const domain = e.modules.growth;
-  const { GrowthPage } = runSource(
-    "DirtyStats",
+  const { GrowthPage } = runComponent(
     "src/components/Growth.tsx",
     { window: e.window },
     {
-      external: ["./echarts", "../domain/growth", "../domain/charts", "../domain/data", "./Cards"],
+      external: ["../domain/growth", "../domain/charts", "../domain/data", "./Cards"],
       modules: {
-        "./echarts": { charts: e.window.echarts },
         "./Cards": { SceneCards: props => element("scene-cards", props) },
         "../domain/growth": {
           ...domain,
@@ -524,4 +530,21 @@ test("full Growth period selection reuses daily aggregation and preserves foreca
   assert.deepEqual(last.value, domain.forecastGrowth(...last.args));
   assert.ok(findAll(e.renderer.tree, node => node.props["aria-label"] === "Scene content growth").length);
   e.renderer.unmount();
+});
+
+test("the chart file loads once on demand and a failed load is retried", async () => {
+  // Outside the browser the import of the separate chart file fails, which exercises the retry.
+  const runtime = runSource("DirtyStats", "src/runtime.ts", { window: {} });
+  assert.equal(runtime.charts, null);
+  const first = runtime.loadCharts();
+  assert.equal(runtime.loadCharts(), first, "concurrent views share one load");
+  await assert.rejects(first);
+  assert.equal(runtime.charts, null);
+  const retry = runtime.loadCharts();
+  assert.notEqual(retry, first, "the next view retries a failed load");
+  await assert.rejects(retry);
+  const module = { charts: { init() {}, registerMap() {} }, world: { type: "FeatureCollection", features: [] } };
+  runtime.installCharts(module);
+  assert.equal(runtime.charts, module.charts);
+  assert.equal(runtime.world, module.world);
 });

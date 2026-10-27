@@ -83,7 +83,7 @@ function createHubHarness(options = {}) {
     GQL: { useJobsSubscribeSubscription: () => ({ data: null }) },
     components: {},
     libraries: {
-      ReactRouterDOM: { Link: "a", MemoryRouter: "memory-router" },
+      ReactRouterDOM: { Link: "a", NavLink: "a", MemoryRouter: "memory-router" },
       Bootstrap: {
         Dropdown: Object.assign(
           function Dropdown(props) {
@@ -179,7 +179,13 @@ function createHubHarness(options = {}) {
   function loadCompactor() {
     vm.runInContext(sourceFor("DirtyTasks"), context);
   }
-  const render = () => renderer.render(React.createElement(route));
+  // The settings route is the default root; mount() renders another node, such as a patch result.
+  let root = () => React.createElement(route);
+  const render = () => renderer.render(root());
+  function mount(node) {
+    root = () => node;
+    render();
+  }
   // Settle across macrotasks: hub saves wait on timers and fetch responses.
   async function settle() {
     for (let count = 0; count < 30; count++) {
@@ -203,6 +209,7 @@ function createHubHarness(options = {}) {
     load,
     loadCompactor,
     render,
+    mount,
     settle,
     tick,
     unmount,

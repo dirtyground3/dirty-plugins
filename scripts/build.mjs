@@ -54,18 +54,55 @@ function validatePlugin(plugin, manifest, schemas) {
     installPath(pluginDirectory(plugin), file);
   const assets = Object.values(manifest.ui?.assets || {}).filter(asset => !plugin.runtimeDirectories?.includes(asset));
   for (const file of [...exec, ...assets])
-    if (!files.includes(file)) fail("manifest references a file that is not installed: " + file);
+    if (!files.some(installed => installed === file || installed.startsWith(file + "/")))
+      fail("manifest references a file that is not installed: " + file);
+  for (const output of Object.values(plugin.chunks || {}))
+    if (!chunkUrl(plugin, manifest, output)) fail("no ui.assets mapping serves the chunk " + output);
   for (const file of files) {
     const source = installPath(pluginDirectory(plugin), file);
     if (FORBIDDEN_INSTALL_FILE.test(file.replaceAll("\\", "/")))
       fail("source or runtime data in install files: " + file);
-    if (file === plugin.entry || plugin.generatedFiles?.includes(file)) continue;
+    if (file === plugin.entry || plugin.generatedFiles?.includes(file) || isChunk(plugin, file)) continue;
     if (!fs.statSync(source, { throwIfNoEntry: false })?.isFile()) fail("missing install file " + file);
     const relative = path.relative(fs.realpathSync(pluginDirectory(plugin)), fs.realpathSync(source));
     if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative))
       fail("install source resolves outside the plugin: " + file);
   }
   return files;
+}
+
+const isChunk = (plugin, file) => Object.values(plugin.chunks || {}).includes(file);
+
+/** The URL Stash serves a chunk at, through the manifest's ui.assets mapping (prefix -> plugin directory). */
+function chunkUrl(plugin, manifest, output) {
+  for (const [prefix, directory] of Object.entries(manifest.ui?.assets || {}))
+    if (output.startsWith(directory + "/"))
+      return "/plugin/" + plugin.id + "/assets" + prefix.replace(/\/?$/, "/") + output.slice(directory.length + 1);
+  return null;
+}
+
+/**
+ * Chunks are compiled separately and loaded on demand: the entry's import("./module") of a
+ * chunk source becomes an import of its served URL, and a static import of one is an error.
+ */
+function chunkImports(plugin, manifest) {
+  const sources = new Map(
+    Object.entries(plugin.chunks || {}).map(([source, output]) => [
+      path.join(pluginDirectory(plugin), source.replace(/\.tsx?$/, "")),
+      chunkUrl(plugin, manifest, output),
+    ]),
+  );
+  return {
+    name: "plugin-chunks",
+    setup(build) {
+      build.onResolve({ filter: /^\./ }, args => {
+        const url = sources.get(path.resolve(args.resolveDir, args.path).replace(/\.tsx?$/, ""));
+        if (!url) return null;
+        if (args.kind === "dynamic-import") return { path: url, external: true };
+        return { errors: [{ text: "Load " + args.path + " with import(); it is compiled as a separate chunk" }] };
+      });
+    },
+  };
 }
 
 /** Each bundle may contain only its own source, declared npm packages and declared generated settings. */
@@ -141,15 +178,22 @@ export async function buildPlugins(mode = "release") {
     for (const file of files) {
       const output = installPath(destination, file);
       fs.mkdirSync(path.dirname(output), { recursive: true });
-      if (file === plugin.entry || file === plugin.id + ".yml") continue;
+      if (file === plugin.entry || file === plugin.id + ".yml" || isChunk(plugin, file)) continue;
       if (plugin.generatedFiles?.includes(file)) fs.writeFileSync(output, pythonModule(plugin.id, schemas[plugin.id]));
       else fs.copyFileSync(installPath(pluginDirectory(plugin), file), output);
     }
     await esbuild.build({
       ...compileOptions(plugin, "src/index.tsx", "browser", mode),
       outfile: path.join(destination, plugin.entry),
-      plugins: [boundaries(plugin)],
+      plugins: [chunkImports(plugin, manifest), boundaries(plugin)],
     });
+    for (const [source, output] of Object.entries(plugin.chunks || {}))
+      await esbuild.build({
+        ...compileOptions(plugin, source, "browser", mode),
+        format: "esm",
+        outfile: installPath(destination, output),
+        plugins: [boundaries(plugin)],
+      });
     const settings = schemas[plugin.id] && manifestSettings(schemas[plugin.id]);
     if (settings && Object.keys(settings).length) manifest.settings = settings;
     fs.writeFileSync(path.join(destination, plugin.id + ".yml"), YAML.stringify(manifest));

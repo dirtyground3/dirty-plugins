@@ -33,7 +33,7 @@ export function StatsPage(props: PageProps): R.ReactElement | null {
   const [labels, setLabels] = useStatsSetting("showMapNumbers");
   const chartNode = React.useRef(null),
     chartRef = React.useRef<ChartInstance | null>(null);
-  const stats = React.useMemo(() => aggregate(performers, countries), [performers]);
+  const stats = React.useMemo(() => aggregate(performers, countries()), [performers]);
   React.useEffect(() => {
     setSelectedCountry("");
   }, [criteriaKey]);
@@ -48,7 +48,9 @@ export function StatsPage(props: PageProps): R.ReactElement | null {
   );
   chartLifecycle.useChart(() => {
     if (loading || error || !chartNode.current) return;
-    if (!charts || !world) {
+    const engine = charts,
+      map = world;
+    if (!engine || !map) {
       setChartError("The bundled chart or map data could not be loaded. Reload the Stash page.");
       return;
     }
@@ -57,7 +59,7 @@ export function StatsPage(props: PageProps): R.ReactElement | null {
       chartRef,
       beforeInit: () => {
         if (!originMapRegistered) {
-          charts.registerMap("dirtyStatsWorld", world);
+          engine.registerMap("dirtyStatsWorld", map);
           originMapRegistered = true;
         }
       },
@@ -78,7 +80,7 @@ export function StatsPage(props: PageProps): R.ReactElement | null {
   }, [loading, error]);
   React.useEffect(() => {
     const chart = chartRef.current;
-    if (!chart) return;
+    if (!chart || !world) return;
     const option = originMapOption(stats, world.features, {
       map: "dirtyStatsWorld",
       showLegend: true,

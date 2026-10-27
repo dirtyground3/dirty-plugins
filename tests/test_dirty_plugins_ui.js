@@ -61,7 +61,7 @@ async function main() {
   assert.equal(typeof h.window.DirtyPlugins.registerPlugin, "function", "the published hub is the registration guard");
   assert.deepEqual(
     h.patches.map(item => item.name),
-    ["SceneList", "PluginSettings"],
+    ["SceneList", "PluginSettings", "MainNavBar.UtilityItems"],
   );
   const before = [h.patches.length, h.registrations.length, h.requests.length];
   h.load();
@@ -187,6 +187,26 @@ async function main() {
   ])
     assert.equal(h.window.handlers.get(name)?.size || 0, 0, name);
   assert.equal(h.document.handlers.get("click")?.size || 0, 0);
+  // The settings button follows the native items and every plugin's button; the hub setting hides it.
+  const nav = createHubHarness();
+  nav.load();
+  const utilityItems = nav.patches.find(item => item.name === "MainNavBar.UtilityItems").callback;
+  nav.mount(utilityItems({ children: "Native" }, "Native and plugin buttons"));
+  let navTree = await nav.settle();
+  assert.equal(navTree.children[0], "Native and plugin buttons");
+  assert.equal(navTree.children[1].props.className, "nav-utility dirty-ui-nav-action dirty-plugins-nav");
+  assert.equal(navTree.children[1].props.to, "/plugins/dirty-plugins");
+  const settingsReads = () => nav.requests.filter(request => request.variables?.args?.mode === "getSettings").length;
+  const reads = settingsReads();
+  nav.window.emit("dirty-plugins:configuration-changed", { detail: { pluginId: "multiscreen" } });
+  await nav.settle();
+  assert.equal(settingsReads(), reads, "other plugins' changes do not reread hub settings");
+  nav.settings.dirtyPlugins.showSettingsInMenu = false;
+  nav.window.emit("dirty-plugins:configuration-changed", { detail: { pluginId: "dirtyPlugins" } });
+  navTree = await nav.settle();
+  assert.equal(navTree.children[1], null, "the hub setting hides the button");
+  nav.unmount();
+  assert.equal(nav.window.handlers.get("dirty-plugins:configuration-changed")?.size || 0, 0);
   // Both real compiled bundles cooperate: hook dirty reports drive the existing
   // hub route's browser/tab protection, including rejecting a leave attempt.
   const combined = createHubHarness({

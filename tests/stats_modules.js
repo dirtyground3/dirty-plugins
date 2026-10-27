@@ -1,9 +1,14 @@
 "use strict";
 const vm = require("node:vm");
-const { runSource } = require("./plugin_paths");
+const { requireSource, runSource } = require("./plugin_paths");
 
 // Every Stats module in one bundle, so they share state as in the plugin bundle.
 // ECharts stays external: suites supply a fake chart engine as window.echarts.
+
+/** What src/echarts.ts provides: the suite's fake engine (empty when it draws no chart) and the real world map. */
+function chartModule(window) {
+  return { charts: window.echarts || {}, world: requireSource("DirtyStats", "vendor/world.js").default };
+}
 const COMPONENTS = [
   "Primitives",
   "Filters",
@@ -39,7 +44,7 @@ const ENTRY = [
     .map(([name, path]) => "export * as " + name + ' from "./src/' + path + '";'),
   ...COMPONENTS.map(name => "export * as " + name + ' from "./src/components/' + name + '";'),
   ...DASHBOARD.map(name => "export * as dashboard" + name + ' from "./src/dashboard/' + name + '";'),
-  'export { world } from "./src/runtime";',
+  'export { world, installCharts } from "./src/runtime";',
 ].join("\n");
 
 function prepare(context) {
@@ -66,11 +71,15 @@ function prepare(context) {
 function load(context) {
   if (!vm.isContext(context)) vm.createContext(context);
   prepare(context);
-  return runSource("DirtyStats", "stats-test-entry.ts", context, {
+  const charts = chartModule(context.window);
+  const modules = runSource("DirtyStats", "stats-test-entry.ts", context, {
     contents: ENTRY,
     external: ["./echarts"],
-    modules: { "./echarts": { charts: context.window.echarts } },
+    modules: { "./echarts": charts },
   });
+  // The plugin waits for the chart file in its route; suites install it before rendering.
+  modules.installCharts(charts);
+  return modules;
 }
 
 function dashboardOf(modules) {
@@ -120,4 +129,4 @@ function core(context) {
 function dashboard(context) {
   return dashboardOf(load(context));
 }
-module.exports = { core, dashboard, load };
+module.exports = { chartModule, core, dashboard, load };

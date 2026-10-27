@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { captureEnabled, captureUrl } from "./capture";
 import * as controls from "./components/Controls";
 import { Dialog } from "./components/Dialog";
@@ -5,7 +6,7 @@ import * as navigation from "./components/Navigation";
 import { DirtyPluginsRoute } from "./components/Route";
 import { SceneFilterEditor, sceneListPatch } from "./components/SceneFilter";
 import * as settings from "./components/Settings";
-import { SettingsLink } from "./components/SettingsLink";
+import { SettingsLink, SettingsNavLink } from "./components/SettingsLink";
 import { MANAGED_PLUGIN_ID_SET, ROUTE_PATH } from "./constants";
 import { debugElapsed, debugLog, installDebug, setDebugPlugin } from "./debug";
 import { manageDialog, notify } from "./dialogs";
@@ -64,6 +65,13 @@ if (api && !window.DirtyPlugins) {
       if (!MANAGED_PLUGIN_ID_SET.has(pluginId)) return next.apply(null, args);
       return <SettingsLink pluginId={pluginId} />;
     });
+    // After-patches run once every plugin's before-patch has added its button, so this one is last.
+    PluginApi.patch.after("MainNavBar.UtilityItems", (...args) => (
+      <React.Fragment>
+        {args.pop() as ReactNode}
+        <SettingsNavLink />
+      </React.Fragment>
+    ));
     PluginApi.register.route(ROUTE_PATH, DirtyPluginsRoute);
     debugLog("dirtyPlugins", "hub script finished registering", { route: ROUTE_PATH, elapsedMs: debugElapsed() });
   } catch (error) {

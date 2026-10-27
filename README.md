@@ -15,13 +15,13 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.8 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.9 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.7 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.15 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.4 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.7 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.8 |
 
 ## Shared look and settings
 
@@ -31,6 +31,10 @@ theme** in the DirtyPlugins **General** tab: Midnight (the default), Retro
 Arcade, Candy Pop, Tropical Punch, Paper Picnic, De Stijl, or De Stijl Dark. It
 styles all suite-owned surfaces; native Stash cards, filters, and players keep
 the host theme. The same tab creates a backup of the shared database.
+
+A settings button in the Stash header, after every other Dirty plugin button,
+opens this page. Turn off **Show settings in the Stash header** in the
+**General** tab to hide it.
 
 ![DirtyPlugins General tab with the suite theme selector and database backup](docs/images/dirty-plugins-general.png)
 
@@ -449,8 +453,9 @@ esbuild into one browser bundle per plugin with the existing entry filename.
 React comes from Stash and is never bundled. Versions before 1.0.0 were
 developer builds; their compatibility APIs (such as the HTM `react.html` tag)
 were removed. Stats bundles only the ECharts 5.6.0 modules it
-uses (pinned npm packages) and its world map data; no other plugin or the hub
-loads a chart library. `npm run typecheck` runs the strict TypeScript check.
+uses (pinned npm packages) and its world map data into a separate chart file
+that loads when a Stats page opens; no other plugin or the hub loads a chart
+library. `npm run typecheck` runs the strict TypeScript check.
 Python backends retain their standard-library and same-directory import contract.
 Settings shown in Stash (labels, descriptions, defaults, bounds and options) and
 constants shared by browser and backend are authored once in `schemas/`; the build
@@ -525,6 +530,14 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyStats 1.0.9:** ECharts and the world map moved into a separate file
+  that loads the first time a Stats page opens. The Stats script that every
+  Stash page loads fell from 1.15 MB to 160 KB. Charts and map look the same.
+
+- **DirtyPlugins 1.0.8:** a settings button with the suite's navigation colors
+  opens the Dirty Plugins settings from the Stash header. It always follows the
+  other Dirty plugin buttons and can be hidden in **General**.
 
 - **DirtyPlugins 1.0.7:** autosaved settings no longer leave **Unsaved
   changes** showing after a successful save.

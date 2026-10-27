@@ -23,7 +23,13 @@ for (const plugin of lib.registry) {
   assert.deepEqual(files(destination), [...expected].sort(), plugin.id + " stages exactly its install files");
   // Only the bundle, the manifest and generated constants are built; every other install file is copied verbatim.
   for (const file of expected) {
-    if (file === plugin.entry || file === plugin.id + ".yml" || (plugin.generatedFiles || []).includes(file)) continue;
+    if (
+      file === plugin.entry ||
+      file === plugin.id + ".yml" ||
+      (plugin.generatedFiles || []).includes(file) ||
+      Object.values(plugin.chunks || {}).includes(file)
+    )
+      continue;
     assert.deepEqual(
       fs.readFileSync(runtimePath(plugin.directory, file)),
       fs.readFileSync(sourcePath(plugin.directory, file)),

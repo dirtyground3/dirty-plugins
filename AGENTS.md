@@ -101,9 +101,9 @@ ui:
   source or installed plugins.
 - Install files are derived from the manifest: the manifest itself, its
   `ui.javascript` and `ui.css` entries, the top-level `*.py` modules, the
-  registry's `generatedFiles` and `extraFiles`, `README.md` and `LICENSE`.
-  `scripts/plugin-registry.json` holds only what cannot be derived
-  (`directory`, `id`, `entry`, `generatedImports`, `generatedFiles`,
+  registry's `chunks`, `generatedFiles` and `extraFiles`, `README.md` and
+  `LICENSE`. `scripts/plugin-registry.json` holds only what cannot be derived
+  (`directory`, `id`, `entry`, `chunks`, `generatedImports`, `generatedFiles`,
   `bundledPackages`, `extraFiles`, `runtimeDirectories`). Never place runtime
   data, source tooling, or tests where they would be installed.
 - `npm run build` stages minified release bundles without source maps for
@@ -116,6 +116,13 @@ ui:
   with the existing entry filename; its manifest's `ui.javascript` lists only
   that entry. Source manifests keep host metadata (identity, version, exec, tasks,
   hooks, dependencies, asset mappings).
+- Stash loads every plugin's entry on every page. Code that only some pages
+  need may be a registry `chunk` (source -> output under a `ui.assets`
+  directory): the build compiles it as a separate ES module and turns the
+  entry's `import("./module")` into an import of its served
+  `/plugin/<id>/assets/...` URL; a static import of a chunk fails the build.
+  Stats keeps ECharts and the world map in `assets/dirtyStatsCharts.js`, which
+  `DirtyStatsRoute` waits for through `loadCharts()`.
 - Write plain ES modules with named exports. Do not wrap a plugin's modules in
   `createX(dependencies)` factories; tests compile the modules they need on
   demand and replace an import where a fake is required
@@ -197,7 +204,7 @@ DirtyPlugins code, and small plain implementations. DirtyStats has one existing
 exception: modular ECharts 5.6.0 (with ZRender and tslib, pinned npm development
 dependencies declared as `bundledPackages`) and Natural Earth map data, with
 licenses under `plugins/DirtyStats/vendor/`. Register only the chart types and
-components Stats uses in `src/echarts.ts`. Keep these local to Stats; the other
+components Stats uses in `src/echarts.ts`, the on-demand chart chunk. Keep these local to Stats; the other
 plugins and the hub must not load a chart library. A new dependency needs a
 clear use case, license inventory, offline packaging, and no equivalent shared
 or native Stash capability. See `plugins/DirtyPlugins/STYLE.md` for the UI

@@ -294,7 +294,7 @@ export function orderedCards(cards: Array<StatsScene & StatsPerformer>, ids: Arr
 }
 
 export function countryPerformers(performers: StatsPerformer[], country: string) {
-  return country ? performers.filter(p => countryName(p.country, countries) === country) : performers;
+  return country ? performers.filter(p => countryName(p.country, countries()) === country) : performers;
 }
 
 export function constellationGender(value: unknown) {
@@ -1094,4 +1094,9 @@ export function qualityEfficiencySymbolSize(bytes: number, maxBytes: number) {
   if (!(bytes > 0) || !(maxBytes > 0)) return 6;
   return Math.max(6, 36 * Math.sqrt(bytes / maxBytes));
 }
-export const countries = countryIndex(world.features);
+let countryLookup: Record<string, string> | null = null;
+/** The country index of the loaded world map; empty until the map has loaded. */
+export function countries() {
+  if (!world) return {};
+  return (countryLookup ||= countryIndex(world.features));
+}

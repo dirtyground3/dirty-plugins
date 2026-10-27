@@ -7,12 +7,27 @@ const { pluginFor } = require("../scripts/build-lib.cjs");
 const { element } = require("./ui_harness");
 const { installRegistration } = require("./shared_runtime");
 const code = fs.readFileSync(runtimePath("DirtyStats", "dirtyStats.js"), "utf8");
+const chartCode = fs.readFileSync(runtimePath("DirtyStats", "assets/dirtyStatsCharts.js"), "utf8");
 const manifest = fs.readFileSync(runtimePath("DirtyStats", "dirtyStats.yml"), "utf8");
 assert.match(manifest, /javascript:\s*\n\s*- dirtyStats\.js\s*\n\s*css:/);
-assert(!code.includes("sourceMappingURL"), "release bundles carry no source map");
+assert.match(manifest, /assets:\s*\n\s*\/: assets/, "Stash serves the chart file as a plugin asset");
+assert(
+  !code.includes("sourceMappingURL") && !chartCode.includes("sourceMappingURL"),
+  "release bundles carry no source map",
+);
 // The build's boundary plugin admits only Stats source and these declared packages.
 assert.deepEqual(pluginFor("DirtyStats").bundledPackages, ["echarts", "zrender", "tslib"]);
-assert(code.includes("DirtyStats bundles parts of Apache ECharts 5.6.0"), "bundle keeps its third-party attribution");
+// ECharts and the world map load from their own file only when a Stats page opens.
+assert(
+  code.includes('import("/plugin/dirtyStats/assets/dirtyStatsCharts.js")'),
+  "the page bundle imports the chart file",
+);
+assert(!code.includes("Apache ECharts") && !code.includes("FeatureCollection"), "the page bundle has no charts or map");
+assert(chartCode.includes("DirtyStats bundles parts of Apache ECharts 5.6.0"), "chart file keeps its attribution");
+assert(
+  chartCode.includes("FeatureCollection") && /export\s*\{[^}]*as charts/.test(chartCode),
+  "chart file exports both",
+);
 // Every series type the views configure must be registered by the modular import.
 const registered = fs.readFileSync(sourcePath("DirtyStats", "src/echarts.ts"), "utf8");
 const sourceFiles = dir =>

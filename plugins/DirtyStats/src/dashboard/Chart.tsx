@@ -46,7 +46,7 @@ export function Chart(props: ChartProps): R.ReactElement | null {
     const chart = chartRef.current;
     if (!chart || !props.option) return;
     try {
-      if (props.map && world && !dashboardMapRegistered) {
+      if (props.map && charts && world && !dashboardMapRegistered) {
         charts.registerMap("dirtyStatsDashboardWorld", world);
         dashboardMapRegistered = true;
       }

@@ -3,8 +3,9 @@
 The frontend uses strict TypeScript and focused TSX components with React supplied
 by Stash and the DirtyPlugins public API. Run `npm run build` from the repository
 root and install `.build/plugins/DirtyStats/`; raw source is not installable.
-The staged plugin serves only `dirtyStats.js`, including the ECharts 5.6.0
-modules it uses and its world map data. Stash users need no Node or TypeScript tooling.
+The staged plugin serves `dirtyStats.js` on every Stash page. The ECharts 5.6.0
+modules it uses and its world map data are in `assets/dirtyStatsCharts.js`, which
+loads only when a Stats page opens. Stash users need no Node or TypeScript tooling.
 
 Explore Stash statistics from the **bubble chart icon** (red, blue, and white
 circles) in the utility navigation.

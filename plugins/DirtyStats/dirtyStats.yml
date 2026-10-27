@@ -1,6 +1,6 @@
 name: DirtyStats
 description: Build a customizable statistics dashboard with performer cards and explore origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections.
-version: 1.0.8
+version: 1.0.9
 
 exec:
   - python
@@ -15,3 +15,5 @@ ui:
     - dirtyStats.js
   css:
     - dirtyStats.css
+  assets:
+    /: assets
