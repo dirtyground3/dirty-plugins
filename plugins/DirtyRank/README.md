@@ -82,6 +82,10 @@ volatility instead of relying on a capped integer score.
   performer or image repeats, so the change remains unambiguous. In Gauntlet,
   the left target card stays in place across votes, skips, and undo, keeping
   its current video playing while only the right challenger card refreshes.
+- Performer profiles show category rank buttons beside **Start Gauntlet**.
+  Each button displays the current leaderboard position and opens that category
+  in the matching gender box. Only enabled categories with a leaderboard rank
+  appear; ranks in multiple boxes include the box name.
 - Click **King of the hill** on the standard battle page to keep each winner on the
   same side against a fresh challenger. The opening match starts among the
   lowest-ranked performers, with unrated performers going first. Each new

@@ -19,7 +19,7 @@ import time
 from plugin_paths import runtime_path
 
 sys.path.insert(0, str(runtime_path("DirtyPlugins")))
-sys.path.insert(0, str(runtime_path("DirtyCompactor")))
+sys.path.insert(0, str(runtime_path("DirtyTasks")))
 import dirty_compactor_quality as quality
 
 

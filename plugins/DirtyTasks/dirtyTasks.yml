@@ -1,0 +1,15 @@
+name: DirtyTasks
+description: Organize scene files, create additional encoded versions, and update tags from a selected tagger.
+version: 1.0.3
+ui:
+  requires:
+    - dirtyPlugins
+  javascript:
+    - dirtyTasks.js
+  css:
+    - dirtyTasks.css
+exec:
+  - python
+  - "{pluginDir}/dirty_tasks.py"
+interface: raw
+errLog: error

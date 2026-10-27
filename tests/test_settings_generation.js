@@ -16,11 +16,10 @@ async function main() {
   }
   assert.deepEqual(Object.keys(schemas).sort(), [
     "dirtyCaptions",
-    "dirtyCompactor",
     "dirtyPlugins",
     "dirtyRank",
     "dirtyStats",
-    "dirtyTidy",
+    "dirtyTasks",
     "extractScenes",
     "multiscreen",
   ]);

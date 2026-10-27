@@ -80,6 +80,7 @@ function createHubHarness(options = {}) {
   });
   const PluginApi = (window.PluginApi = {
     React,
+    GQL: { useJobsSubscribeSubscription: () => ({ data: null }) },
     components: {},
     libraries: {
       ReactRouterDOM: { Link: "a", MemoryRouter: "memory-router" },
@@ -125,6 +126,8 @@ function createHubHarness(options = {}) {
     }
     if (request.query.includes("query DirtyPluginsSettings"))
       return { ok: true, json: async () => ({ data: { plugins } }) };
+    if (request.query.includes("DirtyTidyTaggers"))
+      return { ok: true, json: async () => ({ data: { configuration: { general: { stashBoxes: [] } } } }) };
     const args = request.variables.args;
     let output;
     if (args.mode === "getAllSettings") output = { settings: copy(settings), pluginRevisions: copy(revisions) };
@@ -136,6 +139,10 @@ function createHubHarness(options = {}) {
       settings[args.pluginId] = copy(args.settings);
       output = { settings: copy(args.settings), revision: ++revisions[args.pluginId] };
     } else if (args.mode === "backupDatabase") output = { path: "controlled/backup.sqlite3" };
+    else if (args.mode === "migrationStatus") output = {};
+    else if (args.mode === "organizationRecoveryStatus") output = { required: false };
+    else if (args.mode === "getTaskSettings")
+      output = { settings: copy(settings.dirtyTasks?.[args.section] || {}), revision: 0 };
     else if (args.mode === "listRuns") output = [];
     else if (args.mode === "latestPreview") output = null;
     else throw new Error("Unexpected fixture operation " + args.mode);
@@ -170,7 +177,7 @@ function createHubHarness(options = {}) {
     vm.runInContext(source, context);
   }
   function loadCompactor() {
-    vm.runInContext(sourceFor("DirtyCompactor"), context);
+    vm.runInContext(sourceFor("DirtyTasks"), context);
   }
   const render = () => renderer.render(React.createElement(route));
   // Settle across macrotasks: hub saves wait on timers and fetch responses.

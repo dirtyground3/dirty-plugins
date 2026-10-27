@@ -60,7 +60,7 @@ class Fixture:
         assert self.port != 9999
         for name in ("media", "generated", "metadata", "cache", "blobs", "plugins", "scrapers"):
             (self.root / name).mkdir()
-        for name, installed in (("DirtyPlugins", "dirtyPlugins"), ("DirtyCompactor", "dirtyCompactor")):
+        for name, installed in (("DirtyPlugins", "dirtyPlugins"), ("DirtyTasks", "dirtyTasks")):
             shutil.copytree(runtime_path(name), self.root / "plugins" / installed,
                             ignore=shutil.ignore_patterns("runtime", "__pycache__", "*.sqlite*", "*.pyc"))
         config = {"database": str(self.root / "stash.sqlite"), "generated": str(self.root / "generated"),
@@ -89,7 +89,8 @@ class Fixture:
 
     def op(self, mode, **args):
         args["mode"] = mode
-        value = self.gql("mutation($args:Map!){runPluginOperation(plugin_id:\"dirtyCompactor\",args:$args)}", {"args": args})["runPluginOperation"]
+        args.setdefault("task", "encoding")
+        value = self.gql("mutation($args:Map!){runPluginOperation(plugin_id:\"dirtyTasks\",args:$args)}", {"args": args})["runPluginOperation"]
         for _ in range(4):
             if isinstance(value, str):
                 value = json.loads(value)
@@ -102,8 +103,11 @@ class Fixture:
         return value
 
     def settings(self, rules, paused=True):
-        args = {"mode": "setSettings", "pluginId": "dirtyCompactor", "settings": {"rules": rules, "automationPaused": paused}}
-        return self.gql("mutation($args:Map!){runPluginOperation(plugin_id:\"dirtyPlugins\",args:$args)}", {"args": args})
+        execution = self.op("getTaskSettings", section="execution")
+        self.op("saveTaskSettings", section="execution", expectedRevision=execution["revision"], settings={"move": "manual", "rename": "manual", "tags": "manual", "encoding": {str(r["id"]): "manual" if paused else "scan" for r in rules}})
+        revision = self.op("getTaskSettings", section="encoding")["revision"]
+        return self.op("saveTaskSettings", section="encoding", expectedRevision=revision,
+                       settings={"rules": rules, "automationPaused": paused})
 
     def scan(self):
         self.gql("mutation($input:ScanMetadataInput!){metadataScan(input:$input)}", {"input": {"paths": [str(self.root / "media")], "scanGenerateCovers": False}})
@@ -188,7 +192,7 @@ def verify_served_bundle(fixture, directory, plugin_id, entry, components, requi
 
 
 def verify_frontend(fixture):
-    detail = verify_served_bundle(fixture, "DirtyCompactor", "dirtyCompactor", "dirtyCompactor.js",
+    detail = verify_served_bundle(fixture, "DirtyTasks", "dirtyTasks", "dirtyTasks.js",
                                   {"Settings": "Settings", "OutputReview": "OutputReview"})
     print("PASS: " + detail, flush=True)
 
@@ -240,116 +244,54 @@ def verify_component_mappings(served, source_map, components):
 
 def exercise(fixture):
     fixture.gql("mutation{reloadPlugins}")
-    fixture.gql("mutation{setPluginsEnabled(enabledMap:{dirtyPlugins:true,dirtyCompactor:true})}")
+    fixture.gql("mutation{setPluginsEnabled(enabledMap:{dirtyPlugins:true,dirtyTasks:true})}")
     verify_frontend(fixture)
     source = fixture.root / "media" / "synthetic.mp4"
     subprocess.run([shutil.which("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=25", "-t", "3", "-c:v", "libx264", "-crf", "5", str(source)], check=True)
     original = source.read_bytes()
     fixture.scan()
     scene = fixture.gql("{findScenes{scenes{id files{id}}}}") ["findScenes"]["scenes"][0]
-    fixture.gql("mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}", {"input": {"id": scene["id"], "title": "Synthetic review fixture", "rating100": 80, "details": "Preserve this metadata"}})
+    fixture.gql("mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}", {"input": {"id": scene["id"], "title": "Synthetic encoding fixture", "rating100": 80, "details": "Preserve this metadata"}})
     rule = {"id": "reduce", "name": "Synthetic resize", "enabled": True, "mode": "manual", "condition": {"all": True, "scene": {}, "find": {}, "query": ""},
             "action": "resize", "width": 320, "height": 180, "mbps": .2, "codec": "h264", "encoder": "cpu", "format": "keep"}
     fixture.settings([rule])
     preview = fixture.op("preview")
     preview = fixture.wait_record("getPreview", preview["id"], {"ready"})
     assert preview["counts"].get("ready") == 1, preview
-    run = fixture.op("startRun", id=preview["id"], reviewOutputs=True)
-    run = fixture.wait_record("getRun", run["id"], {"awaitingReview"})
+    run = fixture.op("startRun", id=preview["id"])
+    run = fixture.wait_record("getRun", run["id"], {"completed"})
+    assert run["counts"].get("completed") == 1, run
+    current = fixture.gql("query($id:ID!){findScene(id:$id){id title details rating100 files{id path width height}}}", {"id": scene["id"]})["findScene"]
+    assert current["id"] == scene["id"] and current["title"] == "Synthetic encoding fixture"
+    assert current["details"] == "Preserve this metadata" and current["rating100"] == 80
+    assert len(current["files"]) == 2, current
+    assert current["files"][0]["id"] == scene["files"][0]["id"], "Original stays primary"
     assert source.read_bytes() == original
-    review = run["review"]
-    request = urllib.request.Request(fixture.url + review["url"], headers={"Range": "bytes=0-127"})
-    with urllib.request.urlopen(request) as response:
-        assert response.status == 206, response.status
-        assert len(response.read()) == 128
-    with urllib.request.urlopen(fixture.url + review["url"]) as response:
-        reviewed = response.read()
-    fixture.op("acceptOutput", id=run["id"], operationId=review["operationId"])
-    final = fixture.wait_record("getRun", run["id"], {"completed"})
-    assert hashlib.sha256(source.read_bytes()).digest() == hashlib.sha256(reviewed).digest()
-    scenes = fixture.gql("{findScenes{scenes{id title rating100 details files{id width height}}}}") ["findScenes"]["scenes"]
-    assert len(scenes) == 1 and scenes[0]["id"] == scene["id"], scenes
-    assert scenes[0]["rating100"] == 80 and scenes[0]["details"] == "Preserve this metadata"
-    assert scenes[0]["files"][0]["id"] == scene["files"][0]["id"]
-    assert scenes[0]["files"][0]["width"] == 320
-    assert final["actualSavings"] == len(original) - len(reviewed)
-    print("PASS: complete review, HTTP seeking, exact-byte acceptance, scene/file identity, metadata preservation, actual savings", flush=True)
-    # Changing AVI to MP4 exercises Stash moveFiles before replacement.
-    avi = fixture.root / "media" / "format-change.avi"
-    subprocess.run([shutil.which("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=25",
-                    "-t", "2", "-c:v", "mpeg4", "-q:v", "1", str(avi)], check=True)
-    fixture.scan()
-    all_scenes = fixture.gql("{findScenes{scenes{id files{id path}}}}") ["findScenes"]["scenes"]
-    original_scene = next(s for s in all_scenes if s["files"][0]["path"] == str(avi))
-    rule.update(format="allow")
-    fixture.settings([rule])
+    output = next(f for f in current["files"] if f["id"] != scene["files"][0]["id"])
+    assert (output["width"], output["height"]) == (320, 180)
+    assert Path(output["path"]).exists() and run["addedBytes"] > 0 and run["actualSavings"] == 0
+    assert fixture.gql("{findScenes{count}}") ["findScenes"]["count"] == 1, "No duplicate scene remains"
     preview = fixture.op("preview")
     preview = fixture.wait_record("getPreview", preview["id"], {"ready"})
-    assert preview["counts"].get("ready") == 1, preview
-    run = fixture.op("startRun", id=preview["id"], reviewOutputs=False)
-    final = fixture.wait_record("getRun", run["id"], {"completed"})
-    assert final["counts"].get("completed") == 1, final
-    assert not avi.exists() and avi.with_suffix(".mp4").exists()
-    same = fixture.gql("query($id:ID!){findScene(id:$id){id files{id path}}}", {"id": original_scene["id"]}) ["findScene"]
-    assert same["files"][0]["id"] == original_scene["files"][0]["id"]
-    assert same["files"][0]["path"] == str(avi.with_suffix(".mp4"))
-    print("PASS: container change retains Stash scene and file IDs", flush=True)
-    # Delete only a named synthetic fixture, through the automatic queue path.
-    doomed = fixture.root / "media" / "delete-fixture.mp4"
-    subprocess.run([shutil.which("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", "color=blue:size=160x90:rate=25",
-                    "-t", "1", "-c:v", "libx264", str(doomed)], check=True)
-    fixture.scan()
-    verify_targeted_ownership(fixture)
-    delete_rule = dict(rule, id="delete-synthetic", mode="automatic", action="delete",
-                       condition={"all": False, "find": {"q": "delete-fixture"}, "scene": {}})
-    fixture.settings([delete_rule], paused=False)
-    event = {"jobId": "integration-scan", "startTime": datetime.now(timezone.utc).isoformat()}
-    fixture.op("startAutomaticRun", **event)
-    assert fixture.op("startAutomaticRun", **event).get("duplicate")
+    assert not preview["counts"].get("ready"), preview
+    assert preview["counts"].get("unchanged") == 2
+    print("PASS: same scene, two files, original bytes/primary/metadata preserved, output attached, repeat runs skipped", flush=True)
+    rule.update(width=160, height=90)
+    fixture.settings([rule])
+    execution = fixture.op("getTaskSettings", section="execution")
+    fixture.op("saveTaskSettings", section="execution", settings={"move": "manual", "rename": "manual", "tags": "manual", "encoding": {rule["id"]: "generate"}}, expectedRevision=execution["revision"])
+    trigger = {"automationTrigger": "generate", "jobId": "synthetic-generate", "startTime": datetime.now(timezone.utc).isoformat()}
+    fixture.op("startAutomaticRun", **trigger)
     automatic = wait_for(lambda: next((r for r in fixture.op("listRuns") if r["automatic"]), None))
-    deleted = fixture.wait_record("getRun", automatic["id"], {"completed"})
-    assert deleted["counts"].get("completed") == 1, deleted
-    assert deleted["libraryBytesRemoved"] > 0 and deleted["actualSavings"] == 0
-    assert not doomed.exists() and source.exists() and avi.with_suffix(".mp4").exists()
-    assert fixture.gql("{findScenes{count}}") ["findScenes"]["count"] == 2
-    print("PASS: automatic Delete, native filter, event deduplication, library byte accounting", flush=True)
-    # Leave one meaningful pending review for visual checks.
-    rule.update(width=160, height=90, mbps=.08)
-    fixture.settings([rule])
-    preview = fixture.op("preview")
-    preview = fixture.wait_record("getPreview", preview["id"], {"ready"})
-    run = fixture.op("startRun", id=preview["id"], reviewOutputs=True)
-    fixture.wait_record("getRun", run["id"], {"awaitingReview"})
-    return rule
-
-
-def verify_targeted_ownership(fixture):
-    # Direct attachment edits are confined to this fixture's synthetic database.
-    # They exercise a file gaining an owner without recreating the media.
-    spec = importlib.util.spec_from_file_location("compactor_ownership_fixture", runtime_path("DirtyCompactor", "dirty_compactor.py"))
-    backend = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(backend)
-    client = backend.Client({"Host": "127.0.0.1", "Port": fixture.port})
-    scenes = fixture.gql("{findScenes{scenes{id files{id}}}}") ["findScenes"]["scenes"]
-    assert len(scenes) == 3
-    first, unrelated, second = scenes
-    file_id = first["files"][0]["id"]
-    assert not client.has_shared_files(first["id"], [file_id])
-    assert client.matches_scene(first["id"], {"scene": {"id": {"value": int(first["id"]), "modifier": "EQUALS"}}})
-    assert not client.matches_scene(first["id"], {"scene": {"id": {"value": int(unrelated["id"]), "modifier": "EQUALS"}}})
-    assert client.matches_scene(first["id"], {"find": {"q": "Synthetic review fixture"}})
-    assert not client.matches_scene(first["id"], {"find": {"q": "Nonexistent selection"}})
-    with sqlite3.connect(fixture.root / "stash.sqlite") as connection:
-        connection.execute('INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES(?,?,0)', (second["id"], file_id))
-    try:
-        assert client.has_shared_files(first["id"], [file_id])
-        assert client.has_shared_files(second["id"], [file["id"] for file in second["files"]] + [file_id])
-        assert not client.has_shared_files(unrelated["id"], [file["id"] for file in unrelated["files"]]), "The ID criterion must combine with the owner-count filter"
-    finally:
-        with sqlite3.connect(fixture.root / "stash.sqlite") as connection:
-            connection.execute("DELETE FROM scenes_files WHERE scene_id=? AND file_id=?", (second["id"], file_id))
-    assert not client.has_shared_files(first["id"], [file_id]), "Ownership checks must see fresh attachments"
-    print("PASS: targeted scene/file ownership, native rule filters, unrelated scenes excluded, fresh attachment changes", flush=True)
+    automatic = fixture.wait_record("getRun", automatic["id"], {"completed"})
+    assert automatic["counts"].get("completed") == 1, automatic
+    assert fixture.op("startAutomaticRun", **trigger)["duplicate"]
+    assert len(fixture.gql("query($id:ID!){findScene(id:$id){files{id}}}", {"id": scene["id"]})["findScene"]["files"]) == 3
+    execution = fixture.op("getTaskSettings", section="execution")
+    fixture.op("saveTaskSettings", section="execution", settings={"move": "manual", "rename": "manual", "tags": "manual", "encoding": {rule["id"]: "manual"}}, expectedRevision=execution["revision"])
+    assert fixture.op("startAutomaticRun", **dict(trigger, jobId="manual-skip"))["paused"]
+    assert source.read_bytes() == original
+    print("PASS: per-rule Generate trigger runs encoding, deduplicates events and Manual blocks automation", flush=True)
 
 
 def main():
@@ -364,7 +306,7 @@ def main():
         print("FIXTURE " + fixture.url + " " + str(fixture.root), flush=True)
         exercise(fixture)
         if args.serve:
-            print("UI " + fixture.url + "/plugins/dirty-plugins?plugin=dirtyCompactor", flush=True)
+            print("UI " + fixture.url + "/plugins/dirty-plugins?plugin=dirtyTasks", flush=True)
             while True:
                 time.sleep(1)
     except Exception as error:

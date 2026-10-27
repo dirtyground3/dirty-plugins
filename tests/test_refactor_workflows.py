@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1] / "plugins"
-sys.path.insert(0, str(runtime_path("DirtyCompactor")))
+sys.path.insert(0, str(runtime_path("DirtyTasks")))
 sys.path.insert(0, str(runtime_path("DirtyFileExtractor")))
 from dirty_compactor_workflow import transition_run
 import extract_scenes as extractor
@@ -20,7 +20,7 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertFalse(transition_run(run, "running", lambda *_: self.fail("duplicate write"), expected="queued"))
         self.assertEqual(writes[0][1]["_revision"], 7, "CAS revision survives the transition")
         with self.assertRaisesRegex(RuntimeError, "conflict"):
-            transition_run(run, "awaitingReview", lambda *_: (_ for _ in ()).throw(RuntimeError("conflict")))
+            transition_run(run, "reconciling", lambda *_: (_ for _ in ()).throw(RuntimeError("conflict")))
         with self.assertRaisesRegex(RuntimeError, "Invalid"):
             transition_run({"status": "completed"}, "running", lambda *_: self.fail("terminal transition persisted"))
 

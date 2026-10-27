@@ -193,17 +193,17 @@ async function main() {
     confirm: false,
     settings: {
       dirtyPlugins: { visualTheme: "classic" },
-      dirtyCompactor: { schemaVersion: 1, rules: [], automationPaused: true },
+      dirtyTasks: { encoding: { schemaVersion: 1, rules: [], automationPaused: true } },
     },
     plugins: [
       { id: "dirtyPlugins", name: "DirtyPlugins", enabled: true, settings: [] },
-      { id: "dirtyCompactor", name: "DirtyCompactor", enabled: true, settings: [] },
+      { id: "dirtyTasks", name: "DirtyTasks", enabled: true, settings: [] },
     ],
   });
   combined.load();
   combined.loadCompactor();
   await combined.settle();
-  combined.nodes(node => node.props.id === "dirty-plugins-tab-dirtyCompactor")[0].props.onClick();
+  combined.nodes(node => node.props.id === "dirty-plugins-tab-dirtyTasks")[0].props.onClick();
   await combined.settle();
   combined
     .nodes(node => node.type === "button" && require("./ui_harness").text(node) === "Add rule")[0]
@@ -229,7 +229,7 @@ async function main() {
   combined.nodes(node => node.props.id === "dirty-plugins-tab-dirtyPlugins")[0].props.onClick();
   await combined.settle();
   assert.equal(
-    combined.nodes(node => node.props.id === "dirty-plugins-tab-dirtyCompactor")[0].props["aria-selected"],
+    combined.nodes(node => node.props.id === "dirty-plugins-tab-dirtyTasks")[0].props["aria-selected"],
     true,
   );
   assert.equal(combined.nodes(node => node.type === "input" && node.props.value === "New rule").length, 1);

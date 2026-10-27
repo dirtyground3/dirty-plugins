@@ -3,7 +3,7 @@
 Dirty Plugins is a collection of integrated plugins for
 [Stash](https://stashapp.cc/). The suite adds a statistics dashboard, safe
 media extraction, multiscreen playback, performer ranking, preview-first file
-organization, rule-based space reclamation, and embedded text subtitles.
+organization, rule-based additional encodes, and embedded text subtitles.
 
 All plugins share the hidden **DirtyPlugins** runtime and settings hub. The hub
 keeps their interfaces consistent, stores settings and high-frequency data in
@@ -16,13 +16,12 @@ a shared SQLite database, and is installed automatically as a dependency.
 | Plugin | What it does | Version |
 | --- | --- | ---: |
 | [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.8 |
-| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.6 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.5 |
+| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.7 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.15 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
-| [DirtyTidy](plugins/DirtyTidy/) | Previews and applies metadata-driven folder and filename organization through Stash's native file-moving API. | 1.0.5 |
-| [DirtyCompactor](plugins/DirtyCompactor/) | Reclaims space with ordered scene-filter rules that resize, reencode, or delete, with optional review of each encoded output before replacement. | 1.0.5 |
+| [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.3 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.5 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.6 |
 
 ## Shared look and settings
 
@@ -167,57 +166,28 @@ started, looped, muted, and paused.
 The machine-specific destination path is blurred only in this documentation
 capture.
 
-### DirtyTidy
+### DirtyTasks
 
-- Builds folder hierarchies and filenames from scene metadata templates.
-- Supports title, dates, rating/grade, studio, performers, tags, Stash IDs,
-  resolution, duration, source filename, and other variables.
-- Shows the complete plan before changing files, filterable by ready, warning,
-  blocked, and unchanged operations.
-- Never overwrites an existing destination and keeps files inside their current
-  configured Stash source.
-- Can restrict moving and renaming independently to scenes with external Stash
-  IDs.
-- Runs manually or after completed Scan/Generate jobs once a strategy has been
-  previewed, confirmed, and explicitly approved.
+- File organization uses metadata templates for folders and filenames, with an
+  immutable preview and explicit confirmation. Multiple versions keep distinct names.
+- Ordered **Resize** and **Reencode** rules create additional validated files on
+  the same scene. Original files stay on disk and remain primary.
+- Quality presets, visual-quality measurement, custom bitrate, H.264/H.265 and
+  hardware encoding with CPU fallback remain available. Preview compares sizes;
+  run results report additional disk usage.
+- Optional tag updates merge tags from a selected stash-box source after the selected Scan or Generate job,
+  with bounded lookups, a one-day successful-check cache and **Refresh tags now**.
+- Organization settings save explicitly; encoding rules autosave. Each action and encoding rule selects its own Manual, after Scan or after Generate trigger
+  and autosaves that choice. Shared reservations prevent concurrent
+  organization and encoding; internal scans never start another automation cycle.
+- Cancellation and a small recovery journal handle interrupted encoding and
+  attachment. There is no media Delete action or output-review stage.
 
-DirtyTidy deliberately keeps its confirmation workflow because its settings
-can move and rename files. Other Dirty Plugin settings save automatically after
-a control changes.
+[DirtyTasks documentation and upgrade instructions](plugins/DirtyTasks/).
 
-#### DirtyTidy settings
+![Organization strategy, now in DirtyTasks](docs/images/dirty-tidy-settings.png)
 
-![DirtyTidy organization and filename template settings](docs/images/dirty-tidy-settings.png)
-
-Folder and filename rules are compact rows; the open folder row shows its
-levels, each with a **+ Variable** menu. The preview leads with totals, and
-**Run…** opens the confirmation that saves, optionally approves automation,
-and queues the plan.
-
-### DirtyCompactor
-
-- Ordered rules, each with a native Stash scene filter (or **All scenes**) and
-  one action: **Resize**, **Reencode**, or **Delete**. The first enabled
-  matching rule wins.
-- **Quality presets** (High, Balanced, Smallest files) encode with constant
-  quality (CRF); **Match visual quality (slower)** measures sample clips with
-  VMAF during the run to pick each file's setting. Custom bitrate and
-  convert-only remain. H.264 or H.265 with automatic NVIDIA NVENC, Intel QSV,
-  or AMD AMF acceleration that falls back to CPU.
-- **Preview** plans the run as a background task and estimates savings
-  before anything changes.
-- Optional per-file **output review**: play or download the actual encoded
-  file, then accept it, discard it, or decide later. Originals stay untouched
-  until accepted.
-- Manual runs, or automatic runs after a successful Scan, with cancellation,
-  recovery journals, and **Restore original** after an interrupted run.
-
-#### DirtyCompactor rules
-
-![DirtyCompactor rule list with one rule open showing its quality preset](docs/images/dirty-compactor-settings.png)
-
-Each rule combines a scene filter with an action and its encoding options.
-Rules autosave; new rules start disabled and Manual.
+![Encoding rule editor, now in DirtyTasks](docs/images/dirty-compactor-settings.png)
 
 ### DirtyCaptions
 
@@ -231,7 +201,7 @@ Rules autosave; new rules start disabled and Manual.
   index-status choices, automatic metadata indexing, and a manual library
   refresh. An optional setting refreshes the caption index
   after each successful Scan, using the same browser completion events as
-  DirtyTidy. A persistent file map skips unchanged media; only new or changed
+  DirtyTasks organization. A persistent file map skips unchanged media; only new or changed
   files are probed, with a separate force-rescan action. Unknown or inaccessible
   files remain unverified.
 
@@ -256,7 +226,7 @@ The recommended installation method is the published package source.
 
 3. Reload the available plugin packages.
 4. Install any of **DirtyStats**, **DirtyRank**, **DirtyMultiscreen**,
-   **DirtyFileExtractor**, **DirtyTidy**, **DirtyCompactor**, or **DirtyCaptions**.
+   **DirtyFileExtractor**, **DirtyTasks**, or **DirtyCaptions**.
 5. Reload the Stash page after installation or an update.
 
 The source URL must end in `index.yml`; the GitHub repository URL is not a
@@ -279,9 +249,9 @@ own tab there.
 - **DirtyMultiscreen:** choose the desired pane count and playback defaults.
 - **DirtyFileExtractor:** choose an absolute destination directory on the
   machine or container running Stash.
-- **DirtyTidy:** configure the folder and filename rows, select **Preview**,
+- **DirtyTasks organization:** configure the folder and filename rows, select **Preview**,
   review it, then confirm in **Run…** to save, run, or approve automation.
-- **DirtyCompactor:** add a rule, choose its scenes, action, and quality
+- **DirtyTasks encoding:** add a rule, choose its scenes, action, and quality
   preset, then **Preview** before the first run.
 - **DirtyCaptions:** open a scene and use its native **CC** menu. Set a preferred
   language or turn off automatic caption display in its settings tab.
@@ -292,7 +262,7 @@ own tab there.
    source. Contributors can instead run `npm ci` and `npm run build`, then use
    the complete staged directories from `.build/plugins/`.
 2. Extract each ZIP into its plugin ID directory (`dirtyPlugins`, `dirtyRank`,
-   `dirtyCompactor`, etc.) under the Stash plugin directory:
+   `dirtyTasks`, etc.) under the Stash plugin directory:
 
    - Windows: `%USERPROFILE%\.stash\plugins`
    - Linux/macOS: `~/.stash/plugins`
@@ -306,7 +276,7 @@ own tab there.
 
 The Python-backed plugins require Python 3.9 or newer in the environment where
 Stash runs; no Python packages are needed. DirtyFileExtractor uses Stash's
-configured FFmpeg executable, and DirtyCompactor needs Stash 0.31.1 or newer
+configured FFmpeg executable, and DirtyTasks encoding needs Stash 0.31.1 or newer
 with FFmpeg and FFprobe.
 DirtyCaptions requires Stash 0.31.1 or newer with FFmpeg and ffprobe on the server.
 
@@ -322,7 +292,7 @@ before major manual changes.
 
 The hidden DirtyPlugins hub owns `dirty_plugins.sqlite3` in its installed plugin
 directory. It stores settings for all managed plugins, the DirtyStats dashboard
-layout, DirtyRank's rating pools and battle journal, and DirtyCompactor's rules,
+layout, DirtyRank's rating pools and battle journal, and DirtyTasks encoding's rules,
 run snapshots, and recovery journals. The database uses WAL mode for responsive
 concurrent reads and writes.
 
@@ -332,7 +302,7 @@ Embedded subtitle text is read on demand, stays in memory, and is extracted
 again when a scene is reopened. No subtitle files are created beside the media.
 
 Standard settings save automatically after a short debounce and serialized
-writes prevent an older request from overwriting a newer value. DirtyTidy is
+writes prevent an older request from overwriting a newer value. DirtyTasks organization is
 the intentional exception: file-moving and renaming strategies require a fresh
 preview and confirmation.
 
@@ -394,19 +364,18 @@ plugins keep working.
 
 The Python backends log through Stash's plugin log protocol, so their output
 appears in Stash's own log with a `[Plugin / DirtyPlugins]`,
-`[Plugin / DirtyRank]`, `[Plugin / DirtyTidy]`, `[Plugin / DirtyStats]`,
-`[Plugin / DirtyCompactor]`, `[Plugin / DirtyCaptions]`, or
+`[Plugin / DirtyRank]`, `[Plugin / DirtyTasks]`, `[Plugin / DirtyStats]`,
+`[Plugin / DirtyCaptions]`, or
 `[Plugin / DirtyFileExtractor]` prefix.
 
-DirtyPlugins, DirtyRank, DirtyTidy, DirtyStats and DirtyFileExtractor log a
+DirtyPlugins, DirtyRank, DirtyStats and DirtyFileExtractor log a
 `backend started: mode=<operation>` line and a
 `backend finished: mode=<operation> in <N>ms` line for every call. A `started`
 line with no matching `finished` line identifies a backend call that hung.
 Every backend logs a failure as an error:
 `<Plugin> failed: mode=<operation> after <N>ms: <reason>`.
 
-DirtyCompactor and DirtyCaptions are called repeatedly by the player and by
-status polling, so they do not log each call; they log only failures.
+DirtyTasks and DirtyCaptions are called repeatedly for status or playback, so they do not log each call; they log only failures.
 DirtyCaptions reports
 extraction failures and failed tracks under `[Plugin / DirtyCaptions]`; the
 browser receives only a generic message when a tool error could contain a
@@ -442,12 +411,11 @@ scrubber thumbnails, and captions; other scene-page images still need review.
 plugins/
 ├── DirtyCaptions/       # embedded text subtitles via in-memory WebVTT
 ├── DirtyPlugins/        # shared UI, GraphQL helpers, settings and SQLite owner
-├── DirtyCompactor/      # compaction rules UI and FFmpeg backend
 ├── DirtyFileExtractor/  # selection UI and Python extraction backend
 ├── DirtyMultiscreen/    # multiscreen playback UI
 ├── DirtyRank/           # battle/leaderboard UI and Glicko-2 backend
 ├── DirtyStats/          # dashboard, statistics and visualizations
-└── DirtyTidy/           # preview UI and file-organization backend
+└── DirtyTasks/          # organization, additional encodes and tag updates
 tests/                   # JavaScript and Python suites, opt-in Stash fixtures
 scripts/                 # staged build, settings generator and plugin registry
 schemas/                 # authored settings metadata shared by manifests, TS and Python
@@ -548,16 +516,78 @@ Pages layout through GitHub Actions:
 main/
 ├── index.yml
 ├── dirtyPlugins.zip
-├── dirtyCompactor.zip
 ├── dirtyCaptions.zip
 ├── extractScenes.zip
 ├── multiscreen.zip
 ├── dirtyRank.zip
 ├── dirtyStats.zip
-└── dirtyTidy.zip
+└── dirtyTasks.zip
 ```
 
 ## Release notes
+
+- **DirtyTasks 1.0.3:** show organization recovery as a warning only when an
+  abandoned reservation is blocking file work. Active and stopping jobs keep
+  the warning hidden; recovery clears it after rechecking the current task.
+
+- **DirtyTasks 1.0.2:** independent Manual, Scan, or Generate triggers for Move,
+  Rename, Tags, and each encoding rule. The previous shared choice is copied to
+  existing actions while templates, approvals and rule enable states are kept.
+  Scan and Generate retain separate deferred work; encoding rule priority and
+  duplicate prevention remain unchanged.
+
+- **DirtyTasks 1.0.1:** one shared running strategy controls organization, tag
+  updates and every enabled encoding rule: Manual only, after Scan or after
+  Generate. Separate automation switches and per-rule modes are removed.
+  Existing organization approvals and disabled rules are preserved.
+
+- **DirtyTasks 1.0.0, DirtyPlugins 1.0.6:** DirtyTidy and DirtyCompactor are now one
+  plugin with organization, encoding and tag updates. Resize/Reencode add a
+  validated alternate file to the existing scene and keep the original primary
+  file. Media deletion and output review are removed. Settings migrate once;
+  old Delete rules are retired, pending trial outputs are discarded, and a new
+  preview is required before enabling automation. Upgrade instructions are in
+  [DirtyTasks](plugins/DirtyTasks/).
+
+- **DirtyMultiscreen 1.0.15:** use consistent native source menus in every pane
+  with Refract, restoring each player's speed and projection controls while
+  retaining the theme's ordinary styling. The normal scene page is unaffected.
+
+- **DirtyMultiscreen 1.0.14:** keep the source/settings menu visible in right-hand
+  video panes, including themes that collapse the native menu width.
+
+- **DirtyMultiscreen 1.0.13:** disabled seek preview thumbnails inside the
+  smaller video panes, while retaining the seek bar and time display.
+
+- **DirtyMultiscreen 1.0.12:** native players have independent IDs, preventing
+  another screen's duration from appearing on the timebar or affecting streaming
+  playback and seeking.
+
+- **DirtyMultiscreen 1.0.11:** restored translucent backgrounds behind each
+  screen's scene title and search button, including hover and keyboard focus.
+
+- **DirtyMultiscreen 1.0.10:** choosing a search result moves that screen to the
+  scene's position in the session queue. Previous/Next follows its neighbors
+  across pages while the other screens keep their positions.
+
+- **DirtyMultiscreen 1.0.9:** title search matches the complete phrase, ignoring
+  case and treating punctuation literally, instead of matching individual words.
+
+- **DirtyMultiscreen 1.0.8:** scene search is limited to the current session's
+  selection, sampled queue or filters, including later filtered pages. Marker
+  results keep their original playback ranges.
+
+- **DirtyMultiscreen 1.0.7:** apply starting positions after the native source is
+  playable, avoiding pending seeks during transcoding fallback. Marker boundaries
+  use the native full-scene clock, including transcoding offsets.
+
+- **DirtyMultiscreen 1.0.6:** each screen has a scene search. Choose a scene from
+  the full library without interrupting other screens; Next/Previous returns to
+  that screen's existing queue.
+
+- **DirtyRank 1.0.7:** performer profiles show a button for each ranked category
+  beside **Start Gauntlet**, with the current position and a link to that
+  category's leaderboard in the matching gender box.
 
 - **DirtyRank 1.0.6:** opening the leaderboard **Filter** dialog places the cursor
   in the performer search box.
@@ -573,6 +603,12 @@ main/
   longer queue caption-index work. Media changes, custom-field edits and hooks
   without field information still update the index; bulk scene inputs are handled.
 
+- **DirtyTidy 1.0.6:** optional tag updates after Scan. Choose a configured stash-box
+  Tagger source and save to enable the task. It adds missing tags without removing
+  existing ones or changing other scene metadata, and saves only scenes gaining tags.
+  Duplicate tabs queue one task; unmatched or ambiguous scenes are skipped.
+  Tag-only source lookups run in batches of up to 20 without fetching images.
+  Successful checks are cached for 24 hours; **Refresh tags now** bypasses the cache.
 - **DirtyStats 1.0.6, DirtyRank and DirtyMultiscreen 1.0.5:** bounded library work.
   - Constellations display at most 5,000 connections, prioritizing a strongest-first
     spanning forest and then strongest remaining links. Counts include hidden links.
@@ -714,9 +750,8 @@ This repository and its plugins are distributed under the [MIT License](LICENSE)
 
 - [DirtyPlugins](plugins/DirtyPlugins/LICENSE)
 - [DirtyCaptions](plugins/DirtyCaptions/LICENSE)
-- [DirtyCompactor](plugins/DirtyCompactor/LICENSE)
 - [DirtyFileExtractor](plugins/DirtyFileExtractor/LICENSE)
 - [DirtyMultiscreen](plugins/DirtyMultiscreen/LICENSE)
 - [DirtyRank](plugins/DirtyRank/LICENSE)
 - [DirtyStats](plugins/DirtyStats/LICENSE)
-- [DirtyTidy](plugins/DirtyTidy/LICENSE)
+- [DirtyTasks](plugins/DirtyTasks/LICENSE)

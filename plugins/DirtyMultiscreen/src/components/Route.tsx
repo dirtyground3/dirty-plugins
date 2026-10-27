@@ -1,5 +1,5 @@
 import { isMarkerLaunchContext } from "../domain/context";
-import { getMarkerItem, getSceneItem } from "../domain/items";
+import { getMarkerItem, getSceneItem, getSceneTitle } from "../domain/items";
 import { pagePlaylists } from "../domain/playlists";
 import { useMarkerQuery, useNativePlayerComponent, useSceneQuery } from "../hooks";
 import { getPlaybackSettings, getSceneLimit, normalizeSettings } from "../domain/settings";
@@ -7,6 +7,8 @@ import { contexts, DirtyPlugins, PluginApi, React } from "../runtime";
 import { icon, PluginIconButton, StateView } from "./Controls";
 import { VisibleOCounterButton } from "./Counter";
 import { NativeMultiscreenGrid } from "./Grid";
+import { SEARCH_PAGE_SIZE } from "../queries";
+import type { SessionSearch } from "../types";
 const PLUGIN_ID = "multiscreen";
 const closeRoute = () => {
   if (window.history.length > 1) window.history.back();
@@ -68,6 +70,37 @@ export function MultiscreenRoute() {
   const items = markerMode ? markerItems : sceneItems;
   const activeQuery = markerMode ? markersQuery : scenesQuery;
   const explicitSelection = launchContext?.source === "selection" || launchContext?.source === "marker-selection";
+  const searchSession = React.useCallback<SessionSearch>(
+    async (text, page, signal) => {
+      // These sessions have a fixed, already loaded pool. Do not expand an
+      // unscoped random launch or an explicit selection into a library query.
+      if (!launchContext || explicitSelection) {
+        const term = text.trim().toLocaleLowerCase();
+        const matches = items.filter(item => getSceneTitle(item.scene).toLocaleLowerCase().includes(term));
+        return { count: matches.length, items: matches.slice((page - 1) * SEARCH_PAGE_SIZE, page * SEARCH_PAGE_SIZE) };
+      }
+      if (markerMode) {
+        const data = await markersQuery.search(text, page, signal);
+        return {
+          count: data.count,
+          items: data.scene_markers
+            .map(marker => getMarkerItem(marker, settings.markerDuration))
+            .filter(item => item !== null),
+        };
+      }
+      const data = await scenesQuery.search(text, page, signal);
+      return { count: data.count, items: data.scenes.map(getSceneItem).filter(item => item !== null) };
+    },
+    [
+      launchContext,
+      explicitSelection,
+      items,
+      markerMode,
+      markersQuery.search,
+      scenesQuery.search,
+      settings.markerDuration,
+    ],
+  );
   const pageSize = getSceneLimit(settings);
   const seed = React.useMemo(() => Math.floor(Math.random() * 4294967296), [items]);
   const initialPage = explicitSelection ? 1 : activeQuery.page;
@@ -80,10 +113,12 @@ export function MultiscreenRoute() {
       pagePlaylists(initialItems, settings.totalScreens, settings.randomize, settings.splitScenes, seed, initialPage),
     [initialItems, settings.totalScreens, settings.randomize, settings.splitScenes, seed, initialPage],
   );
-  const pageCount = Math.ceil((explicitSelection ? items.length : activeQuery.result.count) / pageSize);
+  const pageCount = launchContext
+    ? Math.ceil((explicitSelection ? items.length : activeQuery.result.count) / pageSize)
+    : 1;
   const continuation = React.useMemo(
     () =>
-      launchContext && pageCount > 1
+      pageCount > 0
         ? {
             initialPage,
             pageCount,
@@ -160,6 +195,7 @@ export function MultiscreenRoute() {
           columns={settings.columns}
           totalScreens={settings.totalScreens}
           playlists={playlists}
+          searchSession={searchSession}
           continuation={continuation}
           playback={playbackSettings}
           nativePlayer={nativePlayerQuery.component}

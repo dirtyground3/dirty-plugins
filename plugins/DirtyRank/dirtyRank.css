@@ -870,6 +870,8 @@
 
 .dirty-rank-gauntlet-launch {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin: 0.55rem 0 0.85rem;
 }
 

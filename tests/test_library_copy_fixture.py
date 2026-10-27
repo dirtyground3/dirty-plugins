@@ -30,6 +30,10 @@ class LibraryCopyRedirectTests(unittest.TestCase):
             ("dirtyCompactor", "rules", json.dumps([{"source": {"path": "P:\\Data\\hard\\x.mp4"}, "mode": "manual"}])),
             ("dirtyCompactor", "automationPaused", "false"),
             ("dirtyTidy", "automationMode", json.dumps("scan")),
+            ("dirtyTidy", "tagUpdateEnabled", "true"),
+            ("dirtyTasks", "organization", json.dumps({"automationMode": "scan", "tagUpdateEnabled": True})),
+            ("dirtyTasks", "encoding", json.dumps({"automationPaused": False})),
+            ("dirtyTasks", "execution", json.dumps({"move": "scan", "rename": "generate", "tags": "scan", "encoding": {"rule-1": "generate"}})),
             ("dirtyStats", "route", json.dumps("/plugins/dirty-stats")),
         ])
         connection.commit()
@@ -71,6 +75,10 @@ class LibraryCopyRedirectTests(unittest.TestCase):
         pause_automation(self.path)
         settings = dict(self.rows("SELECT setting_key, value_json FROM dirty_plugin_settings"))
         self.assertEqual((settings["automationPaused"], settings["automationMode"]), ("true", '"manual"'))
+        self.assertEqual(settings["tagUpdateEnabled"], "false")
+        self.assertEqual(json.loads(settings["organization"]), {"automationMode": "manual", "tagUpdateEnabled": False})
+        self.assertEqual(json.loads(settings["encoding"]), {"automationPaused": True})
+        self.assertEqual(json.loads(settings["execution"]), {"move": "manual", "rename": "manual", "tags": "manual", "encoding": {"rule-1": "manual"}})
 
 
 if __name__ == "__main__":

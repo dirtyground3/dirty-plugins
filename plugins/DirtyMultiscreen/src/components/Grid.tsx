@@ -8,6 +8,7 @@ export function NativeMultiscreenGrid({
   onVisibleSceneIdsChange,
   playback,
   playlists,
+  searchSession,
   rows,
   totalScreens,
   useFindScene,
@@ -84,6 +85,7 @@ export function NativeMultiscreenGrid({
           playback={playback}
           useFindScene={useFindScene}
           onSceneChange={onSceneChange}
+          searchSession={searchSession}
         />
       ))}
     </div>

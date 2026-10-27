@@ -616,6 +616,15 @@ export function overallCategoryScoresTitle(
       .join("\n")
   );
 }
+export function performerCategoryRanks(performer: RankPerformer, settings: RankSettings) {
+  return settings.enabledCohorts.flatMap(cohort =>
+    categoriesForPerformer(settings, cohort, performer).flatMap(category => {
+      if (poolFor(performer, category.id, cohort, settings).matches <= 0) return [];
+      const rank = categoryLeaderboardRankFor(performer, category.id, cohort, settings);
+      return rank ? [{ category, cohort, rank }] : [];
+    }),
+  );
+}
 function categoryLeaderboardRankFor(
   performer: RankPerformer,
   categoryId: string,

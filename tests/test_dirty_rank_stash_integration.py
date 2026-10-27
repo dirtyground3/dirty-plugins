@@ -154,7 +154,7 @@ def main():
     try:
         shutil.copytree(runtime_path("DirtyRank"), fixture.root / "plugins" / "dirtyRank")
         fixture.gql("mutation{reloadPlugins}")
-        fixture.gql("mutation{setPluginsEnabled(enabledMap:{dirtyPlugins:true,dirtyRank:true,dirtyCompactor:false})}")
+        fixture.gql("mutation{setPluginsEnabled(enabledMap:{dirtyPlugins:true,dirtyRank:true,dirtyTasks:false})}")
         print("FIXTURE " + fixture.url + " " + str(fixture.root), flush=True)
         verify_frontend(fixture)
         print("FIXTURE_IDS " + json.dumps(exercise(fixture)), flush=True)

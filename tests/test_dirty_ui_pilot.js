@@ -100,7 +100,7 @@ for (const [plugin, file] of [
   ["DirtyPlugins", "dirtyPlugins.css"],
   ["DirtyRank", "dirtyRank.css"],
   ["DirtyStats", "dirtyStats.css"],
-  ["DirtyTidy", "dirtyTidy.css"],
+  ["DirtyTasks", "dirtyTasks.css"],
   ["DirtyFileExtractor", "extractScenes.css"],
   ["DirtyMultiscreen", "multiscreen.css"],
 ]) {

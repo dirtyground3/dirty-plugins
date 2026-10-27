@@ -13,10 +13,10 @@ use; pre-1.0 developer-build APIs such as the HTM `react.html` tag are gone.
 
 ![DirtyPlugins General tab with the suite theme selector and database backup](../../docs/images/dirty-plugins-general.png)
 
-DirtyCompactor uses this hub for its rule settings, native scene-filter editor,
-run journals, and output-review decisions. Compactor-owned refresh scans are
+DirtyTasks uses this hub for its rule settings, native scene-filter editor,
+run journals, and attachment progress. Encoding refresh scans are
 identified through the shared backend so they do not trigger another Compactor
-or DirtyTidy automatic run. `dirty_plugins_client.py` provides a standard-library
+organization or encoding automatic run. `dirty_plugins_client.py` provides a standard-library
 Stash transport and Windows child-process containment for backend workers.
 
 The shared runtime includes the GraphQL client, plugin-configuration helpers,
@@ -113,15 +113,15 @@ hooks. Runtime database and WAL files are excluded from plugin packages and
 remain in the installed DirtyPlugins directory across ordinary updates.
 
 The database is also the authoritative settings store for DirtyFileExtractor,
-DirtyMultiscreen, DirtyTidy, DirtyRank, DirtyStats, DirtyCompactor, and DirtyCaptions.
+DirtyMultiscreen, DirtyTasks, DirtyRank, DirtyStats, and DirtyCaptions.
 The Stash manifests retain setting definitions so the shared hub can render
 typed controls, but Stash's plugin
 configuration values are not read or written by Dirty plugins.
 
 Managed settings tabs include General, DirtyFileExtractor, DirtyMultiscreen,
-DirtyTidy, DirtyRank, DirtyStats, DirtyCompactor, and DirtyCaptions. DirtyRank uses
+DirtyTasks, DirtyRank, DirtyStats, and DirtyCaptions. DirtyRank uses
 a custom hub panel for its gender boxes, categories, Glicko-2 parameters, and guarded data
-tools; DirtyCompactor uses one for its rules, previews, and runs.
+tools; DirtyTasks uses one for its rules, previews, and runs.
 
 DirtyCaptions uses standard autosaving controls for embedded-caption loading,
 automatic display, preferred language, caption-index maintenance, and optional
@@ -148,7 +148,7 @@ in a stable shared-hub-first order without changing other plugins' order.
 Standard settings and DirtyRank's custom settings save automatically shortly
 after a control changes. Pending or invalid values remain visibly marked and
 are protected by confirmation when the page is closed, refreshed, or left
-through an in-app link. DirtyTidy deliberately keeps its explicit preview and
+through an in-app link. DirtyTasks deliberately keeps its explicit preview and
 confirmation workflow because its strategy can move and rename files.
 The direct URL is `/plugins/dirty-plugins`; it remains unlisted in Stash's
 navigation.
@@ -188,7 +188,7 @@ share this protocol (`dirty_plugins_protocol.serve`).
 
 The hub gives every installed Dirty plugin its own tab and consistent settings
 layout. This capture shows DirtyMultiscreen's standard typed settings; DirtyRank,
-DirtyTidy, and DirtyCompactor render custom panels in the same page.
+and DirtyTasks render custom panels in the same page.
 
 For a manual installation, copy this directory alongside the other Dirty
 plugin directories and reload plugins in Stash.

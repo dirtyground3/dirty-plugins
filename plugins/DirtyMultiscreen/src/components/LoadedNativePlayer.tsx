@@ -1,6 +1,7 @@
-import { PluginApi, React } from "../runtime";
+import { React } from "../runtime";
+import { isolateNativePlayer } from "../domain/playerIdentity";
 import type { AudioState, LoadedPlayerProps, Player, VideoPlayerElement } from "../types";
-const SCENES_ROUTE_PATH = "/scenes";
+let nextPlayerId = 0;
 const usable = (player: Player | null | undefined): player is Player => !!player && !player.isDisposed?.();
 /** Each pane keeps its own audio: stop video.js persisting volume across players. */
 function disableVolumePersistence(player: Player) {
@@ -31,6 +32,7 @@ export function LoadedNativePlayer({
   previousItem,
   scene,
 }: LoadedPlayerProps) {
+  const [playerId] = React.useState(() => `ms-player-${++nextPlayerId}`);
   const tileRef = React.useRef<HTMLDivElement | null>(null);
   const setTimestampRef = React.useRef<((seconds: number) => void) | null>(null);
   const rangeEndHandledRef = React.useRef(false);
@@ -40,7 +42,6 @@ export function LoadedNativePlayer({
   navigationRef.current = { nextItem, previousItem };
   const advance = React.useCallback(() => navigationRef.current.nextItem(), []);
   const goBack = React.useCallback(() => navigationRef.current.previousItem(), []);
-  const sceneId = item.scene?.id ?? item.id;
   audioStateRef.current = audioState;
   onAudioStateChangeRef.current = onAudioStateChange;
   const [initialTimestamp] = React.useState(() => {
@@ -49,6 +50,12 @@ export function LoadedNativePlayer({
     const duration = Number(scene?.files?.[0]?.duration);
     return Number.isFinite(duration) && duration > 0 ? Math.random() * duration : 0;
   });
+  // Let native source fallback finish before seeking, so its pending position
+  // cannot race the requested start or the transcode's offset.
+  const playbackScene = React.useMemo(
+    () => ({ ...scene, resume_time: 0, paths: { ...scene.paths, vtt: null } }),
+    [scene],
+  );
   const handleComplete = React.useCallback(() => {
     if (playback.loop) {
       setTimestampRef.current?.(item.playbackRange?.start ?? 0);
@@ -60,11 +67,39 @@ export function LoadedNativePlayer({
     const tile = tileRef.current;
     const playbackRange = item.playbackRange;
     const rangeEnd = playbackRange?.end;
-    if (!tile || !playbackRange || rangeEnd === undefined || !Number.isFinite(rangeEnd)) return;
-    let videoElement: HTMLVideoElement | null = null;
+    if (!tile) return;
+    let player: Player | null = null;
+    let initialSeekApplied = false;
+    let initialSeekPending = false;
+    const handleCanPlay = () => {
+      if (!usable(player) || initialSeekApplied || initialSeekPending || player.readyState() < 3) return;
+      initialSeekPending = true;
+      const current = player;
+      // Stash's source selector restores its previous position in another
+      // canplay handler. Apply our start after those handlers have finished.
+      void Promise.resolve().then(() => {
+        if (current !== player || !usable(current)) return;
+        initialSeekPending = false;
+        if (current.readyState() < 3) return;
+        initialSeekApplied = true;
+        const duration = current.duration();
+        const timestamp = Number.isFinite(initialTimestamp) ? Math.max(0, initialTimestamp) : 0;
+        current.currentTime(
+          Number.isFinite(duration) && duration > 0 ? Math.min(timestamp, Math.max(0, duration - 0.01)) : timestamp,
+        );
+      });
+    };
     const handleTimeUpdate = () => {
-      if (!videoElement) return;
-      if (videoElement.currentTime < rangeEnd) {
+      if (
+        !usable(player) ||
+        !initialSeekApplied ||
+        !playbackRange ||
+        rangeEnd === undefined ||
+        !Number.isFinite(rangeEnd)
+      )
+        return;
+      // The raw video clock starts at zero for each transcoded segment.
+      if (player.currentTime() < rangeEnd) {
         rangeEndHandledRef.current = false;
         return;
       }
@@ -76,20 +111,34 @@ export function LoadedNativePlayer({
         advance();
       }
     };
-    const attachVideoElement = () => {
-      const nextVideoElement = tile.querySelector("video");
-      if (nextVideoElement === videoElement) return;
-      videoElement?.removeEventListener("timeupdate", handleTimeUpdate);
-      videoElement = nextVideoElement;
-      videoElement?.addEventListener("timeupdate", handleTimeUpdate);
+    const detachPlayer = () => {
+      player?.off?.("canplay", handleCanPlay);
+      player?.off?.("timeupdate", handleTimeUpdate);
+      player = null;
     };
-    attachVideoElement();
-    const observer = observeSubtree(tile, attachVideoElement);
+    const attachPlayer = () => {
+      const next = tile.querySelector<VideoPlayerElement>("video-js")?.player ?? null;
+      if (next === player) return;
+      detachPlayer();
+      player = next;
+      initialSeekApplied = false;
+      initialSeekPending = false;
+      rangeEndHandledRef.current = false;
+      if (!usable(player)) return;
+      isolateNativePlayer(player, playerId);
+      player.on("canplay", handleCanPlay);
+      player.on("timeupdate", handleTimeUpdate);
+      player.ready(() => {
+        if (player === next && !next?.isDisposed?.()) handleCanPlay();
+      });
+    };
+    attachPlayer();
+    const observer = observeSubtree(tile, attachPlayer);
     return () => {
       observer.disconnect();
-      videoElement?.removeEventListener("timeupdate", handleTimeUpdate);
+      detachPlayer();
     };
-  }, [item.playbackRange, advance, playback.loop]);
+  }, [initialTimestamp, item.playbackRange, advance, playback.loop, playerId]);
   React.useEffect(() => {
     const tile = tileRef.current;
     if (!tile) return;
@@ -146,25 +195,15 @@ export function LoadedNativePlayer({
   }, [audioState.muted, audioState.volume]);
   return (
     <div className="ms-native-tile" ref={tileRef}>
-      <PluginApi.libraries.ReactRouterDOM.NavLink
-        aria-label={`Open scene page for ${item.title}`}
-        className="ms-title"
-        rel="noopener noreferrer"
-        target="_blank"
-        title={`Open scene page: ${item.title}`}
-        to={`${SCENES_ROUTE_PATH}/${sceneId}`}
-      >
-        {item.title}
-      </PluginApi.libraries.ReactRouterDOM.NavLink>
       <NativePlayer
         autoplay={true}
         hideScrubberOverride={true}
-        initialTimestamp={initialTimestamp}
+        initialTimestamp={0}
         onComplete={handleComplete}
         onNext={advance}
         onPrevious={goBack}
         permitLoop={playback.loop}
-        scene={scene}
+        scene={playbackScene}
         sendSetTimestamp={setTimestamp => {
           setTimestampRef.current = setTimestamp;
         }}

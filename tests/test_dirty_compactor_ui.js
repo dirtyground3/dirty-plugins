@@ -7,7 +7,7 @@ const { runtimePath, requireSource, runSource } = require("./plugin_paths");
 const { scriptPaths } = require("./load_plugin_scripts");
 const { createCompactorHarness } = require("./compactor_harness");
 const { text } = require("./ui_harness");
-const rules = requireSource("DirtyCompactor", "src/domain/rules.ts");
+const rules = requireSource("DirtyTasks", "src/encoding/domain/rules.ts");
 const rule = { ...rules.newRule(), condition: { all: true }, name: "Fixture rule" };
 const settings = { rules: [rule], automationPaused: true };
 const file = {
@@ -34,18 +34,7 @@ const preview = {
     ["Scene has files shared with another scene", 3],
   ],
 };
-const review = {
-  operationId: "op",
-  title: "Synthetic",
-  url: "/preview",
-  originalSize: 200,
-  outputSize: 100,
-  original: { width: 640, height: 360, codec: "h264", bitrate: 2e6 },
-  output: { width: 320, height: 180, codec: "h264", bitrate: 1e6 },
-  encoder: "cpu",
-  destination: "synthetic.mp4",
-};
-const run = { id: "run", status: "awaitingReview", total: 1, page: 1, pages: 1, operations: [file], review };
+const run = { id: "run", status: "running", total: 1, page: 1, pages: 1, operations: [file] };
 const deferred = () => {
   let resolve, reject;
   const promise = new Promise((yes, no) => {
@@ -59,7 +48,7 @@ async function registration() {
   const h = createCompactorHarness({ settings });
   h.load();
   h.load();
-  assert.deepEqual(h.registrations, ["dirtyCompactor"]);
+  assert.deepEqual(h.registrations, ["dirtyTasks"]);
   assert.deepEqual(h.patches, ["App"]);
   assert.equal(h.window.__dirtyCompactorRules, undefined);
   assert.equal(h.window.__dirtyCompactorAutomation, undefined);
@@ -86,15 +75,15 @@ async function registration() {
   partial.load();
   partial.load();
   assert.equal(partial.patches.length, 1, "a failed registration is logged once and never retried");
-  assert.match(String(partial.errors[0][0]), /\[dirtyCompactor\] registration failed/);
+  assert.match(String(partial.errors[0][0]), /\[dirtyTasks\] registration failed/);
   assert.deepEqual(
-    scriptPaths("DirtyCompactor").map(file => require("node:path").basename(file)),
-    ["dirtyCompactor.js"],
+    scriptPaths("DirtyTasks").map(file => require("node:path").basename(file)),
+    ["dirtyTasks.js"],
   );
-  const bundle = fs.readFileSync(runtimePath("DirtyCompactor", "dirtyCompactor.js"), "utf8");
+  const bundle = fs.readFileSync(runtimePath("DirtyTasks", "dirtyTasks.js"), "utf8");
   assert(!bundle.includes("sourceMappingURL"), "release bundles carry no source map");
   // Importing a component module registers nothing and needs no host to evaluate.
-  assert.equal(typeof runSource("DirtyCompactor", "src/automation.ts", { window: {} }).AutomationMonitor, "function");
+  assert.equal(typeof runSource("DirtyTasks", "src/automation.tsx", { window: {} }).AutomationMonitor, "function");
 }
 
 async function editingAndSaving() {
@@ -102,7 +91,7 @@ async function editingAndSaving() {
   h.load();
   await h.flush();
   assert.equal(h.dirty.at(-1), false);
-  assert(h.nodes(node => node.type === "Metric" && node.props.label === "Estimated savings").length);
+  assert(h.nodes(node => node.type === "Metric" && node.props.label === "Estimated size difference").length);
   assert.equal(h.nodes(node => node.type === "table").length, 0);
   assert.equal(
     text(h.nodes(node => node.props?.className === "dirty-compactor-skipped")[0]),
@@ -162,7 +151,7 @@ async function editingAndSaving() {
   await h.advance(500);
   const duplicated = h.writes.at(-1).rules[1];
   assert.equal(duplicated.enabled, false);
-  assert.equal(duplicated.mode, "manual");
+  assert.equal(duplicated.mode, undefined);
   assert.notEqual(duplicated.id, rule.id);
   await h.click("Detect");
   assert(h.nodes(node => node.type === "option" && node.props.value === "nvenc").length);
@@ -238,22 +227,13 @@ async function jobsReviewAndCleanup() {
   assert.equal(dialog.props.open, true);
   await h.run(run); // Transport fixture returns this run for startRun.
   await h.click("Start run");
-  assert(h.calls.some(call => call.mode === "startRun" && call.reviewOutputs === false));
-  assert(h.nodes(node => node.type === "video").length);
-  await h.click("Accept and replace");
-  assert(h.calls.some(call => call.mode === "acceptOutput" && call.operationId === "op"));
-  assert(h.players[0].paused && h.players[0].cleared && h.players[0].loaded);
-  const menu = h.nodes(node => node.type === "ActionMenu" && node.props.ariaLabel === "More review actions")[0];
-  menu.props.items[0].onSelect();
-  await h.flush();
+  assert(h.calls.some(call => call.mode === "startRun" && call.task === "encoding"));
   assert.equal(h.nodes(node => node.type === "video").length, 0);
-  await h.click("Review now");
-  await h.click("Discard");
-  assert(h.calls.some(call => call.mode === "discardOutput"));
-  await h.run({ ...run, status: "recovery", review: undefined });
+  assert.equal(h.button("Accept and replace"), undefined);
+  await h.run({ ...run, status: "recovery" });
   await h.click("Retry recovery");
-  await h.click("Restore original");
-  assert(h.calls.some(call => call.mode === "restoreOriginal"));
+  assert(h.calls.some(call => call.mode === "retryRecovery"));
+  assert.equal(h.button("Restore original"), undefined);
   await h.run({ ...run, status: "running", review: undefined });
   await h.click("Cancel run");
   assert(h.calls.some(call => call.mode === "cancelRun"));
@@ -264,14 +244,13 @@ async function jobsReviewAndCleanup() {
   };
   await h.event({ ...event, type: "UPDATE" });
   await h.event({ ...event, job: { ...event.job, status: "FAILED" } });
-  await h.event({ ...event, job: { ...event.job, description: "Generating..." } });
-  assert.equal(h.calls.filter(call => call.mode === "startAutomaticRun").length, 0);
+  assert.equal(h.calls.filter(call => call.mode === "queueAutomation").length, 0);
   await h.event(event);
   await h.event({ ...event });
-  assert.equal(h.calls.filter(call => call.mode === "startAutomaticRun").length, 1);
+  assert.equal(h.calls.filter(call => call.mode === "queueAutomation").length, 1);
   await h.event({ ...event, job: { ...event.job, startTime: "2026-10-04T10:00:00Z" } });
   assert.equal(
-    h.calls.filter(call => call.mode === "startAutomaticRun").length,
+    h.calls.filter(call => call.mode === "queueAutomation").length,
     2,
     "new startTime distinguishes reused job IDs",
   );
@@ -284,7 +263,7 @@ async function jobsReviewAndCleanup() {
   capture.load();
   await capture.flush();
   assert.equal(capture.nodes(node => node.type === "video").length, 0);
-  assert.match(text(capture.tree), /Media hidden for documentation/);
+  await capture.click("Show files");
   assert(!text(capture.tree).includes("synthetic.mp4"));
   capture.unmount();
   // Pending read completions after unmount cannot restart polling or dirty state.
@@ -329,7 +308,7 @@ async function main() {
   await jobsReviewAndCleanup();
   await workflowErrorAfterSave();
   console.log(
-    "DirtyCompactor compiled TSX, host React, guards, settings, filters, serialized writes, cancellation, review, automation and cleanup passed",
+    "DirtyCompactor compiled TSX, host React, guards, settings, filters, serialized writes, cancellation, attachment, automation and cleanup passed",
   );
 }
 main().catch(error => {

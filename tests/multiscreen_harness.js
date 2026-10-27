@@ -37,6 +37,7 @@ function createMultiscreenHarness(options = {}) {
     constructor() {
       events(this);
       this.currentTime = 0;
+      this.duration = 10;
       this.paused = false;
       this.ended = false;
       this.isConnected = true;
@@ -53,19 +54,41 @@ function createMultiscreenHarness(options = {}) {
       return Promise.resolve();
     }
   }
+  function FakePlayer() {}
+  FakePlayer.players = {};
   function newMedia() {
     const video = new Video(),
+      element = { id: "VideoJsPlayer", playerId: "VideoJsPlayer" },
       persist = { enabled: true, ready() {} },
       player = events({
+        constructor: FakePlayer,
+        id_: "VideoJsPlayer",
+        options_: { id: "VideoJsPlayer" },
+        id() {
+          return this.id_;
+        },
+        el: () => element,
+        tech_: {
+          id_: "VideoJsPlayer_html5_api",
+          options_: { playerId: "VideoJsPlayer", techId: "VideoJsPlayer_html5_api" },
+          el: () => video,
+        },
         disposed: false,
         v: 1,
         m: false,
+        currentTime(value) {
+          if (value === undefined) return video.currentTime;
+          video.currentTime = value;
+        },
+        duration: () => video.duration,
+        readyState: () => options.readyState ?? 4,
         isDisposed() {
           return this.disposed;
         },
         persistVolume: () => persist,
         ready(fn) {
           this.readyCallback = fn;
+          (this.readyCallbacks ||= []).push(fn);
           fn();
         },
         volume(v) {
@@ -79,6 +102,7 @@ function createMultiscreenHarness(options = {}) {
           this.emit("volumechange");
         },
       });
+    FakePlayer.players[player.id()] = player;
     const tile = {
       querySelector: selector => (selector === "video" ? video : selector === "video-js" ? { player } : null),
     };
@@ -93,13 +117,15 @@ function createMultiscreenHarness(options = {}) {
     const address = renderer.owner.address;
     const current = media.get(address); // native shares its tile by prefix below
     const pair = current || [...media].find(([key]) => address.startsWith(key + "/"))?.[1];
+    if (pair) pair.video.duration = props.scene.files?.[0]?.duration || 10;
     props.sendSetTimestamp(seconds => {
-      if (pair) pair.video.currentTime = seconds;
+      if (pair) pair.player.currentTime(seconds);
     });
     React.useEffect(
       () => () => {
         if (pair) {
           pair.player.disposed = true;
+          FakePlayer.players[pair.player.id()] = null;
           pair.video.isConnected = false;
         }
       },
@@ -108,7 +134,7 @@ function createMultiscreenHarness(options = {}) {
     return React.createElement("native-player", props);
   }
   const controls = Object.fromEntries(
-    ["IconButton", "StateView", "NavAction"].map(name => [
+    ["IconButton", "StateView", "NavAction", "Dialog", "Field", "Button", "Pagination"].map(name => [
       name,
       props => React.createElement(name, props, props.children),
     ]),
@@ -133,8 +159,19 @@ function createMultiscreenHarness(options = {}) {
       calls.push({ query, variables });
       if (options.graphql) return options.graphql(query, variables, requestOptions);
       if (query.includes("MultiscreenMarkers"))
-        return { findSceneMarkers: { count: options.markers?.length || 0, scene_markers: options.markers || [] } };
-      if (query.includes("MultiscreenScenes")) return { findScenes: { count: scenes.length, scenes } };
+        return {
+          findSceneMarkers: {
+            count: options.markers?.length || 0,
+            scene_markers: (options.markers || []).filter(
+              marker => !variables.ids || variables.ids.includes(marker.id),
+            ),
+          },
+        };
+      if (query.includes("MultiscreenScenes")) {
+        const selected = scenes.filter(scene => !variables.ids || variables.ids.includes(scene.id));
+        return { findScenes: { count: selected.length, scenes: selected } };
+      }
+      if (query.includes("MultiscreenSceneSearch")) return { findScenes: { count: scenes.length, scenes } };
       if (query.includes("MultiscreenSceneCount")) return { findScenes: { count: scenes.length } };
       if (query.includes("MultiscreenMarkerCount"))
         return { findSceneMarkers: { count: options.markers?.length || 0 } };

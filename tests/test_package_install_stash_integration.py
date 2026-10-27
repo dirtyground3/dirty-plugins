@@ -3,7 +3,7 @@
 python -B tests/test_package_install_stash_integration.py --binary /path/to/stash
 
 Run after `./build_site.sh _site/main`. An isolated Stash reads this repository's package
-source from a local HTTP server and installs the seven public plugins with its own package
+source from a local HTTP server and installs the six public plugins with its own package
 manager; DirtyPlugins must follow as their declared dependency. Installed files must equal
 the ZIPs (plus Stash's own `manifest` record) with no source, tooling or runtime data, and
 every plugin must load, serve its staged bundle and run its Python backend.
@@ -83,7 +83,7 @@ def main():
             item = available[plugin["id"]]
             requires = [entry["package_id"] for entry in item["requires"] or []]
             assert requires == ([] if plugin["id"] == "dirtyPlugins" else ["dirtyPlugins"]), (plugin["id"], requires)
-        print("PASS: package source lists all eight plugins; each public plugin requires DirtyPlugins", flush=True)
+        print("PASS: package source lists all seven plugins; each public plugin requires DirtyPlugins", flush=True)
 
         # installPackages installs exactly the listed IDs; like Stash's UI, add each declared requirement.
         requested = list(public)
@@ -98,7 +98,7 @@ def main():
         installed = {item["package_id"]: item["version"] for item in fixture.gql("{installedPackages(type:Plugin){package_id version}}")["installedPackages"]}
         assert sorted(installed) == sorted(available), sorted(installed)
         assert all(installed[plugin_id] == available[plugin_id]["version"] for plugin_id in installed)
-        print("PASS: the seven public plugins plus their declared DirtyPlugins requirement installed; versions match the source", flush=True)
+        print("PASS: the six public plugins plus their declared DirtyPlugins requirement installed; versions match the source", flush=True)
 
         for plugin in registry:
             directory = installed_directory(plugins, plugin["id"])
@@ -120,7 +120,7 @@ def main():
             with urllib.request.urlopen(fixture.url + "/plugin/" + plugin["id"] + "/javascript") as response:
                 served = response.read()
             assert served == runtime_path(plugin["directory"], plugin["entry"]).read_bytes() + b"\n", plugin["id"]
-        print("PASS: all eight load at their manifest versions and serve their staged release bundles"
+        print("PASS: all seven load at their manifest versions and serve their staged release bundles"
               + (" (enabled after install: " + ", ".join(disabled) + ")" if disabled else ""), flush=True)
 
         settings = operation(fixture, "dirtyPlugins", "getAllSettings")
@@ -128,8 +128,8 @@ def main():
         # Backends import their generated metadata when they load, so any operation proves it shipped.
         rank = operation(fixture, "dirtyRank", "getSettings")
         assert rank["settings"] == {} and rank["revision"] == 0, rank
-        assert isinstance(operation(fixture, "dirtyCompactor", "listRuns"), (dict, list))
-        print("PASS: installed hub, Rank and Compactor backends run, including generated metadata modules", flush=True)
+        assert isinstance(operation(fixture, "dirtyTasks", "listRuns", task="encoding"), (dict, list))
+        print("PASS: installed hub, Rank and DirtyTasks backends run, including generated metadata modules", flush=True)
     except Exception:
         if fixture.log:
             fixture.log.flush()

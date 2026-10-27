@@ -40,7 +40,7 @@ their internals.
 `Field` owns the label/control/help/error relationship. Give it a stable ID,
 pass visible error text, and retain an invalid number or path until the user
 edits it. `SaveStatus` distinguishes pending, saving, saved, invalid, and error
-states. Ordinary settings autosave after a short delay; DirtyTidy's file-moving
+states. Ordinary settings autosave after a short delay; DirtyTasks' file-moving
 workflow still requires preview, confirmation, and an approved plan.
 
 ## Tokens and themes

@@ -42,10 +42,9 @@
       "dirtyPlugins",
       "extractScenes",
       "multiscreen",
-      "dirtyTidy",
+      "dirtyTasks",
       "dirtyRank",
       "dirtyStats",
-      "dirtyCompactor",
       "dirtyCaptions"
     ]
   }

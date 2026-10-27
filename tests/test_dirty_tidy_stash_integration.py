@@ -9,6 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
@@ -16,9 +17,11 @@ import time
 from plugin_paths import runtime_path
 from test_dirty_compactor_stash_integration import Fixture, add_build_mode_argument, select_build_mode, verify_served_bundle
 from test_dirty_file_extractor_stash_integration import finish
+from tidy_tagger_fixture import exercise_tag_updates
 
 
 def operation(fixture, plugin, **args):
+    if plugin == "dirtyTasks": args.setdefault("task", "organization")
     value = fixture.gql('mutation($plugin:ID!,$args:Map!){runPluginOperation(plugin_id:$plugin,args:$args)}',
                         {"plugin": plugin, "args": args})["runPluginOperation"]
     for _ in range(5):
@@ -34,13 +37,18 @@ def operation(fixture, plugin, **args):
 
 
 def settings(fixture, values=None):
+    snapshot = operation(fixture, "dirtyTasks", mode="getTaskSettings", section="organization")
     if values is None:
-        return operation(fixture, "dirtyPlugins", mode="getSettings", pluginId="dirtyTidy")["settings"]
-    return operation(fixture, "dirtyPlugins", mode="setSettings", pluginId="dirtyTidy", settings=values)
+        return snapshot["settings"]
+    execution = operation(fixture, "dirtyTasks", mode="getTaskSettings", section="execution")
+    desired = dict(execution["settings"], **{key: values.get(key + "Trigger", values.get("automationMode", "manual")) for key in ("move", "rename", "tags")})
+    if desired != execution["settings"]:
+        operation(fixture, "dirtyTasks", mode="saveTaskSettings", section="execution", settings=desired, expectedRevision=execution["revision"])
+    return operation(fixture, "dirtyTasks", mode="saveTaskSettings", section="organization", settings=values, expectedRevision=snapshot["revision"])
 
 
 def preview(fixture, values):
-    return operation(fixture, "dirtyTidy", mode="preview", settings=values)
+    return operation(fixture, "dirtyTasks", mode="preview", settings=values)
 
 
 def scenes(fixture):
@@ -55,13 +63,13 @@ def synthetic(fixture, name, color):
 
 
 def verify_frontend(fixture):
-    detail = verify_served_bundle(fixture, "DirtyTidy", "dirtyTidy", "dirtyTidy.js",
+    detail = verify_served_bundle(fixture, "DirtyTasks", "dirtyTasks", "dirtyTasks.js",
                                   {"Settings": "Settings", "PreviewTable": "PreviewTable", "Confirmation": "Confirmation"})
     print("PASS: " + detail, flush=True)
 
 
 def measure_snapshot_payload(fixture, values):
-    sys.path.insert(0, str(runtime_path("DirtyTidy")))
+    sys.path.insert(0, str(runtime_path("DirtyTasks")))
     from dirty_tidy import StashClient, normalize_settings
 
     client = StashClient({"Port": fixture.port})
@@ -99,7 +107,7 @@ def exercise(fixture):
     values = {"moveEnabled": True, "moveRequireStashId": False, "hierarchyLevels": ["Organized", "{studio}", "{year}"],
               "renameEnabled": True, "renameRequireStashId": False, "renamePattern": "{title}",
               "maxFilenameLength": 180, "multiValueSeparator": ", ", "automationMode": "manual",
-              "approvedStrategyHash": "", "approvedPlanDigest": ""}
+              "approvedStrategyHash": "", "approvedPlanDigest": "", "tagUpdateEnabled": False, "taggerEndpoint": ""}
     settings(fixture, values)
     measure_snapshot_payload(fixture, values)
     destination = fixture.root / "media" / "Organized" / "Unknown" / "Unknown"
@@ -121,7 +129,7 @@ def exercise(fixture):
     changed = dict(values, maxFilenameLength=179)
     settings(fixture, changed)
     try:
-        operation(fixture, "dirtyTidy", mode="execute", expectedStrategyHash=plan["strategy_hash"], expectedPlanDigest=plan["plan_digest"])
+        operation(fixture, "dirtyTasks", mode="execute", expectedStrategyHash=plan["strategy_hash"], expectedPlanDigest=plan["plan_digest"])
     except RuntimeError as error:
         assert "stale" in str(error), error
     else:
@@ -135,14 +143,14 @@ def exercise(fixture):
     later_plan = preview(fixture, values)
     assert later_plan["strategy_hash"] == plan["strategy_hash"] and later_plan["plan_digest"] != plan["plan_digest"]
     assert later_plan["summary"]["ready"] == 4, later_plan
-    result = operation(fixture, "dirtyTidy", mode="execute", expectedStrategyHash=plan["strategy_hash"], expectedPlanDigest=plan["plan_digest"])
+    result = operation(fixture, "dirtyTasks", mode="execute", expectedStrategyHash=plan["strategy_hash"], expectedPlanDigest=plan["plan_digest"])
     assert result["completed"] == 2 and result["failed"] == 0 and result["unreviewed"] == 2, result
     assert later.exists() and missing.exists() and sentinel.read_bytes() == b"synthetic collision sentinel"
     assert (destination / "Manual.mp4").exists() and (destination / "unknown.mp4").exists()
     assert not (fixture.root / "media" / "manual.mp4").exists()
     print("PASS: stale approval rejected; earlier preview stays immutable after a later preview; native confined move/rename skips restored/new unreviewed files and collisions", flush=True)
 
-    automated = dict(values, hierarchyLevels=["Automated", "{studio}"], automationMode="scan")
+    automated = dict(values, hierarchyLevels=["Automated", "{studio}"], automationMode="scan", moveTrigger="scan", renameTrigger="generate")
     reviewed = preview(fixture, automated)
     automated.update(approvedStrategyHash=reviewed["strategy_hash"], approvedPlanDigest=reviewed["plan_digest"])
     settings(fixture, automated)
@@ -152,17 +160,21 @@ def exercise(fixture):
                          {"input": {"paths": [str(fixture.root / "media")], "scanGenerateCovers": False}})["metadataScan"]
     finish(fixture, job_id)
     source = fixture.gql('query($id:ID!){findJob(input:{id:$id}){id startTime}}', {"id": job_id})["findJob"]
+    future_scene = next(scene for scene in scenes(fixture) if Path(scene["files"][0]["path"]).name == "future.mp4")
+    fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}', {"input": {"id": future_scene["id"], "title": "Future"}})
     args = {"mode": "queueAutomation", "automationTrigger": "scan", "sourceJobId": job_id, "sourceStartTime": source["startTime"]}
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(lambda _: operation(fixture, "dirtyTidy", **args), range(2)))
+        results = list(pool.map(lambda _: operation(fixture, "dirtyTasks", **args), range(2)))
     queued = [item["queuedJobId"] for item in results if item.get("queuedJobId")]
     assert len(queued) == 1 and any(item.get("reason") == "duplicate" for item in results), results
     finish(fixture, queued[0])
     assert not future.exists()
     assert (fixture.root / "media" / "Automated" / "Unknown" / "future.mp4").exists()
-    assert operation(fixture, "dirtyTidy", **args)["reason"] == "duplicate"
-    assert operation(fixture, "dirtyTidy", **dict(args, automationTrigger="generate"))["reason"] == "disabled"
-    print("PASS: successful native Scan, atomic two-client deduplication/replay, approved rules apply to future scenes, wrong trigger skipped", flush=True)
+    assert operation(fixture, "dirtyTasks", **args)["reason"] == "duplicate"
+    generated = operation(fixture, "dirtyTasks", **dict(args, automationTrigger="generate"))
+    finish(fixture, generated["queuedJobId"])
+    assert (fixture.root / "media" / "Automated" / "Unknown" / "Future.mp4").exists()
+    print("PASS: Scan moves without renaming; Generate renames independently under the same approval; job deduplication preserved", flush=True)
 
     current = scenes(fixture)
     by_id = {scene["id"]: scene for scene in current}
@@ -184,6 +196,24 @@ def exercise(fixture):
     return {"scenes": [scene["id"] for scene in current], "browserSettings": browser}
 
 
+def exercise_organization_recovery(fixture):
+    status = lambda: operation(fixture, "dirtyTasks", mode="organizationRecoveryStatus")
+    assert status() == {"required": False}
+    before = scenes(fixture)
+    database = fixture.root / "plugins" / "dirtyPlugins" / "dirty_plugins.sqlite3"
+    assert database.is_file()
+    with sqlite3.connect(database) as connection:
+        assert not connection.execute("SELECT value FROM dirty_metadata WHERE namespace='dirtyTasks.work' AND key='active'").fetchone()
+        connection.execute("INSERT INTO dirty_metadata(namespace,key,value) VALUES('dirtyTasks.work','active',?)", (json.dumps({"kind": "organization", "owner": "synthetic-interrupted-task"}),))
+    assert status() == {"required": True}
+    assert scenes(fixture) == before, "status checks must not change library files or associations"
+    assert operation(fixture, "dirtyTasks", mode="recoverOrganization") == {"recovered": True}
+    assert status() == {"required": False}
+    assert operation(fixture, "dirtyTasks", mode="recoverOrganization") == {"recovered": False}
+    assert scenes(fixture) == before
+    print("PASS: recovery is offered only for a synthetic abandoned organization reservation; recovery clears status and preserves scene/file associations", flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True)
@@ -194,15 +224,16 @@ def main():
     select_build_mode(args)
     fixture = Fixture(args.binary)
     try:
-        shutil.copytree(runtime_path("DirtyTidy"), fixture.root / "plugins" / "dirtyTidy")
         fixture.gql("mutation{reloadPlugins}")
-        fixture.gql("mutation{setPluginsEnabled(enabledMap:{dirtyPlugins:true,dirtyTidy:true})}")
+        fixture.gql("mutation{setPluginsEnabled(enabledMap:{dirtyPlugins:true,dirtyTasks:true})}")
         print("FIXTURE " + fixture.url + " " + str(fixture.root), flush=True)
         verify_frontend(fixture)
         ids = exercise(fixture)
+        exercise_tag_updates(fixture, operation, settings)
+        exercise_organization_recovery(fixture)
         print("FIXTURE_IDS " + json.dumps(ids), flush=True)
         if args.serve:
-            print("UI " + fixture.url + "/plugins/dirty-plugins?plugin=dirtyTidy&docsCapture=1", flush=True)
+            print("UI " + fixture.url + "/plugins/dirty-plugins?plugin=dirtyTasks&docsCapture=1", flush=True)
             while not args.stop_file or not args.stop_file.exists():
                 time.sleep(1)
     except Exception:

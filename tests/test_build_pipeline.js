@@ -32,8 +32,9 @@ for (const plugin of lib.registry) {
   }
 }
 assert.equal(
-  lib.readManifest(lib.pluginFor("DirtyCompactor"), runtimePath("DirtyCompactor")).ui.assets["/previews"],
-  "runtime/previews",
+  lib.readManifest(lib.pluginFor("DirtyTasks"), runtimePath("DirtyTasks")).ui.assets,
+  undefined,
+  "Encoding outputs are ordinary scene files; no review assets are served",
 );
 
 // Exercise failures and TSX in a disposable checkout, never by changing real source.
@@ -52,7 +53,7 @@ function build(...args) {
   const result = run("scripts/build.mjs", ...args);
   assert.equal(result.status, 0, result.stdout + result.stderr);
 }
-const stagedFile = path.join(fixture, ".build/plugins/DirtyCompactor/dirtyCompactor.js");
+const stagedFile = path.join(fixture, ".build/plugins/DirtyTasks/dirtyTasks.js");
 function snapshot(directory) {
   return files(directory).map(file => [file, fs.readFileSync(path.join(directory, file))]);
 }
@@ -94,13 +95,13 @@ try {
     run("-e", "require('./scripts/build-lib.cjs').requireBuild()").stderr,
     /Missing staged plugins. Run `npm run build` first/,
   );
-  write("plugins/DirtyCompactor/runtime/previews/private.txt", "runtime data");
+  write("plugins/DirtyTasks/runtime/previews/private.txt", "runtime data");
   write("plugins/DirtyPlugins/dirty_plugins.sqlite3", "private database");
   write("plugins/DirtyPlugins/__pycache__/backend.pyc", "bytecode");
   write("plugins/DirtyPlugins/backup.bak", "backup");
   build();
   assert.equal(run("-e", "require('./scripts/build-lib.cjs').requireBuild()").status, 0);
-  assert(!fs.existsSync(path.join(fixture, ".build/plugins/DirtyCompactor/runtime")));
+  assert(!fs.existsSync(path.join(fixture, ".build/plugins/DirtyTasks/runtime")));
   for (const file of ["dirty_plugins.sqlite3", "__pycache__", "backup.bak"])
     assert(!fs.existsSync(path.join(fixture, ".build/plugins/DirtyPlugins", file)));
   const original = fs.readFileSync(stagedFile);
@@ -109,10 +110,10 @@ try {
   assert.deepEqual(fs.readFileSync(stagedFile), original, "rebuild replaces stale staging");
 
   // Package identity covers plugin files and shared build inputs.
-  const before = identity("DirtyCompactor");
+  const before = identity("DirtyTasks");
   assert.match(before, /^[0-9a-f]+-[0-9a-f]{12}$|^local-[0-9a-f]{12}$/);
   fs.appendFileSync(path.join(fixture, "tsconfig.json"), "\n");
-  assert.notEqual(identity("DirtyCompactor"), before);
+  assert.notEqual(identity("DirtyTasks"), before);
 
   function git(...args) {
     const result = spawnSync("git", args, { cwd: fixture, encoding: "utf8" });
@@ -171,13 +172,13 @@ try {
     sharedIdentities,
   );
 
-  const manifestPath = path.join(fixture, "plugins/DirtyCompactor/dirtyCompactor.yml");
+  const manifestPath = path.join(fixture, "plugins/DirtyTasks/dirtyTasks.yml");
   const sourceManifest = fs.readFileSync(manifestPath, "utf8");
   const manifest = YAML.parse(sourceManifest);
   for (const unsafe of [
-    "../../plugins/DirtyTidy/dirtyTidy.css",
-    "..\\..\\plugins\\DirtyTidy\\dirtyTidy.css",
-    path.join(fixture, "plugins/DirtyTidy/dirtyTidy.css"),
+    "../../plugins/DirtyRank/dirtyRank.css",
+    "..\\..\\plugins\\DirtyRank\\dirtyRank.css",
+    path.join(fixture, "plugins/DirtyRank/dirtyRank.css"),
     "/absolute.css",
     "C:\\absolute.css",
     "C:relative.css",
@@ -188,22 +189,22 @@ try {
     );
     fails(/relative without traversal/, "unsafe install paths cannot change the previous build");
   }
-  write("plugins/DirtyCompactor/nested/theme.css", ".fixture { color: red; }\n");
+  write("plugins/DirtyTasks/nested/theme.css", ".fixture { color: red; }\n");
   fs.writeFileSync(
     manifestPath,
     YAML.stringify({ ...manifest, ui: { ...manifest.ui, css: [...manifest.ui.css, "nested/theme.css"] } }),
   );
   build();
   assert.equal(
-    fs.readFileSync(path.join(fixture, ".build/plugins/DirtyCompactor/nested/theme.css"), "utf8"),
+    fs.readFileSync(path.join(fixture, ".build/plugins/DirtyTasks/nested/theme.css"), "utf8"),
     ".fixture { color: red; }\n",
   );
   fs.writeFileSync(manifestPath, sourceManifest);
   build();
 
-  const escapedAsset = path.join(fixture, "plugins/DirtyCompactor/nested/escaped.css");
+  const escapedAsset = path.join(fixture, "plugins/DirtyTasks/nested/escaped.css");
   try {
-    fs.symlinkSync(path.join(fixture, "plugins/DirtyTidy/dirtyTidy.css"), escapedAsset);
+    fs.symlinkSync(path.join(fixture, "plugins/DirtyRank/dirtyRank.css"), escapedAsset);
     fs.writeFileSync(
       manifestPath,
       YAML.stringify({ ...manifest, ui: { ...manifest.ui, css: [...manifest.ui.css, "nested/escaped.css"] } }),
@@ -275,7 +276,7 @@ try {
   manifest.ui.css.pop();
   manifest.ui.javascript.push("extra.js");
   fs.writeFileSync(manifestPath, YAML.stringify(manifest));
-  fails(/manifest must serve only its compiled dirtyCompactor\.js/, "extra scripts are rejected");
+  fails(/manifest must serve only its compiled dirtyTasks\.js/, "extra scripts are rejected");
   delete manifest.ui.requires;
   manifest.ui.javascript.pop();
   fs.writeFileSync(manifestPath, YAML.stringify(manifest));
@@ -289,7 +290,7 @@ try {
   fails(/settings are generated from schemas\/dirtyRank\.settings\.json/, "schema settings stay out of manifests");
   fs.writeFileSync(rankManifestPath, rankManifest);
 
-  const unsafe = run("scripts/prepare-site.mjs", "plugins/DirtyCompactor");
+  const unsafe = run("scripts/prepare-site.mjs", "plugins/DirtyTasks");
   assert.notEqual(unsafe.status, 0);
   assert.match(unsafe.stderr, /Refusing package cleanup/);
   assert.equal(fs.readFileSync(manifestPath, "utf8"), sourceManifest);
@@ -298,11 +299,11 @@ try {
   assert(!fs.existsSync(path.join(fixture, "_site/test/stale.zip")));
 
   // A minimal TSX entry proves the module format and host-owned React binding.
-  fs.rmSync(path.join(fixture, "plugins/DirtyCompactor/src"), { recursive: true });
-  write("plugins/DirtyCompactor/src/domain.ts", "export function twice(value: number): number { return value * 2; }\n");
-  write("plugins/DirtyCompactor/src/runtime.ts", "export const React = window.PluginApi.React;\n");
+  fs.rmSync(path.join(fixture, "plugins/DirtyTasks/src"), { recursive: true });
+  write("plugins/DirtyTasks/src/domain.ts", "export function twice(value: number): number { return value * 2; }\n");
+  write("plugins/DirtyTasks/src/runtime.ts", "export const React = window.PluginApi.React;\n");
   write(
-    "plugins/DirtyCompactor/src/index.tsx",
+    "plugins/DirtyTasks/src/index.tsx",
     `
     /*! Pilot legal notice */
     import { React } from "./runtime";
@@ -315,11 +316,10 @@ try {
   `,
   );
   build();
-  const compiledDirectory = path.join(fixture, ".build/plugins/DirtyCompactor");
-  assert.deepEqual(
-    YAML.parse(fs.readFileSync(path.join(compiledDirectory, "dirtyCompactor.yml"), "utf8")).ui.javascript,
-    ["dirtyCompactor.js"],
-  );
+  const compiledDirectory = path.join(fixture, ".build/plugins/DirtyTasks");
+  assert.deepEqual(YAML.parse(fs.readFileSync(path.join(compiledDirectory, "dirtyTasks.yml"), "utf8")).ui.javascript, [
+    "dirtyTasks.js",
+  ]);
   assert(!fs.existsSync(path.join(compiledDirectory, "src")));
   let registrations = 0;
   const fragment = Symbol("host Fragment");
@@ -364,7 +364,7 @@ try {
   assert.notEqual(run("scripts/build.mjs", "--minify").status, 0, "unknown build options are rejected");
 
   // Bundle boundaries: host React, declared packages and generated imports only, and the plugin source rules.
-  const runtime = "plugins/DirtyCompactor/src/runtime.ts";
+  const runtime = "plugins/DirtyTasks/src/runtime.ts";
   for (const [source, pattern] of [
     ['import * as React from "react"; export { React };\n', /Use window.PluginApi.React/],
     [

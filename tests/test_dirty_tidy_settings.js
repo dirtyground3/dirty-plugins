@@ -1,7 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict"),
   { requireSource } = require("./plugin_paths");
-const a = requireSource("DirtyTidy", "src/domain/settings.ts");
+const a = requireSource("DirtyTasks", "src/organization/domain/settings.ts");
 const clean = value => JSON.parse(JSON.stringify(value));
 const defaults = {
   moveEnabled: true,
@@ -13,6 +13,8 @@ const defaults = {
   maxFilenameLength: 180,
   multiValueSeparator: ", ",
   automationMode: "manual",
+  tagUpdateEnabled: false,
+  taggerEndpoint: "",
   approvedStrategyHash: "",
   approvedPlanDigest: "",
 };
@@ -29,6 +31,8 @@ const canonical = a.settingsFromConfiguration({
   multiValueSeparator: "abcdefghijklmnop",
   automationMode: " Scan ",
   moveEnabled: "yes",
+  tagUpdateEnabled: "yes",
+  taggerEndpoint: " https://stashdb.org/graphql ",
 });
 assert.deepEqual(clean(canonical.hierarchyLevels), ["{studio}", "{year}"]);
 assert.equal(canonical.renamePattern, "{title}");
@@ -36,6 +40,9 @@ assert.equal(canonical.maxFilenameLength, 250);
 assert.equal(canonical.multiValueSeparator, "abcdefghij");
 assert.equal(canonical.automationMode, "scan");
 assert.equal(canonical.moveEnabled, true);
+assert.equal(canonical.tagUpdateEnabled, true);
+assert.equal(canonical.taggerEndpoint, "https://stashdb.org/graphql");
+assert.equal(a.settingsFromConfiguration({ taggerEndpoint: [] }).taggerEndpoint, "");
 
 // The backend must never see different values than the panel shows: an explicit
 // empty list stays empty instead of reverting to the defaults it would never plan with.
@@ -65,7 +72,7 @@ assert.deepEqual(
   "pre-1.0 JSON-string configurations are not parsed",
 );
 
-const { groupVariables, previewSlice } = requireSource("DirtyTidy", "src/domain/preview.ts");
+const { groupVariables, previewSlice } = requireSource("DirtyTasks", "src/organization/domain/preview.ts");
 const groups = groupVariables([
   ["studio", "Studio name", "Studio"],
   ["year", "Year", "Date"],

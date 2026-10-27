@@ -22,7 +22,8 @@ export interface PlaybackSettings {
 export interface Scene {
   id: string;
   title?: string | null;
-  paths?: { stream?: string | null };
+  resume_time?: number | null;
+  paths?: { stream?: string | null; vtt?: string | null };
   sceneStreams?: { url: string; mime_type?: string; label?: string }[];
   files?: { duration?: number }[];
 }
@@ -40,6 +41,11 @@ export interface Item {
   scene: Scene;
   playbackRange?: { start: number; end: number };
 }
+export interface SessionSearchResult {
+  count: number;
+  items: Item[];
+}
+export type SessionSearch = (text: string, page: number, signal: AbortSignal) => Promise<SessionSearchResult>;
 type SelectionSource = "selection" | "marker-selection" | "performer-selection" | "studio-selection";
 export type LaunchContext =
   | { source: SelectionSource; selectedIds: string[] }
@@ -69,6 +75,10 @@ export interface QueryResult {
   findStudios: { studios: { id: string }[] };
 }
 export interface Player {
+  currentTime(): number;
+  currentTime(value: number): void;
+  duration(): number;
+  readyState(): number;
   volume(): number;
   volume(value: number): void;
   muted(): boolean;
@@ -128,6 +138,7 @@ export interface GridProps {
   onVisibleSceneIdsChange(ids: string[]): void;
   playback: PlaybackSettings;
   playlists: Item[][];
+  searchSession: SessionSearch;
   useFindScene: UseFindScene;
 }
 export interface CounterAction {

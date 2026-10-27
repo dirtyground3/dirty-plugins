@@ -16,7 +16,7 @@ class GeneratedMetadataTests(unittest.TestCase):
     def test_staged_modules_match_their_schemas(self):
         registry = json.loads((ROOT / "scripts" / "plugin-registry.json").read_text(encoding="utf-8"))
         generated = [(plugin, name) for plugin in registry for name in plugin.get("generatedFiles", [])]
-        self.assertEqual(sorted(name for _plugin, name in generated), ["dirty_compactor_metadata.py", "dirty_plugins_metadata.py", "dirty_rank_metadata.py", "dirty_tidy_metadata.py"])
+        self.assertEqual(sorted(name for _plugin, name in generated), ["dirty_plugins_metadata.py", "dirty_rank_metadata.py", "dirty_tasks_metadata.py"])
         for plugin, name in generated:
             with self.subTest(module=name):
                 schema = json.loads((ROOT / "schemas" / (plugin["id"] + ".settings.json")).read_text(encoding="utf-8"))

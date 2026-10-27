@@ -27,13 +27,14 @@ def verify_frontend(fixture):
     print("PASS: " + detail, flush=True)
 
 
-def exercise(fixture):
+def exercise(fixture, transcode=False):
     files = []
     for index, name in enumerate(("Alpha", "Beta", "Gamma", "Delta")):
-        path = fixture.root / "media" / (name + ".mp4")
+        path = fixture.root / "media" / (name + (".mkv" if transcode else ".mp4"))
+        video_options = ["-c:v", "ffv1"] if transcode else ["-c:v", "libx264", "-preset", "ultrafast", "-movflags", "+faststart"]
         subprocess.run([shutil.which("ffmpeg"), "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=192x108:rate=15",
-                        "-f", "lavfi", "-i", "sine=frequency=" + str(220 + index * 110), "-t", "12", "-c:v", "libx264", "-preset", "ultrafast",
-                        "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", str(path)], check=True)
+                        "-f", "lavfi", "-i", "sine=frequency=" + str(220 + index * 110), "-t", str(12 + index * 4), *video_options,
+                        "-pix_fmt", "yuv420p", "-c:a", "aac", str(path)], check=True)
         files.append(path)
     hashes = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
     fixture.scan()
@@ -78,7 +79,49 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
   assert.equal(new Set([...first.findScenes.scenes, ...second.findScenes.scenes].map(scene => scene.id)).size, 4);
   const repeat = await graphql(queries.findScenesQuery, { ...variables, filter: { ...variables.filter, per_page: 2 } });
   assert.deepEqual(repeat.findScenes.scenes, first.findScenes.scenes);
+  const scope = { ...variables, scene_filter: { title: { value: 'Alpha', modifier: 'INCLUDES' } } };
+  const search = (await queries.searchSession(scope, false, '  Alpha  ', 1, new AbortController().signal)).findScenes;
+  assert.equal(search.count, 1);
+  assert.equal(search.scenes[0].title, 'Alpha');
+  assert(search.scenes[0].paths.stream);
+  const missing = (await queries.searchSession(scope, false, 'Beta', 1, new AbortController().signal)).findScenes;
+  assert.equal(missing.count, 0);
+  assert.throws(() => queries.searchSession({ filter: {}, ids: [search.scenes[0].id] }, false, 'Beta', 1, new AbortController().signal), /searched locally/);
+  const textScope = { filter: { q: 'Alpha' } };
+  assert.equal((await queries.searchSession(textScope, false, 'Beta', 1, new AbortController().signal)).findScenes.count, 0);
+  assert.equal((await queries.searchSession(textScope, false, 'Alpha', 1, new AbortController().signal)).findScenes.count, 1);
+  assert.equal((await queries.searchSession({ filter: {} }, false, 'Alpha Beta', 1, new AbortController().signal)).findScenes.count, 0, 'a phrase cannot match either word separately');
+  assert.equal((await queries.searchSession({ filter: {} }, false, 'aLpHa', 1, new AbortController().signal)).findScenes.count, 1, 'title search is case insensitive');
+  for (const literal of ['Alpha|Beta', 'Alpha.*', 'Alpha(', '.', '[Alpha]']) {
+    assert.equal((await queries.searchSession({ filter: {} }, false, literal, 1, new AbortController().signal)).findScenes.count, 0, 'search punctuation is literal: ' + literal);
+  }
+  const alphaId = search.scenes[0].id;
+  const rename = title => graphql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}', { input: { id: alphaId, title } });
+  try {
+    await rename('Alpha Beta (fixture).mp4');
+    const phrase = (await queries.searchSession({ filter: {} }, false, 'alpha beta', 1, new AbortController().signal)).findScenes;
+    assert.equal(phrase.count, 1, 'the entire phrase matches one scene despite other scenes containing individual words');
+    assert.equal(phrase.scenes[0].id, alphaId);
+    const punctuation = (await queries.searchSession({ filter: {} }, false, '(fixture).mp4', 1, new AbortController().signal)).findScenes;
+    assert.equal(punctuation.count, 1);
+    assert.equal(punctuation.scenes[0].id, alphaId);
+  } finally {
+    await rename('Alpha');
+  }
+  for (const entity of ['performer', 'studio']) {
+    const related = await queries.getSceneQueryVariables(settings, { source: entity + '-detail', [entity + 'Id']: '1' });
+    assert.equal((await queries.searchSession(related, false, 'Delta', 1, new AbortController().signal)).findScenes.count, 0);
+    assert.equal((await queries.searchSession(related, false, 'Beta', 1, new AbortController().signal)).findScenes.count, 1);
+  }
+  const markerScope = queries.getMarkerQueryVariables(settings, { source: 'marker-filter', filter: { q: 'Explicit' }, markerFilter: { scene_filter: scope.scene_filter } });
+  const markerSearch = (await queries.searchSession(markerScope, true, 'Alpha', 1, new AbortController().signal)).findSceneMarkers;
+  assert.equal(markerSearch.count, 1);
+  assert.equal(markerSearch.scene_markers[0].title, 'Explicit');
+  assert.equal(markerSearch.scene_markers[0].seconds, 1);
+  assert.equal((await queries.searchSession(markerScope, true, 'Beta', 1, new AbortController().signal)).findSceneMarkers.count, 0);
+  assert.equal((await queries.searchSession(markerScope, true, 'Alpha Beta', 1, new AbortController().signal)).findSceneMarkers.count, 0, 'marker sessions match the full video-title phrase');
   process.stdout.write('PASS: compiled bounded contextual query and stable seeded random continuation\n');
+  process.stdout.write('PASS: session search preserves selections, filters, original text, performer/studio membership and marker ranges\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 '''
     subprocess.run([shutil.which("node"), "-e", script, fixture.url], check=True)
@@ -113,6 +156,7 @@ def main():
     parser.add_argument("--binary", required=True)
     parser.add_argument("--serve", action="store_true")
     parser.add_argument("--stop-file", type=Path)
+    parser.add_argument("--transcode", action="store_true", help="Use synthetic FFV1 media to exercise native source fallback and seek offsets")
     add_build_mode_argument(parser)
     args = parser.parse_args()
     select_build_mode(args)
@@ -120,10 +164,10 @@ def main():
     try:
         shutil.copytree(runtime_path("DirtyMultiscreen"), fixture.root / "plugins" / "multiscreen")
         fixture.gql("mutation{reloadPlugins}")
-        fixture.gql("mutation{setPluginsEnabled(enabledMap:{dirtyPlugins:true,multiscreen:true,dirtyCompactor:false})}")
+        fixture.gql("mutation{setPluginsEnabled(enabledMap:{dirtyPlugins:true,multiscreen:true,dirtyTasks:false})}")
         print("FIXTURE " + fixture.url + " " + str(fixture.root), flush=True)
         verify_frontend(fixture)
-        ids = exercise(fixture)
+        ids = exercise(fixture, args.transcode)
         print("FIXTURE_IDS " + json.dumps(ids), flush=True)
         if args.serve:
             print("UI " + fixture.url + "/scenes", flush=True)

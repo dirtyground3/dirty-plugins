@@ -15,12 +15,11 @@ depend on the shared, unlisted **DirtyPlugins** hub runtime.
 plugins/
 ├── DirtyCaptions/       # embedded text subtitles via in-memory WebVTT tracks
 ├── DirtyPlugins/        # shared runtime: GraphQL, settings, React components, SQLite owner
-├── DirtyCompactor/      # media compaction UI and backend
 ├── DirtyFileExtractor/  # selection UI + Python extraction backend
 ├── DirtyMultiscreen/    # multiscreen playback UI
 ├── DirtyRank/           # battle/leaderboard UI + Glicko-2 backend
 ├── DirtyStats/          # statistics/visualization UI
-└── DirtyTidy/           # preview UI + file-organization backend
+└── DirtyTasks/          # file organization, additive encoding and tag updates
 tests/                   # Node test suites, Python unittest and opt-in Stash fixtures
 scripts/                 # staged build, settings generator and plugin registry
 schemas/                 # authored settings metadata, one <pluginId>.settings.json each
@@ -84,7 +83,7 @@ ui:
   should feel like the others.
 - Match established naming: CSS classes are prefixed per plugin (for example
   `ms-`, `dirty-rank-`, `dirty-tidy-`).
-- Standard settings save automatically after a short debounce. Only DirtyTidy
+- Standard settings save automatically after a short debounce. Only DirtyTasks file organization
   keeps an explicit preview/confirm workflow because its strategy moves and
   renames files. Preserve that exception.
 - Mark unsaved or invalid values visibly and protect against leaving with
@@ -94,7 +93,7 @@ ui:
 
 ## JavaScript and TypeScript conventions
 
-- Run `npm run build` to stage all eight plugins under `.build/plugins/`. The
+- Run `npm run build` to stage all seven plugins under `.build/plugins/`. The
   build stages into `.build/staging`, renames the previous output to a backup,
   and promotes staging. Failed promotion restores the previous output; if a
   file lock also prevents restoration, `.build/plugins.previous` retains it
@@ -245,9 +244,9 @@ Stash runs on port `9999` with `plugins_path: C:\Users\FABIO\.stash\plugins`.
 Installed directories are the plugin IDs (not the repo directory names):
 `DirtyPlugins`→`dirtyPlugins`, `DirtyFileExtractor`→`extractScenes`,
 `DirtyMultiscreen`→`multiscreen`, `DirtyRank`→`dirtyRank`,
-`DirtyStats`→`dirtyStats`, `DirtyTidy`→`dirtyTidy`,
+`DirtyStats`→`dirtyStats`, `DirtyTasks`→`dirtyTasks`,
 `DirtyCaptions`→`dirtyCaptions`.
-`DirtyCompactor`→`dirtyCompactor`.
+
 
 DirtyCaptions keeps subtitle payloads in memory: its backend converts through
 FFmpeg stdout and its frontend uses data URLs accepted by Stash's default CSP.
@@ -300,7 +299,7 @@ These simplifications keep coming up and do not pay off.
 
 - Another save framework. The shared save controller and `useSettingsDraft`
   exist; Rank's revisions, Stats' key merging and Compactor's blocking after a
-  failed save are different policies, and Tidy keeps preview/confirm.
+  failed save are different policies, and Tasks organization keeps preview/confirm.
 - One chart definition for Stats pages and dashboard widgets, or one table of
   Stats defaults. They share aggregates and leaf helpers; presentation,
   defaults and persistence keys differ on purpose.

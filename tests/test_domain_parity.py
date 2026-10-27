@@ -5,7 +5,7 @@ import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-for plugin in ("DirtyRank", "DirtyCompactor"):
+for plugin in ("DirtyRank", "DirtyTasks"):
     sys.path.insert(0, str(runtime_path(plugin)))
 import dirty_rank as rank
 import dirty_compactor_rules as compactor

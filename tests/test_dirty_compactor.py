@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("dirty_compactor_test", runtime_path("DirtyCompactor", "dirty_compactor.py"))
+spec = importlib.util.spec_from_file_location("dirty_compactor_test", runtime_path("DirtyTasks", "dirty_compactor.py"))
 compactor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(compactor)
 
@@ -70,13 +70,16 @@ class FakeClient:
                     Path(f["path"]).rename(destination)
                     f["path"] = str(destination)
 
-    def delete(self, scene_id):
-        for scene in self.data:
-            if scene["id"] == scene_id:
-                for file in scene["files"]:
-                    Path(file["path"]).unlink()
-        self.data = [s for s in self.data if s["id"] != scene_id]
-        self.deleted.append(scene_id)
+    def attach(self, scene_id, path):
+        scene = next(s for s in self.data if s["id"] == str(scene_id))
+        current = next((f for f in scene["files"] if f["path"] == str(path)), None)
+        if current:
+            return current
+        media = compactor.probe(self.tool("ffprobe"), path)
+        file = {"id": str(100 + len(scene["files"])), "path": str(path), "size": Path(path).stat().st_size,
+                "width": media["width"], "height": media["height"]}
+        scene["files"].append(file)
+        return copy.deepcopy(file)
 
     def call(self, query, variables=None):
         if "jobQueue" in query:
@@ -271,7 +274,7 @@ class CompactorPipelineTests(unittest.TestCase):
         self.original = self.source.read_bytes()
         self.env = patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(self.folder / "settings.sqlite3")})
         self.env.start()
-        self.paths = patch.multiple(compactor, PREVIEWS=self.folder / "previews", PRIVATE=self.folder / "private")
+        self.paths = patch.multiple(compactor, PRIVATE=self.folder / "private")
         self.paths.start()
         self.client = FakeClient(self.source)
         self.set_rules([rule()])
@@ -282,7 +285,7 @@ class CompactorPipelineTests(unittest.TestCase):
         self.temp.cleanup()
 
     def set_rules(self, rules):
-        compactor.storage.set_plugin_settings(compactor.PLUGIN_ID, {"rules": rules, "automationPaused": False})
+        compactor.storage.set_plugin_settings(compactor.PLUGIN_ID, {"encoding": {"rules": rules}, "execution": {"move": "manual", "rename": "manual", "tags": "manual", "encoding": {str(r["id"]): r.get("trigger", "scan") for r in rules}}})
 
     def preview(self, automatic=False):
         value = {"id": "preview", "status": "planning", "settings": compactor.settings(), "automatic": automatic}
@@ -293,73 +296,12 @@ class CompactorPipelineTests(unittest.TestCase):
         result = compactor.start_run(self.client, self.preview(), {"reviewOutputs": review})
         return compactor.worker(self.client, result["id"])
 
-    def test_review_leaves_original_unchanged_and_accepts_exact_output(self):
-        run = self.start()
-        self.assertEqual(run["status"], "awaitingReview")
-        self.assertEqual(self.source.read_bytes(), self.original)
-        op = run["operations"][0]
-        expected = Path(op["output"]).read_bytes()
-        self.assertLess(len(expected), len(self.original))
-        args = {"mode": "acceptOutput", "id": run["id"], "operationId": op["id"]}
-        compactor.dispatch(self.client, args)
-        self.assertTrue(compactor.dispatch(self.client, args)["alreadyDecided"])
-        with patch.object(compactor, "encode", side_effect=AssertionError("must not encode twice")):
-            result = compactor.worker(self.client, run["id"], accept=True)
-        self.assertEqual(result["status"], "reconciling")
-        self.assertEqual(self.source.read_bytes(), expected)
-        self.assertTrue(Path(op.get("backup", result["operations"][0]["backup"])).exists())
-        compactor.finalize(self.client, run["id"])
-        final = compactor.worker(self.client, run["id"])
-        self.assertEqual(final["status"], "completed")
-        self.assertEqual(final["operations"][0]["actualSavings"], len(self.original) - len(expected))
-        self.assertFalse(Path(op["output"]).exists())
 
-    def test_discard_removes_output_only(self):
-        run = self.start()
-        op = run["operations"][0]
-        compactor.dispatch(self.client, {"mode": "discardOutput", "id": run["id"], "operationId": op["id"]})
-        self.assertEqual(self.source.read_bytes(), self.original)
-        self.assertFalse(Path(op["output"]).exists())
-        self.assertEqual(compactor.worker(self.client, run["id"])["status"], "completed")
 
-    def test_cancel_pending_review_keeps_original(self):
-        run = self.start()
-        compactor.dispatch(self.client, {"mode": "cancelRun", "id": run["id"]})
-        self.assertEqual(compactor.worker(self.client, run["id"])["status"], "cancelled")
-        self.assertEqual(self.source.read_bytes(), self.original)
 
-    def test_source_changed_during_review_is_not_replaced(self):
-        run = self.start()
-        self.source.write_bytes(self.original + b"changed")
-        compactor.dispatch(self.client, {"mode": "acceptOutput", "id": run["id"], "operationId": run["operations"][0]["id"]})
-        result = compactor.worker(self.client, run["id"], accept=True)
-        self.assertEqual(result["status"], "awaitingReview")
-        self.assertIn("changed", result["operations"][0]["reason"])
-        self.assertEqual(self.source.read_bytes(), self.original + b"changed")
 
-    def test_scene_no_longer_matching_native_filter_is_not_replaced(self):
-        self.set_rules([rule(condition={"find": {"q": "Synthetic scene"}, "scene": {}})])
-        run = self.start()
-        self.client.data[0]["title"] = "No longer selected"
-        compactor.dispatch(self.client, {"mode": "acceptOutput", "id": run["id"], "operationId": run["operations"][0]["id"]})
-        result = compactor.worker(self.client, run["id"], accept=True)
-        self.assertIn("no longer matches", result["operations"][0]["reason"])
-        self.assertEqual(self.source.read_bytes(), self.original)
 
-    def test_tampered_output_is_not_installed(self):
-        run = self.start()
-        op = run["operations"][0]
-        Path(op["output"]).write_bytes(b"changed")
-        compactor.dispatch(self.client, {"mode": "acceptOutput", "id": run["id"], "operationId": op["id"]})
-        result = compactor.worker(self.client, run["id"], accept=True)
-        self.assertEqual(result["status"], "awaitingReview")
-        self.assertEqual(self.source.read_bytes(), self.original)
 
-    def test_earlier_manual_rule_protects_from_automatic_delete(self):
-        self.set_rules([rule(), rule(id="delete", mode="automatic", action="delete")])
-        preview = self.preview(automatic=True)
-        self.assertEqual([o["status"] for o in preview["operations"]], ["manual"])
-        self.assertEqual(self.source.read_bytes(), self.original)
 
     def test_all_files_are_planned_and_shared_files_blocked(self):
         second = self.folder / "second.mp4"
@@ -380,106 +322,19 @@ class CompactorPipelineTests(unittest.TestCase):
         self.assertIn("shared", run["operations"][0]["reason"])
         self.assertEqual(self.source.read_bytes(), self.original)
 
-    def test_new_owner_during_encoding_blocks_replacement(self):
-        original = compactor.encode
-        def encode_then_share(*args):
-            original(*args)
-            self.share_source()
-        with patch.object(compactor, "encode", side_effect=encode_then_share):
-            run = self.start(review=False)
-        self.assertIn("shared", run["operations"][0]["reason"])
-        self.assertEqual(self.source.read_bytes(), self.original)
 
-    def test_new_owner_between_commit_checks_blocks_replacement(self):
-        run = self.start()
-        compactor.dispatch(self.client, {"mode": "acceptOutput", "id": run["id"], "operationId": run["operations"][0]["id"]})
-        original = self.client.has_shared_files
-        checks = 0
-        def share_on_final_check(scene_id, file_ids):
-            nonlocal checks
-            checks += 1
-            if checks == 3:  # worker, commit before staging, commit after staging
-                self.share_source()
-            return original(scene_id, file_ids)
-        with patch.object(self.client, "has_shared_files", side_effect=share_on_final_check):
-            run = compactor.worker(self.client, run["id"], accept=True)
-        self.assertEqual(checks, 3)
-        self.assertIn("shared", run["operations"][0]["reason"])
-        self.assertEqual(self.source.read_bytes(), self.original)
 
-    def test_file_transferred_to_another_scene_during_revalidation_is_retained(self):
-        run = self.start()
-        compactor.dispatch(self.client, {"mode": "acceptOutput", "id": run["id"], "operationId": run["operations"][0]["id"]})
-        original = self.client.scene
-        transferred = False
-        def transfer_after_scene_read(scene_id):
-            nonlocal transferred
-            snapshot = original(scene_id)
-            if not transferred:
-                transferred = True
-                self.share_source()
-                self.client.data[0]["files"] = []
-            return snapshot
-        with patch.object(self.client, "scene", side_effect=transfer_after_scene_read):
-            result = compactor.worker(self.client, run["id"], accept=True)
-        self.assertIn("Scene files changed", result["operations"][0]["reason"])
-        self.assertEqual(self.source.read_bytes(), self.original)
 
-    def test_restore_after_reconciliation_failure(self):
-        run = self.start(review=False)
-        op = run["operations"][0]
-        self.client.data[0]["files"][0]["size"] = 0
-        self.assertEqual(compactor.finalize(self.client, run["id"])["status"], "recovery")
-        compactor.recover(self.client, compactor.get("run", run["id"]), restore=True)
-        compactor.finalize(self.client, run["id"])
-        self.assertEqual(self.source.read_bytes(), self.original)
 
-    def test_delete_runs_once_and_removes_scene_and_files(self):
-        self.set_rules([rule(action="delete")])
-        run = self.start()
-        self.assertEqual(run["status"], "completed")
-        self.assertFalse(self.source.exists())
-        compactor.worker(self.client, run["id"])
-        self.assertEqual(self.client.deleted, ["1"])
-        self.assertEqual(compactor.public_record(run)["libraryBytesRemoved"], len(self.original))
 
-    def test_delete_scene_without_files(self):
-        self.client.data[0]["files"] = []
-        self.set_rules([rule(action="delete")])
-        run = self.start()
-        self.assertEqual(run["status"], "completed")
-        self.assertEqual(self.client.deleted, ["1"])
-        self.assertEqual(self.source.read_bytes(), self.original)
 
-    def test_recovery_after_original_restored_before_scan(self):
-        run = self.start(review=False)
-        op = run["operations"][0]
-        os.replace(op["backup"], op["source"])
-        op["status"] = "restoring"
-        run["status"] = "recovery"
-        compactor.save("run", run)
-        compactor.recover(self.client, compactor.get("run", run["id"]))
-        compactor.finalize(self.client, run["id"])
-        final = compactor.worker(self.client, run["id"])
-        self.assertEqual(final["operations"][0]["status"], "restored")
-        self.assertEqual(self.source.read_bytes(), self.original)
 
-    def test_recovery_preserves_interrupted_restore_intent(self):
-        run = self.start(review=False)
-        op = run["operations"][0]
-        op["status"] = "restoring"
-        run["status"] = "recovery"
-        compactor.save("run", run)
-        compactor.recover(self.client, compactor.get("run", run["id"]))
-        compactor.finalize(self.client, run["id"])
-        self.assertEqual(self.source.read_bytes(), self.original)
-        self.assertEqual(compactor.get("run", run["id"])["operations"][0]["status"], "restored")
 
     def test_recovery_cleans_interrupted_partial_encode(self):
         result = compactor.start_run(self.client, self.preview(), {"reviewOutputs": True})
         run = compactor.get("run", result["id"])
         op = run["operations"][0]
-        partial = self.folder / (op["id"] + ".mp4")
+        partial = self.folder / (".dirty-tasks-" + op["id"] + ".tmp")
         partial.write_bytes(b"partial encode")
         op.update(status="encoding", output=str(partial))
         run["status"] = "running"
@@ -499,14 +354,6 @@ class CompactorPipelineTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "another session"):
             compactor.save("run", stale)
 
-    def test_rule_change_during_review_requires_new_preview(self):
-        run = self.start()
-        self.set_rules([rule(mbps=.3)])
-        compactor.dispatch(self.client, {"mode": "acceptOutput", "id": run["id"], "operationId": run["operations"][0]["id"]})
-        result = compactor.worker(self.client, run["id"], accept=True)
-        self.assertEqual(result["status"], "awaitingReview")
-        self.assertIn("Rules changed", result["operations"][0]["reason"])
-        self.assertEqual(self.source.read_bytes(), self.original)
 
     def test_gpu_failure_falls_back_once_to_same_codec_cpu(self):
         self.set_rules([rule(encoder="nvenc")])
@@ -533,7 +380,7 @@ class CompactorPipelineTests(unittest.TestCase):
     def test_reencode_preserves_dimensions_and_reduces_bitrate(self):
         self.set_rules([rule(action="reencode")])
         run = self.start()
-        self.assertEqual(run["status"], "awaitingReview")
+        self.assertEqual(run["status"], "reconciling")
         media = run["operations"][0]["outputMedia"]
         self.assertEqual((media["width"], media["height"]), (640, 360))
         self.assertLess(media["bitrate"], run["operations"][0]["media"]["bitrate"])
@@ -545,7 +392,7 @@ class CompactorPipelineTests(unittest.TestCase):
         run = self.start()
         op = run["operations"][0]
         self.assertAlmostEqual(op["mbps"] * 1e6, op["media"]["bitrate"], delta=1000)
-        self.assertEqual(run["status"], "awaitingReview")
+        self.assertEqual(run["status"], "reconciling")
         self.assertEqual(op["outputMedia"]["codec"], "hevc")
         self.assertEqual(self.source.read_bytes(), self.original)
 
@@ -564,7 +411,7 @@ class CompactorPipelineTests(unittest.TestCase):
         self.assertEqual(encode[encode.index("-crf:v:0") + 1], "22")
         self.assertEqual(int(encode[encode.index("-maxrate:v:0") + 1]), int(op["media"]["bitrate"]))
         self.assertNotIn("-b:v:0", encode)
-        self.assertEqual(run["status"], "awaitingReview")
+        self.assertEqual(run["status"], "reconciling")
         self.assertLess(op["outputSize"], op["identity"]["size"])
 
     def test_latest_preview_reopens_until_used_discarded_or_stale(self):
@@ -585,7 +432,7 @@ class CompactorPipelineTests(unittest.TestCase):
     def test_orphaned_preview_is_reported_as_failed(self):
         preview = {"id": "orphan", "status": "planning", "settings": compactor.settings(), "automatic": False}
         compactor.save("preview", preview)
-        live = {"jobQueue": [{"id": "1", "status": "RUNNING", "description": "Running plugin task: DirtyCompactor: calculate preview"}]}
+        live = {"jobQueue": [{"id": "1", "status": "RUNNING", "description": "Running plugin task: DirtyTasks: encoding: calculate preview"}]}
         with patch.object(self.client, "call", return_value=live):
             self.assertTrue(compactor.tasks_active(self.client), "Stash prefixes task descriptions")
             self.assertEqual(compactor.dispatch(self.client, {"mode": "getPreview", "id": "orphan"})["status"], "planning")
@@ -652,7 +499,7 @@ class CompactorPipelineTests(unittest.TestCase):
     def test_outputs_that_could_not_shrink_are_skipped_next_time(self):
         self.set_rules([rule(action="reencode", quality="balanced")])
         first = self.preview()["operations"][0]
-        compactor.records.put("completed", compactor.digest([first["fileId"], first["rule"]["id"]]),
+        compactor.records.put("completed", compactor.completed_key(first),
                                         {"hash": "", "quickHash": first["quickHash"], "actionKey": first["actionKey"], "notSmaller": True})
         op = self.preview()["operations"][0]
         self.assertEqual((op["status"], op["reason"]), ("unchanged", "Would not get smaller with these settings"))
@@ -695,7 +542,7 @@ class CompactorPipelineTests(unittest.TestCase):
         op = run["operations"][0]
         self.assertIn(op["crf"], range(compactor.quality.CRF_RANGE["h264"][0], compactor.quality.CRF_RANGE["h264"][1] + 1))
         self.assertGreaterEqual(op["vmaf"], 93)
-        self.assertEqual(run["status"], "awaitingReview")
+        self.assertEqual(run["status"], "reconciling")
         self.assertFalse(list((self.folder / "private").glob("quality-*")), "sample clips are removed")
         # A stricter target never picks a higher (lower quality) value.
         media = op["media"]
@@ -734,7 +581,7 @@ class CompactorPipelineTests(unittest.TestCase):
         self.assertTrue(op["convert"])
         self.assertAlmostEqual(op["mbps"] * 1e6, op["media"]["bitrate"], delta=1000)
         run = self.start()
-        self.assertEqual(run["status"], "awaitingReview", "conversions at the original bitrate need not shrink")
+        self.assertEqual(run["status"], "reconciling", "conversions at the original bitrate need not shrink")
         for changes in ({"action": "reencode", "codec": "h264"}, {"action": "resize"}):
             self.set_rules([rule(quality="custom", mbps=1000, **changes)])
             op = self.preview()["operations"][0]

@@ -18,9 +18,9 @@ class StagedBackendTests(unittest.TestCase):
 
     def test_same_directory_and_shared_imports_resolve_to_staging(self):
         entries = {
-            "DirtyCaptions": "dirty_captions", "DirtyCompactor": "dirty_compactor",
+            "DirtyCaptions": "dirty_captions", "DirtyTasks": "dirty_tasks",
             "DirtyFileExtractor": "extract_scenes", "DirtyPlugins": "dirty_plugins",
-            "DirtyRank": "dirty_rank", "DirtyStats": "dirty_stats", "DirtyTidy": "dirty_tidy",
+            "DirtyRank": "dirty_rank", "DirtyStats": "dirty_stats",
         }
         code = """
 import importlib, pathlib, sys

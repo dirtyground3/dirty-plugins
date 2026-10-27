@@ -12,8 +12,21 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   Explicit selections include items selected on other native pages. Random playback permutes
   each bounded page independently per pane; split assignments remain stable between page requests.
 - Random starting positions, looping, and start-muted behavior.
+  Each native player has its own identity, keeping durations and streaming
+  controls independent between screens.
+  Starting positions are applied once the native source is playable, including
+  after transcoding fallback, and do not race Stash's saved resume position.
 - Marker playback with a configurable fallback duration.
 - Optional pause when the browser tab is hidden.
+- Seek preview thumbnails are disabled in the grid to keep smaller panes clear.
+- The source/settings menu opens to the left of its button so it stays visible in right-hand panes, including with themes that override the native menu width.
+- With Refract, every pane uses the same native source menu and its own speed and projection controls. Refract's single-player replacement panel is hidden inside the grid; its ordinary player styling is preserved.
+- Search video titles available in the current session from each screen without
+  interrupting the others. Explicit selections and sampled queues stay fixed;
+  filtered sessions include later queue pages and preserve all launch filters.
+  Choosing a result moves that screen to its position in the session queue, so
+  Previous/Next follows from there, including across pages.
+- Scene titles and search buttons use translucent backgrounds over the video.
 - The O-counter button fades away after one click per playback session. Failed saves can be retried without incrementing scenes that already succeeded.
 - Runs inside Stash and uses its existing scene and marker data.
 
@@ -40,6 +53,12 @@ muting, marker duration, and hidden-tab handling in one panel.
 3. In Stash, open **Settings > Plugins** and select **Reload Plugins**.
 4. Expand **DirtyMultiscreen** and follow its settings link.
 5. Use the DirtyMultiscreen action in Stash to open the playback grid.
+
+In the grid, click the magnifying glass beside a screen's scene title, type a
+scene search, and choose a result. Search results are paginated and limited to
+the session's playable videos. Titles match the complete text you type, ignoring
+case and treating punctuation literally. During marker playback, results keep the original
+marker ranges.
 
 The authored source directory requires a build before installation. Back up
 replaced files, copy runtime files before the manifest, reload plugins, then
@@ -74,6 +93,9 @@ An opt-in isolated Stash fixture uses synthetic media only:
 npm run build
 python -B tests/test_dirty_multiscreen_stash_integration.py --binary /path/to/stash --serve --stop-file .build/multiscreen-review-stop
 ```
+
+Add `--transcode` to use synthetic FFV1 files and exercise native source fallback
+and full-scene time offsets during browser review.
 
 Close the review tab and create the named stop file to remove the temporary
 fixture. The remaining browser/manual limits are listed in the repository's

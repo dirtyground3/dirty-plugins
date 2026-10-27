@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 
-MODULE_PATH = runtime_path("DirtyTidy", "dirty_tidy.py")
+MODULE_PATH = runtime_path("DirtyTasks", "dirty_tidy.py")
 SPEC = importlib.util.spec_from_file_location("dirty_tidy", MODULE_PATH)
 dirty_tidy = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
@@ -622,6 +622,16 @@ class DirtyTidyTests(unittest.TestCase):
         self.assertEqual(settings["automationMode"], "manual")
         self.assertEqual(settings["approvedStrategyHash"], "")
         self.assertEqual(settings["approvedPlanDigest"], "")
+        self.assertFalse(settings["tagUpdateEnabled"])
+        self.assertEqual(settings["taggerEndpoint"], "")
+
+    def test_tag_settings_normalize_without_changing_file_approval(self):
+        settings = dirty_tidy.normalize_settings({"tagUpdateEnabled": "yes",
+                                                "taggerEndpoint": " https://stashdb.org/graphql "})
+        self.assertTrue(settings["tagUpdateEnabled"])
+        self.assertEqual(settings["taggerEndpoint"], "https://stashdb.org/graphql")
+        self.assertEqual(dirty_tidy.strategy_hash(settings), dirty_tidy.strategy_hash({}))
+        self.assertEqual(dirty_tidy.normalize_settings({"taggerEndpoint": []})["taggerEndpoint"], "")
 
     def test_automation_mode_and_plan_digest_are_normalized(self):
         digest = "b" * 64
@@ -829,7 +839,7 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
 
         # This is the queued task contract, after another tab created preview B.
         with mock.patch.object(dirty_tidy, "StashClient", return_value=client), \
-                mock.patch.object(dirty_tidy.shared_storage, "get_plugin_settings", return_value=settings):
+                mock.patch.object(dirty_tidy, "get_section", side_effect=lambda section: trigger_settings(settings) if section == "execution" else settings):
             result = dirty_tidy.run({"args": {
                 "mode": "execute", "expectedStrategyHash": first["strategy_hash"],
                 "expectedPlanDigest": first["plan_digest"],
@@ -1112,8 +1122,8 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
                     payload = {"args": {"mode": "automation", "automationTrigger": trigger}}
 
                     with mock.patch.object(dirty_tidy, "StashClient", return_value=client), \
-                            mock.patch.object(dirty_tidy.shared_storage, "get_plugin_settings",
-                                              return_value=settings), \
+                            mock.patch.object(dirty_tidy, "get_section",
+                                              side_effect=lambda section: trigger_settings(settings) if section == "execution" else settings), \
                             mock.patch.object(dirty_tidy, "load_reviewed_plan",
                                               side_effect=AssertionError("automation must not freeze the preview")):
                         result = dirty_tidy.run(payload)
@@ -1152,8 +1162,8 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
             with self.subTest(changes=changes, trigger=trigger):
                 client = self.SnapshotClient(Path("."), [])
                 with mock.patch.object(dirty_tidy, "StashClient", return_value=client), \
-                        mock.patch.object(dirty_tidy.shared_storage, "get_plugin_settings",
-                                          return_value={**original, **changes}):
+                        mock.patch.object(dirty_tidy, "get_section",
+                                          side_effect=lambda section: trigger_settings({**original, **changes}) if section == "execution" else {**original, **changes}):
                     result = dirty_tidy.run({"args": {"mode": "automation", "automationTrigger": trigger}})
                 self.assertTrue(result["skipped"])
                 self.assertTrue(result["reason"])
@@ -1187,7 +1197,7 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
                 scenes.append(self._second_scene(source, title, str(index), str(index * 10)))
             client = self.SnapshotClient(root, scenes)
             with mock.patch.object(dirty_tidy, "StashClient", return_value=client), \
-                    mock.patch.object(dirty_tidy.shared_storage, "get_plugin_settings", return_value=settings):
+                    mock.patch.object(dirty_tidy, "get_section", side_effect=lambda section: trigger_settings(settings) if section == "execution" else settings):
                 result = dirty_tidy.run({"args": {"mode": "automation", "automationTrigger": "scan"}})
             self.assertEqual(result["completed"], 1)
             self.assertEqual(result["blocked"], 4)
@@ -1231,6 +1241,11 @@ class DirtyTidyPlanIntegrityTests(unittest.TestCase):
             )
 
 
+def trigger_settings(settings):
+    mode = settings.get("automationMode", "manual")
+    return {"move": mode, "rename": mode, "tags": mode, "encoding": {}}
+
+
 class DirtyTidyAutomationQueueTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -1258,7 +1273,7 @@ class DirtyTidyAutomationQueueTests(unittest.TestCase):
 
     def save_settings(self):
         self.settings["approvedStrategyHash"] = dirty_tidy.strategy_hash(self.settings)
-        dirty_tidy.shared_storage.set_plugin_settings(dirty_tidy.PLUGIN_ID, self.settings)
+        dirty_tidy.shared_storage.set_plugin_settings(dirty_tidy.PLUGIN_ID, {"organization": self.settings, "execution": trigger_settings(self.settings)})
 
     def queue(self, **overrides):
         return dirty_tidy.run({"args": {**self.args, **overrides}})
@@ -1285,7 +1300,7 @@ class DirtyTidyAutomationQueueTests(unittest.TestCase):
                 self.queue(automationTrigger=trigger, sourceJobId=str(index + 1))
                 variables = self.client.call.call_args.args[1]
                 self.assertEqual(variables["description"],
-                                 f"DirtyTidy: {action} (after {trigger.title()} #{index + 1})")
+                                 f"DirtyTasks: organization: {action} (after {trigger.title()} #{index + 1})")
                 self.assertEqual(variables["args"]["mode"], "automation")
                 self.assertEqual(variables["args"]["sourceStartTime"], self.args["sourceStartTime"])
 
@@ -1310,7 +1325,7 @@ class DirtyTidyAutomationQueueTests(unittest.TestCase):
         original = self.settings.copy()
         for changes, reason in cases:
             with self.subTest(reason=reason, changes=changes):
-                dirty_tidy.shared_storage.set_plugin_settings(dirty_tidy.PLUGIN_ID, {**original, **changes})
+                dirty_tidy.shared_storage.set_plugin_settings(dirty_tidy.PLUGIN_ID, {"organization": {**original, **changes}, "execution": trigger_settings({**original, **changes})})
                 self.assertEqual(self.queue()["reason"], reason)
         self.save_settings()
         with mock.patch.object(dirty_tidy.shared_storage, "internal_scan_check", return_value=True):
@@ -1322,6 +1337,45 @@ class DirtyTidyAutomationQueueTests(unittest.TestCase):
         for field in ("automationTrigger", "sourceJobId", "sourceStartTime"):
             with self.subTest(field=field), self.assertRaises(dirty_tidy.PluginError):
                 self.queue(**{field: ""})
+        self.client.call.assert_not_called()
+
+    def test_tag_updates_queue_once_after_scan_without_file_approval(self):
+        self.settings.update(tagUpdateEnabled=True, taggerEndpoint="https://stashdb.org/graphql",
+                             automationMode="scan", moveEnabled=False, renameEnabled=False,
+                             approvedStrategyHash="")
+        dirty_tidy.shared_storage.set_plugin_settings(dirty_tidy.PLUGIN_ID, {"organization": self.settings, "execution": trigger_settings(self.settings)})
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda unused: self.queue(), range(16)))
+        self.assertEqual(sum("queuedJobId" in result for result in results), 1)
+        self.assertEqual(self.client.call.call_count, 1)
+        values = self.client.call.call_args.args[1]
+        self.assertEqual(values["args"]["mode"], "updateTags")
+        self.assertIn("merge scene tags", values["description"])
+        self.assertEqual(self.queue(automationTrigger="generate")["reason"], "disabled")
+        self.assertEqual(self.client.call.call_count, 1)
+        self.assertEqual(self.queue(sourceStartTime="2026-10-03T20:42:00Z")["queuedJobId"], "100")
+
+    def test_tag_updates_have_independent_claims_and_recheck_the_enable_switch(self):
+        self.settings.update(tagUpdateEnabled=True, taggerEndpoint="https://stashdb.org/graphql")
+        self.save_settings()
+        self.client.call.side_effect = [{"runPluginTask": "100"}, {"runPluginTask": "101"}]
+        result = self.queue()
+        self.assertEqual(result["queuedJobIds"], ["100", "101"])
+        self.assertEqual(self.queue()["reason"], "duplicate")
+        self.settings["tagUpdateEnabled"] = False
+        self.save_settings()
+        with mock.patch.object(dirty_tidy, "update_scene_tags") as update:
+            self.assertTrue(dirty_tidy.run({"args": {"mode": "updateTags"}})["skipped"])
+            update.assert_not_called()
+
+    def test_internal_scans_and_missing_sources_cannot_queue_tag_updates(self):
+        self.settings.update(tagUpdateEnabled=True, automationMode="manual")
+        self.save_settings()
+        self.assertNotIn("queuedJobId", self.queue())
+        self.settings["taggerEndpoint"] = "https://stashdb.org/graphql"
+        self.save_settings()
+        with mock.patch.object(dirty_tidy.shared_storage, "internal_scan_check", return_value=True):
+            self.assertNotIn("queuedJobId", self.queue())
         self.client.call.assert_not_called()
 
 

@@ -38,6 +38,6 @@ function domainAlgorithms() {
     URLSearchParams,
   });
   const rank = runRankDomain(context);
-  return { rank, compactor: requireSource("DirtyCompactor", "src/domain/rules.ts") };
+  return { rank, compactor: requireSource("DirtyTasks", "src/encoding/domain/rules.ts") };
 }
 module.exports = { domainAlgorithms };

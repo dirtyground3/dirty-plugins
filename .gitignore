@@ -3,6 +3,6 @@ node_modules/
 .build/
 _site/
 *.py[cod]
-plugins/DirtyCompactor/runtime/
+plugins/DirtyTasks/runtime/
 *.sqlite*
 .idea/

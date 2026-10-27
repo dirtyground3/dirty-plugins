@@ -1,6 +1,16 @@
-import { getOverallSortSettings, sortPerformersByOverall } from "../domain/rank";
+import {
+  getOverallSortRevision,
+  getOverallSortSettings,
+  loadRatingIndex,
+  performerCategoryRanks,
+  queryPerformers,
+  refreshOverallSortSettings,
+  sortPerformersByOverall,
+  subscribeToOverallSortSettings,
+} from "../domain/rank";
+import { leaderboardStatPath } from "../domain/navigation";
 import { useOverallScores } from "./useOverallScores";
-import { CONFIGURATION_CHANGED_EVENT, settingsFromConfiguration } from "../domain/settings";
+import { boxFor, CONFIGURATION_CHANGED_EVENT, settingsFromConfiguration } from "../domain/settings";
 import { DirtyPlugins, PluginApi, React, Router, ui } from "../runtime";
 import type * as R from "react";
 import type { NativeProps } from "../../../DirtyPlugins/src/types";
@@ -120,6 +130,23 @@ export function DirtyRankBattleNavLink(): R.JSX.Element | null {
 }
 
 export function DirtyRankGauntletLaunch(props: { performer: RankPerformer }): R.JSX.Element | null {
+  const [revision, setRevision] = React.useState(getOverallSortRevision);
+  React.useEffect(() => {
+    const unsubscribe = subscribeToOverallSortSettings(setRevision);
+    setRevision(getOverallSortRevision());
+    void Promise.all([
+      refreshOverallSortSettings(),
+      loadRatingIndex(),
+      queryPerformers(false, { refresh: false }),
+    ]).catch(error => console.error("DirtyRank could not load profile ranks", error));
+    return unsubscribe;
+  }, []);
+  const settings = getOverallSortSettings();
+  const ranks = React.useMemo(
+    () => performerCategoryRanks(props.performer, settings),
+    [props.performer, settings, revision],
+  );
+  const multipleBoxes = new Set(ranks.map(entry => entry.cohort)).size > 1;
   return (
     <div className="dirty-rank-gauntlet-launch">
       <Router.NavLink
@@ -130,6 +157,20 @@ export function DirtyRankGauntletLaunch(props: { performer: RankPerformer }): R.
         <span aria-hidden="true">⚔</span>
         {" Start Gauntlet"}
       </Router.NavLink>
+      {ranks.map(({ category, cohort, rank }) => {
+        const box = boxFor(settings, cohort).name;
+        const label = category.name + " #" + rank.toLocaleString();
+        return (
+          <Router.NavLink
+            key={cohort + ":" + category.id}
+            className="btn btn-secondary dirty-rank-profile-rank-button"
+            title={box + " · " + label + " · View leaderboard"}
+            to={DirtyPlugins.captureUrl(leaderboardStatPath(category.id, cohort))}
+          >
+            {multipleBoxes ? box + " · " + label : label}
+          </Router.NavLink>
+        );
+      })}
     </div>
   );
 }

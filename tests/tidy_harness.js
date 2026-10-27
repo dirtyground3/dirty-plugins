@@ -7,11 +7,13 @@ const copy = value => JSON.parse(JSON.stringify(value));
 function createTidyHarness(options = {}) {
   let panel, appPatch, event;
   let configuration = copy(options.settings || {});
+  let executionMode = configuration.automationMode || "manual";
   const patches = [],
     registrations = [],
     writes = [],
     calls = [],
     requests = [],
+    sourceRequests = [],
     dirty = [],
     notifications = [],
     errors = [];
@@ -40,6 +42,7 @@ function createTidyHarness(options = {}) {
   );
   const hub = {
     react: controls,
+    notifyConfigurationChanged() {},
     captureEnabled: () => Boolean(options.capture),
     ui: { notify: message => notifications.push(message) },
     getPluginSettings: async () => (options.load ? options.load() : copy(configuration)),
@@ -50,6 +53,10 @@ function createTidyHarness(options = {}) {
       return { revision: writes.length };
     },
     runPluginOperation: async (id, args) => {
+      if (args.mode === "getTaskSettings")
+        return { settings: options.load ? await options.load() : copy(configuration), revision: writes.length };
+      if (args.mode === "saveTaskSettings") return hub.configurePlugin(id, args.settings);
+      if (args.mode === "migrationStatus") return {};
       calls.push(copy(args));
       return options.operation
         ? options.operation(args)
@@ -74,6 +81,11 @@ function createTidyHarness(options = {}) {
           };
     },
     graphql: async (query, variables) => {
+      if (query.includes("DirtyTidyTaggers")) {
+        sourceRequests.push(query);
+        if (options.sources) return options.sources();
+        return { configuration: { general: { stashBoxes: [] } } };
+      }
       requests.push({ query, variables: copy(variables) });
       return options.queue ? options.queue(variables) : { runPluginTask: "10" };
     },
@@ -102,13 +114,14 @@ function createTidyHarness(options = {}) {
   const console = { error: (...args) => errors.push(args) };
   installRegistration(window, console);
   const context = vm.createContext({ window, console });
-  const load = () => vm.runInContext(sourceFor("DirtyTidy"), context);
+  const load = () => vm.runInContext(require("./task_test_entry").featureEntry("organization"), context);
   const render = () =>
     renderer.render([
       panel &&
         React.createElement(panel, {
-          plugin: { id: "dirtyTidy" },
+          plugin: { id: "dirtyTasks" },
           configuration,
+          executionMode,
           onDirtyChange: (id, value) => dirty.push(value),
         }),
       appPatch && appPatch(React.createElement("host-app", {})),
@@ -123,6 +136,7 @@ function createTidyHarness(options = {}) {
     writes,
     calls,
     requests,
+    sourceRequests,
     dirty,
     notifications,
     patches,
@@ -171,7 +185,8 @@ function createTidyHarness(options = {}) {
       await flush();
     },
     async mode(value) {
-      findAll(renderer.tree, node => node.type === "select")[0].props.onChange({ target: { value } });
+      executionMode = value;
+      renderer.invalidate();
       await flush();
     },
     async event(value) {

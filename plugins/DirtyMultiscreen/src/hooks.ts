@@ -56,6 +56,16 @@ function useItems<T>(settings: Settings, context: LaunchContext | null, enabled:
     },
     [key],
   );
+  const search = React.useCallback(
+    async (text: string, page: number, signal: AbortSignal): Promise<T> => {
+      const current = pager.current;
+      if (!current || current.revision !== request.current) throw new Error("Playback queue was replaced.");
+      const data = await queries.searchSession(current.variables, marker, text, page, signal);
+      if (current.revision !== request.current) throw new Error("Playback queue was replaced.");
+      return rows(data);
+    },
+    [key],
+  );
   const refresh = React.useCallback(async () => {
     if (!enabled || (marker && !isMarkerLaunchContext(context))) return;
     for (const entry of pending.current.values()) entry.controller.abort();
@@ -110,7 +120,7 @@ function useItems<T>(settings: Settings, context: LaunchContext | null, enabled:
       pending.current.clear();
     };
   }, [refresh]);
-  return { loading, error, result, refresh, page, loadPage };
+  return { loading, error, result, refresh, page, loadPage, search };
 }
 export function useSceneQuery(settings: Settings, context: LaunchContext | null, enabled: boolean) {
   return useItems(settings, context, enabled, false, { count: 0, scenes: [] as Scene[] });

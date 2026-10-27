@@ -5,14 +5,6 @@
     "entry": "dirtyCaptions.js"
   },
   {
-    "directory": "DirtyCompactor",
-    "id": "dirtyCompactor",
-    "entry": "dirtyCompactor.js",
-    "generatedImports": ["dirtyCompactor"],
-    "generatedFiles": ["dirty_compactor_metadata.py"],
-    "runtimeDirectories": ["runtime/previews"]
-  },
-  {
     "directory": "DirtyFileExtractor",
     "id": "extractScenes",
     "entry": "extractScenes.js"
@@ -21,27 +13,44 @@
     "directory": "DirtyMultiscreen",
     "id": "multiscreen",
     "entry": "multiscreen.js",
-    "generatedImports": ["multiscreen"]
+    "generatedImports": [
+      "multiscreen"
+    ]
   },
   {
     "directory": "DirtyPlugins",
     "id": "dirtyPlugins",
     "entry": "dirtyPlugins.js",
-    "generatedImports": ["dirtyPlugins", "dirtyCaptions", "extractScenes", "multiscreen"],
-    "generatedFiles": ["dirty_plugins_metadata.py"]
+    "generatedImports": [
+      "dirtyPlugins",
+      "dirtyCaptions",
+      "extractScenes",
+      "multiscreen"
+    ],
+    "generatedFiles": [
+      "dirty_plugins_metadata.py"
+    ]
   },
   {
     "directory": "DirtyRank",
     "id": "dirtyRank",
     "entry": "dirtyRank.js",
-    "generatedImports": ["dirtyRank"],
-    "generatedFiles": ["dirty_rank_metadata.py"]
+    "generatedImports": [
+      "dirtyRank"
+    ],
+    "generatedFiles": [
+      "dirty_rank_metadata.py"
+    ]
   },
   {
     "directory": "DirtyStats",
     "id": "dirtyStats",
     "entry": "dirtyStats.js",
-    "bundledPackages": ["echarts", "zrender", "tslib"],
+    "bundledPackages": [
+      "echarts",
+      "zrender",
+      "tslib"
+    ],
     "extraFiles": [
       "vendor/ECHARTS-LICENSE",
       "vendor/ECHARTS-LICENSE-d3",
@@ -49,13 +58,20 @@
       "vendor/ZRENDER-LICENSE",
       "vendor/TSLIB-LICENSE"
     ],
-    "generatedImports": ["dirtyStats", "dirtyPlugins"]
+    "generatedImports": [
+      "dirtyStats",
+      "dirtyPlugins"
+    ]
   },
   {
-    "directory": "DirtyTidy",
-    "id": "dirtyTidy",
-    "entry": "dirtyTidy.js",
-    "generatedImports": ["dirtyTidy"],
-    "generatedFiles": ["dirty_tidy_metadata.py"]
+    "directory": "DirtyTasks",
+    "id": "dirtyTasks",
+    "entry": "dirtyTasks.js",
+    "generatedImports": [
+      "dirtyTasks"
+    ],
+    "generatedFiles": [
+      "dirty_tasks_metadata.py"
+    ]
   }
 ]

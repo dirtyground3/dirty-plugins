@@ -1,8 +1,8 @@
 "use strict";
 const assert = require("node:assert/strict"),
   { requireSource } = require("./plugin_paths");
-const { createWorkflow } = requireSource("DirtyTidy", "src/workflow.ts");
-const { settingsFromConfiguration } = requireSource("DirtyTidy", "src/domain/settings.ts");
+const { createWorkflow } = requireSource("DirtyTasks", "src/organization/workflow.ts");
+const { settingsFromConfiguration } = requireSource("DirtyTasks", "src/organization/domain/settings.ts");
 const deferred = () => {
   let resolve, reject;
   const promise = new Promise((yes, no) => {
@@ -97,9 +97,12 @@ function setup(options = {}) {
   assert.equal(automation.writes[0].approvedStrategyHash, "a".repeat(64));
   assert.equal(automation.writes[0].approvedPlanDigest, "b".repeat(64));
   assert.equal(automation.queued.length, 0);
-  assert.match(automation.workflow.state.status, /Automation is on after every Scan/);
+  assert.match(automation.workflow.state.status, /Scheduled organization actions are approved/);
   automation.workflow.changed({ automationMode: "generate" }, false);
   assert.ok(automation.workflow.state.preview);
+  assert.equal(automation.workflow.state.draft.approvedStrategyHash, "a".repeat(64));
+  automation.workflow.changed({ tagUpdateEnabled: true, taggerEndpoint: "https://stashdb.org/graphql" }, false);
+  assert.ok(automation.workflow.state.preview, "tag settings preserve the reviewed file plan");
   assert.equal(automation.workflow.state.draft.approvedStrategyHash, "a".repeat(64));
   await automation.workflow.applyPlan(false);
   assert.equal(automation.writes[1].automationMode, "generate");

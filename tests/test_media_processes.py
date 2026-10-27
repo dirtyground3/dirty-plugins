@@ -18,7 +18,7 @@ def load(plugin, filename, name):
     return module
 
 
-compactor = load("DirtyCompactor", "dirty_compactor.py", "media_compactor")
+compactor = load("DirtyTasks", "dirty_compactor.py", "media_compactor")
 extractor = load("DirtyFileExtractor", "extract_scenes.py", "media_extractor")
 quality = compactor.quality
 POPEN = subprocess.Popen
@@ -168,7 +168,7 @@ elif runner == 'packets': c.packet_video_bitrate('synthetic', 'unused', 1, progr
 else: e.extract_marker_clip('synthetic', pathlib.Path('unused'), pathlib.Path(sys.argv[6]), 0, 1, progress)
 """
                 parent = POPEN([sys.executable, "-B", "-c", code,
-                                str(runtime_path("DirtyCompactor")), str(runtime_path("DirtyFileExtractor")),
+                                str(runtime_path("DirtyTasks")), str(runtime_path("DirtyFileExtractor")),
                                 child, str(ready), runner, str(self.root / "output.mp4")],
                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                 handle = None

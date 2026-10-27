@@ -121,6 +121,19 @@ def pause_automation(path):
                            "WHERE plugin_id='dirtyCompactor' AND setting_key='automationPaused'")
         connection.execute("UPDATE dirty_plugin_settings SET value_json='\"manual\"' "
                            "WHERE plugin_id='dirtyTidy' AND setting_key='automationMode'")
+        connection.execute("UPDATE dirty_plugin_settings SET value_json='false' "
+                           "WHERE plugin_id='dirtyTidy' AND setting_key='tagUpdateEnabled'")
+        for key, raw in connection.execute("SELECT setting_key,value_json FROM dirty_plugin_settings WHERE plugin_id='dirtyTasks'").fetchall():
+            value = json.loads(raw)
+            if key == "organization":
+                value.update(automationMode="manual", tagUpdateEnabled=False)
+            elif key == "encoding":
+                value["automationPaused"] = True
+            elif key == "execution":
+                value = {"move": "manual", "rename": "manual", "tags": "manual", "encoding": {key: "manual" for key in value.get("encoding", {})}}
+            else:
+                continue
+            connection.execute("UPDATE dirty_plugin_settings SET value_json=? WHERE plugin_id='dirtyTasks' AND setting_key=?", (json.dumps(value), key))
         connection.commit()
     finally:
         connection.close()
@@ -176,7 +189,7 @@ def main():
         missing = str(fixture.root / "missing")
         paths = [file["path"] for scene in library["findScenes"]["scenes"] for file in scene["files"]]
         assert all(path.startswith(missing) for path in paths) and not Path(missing).exists()
-        print("PASS: eight staged plugins enabled and served; {} scenes, {} performers; media paths point to a "
+        print("PASS: seven staged plugins enabled and served; {} scenes, {} performers; media paths point to a "
               "missing folder".format(library["findScenes"]["count"], library["findPerformers"]["count"]), flush=True)
         print("UI " + fixture.url, flush=True)
         while not args.stop_file or not args.stop_file.exists():

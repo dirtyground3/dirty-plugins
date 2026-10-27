@@ -212,6 +212,49 @@ async function main() {
     filter: { page: 1, per_page: a.getSceneLimit(defaults), sort: "random" },
   });
 
+  const searchRequests = [];
+  const sessionQueries = feature("queries").createQueries({
+    graphql: async (query, variables, options) => {
+      searchRequests.push({ query, variables, options });
+      return {};
+    },
+  });
+  const signal = new AbortController().signal;
+  const sceneScope = {
+    filter: { q: "original search", page: 4, per_page: 240, sort: "random_123" },
+    scene_filter: { OR: { title: { value: "old title", modifier: "INCLUDES" } }, organized: true },
+  };
+  await sessionQueries.searchSession(sceneScope, false, "  new title  ", 2, signal);
+  assert.deepEqual(plain(searchRequests[0].variables), {
+    filter: { q: "original search", page: 2, per_page: 20, sort: "title", direction: "ASC" },
+    scene_filter: { title: { value: "(?i)new title", modifier: "MATCHES_REGEX" }, AND: sceneScope.scene_filter },
+  });
+  assert.equal(sceneScope.filter.page, 4, "search never mutates playback variables");
+  assert.strictEqual(searchRequests[0].options.signal, signal);
+  const markerScope = {
+    filter: { q: "range" },
+    scene_marker_filter: { tags: { value: ["tag"], modifier: "INCLUDES" }, scene_filter: { organized: true } },
+  };
+  await sessionQueries.searchSession(markerScope, true, "scene", 1, signal);
+  assert.match(searchRequests[1].query, /MultiscreenMarkerSearch/);
+  assert.deepEqual(plain(searchRequests[1].variables), {
+    filter: { q: "range", page: 1, per_page: 20, sort: "title", direction: "ASC" },
+    scene_marker_filter: {
+      tags: markerScope.scene_marker_filter.tags,
+      scene_filter: { title: { value: "(?i)scene", modifier: "MATCHES_REGEX" }, AND: { organized: true } },
+    },
+  });
+  assert.throws(
+    () => sessionQueries.searchSession({ filter: {}, ids: ["3"] }, false, "other", 1, signal),
+    /searched locally/,
+  );
+  assert.equal(searchRequests.length, 2, "selected-ID searches cannot bypass session filtering through Stash");
+  await sessionQueries.searchSession({ filter: {} }, false, " title.*(part)[1]+?^$|\\ ", 1, signal);
+  assert.equal(searchRequests[2].variables.scene_filter.title.modifier, "MATCHES_REGEX");
+  const literalSearch = new RegExp(searchRequests[2].variables.scene_filter.title.value.slice(4), "i");
+  assert(literalSearch.test("A TITLE.*(PART)[1]+?^$|\\ suffix"));
+  assert(!literalSearch.test("A title something else"), "search punctuation cannot become regex operators");
+
   const performerVariables = await a.getSceneQueryVariables(nonRandom, {
     source: "performer-detail",
     performerId: "7",

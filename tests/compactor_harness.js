@@ -14,6 +14,7 @@ function createCompactorHarness(options = {}) {
     now = 0,
     nextTimer = 0;
   let settings = copy(options.settings || { rules: [], automationPaused: true });
+  let execution = copy(options.execution || { move: "manual", rename: "manual", tags: "manual", encoding: {} });
   let preview = options.preview || null,
     run = options.run || null;
   let event = null;
@@ -25,6 +26,7 @@ function createCompactorHarness(options = {}) {
     players = [],
     registrations = [],
     patches = [];
+  const listeners = new Map();
   const renderer = createRenderer({
     host(node) {
       // Video elements get a fake media element; Field and StateView render their action slots.
@@ -88,6 +90,7 @@ function createCompactorHarness(options = {}) {
   ui.usePageTitle = () => {};
   const hub = {
     react: ui,
+    notifyConfigurationChanged() {},
     captureEnabled: () => Boolean(options.capture),
     ui: { notify: message => notifications.push(message) },
     registerSettingsPanel(id, component) {
@@ -112,12 +115,39 @@ function createCompactorHarness(options = {}) {
       },
     }),
     runPluginOperation: async (id, args) => {
+      if (args.mode === "getTaskSettings")
+        return {
+          settings: copy(
+            args.section === "organization"
+              ? options.organization || {}
+              : args.section === "execution"
+                ? execution
+                : settings,
+          ),
+          revision: writes.length,
+        };
+      if (args.mode === "saveTaskSettings") {
+        if (args.section === "execution") {
+          writes.push(copy(args.settings));
+          if (options.saveExecution) await options.saveExecution(args.settings);
+          execution = copy(args.settings);
+          return { revision: writes.length };
+        }
+        if (args.section === "organization") {
+          writes.push(copy(args.settings));
+          return { revision: writes.length };
+        }
+        return hub.configurePlugin(id, args.settings);
+      }
+      if (args.mode === "migrationStatus") return {};
       calls.push(copy(args));
       if (options.operation) {
         const value = await options.operation(args);
         if (value !== undefined) return value;
       }
       switch (args.mode) {
+        case "organizationRecoveryStatus":
+          return { required: false };
         case "listRuns":
           return run ? [run] : [];
         case "latestPreview":
@@ -139,6 +169,13 @@ function createCompactorHarness(options = {}) {
   };
   const window = {
     ...clock,
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type).add(listener);
+    },
+    removeEventListener(type, listener) {
+      listeners.get(type)?.delete(listener);
+    },
     location: { search: options.capture ? "?docsCapture=1" : "" },
     DirtyPlugins: hub,
     PluginApi: {
@@ -162,12 +199,21 @@ function createCompactorHarness(options = {}) {
     .loadFeature(window, "SettingsDraft")
     .createSettingsDraftHook(React);
   function load() {
-    for (const filename of scriptPaths("DirtyCompactor"))
-      vm.runInContext(fs.readFileSync(filename, "utf8"), context, { filename });
+    vm.runInContext(
+      options.combined
+        ? fs.readFileSync(scriptPaths("DirtyTasks")[0], "utf8")
+        : require("./task_test_entry").featureEntry("encoding"),
+      context,
+    );
   }
   const render = () =>
     renderer.render([
-      panel && React.createElement(panel, { configuration: settings, onDirtyChange: (id, value) => dirty.push(value) }),
+      panel &&
+        React.createElement(panel, {
+          plugin: { id: "dirtyTasks" },
+          configuration: options.combined ? { encoding: settings } : settings,
+          onDirtyChange: (id, value) => dirty.push(value),
+        }),
       appPatch && appPatch(React.createElement("host-app", {})),
     ]);
   const flush = () => renderer.flush(render);
@@ -203,6 +249,11 @@ function createCompactorHarness(options = {}) {
     registrations,
     patches,
     timers,
+    listeners,
+    async focus() {
+      listeners.get("focus")?.forEach(listener => listener());
+      await flush();
+    },
     get tree() {
       return renderer.tree;
     },

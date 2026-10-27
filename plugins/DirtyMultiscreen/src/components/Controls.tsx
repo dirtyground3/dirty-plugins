@@ -8,6 +8,7 @@ const ICON_NAMES = {
   oCounter: ["faDroplet", "faTint"],
   previous: ["faBackwardStep", "faStepBackward"],
   reload: ["faRotateRight", "faRedo"],
+  search: ["faMagnifyingGlass", "faSearch"],
   success: ["faCheck", "faCheck"],
 };
 export function icon(name: keyof typeof ICON_NAMES) {

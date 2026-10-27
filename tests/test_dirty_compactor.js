@@ -1,10 +1,10 @@
 "use strict";
 const assert = require("node:assert/strict");
 const { requireSource, runSource } = require("./plugin_paths");
-const a = requireSource("DirtyCompactor", "src/domain/rules.ts");
+const a = requireSource("DirtyTasks", "src/encoding/domain/rules.ts");
 const rule = a.newRule();
 assert.equal(rule.enabled, false);
-assert.equal(rule.mode, "manual");
+assert.equal(rule.mode, undefined);
 assert.equal(rule.format, "keep");
 assert.equal(rule.quality, "balanced", "new rules use a quality preset instead of a raw bitrate");
 assert.equal(a.validation({ rules: [rule] }), "");
@@ -60,7 +60,7 @@ assert.equal(
   0,
   "conversions are not counted as savings",
 );
-assert.equal(rulesApi.fileSaving({ action: "delete" }, hd), 100e6);
+assert.match(a.validation({ rules: [{ ...a.newRule(), action: "delete" }] }), /Resize or Reencode/);
 assert.equal(
   JSON.stringify(rulesApi.outputSize(1080, 1920, { action: "resize", width: 1280, height: 720 })),
   "[720,1280]",
@@ -118,11 +118,6 @@ assert.equal(
 assert.equal(
   rulesApi.normalize({ rules: [{ id: "r", action: "reencode", quality: "source" }] }).rules[0].quality,
   "source",
-);
-assert.equal(
-  rulesApi.estimate({ action: "delete" }, { count: 10, filesize: 5e9, scenes: [] }).saved,
-  5e9,
-  "delete frees the whole filter exactly",
 );
 assert.equal(
   a.actionSummary({ action: "resize", width: 1280, height: 720, codec: "hevc", quality: "small" }),
@@ -213,41 +208,4 @@ assert.equal(
 );
 assert.equal(a.bytes(1024), "1.00 KiB");
 
-let subscription = { data: { jobsSubscribe: { type: "REMOVE" } } },
-  watched,
-  queued,
-  notification;
-const { AutomationMonitor: monitor } = runSource("DirtyCompactor", "src/automation.ts", {
-  window: {
-    PluginApi: { React: {}, GQL: { useJobsSubscribeSubscription: () => subscription } },
-    DirtyPlugins: {
-      createJobHook: () => (event, complete, fail, kind) => {
-        watched = { event, complete, fail, kind };
-      },
-      ui: {
-        notify: value => {
-          notification = value;
-        },
-      },
-      runPluginOperation: async (id, args) => {
-        queued = { id, args };
-      },
-    },
-  },
-});
-assert.equal(monitor(), null);
-assert.equal(watched.event, subscription.data.jobsSubscribe);
-assert.equal(watched.kind, "scan");
-watched.fail(Error("fixture failure"));
-assert.match(notification, /could not queue automation: fixture failure/);
-watched
-  .complete({ jobId: "10", startTime: "2026-10-04T09:00:00Z" })
-  .then(() => {
-    assert.equal(queued.id, "dirtyCompactor");
-    assert.deepEqual({ ...queued.args }, { mode: "startAutomaticRun", jobId: "10", startTime: "2026-10-04T09:00:00Z" });
-    console.log("DirtyCompactor typed rules, injectable automation modules and domain parity passed");
-  })
-  .catch(error => {
-    console.error(error);
-    process.exitCode = 1;
-  });
+console.log("Encoding rule normalization, estimates and domain parity passed");

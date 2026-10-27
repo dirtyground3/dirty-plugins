@@ -8,12 +8,18 @@ const SCENES =
   "}}}";
 const SCENE_COUNT =
   "query MultiscreenSceneCount($filter:FindFilterType,$scene_filter:SceneFilterType,$ids:[ID!]){findScenes(filter:$filter,scene_filter:$scene_filter,ids:$ids){count}}";
+const SCENE_SEARCH =
+  "query MultiscreenSceneSearch($filter:FindFilterType,$scene_filter:SceneFilterType,$ids:[ID!]){findScenes(filter:$filter,scene_filter:$scene_filter,ids:$ids){count scenes{" +
+  SCENE_FIELDS +
+  "}}}";
 const MARKERS =
   "query MultiscreenMarkers($filter:FindFilterType,$scene_marker_filter:SceneMarkerFilterType,$ids:[ID!]){findSceneMarkers(filter:$filter,scene_marker_filter:$scene_marker_filter,ids:$ids){count scene_markers{id title seconds end_seconds primary_tag{name} scene{" +
   SCENE_FIELDS +
   "}}}}";
 const MARKER_COUNT =
   "query MultiscreenMarkerCount($filter:FindFilterType,$scene_marker_filter:SceneMarkerFilterType,$ids:[ID!]){findSceneMarkers(filter:$filter,scene_marker_filter:$scene_marker_filter,ids:$ids){count}}";
+const MARKER_SEARCH = MARKERS.replace("MultiscreenMarkers", "MultiscreenMarkerSearch");
+export const SEARCH_PAGE_SIZE = 20;
 const PERFORMER_IDS =
   "query MultiscreenPerformers($filter:FindFilterType,$performer_filter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performer_filter){performers{id}}}";
 const STUDIO_IDS =
@@ -104,6 +110,30 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
     getMarkerQueryVariables,
     getLiveSceneCount,
     findScenesQuery: SCENES,
+    searchSession: (scope: QueryVariables, marker: boolean, text: string, page: number, signal: AbortSignal) => {
+      // Stash's ids argument bypasses filters; explicit selections are searched
+      // from their already loaded session items instead.
+      if (scope.ids) throw new Error("Selected session items must be searched locally.");
+      const existing = marker ? scope.scene_marker_filter?.scene_filter : scope.scene_filter;
+      // INCLUDES splits a phrase into alternative words. Escape a case-insensitive
+      // literal regex so filtered sessions match the same substring as local pools.
+      const literal = text.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const sceneFilter = {
+        title: { value: "(?i)" + literal, modifier: "MATCHES_REGEX" },
+        ...(existing ? { AND: existing } : {}),
+      };
+      return graphqlRequest<QueryResult>(
+        marker ? MARKER_SEARCH : SCENE_SEARCH,
+        {
+          ...scope,
+          filter: { ...scope.filter, page, per_page: SEARCH_PAGE_SIZE, sort: "title", direction: "ASC" },
+          ...(marker
+            ? { scene_marker_filter: { ...scope.scene_marker_filter, scene_filter: sceneFilter } }
+            : { scene_filter: sceneFilter }),
+        },
+        { signal },
+      );
+    },
     findSceneMarkersQuery: MARKERS,
     incrementSceneOQuery: INCREMENT_O,
   };

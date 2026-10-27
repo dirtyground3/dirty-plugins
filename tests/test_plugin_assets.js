@@ -8,13 +8,12 @@ const { scriptPaths } = require("./load_plugin_scripts");
 
 const entries = {
   DirtyCaptions: "dirtyCaptions.js",
-  DirtyCompactor: "dirtyCompactor.js",
+  DirtyTasks: "dirtyTasks.js",
   DirtyFileExtractor: "extractScenes.js",
   DirtyMultiscreen: "multiscreen.js",
   DirtyPlugins: "dirtyPlugins.js",
   DirtyRank: "dirtyRank.js",
   DirtyStats: "dirtyStats.js",
-  DirtyTidy: "dirtyTidy.js",
 };
 
 // Source types and registration behavior have their own checks; this guards what Stash serves.

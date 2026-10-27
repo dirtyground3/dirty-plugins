@@ -1,3 +1,17 @@
+import type { Item } from "../types";
+
+/** Keep searched items from another split lane between this lane's neighbors. */
+export function locatePlaylistItem(playlists: Item[][], screen: number, selected: Item) {
+  const own = playlists[screen] || [];
+  let cursor = own.findIndex(item => item.id === selected.id);
+  if (cursor >= 0) return { items: own, cursor };
+  const lane = playlists.findIndex(items => items.some(item => item.id === selected.id));
+  if (lane < 0) return null;
+  const position = playlists[lane].findIndex(item => item.id === selected.id);
+  cursor = Math.min(own.length, position + (lane > screen ? 1 : 0));
+  return { items: [...own.slice(0, cursor), selected, ...own.slice(cursor)], cursor };
+}
+
 export function shuffleMultiscreenItems<T>(items: T[], random: () => number = Math.random): T[] {
   const shuffledItems = items.slice();
   for (let i = shuffledItems.length - 1; i > 0; i--) {

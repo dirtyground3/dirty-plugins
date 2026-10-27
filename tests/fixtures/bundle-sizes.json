@@ -1,21 +1,17 @@
 {
-  "note": "Minified release bundle sizes in bytes (all remeasured 2026-10-10 after the second simplification pass: hub-owned registration, one shared host binding, plain modules). Budgets allow up to 5% growth rounded up to whole KiB. Raise one only with the reason recorded in this note. Code-analysis implementation: Multiscreen remeasured at 27,062 bytes (+3,187) for independent bounded page queues, request coalescing/abort, reproducible permutations and retry feedback; its budget is 28 KiB (5% rounded up). Rank remeasured at 117,950 bytes for retained vote comparison sums, shifted cold weights, bounded task yielding, shared cancellable preparation and complete-score rendering; its budget is 121 KiB (5% rounded up). Other budgets are unchanged.",
+  "note": "Minified release bundle sizes in bytes (all remeasured 2026-10-10 after the second simplification pass: hub-owned registration, one shared host binding, plain modules). Budgets allow up to 5% growth rounded up to whole KiB. Raise one only with the reason recorded in this note. Code-analysis implementation: Multiscreen remeasured at 33,365 bytes for independent bounded page queues, scene search, retained split-lane selections, independent native player identities and native source menus; its budget is 34 KiB. Rank remeasured at 117,950 bytes for retained vote comparison sums, shifted cold weights, bounded task yielding, shared cancellable preparation and complete-score rendering; its budget is 121 KiB (5% rounded up). Other budgets are unchanged. DirtyTidy was remeasured at 24,680 bytes for the tagger-source picker, validation, source loading/retry, queued-job feedback and forced refresh with one-day cache guidance. DirtyTasks now combines those organization/tag features with additive encoding, isolated section saves and migration; output review is removed. Its initial budget is 60 KiB. DirtyTasks 1.0.1 adds the shared Manual/Scan/Generate setting and retains the existing 60 KiB budget. DirtyTasks 1.0.2 adds independent action/rule trigger selectors and retains the existing 60 KiB budget. DirtyTasks 1.0.3 adds conditional recovery status and warning feedback within the existing 60 KiB budget.",
   "plugins": {
     "DirtyCaptions": {
       "measured": 14215,
       "budget": 15360
-    },
-    "DirtyCompactor": {
-      "measured": 34140,
-      "budget": 36864
     },
     "DirtyFileExtractor": {
       "measured": 9345,
       "budget": 10240
     },
     "DirtyMultiscreen": {
-      "measured": 27062,
-      "budget": 28672
+      "measured": 33365,
+      "budget": 34816
     },
     "DirtyPlugins": {
       "measured": 42287,
@@ -29,9 +25,9 @@
       "measured": 1151287,
       "budget": 1209344
     },
-    "DirtyTidy": {
-      "measured": 21000,
-      "budget": 22528
+    "DirtyTasks": {
+      "measured": 59964,
+      "budget": 61440
     }
   }
 }

@@ -80,22 +80,20 @@ Rebuild after changing plugin source, schemas or scripts: tests read
   values and int/float types against each schema.
 - `fixtures/domain-parity.json` contains shared fixed expectations for browser
   and Python settings/rules; `domain_fixtures.js` supplies the browser host.
-- Compactor's `test_dirty_compactor.js` compiles the rules and automation
-  modules on demand. `test_dirty_compactor_ui.js` executes its single compiled
-  bundle through `compactor_harness.js`, with Stash-owned element/hooks and the
-  real staged hub save/job helpers. It covers registration, draft/save ordering,
-  native filter payloads and preview/run/review actions.
-  `test_dirty_compactor_store.py` covers polling during shared writer activity,
-  concurrent Rank votes/settings saves/caption heartbeats, and exclusive claims/CAS.
-  Backend tests preserve originals when ownership changes after preview, during
-  encoding, or between the two commit checks. The isolated fixture checks that
-  scene ID criteria combine with `files_filter.scene_count`; explicit `findFiles`
-  IDs bypass the accompanying filter on Stash 0.31.1.
-- The opt-in isolated Stash integration also compares the aggregated served
-  bundle with staging. It uses synthetic FFmpeg media and a temporary database,
-  never port 9999:
-  `python -B tests/test_dirty_compactor_stash_integration.py --binary /path/to/stash`.
-  Add `--serve` for browser review; Ctrl+C cleans up the isolated fixture.
+- DirtyTasks retains focused organization and encoding domain suites under the
+  existing `test_dirty_tidy*` and `test_dirty_compactor*` names. Focused panel
+  harnesses compile the domain panel with the real shared save/job helpers;
+  `test_dirty_tasks_ui.js` and the hub UI suite execute the staged combined entry
+  to check one registration, section saves and aggregate unsaved-change protection.
+- `test_dirty_tasks.py` covers migration, stale section saves, task reservations,
+  keeping both files, attachment retry, collision cancellation, repeated encoding
+  prevention and organization of multiple versions. Store concurrency and media
+  process containment retain their separate behavior tests.
+- `test_dirty_compactor_stash_integration.py` now tests additive encoding in an
+  isolated Stash with synthetic media: same scene, two files, retained original
+  bytes/metadata/primary file and no duplicate encoding. The organization fixture
+  also checks confirmed native moves and cached tag updates through DirtyTasks.
+  Neither fixture uses port 9999 or changes the normal library.
 - Every opt-in Stash fixture shares `verify_served_bundle`. By default it checks
   release staging: exact served bytes and no source map. After
   `npm run build:dev`, pass `--development` to require the inline map and decode
@@ -137,11 +135,19 @@ Rebuild after changing plugin source, schemas or scripts: tests read
 - Tidy's settings/preview helpers, manual workflow and automation monitor are
   compiled on demand from source. `test_dirty_tidy_ui.js` renders
   the sole compiled bundle through `tidy_harness.js` to check explicit saves,
-  confirmation, approval, capture masking, dirty reports and registration.
+  confirmation, approval, capture masking, dirty reports, registration and the
+  stash-box tagger picker. `test_dirty_tidy_tags.py` checks additive writes,
+  unchanged-scene skips, tag-only batches with distinct scene results, source-ID/name/alias
+  matching, exclusions, bounded paging, partial failures, request rate limits,
+  persistent per-source caching, exact 24-hour expiry, invalidation and forced refresh.
   `python -B tests/test_dirty_tidy_stash_integration.py --binary /path/to/stash`
   checks confined native moves/renames, unknown metadata/missing files,
   collisions, stale/unreviewed plans, approved Scan automation and deduplication,
-  byte/entity preservation and the exact served bundle. Add
+  byte/entity preservation and the exact served bundle. A local synthetic stash-box
+  source also verifies tag matching/creation, preservation of existing tags and
+  scene metadata, and unchanged timestamps on a repeated merge. It checks batched
+  source reads, zero remote calls on cached runs, forced/expired refresh and stored
+  fingerprint lookups. Add
   `--serve --stop-file <path>` for browser review and graceful cleanup.
 
 - Captions language/track/native filter and Scan behavior are compiled on
@@ -164,17 +170,28 @@ Rebuild after changing plugin source, schemas or scripts: tests read
   compiled on demand in `test_dirty_multiscreen.js`.
   `test_dirty_multiscreen_ui.js` executes its sole browser bundle through
   `multiscreen_harness.js`: context order/counts, pane limits, markers, audio,
-  hidden-tab pause/resume, counters, async races and player/listener/observer
+  hidden-tab pause/resume, counters, searched queue positions across pages,
+  split and shuffled neighbors, lookup retry/stale responses, independent native
+  player/streaming identities and player/listener/observer
   cleanup of unmounted components. The opt-in fixture is
   `python -B tests/test_dirty_multiscreen_stash_integration.py --binary /path/to/stash`:
   synthetic scene/marker/performer/studio contexts, native order/counts,
   HTTP seeking, byte/entity preservation and the exact served bundle.
+  Startup regressions cover native fallback ordering, bounded starting seeks,
+  replaced/unmounted players and marker boundaries on the full-scene clock.
+  Add `--transcode` to the fixture command for synthetic FFV1 media that forces
+  native transcoding fallback during browser acceptance.
+  Session search checks fixed selections and sampled queues, original filter text,
+  performer/studio membership, later result pages and preserved marker ranges.
   Add `--serve --stop-file <path>` for browser acceptance and graceful cleanup.
 
 - Rank's domain, media and session suites compile the modules they need on
   demand (`rank_modules.js`). Registration tests execute the sole compiled
   IIFE, including a failing registration step (logged once, never retried) and
   a reloaded bundle.
+  `test_dirty_rank_profile.js` checks profile category positions, custom-box
+  leaderboard links, capture URLs, and updates after votes, resets, settings
+  changes and native performer navigation.
   `test_dirty_rank_cache.js` checks confidence/entry reuse, revision-driven invalidation,
   exact tied/extreme scores, incremental updates, 1,000 repeated changes and logistic
   evaluation counts. After building,

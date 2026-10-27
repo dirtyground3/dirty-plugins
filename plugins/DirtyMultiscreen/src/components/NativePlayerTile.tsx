@@ -1,8 +1,7 @@
-import { PluginApi, React } from "../runtime";
+import { React } from "../runtime";
 import type { TileProps } from "../types";
 import { icon, PluginIconButton } from "./Controls";
 import { LoadedNativePlayer } from "./LoadedNativePlayer";
-const SCENES_ROUTE_PATH = "/scenes";
 export function NativePlayerTile({ item, nativePlayer, nextItem, playback, previousItem, useFindScene }: TileProps) {
   const sceneId = item.scene?.id ?? item.id;
   const sceneQuery = useFindScene(sceneId);
@@ -26,16 +25,6 @@ export function NativePlayerTile({ item, nativePlayer, nextItem, playback, previ
   if (sceneQuery.error || !sceneQuery.data?.findScene) {
     return (
       <div className="ms-native-tile ms-error-tile">
-        <PluginApi.libraries.ReactRouterDOM.NavLink
-          aria-label={`Open scene page for ${item.title}`}
-          className="ms-title ms-error-title"
-          rel="noopener noreferrer"
-          target="_blank"
-          title={`Open scene page: ${item.title}`}
-          to={`${SCENES_ROUTE_PATH}/${sceneId}`}
-        >
-          {item.title}
-        </PluginApi.libraries.ReactRouterDOM.NavLink>
         <div className="ms-error">
           <div className="ms-error-content">
             {"The native Stash player could not load this scene."}

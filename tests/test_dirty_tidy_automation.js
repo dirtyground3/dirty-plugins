@@ -51,7 +51,7 @@ function browser(claims = new Map()) {
         SaveStatus: noop,
       },
       runPluginOperation: async (pluginId, args) => {
-        assert.equal(pluginId, "dirtyTidy");
+        assert.equal(pluginId, "dirtyTasks");
         requests.push(args);
         if (skipped || settings.automationMode !== args.automationTrigger || !settings.approvedStrategyHash) {
           return { skipped: true };
@@ -67,7 +67,7 @@ function browser(claims = new Map()) {
     },
   };
   require("./shared_runtime").installJobHelpers(window);
-  const monitor = runSource("DirtyTidy", "src/automation.tsx", { window }).AutomationMonitor;
+  const monitor = runSource("DirtyTasks", "src/automation.tsx", { window }).AutomationMonitor;
   return {
     calls,
     requests,

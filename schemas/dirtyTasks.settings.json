@@ -1,0 +1,283 @@
+{
+  "settings": {},
+  "constants": {
+    "organization": {
+      "tagUpdate": {
+        "cacheSeconds": 86400,
+        "batchSize": 20
+      },
+      "defaultSettings": {
+        "moveEnabled": true,
+        "moveRequireStashId": false,
+        "hierarchyLevels": [
+          "{studio}",
+          "{year}"
+        ],
+        "renameEnabled": false,
+        "renameRequireStashId": false,
+        "renamePattern": "{date} - {studio} - {title}",
+        "maxFilenameLength": 180,
+        "multiValueSeparator": ", ",
+        "automationMode": "manual",
+        "tagUpdateEnabled": false,
+        "taggerEndpoint": "",
+        "approvedStrategyHash": "",
+        "approvedPlanDigest": ""
+      },
+      "variables": [
+        [
+          "title",
+          "Title",
+          "Scene"
+        ],
+        [
+          "scene_id",
+          "Scene ID",
+          "Scene"
+        ],
+        [
+          "stash_id",
+          "Stash ID",
+          "Scene"
+        ],
+        [
+          "date",
+          "Date",
+          "Date"
+        ],
+        [
+          "year",
+          "Year",
+          "Date"
+        ],
+        [
+          "month",
+          "Month",
+          "Date"
+        ],
+        [
+          "day",
+          "Day",
+          "Date"
+        ],
+        [
+          "rating",
+          "Rating",
+          "Rating"
+        ],
+        [
+          "grade",
+          "Grade (A\u2013F)",
+          "Rating"
+        ],
+        [
+          "rating_bucket",
+          "Rating bucket",
+          "Rating"
+        ],
+        [
+          "organized",
+          "Organized",
+          "Scene"
+        ],
+        [
+          "studio",
+          "Studio",
+          "Studio"
+        ],
+        [
+          "parent_studio",
+          "Parent studio",
+          "Studio"
+        ],
+        [
+          "performers",
+          "Performers",
+          "Performers"
+        ],
+        [
+          "first_performer",
+          "First performer",
+          "Performers"
+        ],
+        [
+          "female_performers",
+          "Female performers",
+          "Performers"
+        ],
+        [
+          "male_performers",
+          "Male performers",
+          "Performers"
+        ],
+        [
+          "first_female_performer",
+          "First female performer",
+          "Performers"
+        ],
+        [
+          "first_male_performer",
+          "First male performer",
+          "Performers"
+        ],
+        [
+          "performer_count",
+          "Performer count",
+          "Performers"
+        ],
+        [
+          "tags",
+          "Tags",
+          "Tags and groups"
+        ],
+        [
+          "first_tag",
+          "First tag",
+          "Tags and groups"
+        ],
+        [
+          "group",
+          "Group",
+          "Tags and groups"
+        ],
+        [
+          "group_position",
+          "Group position",
+          "Tags and groups"
+        ],
+        [
+          "resolution",
+          "Resolution",
+          "Video"
+        ],
+        [
+          "height",
+          "Height",
+          "Video"
+        ],
+        [
+          "video_codec",
+          "Video codec",
+          "Video"
+        ],
+        [
+          "duration",
+          "Duration (minutes)",
+          "Video"
+        ],
+        [
+          "duration_bucket",
+          "Duration bucket",
+          "Video"
+        ],
+        [
+          "source",
+          "Source",
+          "Scene"
+        ],
+        [
+          "original_name",
+          "Original name",
+          "Scene"
+        ],
+        [
+          "extension",
+          "Extension",
+          "Scene"
+        ]
+      ]
+    },
+    "encoding": {
+      "qualityMbps1080p": {
+        "h264": {
+          "high": 8,
+          "balanced": 5,
+          "small": 3
+        },
+        "hevc": {
+          "high": 5,
+          "balanced": 3,
+          "small": 1.8
+        }
+      },
+      "crf": {
+        "h264": {
+          "high": 19,
+          "balanced": 22,
+          "small": 25
+        },
+        "hevc": {
+          "high": 21,
+          "balanced": 24,
+          "small": 27
+        }
+      },
+      "qualities": [
+        {
+          "value": "high",
+          "label": "High quality"
+        },
+        {
+          "value": "balanced",
+          "label": "Balanced"
+        },
+        {
+          "value": "small",
+          "label": "Smallest files"
+        },
+        {
+          "value": "visual",
+          "label": "Match visual quality (slower)"
+        },
+        {
+          "value": "source",
+          "label": "Same bitrate (convert only)"
+        },
+        {
+          "value": "custom",
+          "label": "Custom bitrate"
+        }
+      ],
+      "vmafTargets": [
+        {
+          "value": 97,
+          "label": "Nearly identical (VMAF 97)"
+        },
+        {
+          "value": 95,
+          "label": "Very close (VMAF 95)"
+        },
+        {
+          "value": 93,
+          "label": "Close (VMAF 93)"
+        },
+        {
+          "value": 90,
+          "label": "Good enough (VMAF 90)"
+        }
+      ]
+    },
+    "execution": {
+      "defaultSettings": {
+        "move": "manual",
+        "rename": "manual",
+        "tags": "manual",
+        "encoding": {}
+      },
+      "modes": [
+        {
+          "value": "manual",
+          "label": "Manual only"
+        },
+        {
+          "value": "scan",
+          "label": "Run after Scan"
+        },
+        {
+          "value": "generate",
+          "label": "Run after Generate"
+        }
+      ]
+    }
+  }
+}

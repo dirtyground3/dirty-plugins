@@ -173,22 +173,23 @@ async function markersAndLoops() {
     settings: { rows: 1, columns: 1, totalScreens: 1, randomize: false, randomStart: true, loopScenes: true },
   });
   const player = h.nodes(node => node.type === "native-player")[0];
-  assert.equal(player.props.initialTimestamp, 2);
+  assert.equal(player.props.initialTimestamp, 0, "native startup must not seek before a playable source exists");
   const pair = [...h.media.values()][0];
-  assert.equal(pair.video.handlers.get("timeupdate").size, 1);
+  assert.equal(pair.video.currentTime, 2);
+  assert.equal(pair.player.handlers.get("timeupdate").size, 1);
   pair.video.currentTime = 4;
-  pair.video.emit("timeupdate");
+  pair.player.emit("timeupdate");
   assert.equal(pair.video.currentTime, 2, "marker loops at explicit end");
   pair.video.currentTime = 3;
-  pair.video.emit("timeupdate");
+  pair.player.emit("timeupdate");
   pair.video.currentTime = 4;
-  pair.video.emit("timeupdate");
+  pair.player.emit("timeupdate");
   assert.equal(pair.video.currentTime, 2);
   pair.video.currentTime = 6;
   player.props.onComplete();
   assert.equal(pair.video.currentTime, 2, "native completion loops to marker start");
   await h.unmount();
-  assert.equal(pair.video.handlers.get("timeupdate").size, 0);
+  assert.equal(pair.player.handlers.get("timeupdate").size, 0);
   assert.equal(pair.player.disposed, true);
   assert.ok(h.observers.every(observer => !observer.connected));
   const advance = await start({
@@ -207,20 +208,20 @@ async function markersAndLoops() {
   });
   let active = [...advance.media.values()].find(value => value.video.isConnected);
   active.video.currentTime = 4;
-  active.video.emit("timeupdate");
-  active.video.emit("timeupdate");
+  active.player.emit("timeupdate");
+  active.player.emit("timeupdate");
   await advance.flush();
   assert.equal(
-    advance.nodes(node => node.type === "native-player")[0].props.initialTimestamp,
+    [...advance.media.values()].find(value => value.video.isConnected).video.currentTime,
     5,
     "one advance at the marker boundary",
   );
   active = [...advance.media.values()].find(value => value.video.isConnected);
   active.video.currentTime = 7;
-  active.video.emit("timeupdate");
+  active.player.emit("timeupdate");
   await advance.flush();
   assert.equal(
-    advance.nodes(node => node.type === "native-player")[0].props.initialTimestamp,
+    [...advance.media.values()].find(value => value.video.isConnected).video.currentTime,
     2,
     "fallback duration advances and wraps",
   );
@@ -358,7 +359,7 @@ async function stablePaneSubscriptions() {
   const media = [...h.media.values()].filter(pair => pair.video.isConnected);
   const other = media[1];
   const observed = h.observers.filter(observer => observer.connected && observer.target === other.tile);
-  const timeListener = [...other.video.handlers.get("timeupdate")][0];
+  const timeListener = [...other.player.handlers.get("timeupdate")][0];
   const volumeListener = [...other.player.handlers.get("volumechange")][0];
   const next = panes[1].props.onNext;
   const complete = panes[1].props.onComplete;
@@ -369,14 +370,14 @@ async function stablePaneSubscriptions() {
     observed.every(observer => observer.connected),
     "advancing another pane retains its observers",
   );
-  assert.equal([...other.video.handlers.get("timeupdate")][0], timeListener);
+  assert.equal([...other.player.handlers.get("timeupdate")][0], timeListener);
   assert.equal([...other.player.handlers.get("volumechange")][0], volumeListener);
   const fresh = h.nodes(node => node.type === "native-player");
   assert.equal(fresh[1].props.onNext, next);
   assert.equal(fresh[1].props.onComplete, complete);
   assert.equal(h.observers.length, count + 2, "only the replaced marker's two observers mount");
   other.video.currentTime = 4;
-  other.video.emit("timeupdate");
+  other.player.emit("timeupdate");
   await h.flush();
   assert.equal(
     h.nodes(node => node.type === "native-player")[1].props.scene.id,
@@ -433,9 +434,145 @@ async function gridsAndAsync() {
   require("node:vm").runInContext("Math.random=()=>.25", random.context);
   random.load();
   await random.flush();
-  assert.equal(random.nodes(node => node.type === "native-player")[0].props.initialTimestamp, 2.5);
+  assert.equal(random.nodes(node => node.type === "native-player")[0].props.initialTimestamp, 0);
+  assert.equal([...random.media.values()].find(value => value.video.isConnected).video.currentTime, 2.5);
   await random.unmount();
 }
+async function playableStartupAndTranscodeClock() {
+  const scene = {
+    id: "a",
+    title: "Alpha",
+    paths: { stream: "/a", vtt: "/a_thumbs.vtt" },
+    files: [{ duration: 10 }],
+    resume_time: 9,
+  };
+  const h = createMultiscreenHarness({
+    readyState: 0,
+    scenes: [scene],
+    settings: { rows: 1, columns: 1, totalScreens: 1, randomStart: true },
+  });
+  require("node:vm").runInContext("Math.random=()=>.5", h.context);
+  h.load();
+  await h.flush();
+  const native = h.nodes(node => node.type === "native-player")[0];
+  const pair = [...h.media.values()].find(value => value.video.isConnected);
+  assert.equal(native.props.initialTimestamp, 0, "no timestamp is queued against the unready source");
+  assert.equal(native.props.scene.resume_time, 0, "the native resume preference cannot race the requested start");
+  assert.equal(scene.resume_time, 9, "shared scene data stays unchanged");
+  assert.equal(native.props.scene.paths.vtt, null, "multiscreen disables native seek thumbnail previews");
+  assert.equal(native.props.scene.paths.stream, "/a", "seeking and playback retain the scene stream");
+  assert.equal(scene.paths.vtt, "/a_thumbs.vtt", "the regular scene player retains its seek preview source");
+  assert.equal(pair.video.currentTime, 0);
+  pair.player.emit("canplay");
+  assert.equal(pair.video.currentTime, 0, "an unready fallback cannot consume the starting seek");
+  pair.player.readyState = () => 4;
+  pair.video.duration = 4;
+  pair.player.emit("canplay");
+  pair.player.readyState = () => 0;
+  await h.flush();
+  assert.equal(
+    pair.video.currentTime,
+    0,
+    "a source reload inside canplay postpones the seek until its replacement is ready",
+  );
+  pair.player.readyState = () => 4;
+  pair.player.emit("canplay");
+  pair.video.currentTime = 0;
+  await h.flush();
+  assert.equal(pair.video.currentTime, 3.99, "the requested start is bounded by the playable source's duration");
+  pair.video.currentTime = 1;
+  pair.player.emit("canplay");
+  assert.equal(pair.video.currentTime, 1, "rebuffering and quality changes do not repeat the starting seek");
+  const old = pair.player;
+  h.replacePlayer(pair);
+  old.readyCallbacks.forEach(callback => callback());
+  assert.equal(pair.video.currentTime, 0, "late ready callbacks from a replaced player cannot seek its replacement");
+  pair.player.readyState = () => 4;
+  pair.player.emit("canplay");
+  await h.flush();
+  assert.equal(pair.video.currentTime, 5, "a replacement native player receives its own playable start");
+  await h.unmount();
+  assert.equal(pair.player.handlers.get("canplay").size, 0);
+  assert.equal(pair.player.handlers.get("timeupdate").size, 0);
+  pair.player.emit("canplay");
+
+  const leaving = await start({
+    readyState: 0,
+    settings: { rows: 1, columns: 1, totalScreens: 1, randomStart: true },
+  });
+  const pending = [...leaving.media.values()].find(value => value.video.isConnected);
+  pending.player.readyState = () => 4;
+  pending.player.emit("canplay");
+  await leaving.unmount();
+  assert.equal(pending.video.currentTime, 0, "unmount cancels an initial seek queued by canplay");
+
+  const marker = { id: "m", title: "Range", seconds: 2, end_seconds: 4, primary_tag: { name: "Test" }, scene };
+  const m = await start({
+    readyState: 0,
+    scenes: [scene],
+    markers: [marker],
+    launch: { source: "marker-selection", selectedIds: ["m"] },
+    settings: { rows: 1, columns: 1, totalScreens: 1, randomStart: false, loopScenes: true },
+  });
+  const transcoded = [...m.media.values()].find(value => value.video.isConnected);
+  let offset = 0;
+  transcoded.player.currentTime = value => {
+    if (value === undefined) return offset + transcoded.video.currentTime;
+    offset = value;
+    transcoded.video.currentTime = 0;
+  };
+  transcoded.player.readyState = () => 4;
+  transcoded.player.emit("canplay");
+  await m.flush();
+  assert.equal(offset, 2);
+  assert.equal(
+    transcoded.video.currentTime,
+    0,
+    "transcoded media starts at zero while its scene clock includes the offset",
+  );
+  transcoded.video.currentTime = 1;
+  transcoded.player.emit("timeupdate");
+  assert.equal(transcoded.player.currentTime(), 3);
+  transcoded.video.currentTime = 2;
+  transcoded.player.emit("timeupdate");
+  assert.equal(transcoded.player.currentTime(), 2, "marker looping uses full-scene time at the segment boundary");
+  await m.unmount();
+}
+
+async function independentNativePlayerIdentities() {
+  const scenes = [12, 16, 24, 20].map((duration, index) => ({
+    id: String(index),
+    title: `Duration ${duration}`,
+    paths: { stream: `/${index}` },
+    files: [{ duration }],
+  }));
+  const h = await start({
+    scenes,
+    settings: { rows: 2, columns: 2, totalScreens: 4, splitScenes: true, randomize: false, randomStart: false },
+  });
+  const pairs = [...h.media.values()].filter(pair => pair.video.isConnected);
+  const ids = pairs.map(pair => pair.player.id());
+  assert.equal(new Set(ids).size, 4, "native players cannot share Stash's hardcoded ID");
+  for (const { player } of pairs) {
+    const registry = player.constructor.players;
+    assert.equal(registry[player.id()], player);
+    assert.equal(player.el().id, player.id());
+    assert.equal(player.tech_.el().playerId, player.id());
+    assert.equal(player.tech_.el().id, player.tech_.id_);
+    assert.equal(player.tech_.options_.techId, player.tech_.id_);
+    const streamingPlayer = registry[player.tech_.options_.playerId];
+    assert.equal(streamingPlayer, player, "a streaming tech resolves its own player");
+    assert.equal(streamingPlayer.duration(), player.duration(), "duration reads cannot use another pane's clock");
+  }
+  assert.deepEqual(
+    pairs.map(pair => pair.player.duration()).sort((a, b) => a - b),
+    [12, 16, 20, 24],
+  );
+  const registry = pairs[0].player.constructor.players;
+  await h.unmount();
+  assert.equal(Object.values(registry).filter(Boolean).length, 0, "native disposal removes all pane registrations");
+}
+
 async function staleCounts() {
   const request = deferred(),
     h = await start({ mode: "nav", graphql: () => request.promise }),
@@ -452,6 +589,379 @@ async function staleCounts() {
   await h.unmount();
   assert.equal(h.timers.size, 0);
 }
+async function sceneSearch() {
+  const scenes = ["a", "b", "c"].map(id => ({ id, title: "Title " + id, paths: { stream: "/" + id } }));
+  const requests = [];
+  const h = await start({
+    scenes,
+    launch: {
+      source: "filter",
+      filter: { q: "session term" },
+      sceneFilter: { rating100: { value: 40, modifier: "GREATER_THAN" } },
+    },
+    graphql: (query, variables, options) => {
+      if (query.includes("MultiscreenScenes"))
+        return {
+          findScenes: { count: 25, scenes: variables.filter.page === 1 ? scenes.slice(0, 2) : scenes.slice(2) },
+        };
+      if (query.includes("MultiscreenSceneSearch")) {
+        const pending = deferred();
+        requests.push({ ...pending, variables, signal: options.signal });
+        return pending.promise;
+      }
+      return {};
+    },
+  });
+  const players = () => h.nodes(node => node.type === "native-player");
+  const ids = () => players().map(player => player.props.scene.id);
+  const input = () => h.nodes(node => node.type === "input" && node.props.type === "search")[0];
+  const search = async text => {
+    input().props.onChange({ target: { value: text } });
+    await h.flush();
+    await h.tick(300);
+  };
+  const resultButtons = () =>
+    h.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result");
+  const other = [...h.media.values()].filter(pair => pair.video.isConnected)[1];
+  const listener = [...other.player.handlers.get("volumechange")][0];
+  h.button("Search scenes for screen 1").props.onClick();
+  await h.flush();
+  assert.equal(requests.length, 0, "opening search does not fetch the library");
+  assert.equal(h.nodes(node => node.type === "Dialog")[0].props.ariaLabel, "Search scenes for screen 1");
+  await search("  first  ");
+  assert.deepEqual(JSON.parse(JSON.stringify(requests[0].variables)), {
+    filter: { q: "session term", page: 1, per_page: 20, sort: "title", direction: "ASC" },
+    scene_filter: {
+      title: { value: "(?i)first", modifier: "MATCHES_REGEX" },
+      AND: { rating100: { value: 40, modifier: "GREATER_THAN" } },
+    },
+  });
+  assert.deepEqual(ids(), ["a", "a"], "searching leaves playback running");
+  await search("second");
+  assert(requests[0].signal.aborted, "changing search aborts the previous request");
+  requests[1].resolve({ findScenes: { count: 21, scenes: [scenes[2], { id: "missing", title: "Unavailable" }] } });
+  await h.flush();
+  assert.equal(resultButtons().length, 1, "unplayable scenes are excluded from the available session videos");
+  requests[0].resolve({ findScenes: { count: 1, scenes: [scenes[1]] } });
+  await h.flush();
+  assert.equal(resultButtons().length, 1, "late responses cannot replace the latest results");
+  h.nodes(node => node.type === "Pagination")[0].props.onPageChange(2);
+  await h.flush();
+  assert.equal(resultButtons().length, 0, "old page cannot be selected while loading");
+  await h.tick(300);
+  assert.equal(requests[2].variables.filter.page, 2);
+  requests[2].reject(Error("offline"));
+  await h.flush();
+  assert.match(h.text(), /Could not search scenes/);
+  h.nodes(node => node.type === "Button" && !node.props.className)[0].props.onClick();
+  await h.flush();
+  await h.tick(300);
+  requests[3].resolve({ findScenes: { count: 21, scenes: [scenes[2]] } });
+  await h.flush();
+  resultButtons()[0].props.onClick();
+  await h.flush();
+  assert.equal(h.nodes(node => node.type === "Dialog").length, 0);
+  assert.deepEqual(ids(), ["c", "a"], "a later session result replaces only its target screen");
+  assert.equal(other.player.disposed, false);
+  assert.equal([...other.player.handlers.get("volumechange")][0], listener, "other screen keeps its subscriptions");
+  assert.match(
+    h.nodes(node => node.type === "IconButton" && node.props.ariaLabel?.startsWith("Increase O"))[0].props.ariaLabel,
+    /2 visible scenes/,
+  );
+  players()[0].props.onNext();
+  await h.flush();
+  assert.deepEqual(ids(), ["a", "a"], "next wraps from the selected scene's final page");
+  h.button("Search scenes for screen 2").props.onClick();
+  await h.flush();
+  await search("nothing");
+  requests[4].resolve({ findScenes: { count: 0, scenes: [] } });
+  await h.flush();
+  assert.match(h.text(), /No scenes match/);
+  await search("c");
+  requests[5].resolve({ findScenes: { count: 1, scenes: [scenes[2]] } });
+  await h.flush();
+  resultButtons()[0].props.onClick();
+  await h.flush();
+  assert.deepEqual(ids(), ["a", "c"], "each screen has its own target");
+  players()[1].props.onPrevious();
+  await h.flush();
+  assert.deepEqual(ids(), ["a", "b"], "previous reaches the selected scene's preceding page");
+  h.button("Search scenes for screen 1").props.onClick();
+  await h.flush();
+  input().props.onChange({ target: { value: "cancel debounce" } });
+  await h.flush();
+  h.nodes(node => node.type === "Dialog")[0].props.onClose();
+  await h.flush();
+  assert.equal(h.timers.size, 0, "closing cancels the debounce timer");
+  h.button("Search scenes for screen 1").props.onClick();
+  await h.flush();
+  await search("cancel request");
+  await h.unmount();
+  assert(requests[6].signal.aborted, "leaving playback aborts scene search");
+  requests[6].resolve({ findScenes: { count: 1, scenes: [scenes[2]] } });
+  await h.flush();
+  assert.equal(h.nodes(node => node.type === "Dialog").length, 0);
+  assert.equal(h.timers.size, 0);
+}
+
+async function fixedSessionSearch() {
+  const scenes = Array.from({ length: 46 }, (_, index) => ({
+    id: String(index),
+    title: index === 0 ? "Outside the session" : `Available ${index}`,
+    paths: { stream: `/${index}` },
+  }));
+  const h = await start({
+    scenes,
+    launch: { source: "selection", selectedIds: scenes.slice(1).map(scene => scene.id) },
+    settings: { rows: 1, columns: 2, totalScreens: 2, splitScenes: true, randomize: false },
+  });
+  const results = () => h.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result");
+  const search = async value => {
+    h.nodes(node => node.type === "input")[0].props.onChange({ target: { value } });
+    await h.flush();
+    await h.tick(300);
+  };
+  h.button("Search scenes for screen 1").props.onClick();
+  await h.flush();
+  await search("Outside");
+  assert.equal(results().length, 0, "videos outside an explicit session selection are excluded");
+  await search("AVAILABLE");
+  assert.equal(results().length, 20);
+  assert.equal(h.nodes(node => node.type === "Pagination")[0].props.totalPages, 3);
+  h.nodes(node => node.type === "Pagination")[0].props.onPageChange(3);
+  await h.flush();
+  await h.tick(300);
+  assert.equal(results().length, 5, "search includes selected videos beyond the first playback page");
+  results()[4].props.onClick();
+  await h.flush();
+  assert.deepEqual(
+    h.nodes(node => node.type === "native-player").map(node => node.props.scene.id),
+    ["45", "2"],
+  );
+  assert.equal(h.calls.length, 1, "fixed selection searches do not query or expand the library");
+  const players = () => h.nodes(node => node.type === "native-player");
+  players()[0].props.onPrevious();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "43", "previous follows the searched scene's split queue");
+  players()[0].props.onNext();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "45");
+  players()[0].props.onNext();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "1", "the searched final page wraps correctly");
+  players()[1].props.onPrevious();
+  await h.flush();
+  assert.equal(players()[1].props.scene.id, "44", "the other screen retains its independent position");
+  h.button("Search scenes for screen 2").props.onClick();
+  await h.flush();
+  await search("Available 33");
+  results()[0].props.onClick();
+  await h.flush();
+  assert.equal(players()[1].props.scene.id, "33", "a scene from another split lane is inserted in order");
+  players()[1].props.onPrevious();
+  await h.flush();
+  assert.equal(players()[1].props.scene.id, "32");
+  players()[1].props.onNext();
+  await h.flush();
+  assert.equal(players()[1].props.scene.id, "33", "returning across a page boundary retains the inserted scene");
+  players()[1].props.onNext();
+  await h.flush();
+  assert.equal(players()[1].props.scene.id, "34");
+  await h.unmount();
+
+  const fixed = await start({
+    scenes,
+    graphql: () => ({ findScenes: { count: scenes.length, scenes: scenes.slice(1, 3) } }),
+  });
+  fixed.button("Search scenes for screen 1").props.onClick();
+  await fixed.flush();
+  fixed.nodes(node => node.type === "input")[0].props.onChange({ target: { value: "Available 45" } });
+  await fixed.flush();
+  await fixed.tick(300);
+  assert.match(fixed.text(), /No scenes match/);
+  assert.equal(fixed.calls.length, 1, "an unscoped launch searches only its original sampled pool");
+  await fixed.unmount();
+}
+
+async function searchDuringMarkersAndPaging() {
+  const scenes = ["a", "b"].map(id => ({ id, title: id, paths: { stream: "/" + id } }));
+  const marker = {
+    id: "m",
+    title: "Range",
+    seconds: 2,
+    end_seconds: 4,
+    primary_tag: { name: "Test" },
+    scene: scenes[0],
+  };
+  const h = await start({
+    scenes,
+    markers: [marker, { ...marker, id: "n", title: "Second range", seconds: 5, end_seconds: 7 }],
+    launch: { source: "marker-selection", selectedIds: ["m", "n"] },
+    settings: { rows: 1, columns: 3, totalScreens: 3, splitScenes: true, randomize: false, randomStart: false },
+  });
+  const choose = async (label, index) => {
+    h.button(label).props.onClick();
+    await h.flush();
+    h.nodes(node => node.type === "input")[0].props.onChange({ target: { value: "a" } });
+    await h.flush();
+    await h.tick(300);
+    const results = h.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result");
+    assert.equal(results.length, 2, "only markers from the session are available");
+    results[index].props.onClick();
+    await h.flush();
+  };
+  assert.equal(h.nodes(node => node.type === "native-player").length, 2);
+  await choose("Search scenes for screen 3", 0);
+  assert.equal(
+    h.nodes(node => node.type === "native-player").length,
+    3,
+    "an empty split pane can choose a session marker",
+  );
+  await choose("Search scenes for screen 1", 1);
+  let player = h.nodes(node => node.type === "native-player")[0];
+  assert.equal(player.props.scene.id, "a");
+  assert.equal(
+    [...h.media.values()].find(value => value.video.isConnected).video.currentTime,
+    5,
+    "choosing a session marker preserves its own range",
+  );
+  player.props.onPrevious();
+  await h.flush();
+  player = h.nodes(node => node.type === "native-player")[0];
+  assert.equal(player.props.scene.id, "a");
+  assert.equal(
+    [...h.media.values()].find(value => value.video.isConnected).video.currentTime,
+    2,
+    "returning to the marker restores its range",
+  );
+  await h.unmount();
+
+  const pending = deferred();
+  const paged = await start({
+    scenes,
+    launch: { source: "filter", filter: {}, sceneFilter: {} },
+    graphql: (query, variables) => {
+      if (query.includes("MultiscreenSceneSearch")) return { findScenes: { count: 1, scenes: [scenes[1]] } };
+      if (variables.filter.page > 1) return pending.promise;
+      return { findScenes: { count: 25, scenes: [scenes[0]] } };
+    },
+  });
+  paged.nodes(node => node.type === "native-player")[0].props.onNext();
+  await paged.flush();
+  assert.match(paged.text(), /Loading next page/);
+  paged.button("Search scenes for screen 1").props.onClick();
+  await paged.flush();
+  paged.nodes(node => node.type === "input")[0].props.onChange({ target: { value: "b" } });
+  await paged.flush();
+  await paged.tick(300);
+  paged.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result")[0].props.onClick();
+  await paged.flush();
+  assert.match(paged.text(), /Finding scene in session/);
+  assert.equal(paged.nodes(node => node.type === "native-player")[0].props.scene.id, "a");
+  pending.resolve({ findScenes: { count: 25, scenes: [scenes[1]] } });
+  await paged.flush();
+  assert.equal(
+    paged.nodes(node => node.type === "native-player")[0].props.scene.id,
+    "b",
+    "a pending queue page cannot overwrite a chosen scene",
+  );
+  assert.doesNotMatch(paged.text(), /Loading next page/);
+  await paged.unmount();
+}
+
+async function searchedQueueNavigation() {
+  const scenes = Array.from({ length: 40 }, (_, index) => ({
+    id: String(index),
+    title: `Video (${index})`,
+    paths: { stream: `/${index}` },
+  }));
+  let fail = true,
+    hold;
+  const h = await start({
+    scenes,
+    launch: { source: "filter", filter: { sort: "title" }, sceneFilter: {} },
+    graphql: async (query, variables) => {
+      if (query.includes("MultiscreenSceneSearch")) {
+        const term = variables.scene_filter.title.value.slice(4).replace(/\\/g, "");
+        const matches = scenes.filter(scene => scene.title.includes(term));
+        return { findScenes: { count: matches.length, scenes: matches } };
+      }
+      const { page, per_page: size } = variables.filter;
+      if (page > 1) {
+        if (hold) await hold.promise;
+        if (fail) throw Error("Cannot locate scene");
+      }
+      return { findScenes: { count: scenes.length, scenes: scenes.slice((page - 1) * size, page * size) } };
+    },
+  });
+  const players = () => h.nodes(node => node.type === "native-player");
+  const choose = async id => {
+    h.button("Search scenes for screen 1").props.onClick();
+    await h.flush();
+    h.nodes(node => node.type === "input")[0].props.onChange({ target: { value: `Video (${id})` } });
+    await h.flush();
+    await h.tick(300);
+    h.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result")[0].props.onClick();
+    await h.flush();
+  };
+  await choose(24);
+  assert.match(h.text(), /Cannot locate scene/);
+  assert.equal(players()[0].props.scene.id, "0", "a failed lookup preserves the playing scene and position");
+  fail = false;
+  h.nodes(node => node.type === "button" && node.props.className?.includes("dirty-ui-button"))[0].props.onClick();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "24", "retry locates the original search result");
+  players()[0].props.onPrevious();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "23");
+  players()[0].props.onNext();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "24");
+  await choose(4);
+  hold = deferred();
+  await choose(31);
+  assert.match(h.text(), /Finding scene in session/);
+  await choose(7);
+  hold.resolve();
+  hold = null;
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "7", "an older location lookup cannot replace a newer choice");
+  players()[0].props.onPrevious();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "6");
+  assert.equal(players()[1].props.scene.id, "0", "locating and navigation leave other panes alone");
+  await h.unmount();
+
+  const random = await start({
+    scenes: scenes.slice(0, 20),
+    launch: { source: "selection", selectedIds: scenes.slice(0, 20).map(scene => scene.id) },
+    settings: { randomize: true, splitScenes: false },
+  });
+  const queues = [...random.owners.values()]
+    .flatMap(owner => owner.slots)
+    .map(slot => slot?.state)
+    .filter(state => state?.items);
+  const order = queues[0].items.map(item => item.scene.id);
+  random.button("Search scenes for screen 1").props.onClick();
+  await random.flush();
+  random.nodes(node => node.type === "input")[0].props.onChange({ target: { value: `Video (${order[5]})` } });
+  await random.flush();
+  await random.tick(300);
+  random.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result")[0].props.onClick();
+  await random.flush();
+  const first = () => random.nodes(node => node.type === "native-player")[0];
+  assert.equal(first().props.scene.id, order[5]);
+  first().props.onNext();
+  await random.flush();
+  assert.equal(first().props.scene.id, order[6], "next preserves the session's original random order");
+  first().props.onPrevious();
+  await random.flush();
+  first().props.onPrevious();
+  await random.flush();
+  assert.equal(first().props.scene.id, order[4], "previous starts from the searched random position");
+  await random.unmount();
+}
+
 async function pagedPlayback() {
   const scenes = Array.from({ length: 1001 }, (_, index) => ({
     id: String(index),
@@ -590,7 +1100,13 @@ async function pagedPlayback() {
   await stablePaneSubscriptions();
   await counters();
   await gridsAndAsync();
+  await playableStartupAndTranscodeClock();
+  await independentNativePlayerIdentities();
   await staleCounts();
+  await sceneSearch();
+  await fixedSessionSearch();
+  await searchDuringMarkersAndPaging();
+  await searchedQueueNavigation();
   await pagedPlayback();
   console.log("DirtyMultiscreen compiled registration, navigation, players, grid, counters and cleanup passed");
 })().catch(error => {
