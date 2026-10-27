@@ -31,7 +31,14 @@ export function Settings(props: PanelProps) {
     removedDeleteRules?: number;
     discardedReviews?: number;
     imported?: boolean;
+    dismissed?: boolean;
   }>();
+  const dismissMigration = React.useCallback(() => {
+    setMigration(current => ({ ...current, dismissed: true }));
+    hub.runPluginOperation("dirtyTasks", { mode: "dismissMigrationNotice" }).catch(() => {
+      if (mounted.current) setMigration(current => ({ ...current, dismissed: false }));
+    });
+  }, []);
   const load = React.useCallback(async () => {
     setError("");
     try {
@@ -77,12 +84,16 @@ export function Settings(props: PanelProps) {
   if (!ready) return <ui.StateView title="Loading task settings…" />;
   return (
     <div className="dirty-tasks">
-      {migration?.imported && (
-        <p role="status">
-          Existing task settings imported.
-          {migration.removedDeleteRules ? " Removed Delete rules: " + migration.removedDeleteRules + "." : ""}
-          {migration.discardedReviews ? " Discarded pending reviews: " + migration.discardedReviews + "." : ""}
-        </p>
+      {migration?.imported && !migration.dismissed && (
+        <div className="dirty-ui-toolbar" role="status">
+          <span>
+            Existing task settings imported.
+            {migration.removedDeleteRules ? " Removed Delete rules: " + migration.removedDeleteRules + "." : ""}
+            {migration.discardedReviews ? " Discarded pending reviews: " + migration.discardedReviews + "." : ""}
+          </span>
+          <span className="dirty-ui-spacer" />
+          <ui.IconButton ariaLabel="Dismiss import summary" fallback="×" onClick={dismissMigration} />
+        </div>
       )}
       <div className="dirty-ui-toolbar">
         <span>Choose a trigger for each action. Keep a Stash tab open until Scan or Generate finishes.</span>

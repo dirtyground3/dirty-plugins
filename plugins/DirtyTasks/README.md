@@ -74,7 +74,8 @@ Internal refresh scans do not trigger another automation cycle.
    DirtyPlugins hub (1.0.6 or newer), and reload plugins.
 3. Hard-refresh Stash (Ctrl+F5) and open DirtyTasks. The one-time migration imports
    both settings sections, removes Delete rules, discards pending trial review
-   outputs, and imports the running strategy. Review a fresh preview before running.
+   outputs, and imports the running strategy. Its summary stays at the top of the
+   panel until you close it. Review a fresh preview before running.
 4. Choose the trigger for each action. Remove the disabled old plugin
    installations only after migration succeeds.
 

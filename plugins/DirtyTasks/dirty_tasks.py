@@ -33,6 +33,8 @@ def run(payload, reporter=None):
     if mode == "migrationStatus":
         import json
         return json.loads(settings.storage.get_metadata(settings.NAMESPACE, "migrated"))
+    if mode == "dismissMigrationNotice":
+        return settings.dismiss_migration_notice()
     if mode == "organizationRecoveryStatus":
         return reservation.organization_recovery_status(client)
     if mode == "recoverOrganization":

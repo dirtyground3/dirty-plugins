@@ -170,6 +170,36 @@ async function main() {
   assert.equal(recovery.button("Recover organization task"), undefined);
   recovery.unmount();
   assert.equal(recovery.listeners.get("focus").size, 0, "the status listener is removed when the page closes");
+  let dismissFails = true;
+  const imported = createCompactorHarness({
+    combined: true,
+    migration: { imported: true, removedDeleteRules: 1 },
+    operation: async args => {
+      if (args.mode !== "dismissMigrationNotice") return undefined;
+      if (dismissFails) throw Error("Unavailable");
+      return { imported: true, removedDeleteRules: 1, dismissed: true };
+    },
+  });
+  imported.load();
+  await imported.flush();
+  const dismissButton = () =>
+    imported.nodes(node => node.type === "IconButton" && node.props.ariaLabel === "Dismiss import summary")[0];
+  assert(text(imported.tree).includes("Removed Delete rules: 1."));
+  dismissButton().props.onClick();
+  await imported.flush();
+  assert(dismissButton(), "a failed dismissal keeps the summary");
+  dismissFails = false;
+  dismissButton().props.onClick();
+  await imported.flush();
+  assert.equal(dismissButton(), undefined);
+  assert(!text(imported.tree).includes("Existing task settings imported"));
+  assert.equal(imported.calls.filter(args => args.mode === "dismissMigrationNotice").length, 2);
+  imported.unmount();
+  const dismissed = createCompactorHarness({ combined: true, migration: { imported: true, dismissed: true } });
+  dismissed.load();
+  await dismissed.flush();
+  assert(!text(dismissed.tree).includes("Existing task settings imported"), "a dismissed summary stays hidden");
+  dismissed.unmount();
   h.unmount();
   await h.flush();
   assert.equal(h.timers.size, 0);

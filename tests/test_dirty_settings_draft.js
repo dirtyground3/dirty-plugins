@@ -12,10 +12,13 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 
-function harness(overrides = {}) {
+// bailouts models React 17: an update that leaves every state unchanged still
+// renders the component, then bails out, keeping its effect deps but not running them.
+function harness(overrides = {}, { bailouts = false } = {}) {
   const owner = { slots: [], cursor: 0, effects: [] },
     timers = new Map();
   let changed = true,
+    pending = false,
     mounted = true,
     value,
     now = 0,
@@ -24,7 +27,10 @@ function harness(overrides = {}) {
     writes = [],
     saved = [],
     failures = [];
-  const hooks = createHooks(() => owner);
+  const hooks = createHooks(
+    () => owner,
+    () => (pending = true),
+  );
   const React = {
     ...hooks,
     useState(initial) {
@@ -34,7 +40,11 @@ function harness(overrides = {}) {
         next => {
           assert(mounted, "no state updates after unmount");
           set(next);
-          changed = true;
+          if (bailouts && !pending) {
+            owner.cursor = 0;
+            value = hook(options);
+            owner.effects.length = 0;
+          } else changed = true;
         },
       ];
     },
@@ -68,6 +78,7 @@ function harness(overrides = {}) {
   function render() {
     owner.cursor = 0;
     changed = false;
+    pending = false;
     value = hook(options);
     for (const effect of owner.effects.splice(0)) effect();
   }
@@ -258,6 +269,17 @@ async function main() {
   await reload.settle();
   assert.equal(reload.value.draft.amount, "9", "obsolete load completions cannot overwrite a newer reload");
   reload.unmount();
+
+  // A save that ends in same-value updates still reports the clean state.
+  const bailout = harness({}, { bailouts: true });
+  await bailout.settle();
+  assert.deepEqual(bailout.dirty, [false], "nothing is unsaved while the first load is pending");
+  bailout.edit("5");
+  await bailout.tick();
+  assert.deepEqual(bailout.writes.at(-1), { amount: 5 });
+  assert.equal(bailout.value.dirty, false);
+  assert.equal(bailout.dirty.at(-1), false, "a bailed-out render cannot swallow the clean report");
+  bailout.unmount();
   console.log(
     "Shared settings draft: raw validation, serialized races/revisions, reverts, conflict/retry/reload, dirty notifications and cleanup passed",
   );

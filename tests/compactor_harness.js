@@ -85,6 +85,7 @@ function createCompactorHarness(options = {}) {
       "Dialog",
       "ActionMenu",
       "Metric",
+      "IconButton",
     ].map(name => [name, name]),
   );
   ui.usePageTitle = () => {};
@@ -139,7 +140,7 @@ function createCompactorHarness(options = {}) {
         }
         return hub.configurePlugin(id, args.settings);
       }
-      if (args.mode === "migrationStatus") return {};
+      if (args.mode === "migrationStatus") return options.migration ? copy(options.migration) : {};
       calls.push(copy(args));
       if (options.operation) {
         const value = await options.operation(args);

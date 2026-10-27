@@ -19,9 +19,9 @@ a shared SQLite database, and is installed automatically as a dependency.
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.7 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.15 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
-| [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.3 |
+| [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.4 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.6 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.7 |
 
 ## Shared look and settings
 
@@ -525,6 +525,12 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyPlugins 1.0.7:** autosaved settings no longer leave **Unsaved
+  changes** showing after a successful save.
+
+- **DirtyTasks 1.0.4:** the summary of imported Tidy and Compactor settings
+  can be closed, and stays closed.
 
 - **DirtyTasks 1.0.3:** show organization recovery as a warning only when an
   abandoned reservation is blocking file work. Active and stopping jobs keep

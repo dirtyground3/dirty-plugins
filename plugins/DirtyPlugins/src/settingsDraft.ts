@@ -44,10 +44,12 @@ export function createSettingsDraftHook(hooks: Pick<typeof R, "useState" | "useR
     const [ready, setReady] = useState(false);
     const [status, setStatus] = useState<SettingsDraft<T>["status"]>({ state: "loading", message: "" });
     const [error, setError] = useState("");
-    const [, setSavedVersion] = useState(0);
+    // The saved baseline is state, not a ref: React 17 can render, see an
+    // unchanged update and bail out, keeping the new effect deps without
+    // running the effect, so a ref-derived dirty flag would never report false.
+    const [saved, setSaved] = useState<string | null>(null);
     const [attempt, setAttempt] = useState(0);
-    const saved = useRef<string | null>(null),
-      mounted = useRef(true),
+    const mounted = useRef(true),
       blocked = useRef(false),
       loading = useRef(0);
     const controller = useRef<SaveController<{ draft: T; serialized: Serialized }, Result> | null>(null);
@@ -60,10 +62,9 @@ export function createSettingsDraftHook(hooks: Pick<typeof R, "useState" | "useR
         onSaved: (request, result, current) => {
           // A completed older write still advances the saved baseline. It must
           // never overwrite the draft that was edited during the request.
-          saved.current = latest.current.comparable(request.draft);
+          setSaved(latest.current.comparable(request.draft));
           latest.current.onSaved?.(request.draft, result, current);
           setError("");
-          setSavedVersion(version => version + 1);
         },
         onError: (failure, request, current) => {
           blocked.current = true;
@@ -82,7 +83,7 @@ export function createSettingsDraftHook(hooks: Pick<typeof R, "useState" | "useR
         if (!mounted.current || request !== loading.current) return;
         const normalized = latest.current.normalize(value);
         latest.current.onLoaded?.(value, normalized);
-        saved.current = latest.current.comparable(normalized);
+        setSaved(latest.current.comparable(normalized));
         blocked.current = false;
         setDraft(normalized);
         setReady(true);
@@ -101,7 +102,8 @@ export function createSettingsDraftHook(hooks: Pick<typeof R, "useState" | "useR
         controller.current!.dispose();
       };
     }, [reload]);
-    const dirty = latest.current.comparable(draft) !== saved.current;
+    // Nothing is unsaved before the first load provides a baseline.
+    const dirty = saved !== null && latest.current.comparable(draft) !== saved;
     const invalid = latest.current.validate(draft);
     useEffect(() => {
       latest.current.onDirtyChange?.(dirty);

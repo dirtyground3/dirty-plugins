@@ -54,6 +54,16 @@ class TaskSettingsTests(unittest.TestCase):
         self.assertFalse(tasks.settings.get_section("encoding")["automationPaused"])
         self.assertEqual(storage.get_plugin_settings("dirtyTidy"), organization, "old data remains available for recovery")
 
+    def test_dismissed_import_summary_stays_hidden(self):
+        storage.set_plugin_settings("dirtyCompactor", {"rules": [encoding_tests.rule(id="delete", action="delete")]})
+        tasks.settings.migrate()
+        dismissed = tasks.settings.dismiss_migration_notice()
+        tasks.settings.migrate()
+        summary = json.loads(storage.get_metadata(tasks.settings.NAMESPACE, "migrated"))
+        self.assertEqual(summary, dismissed)
+        self.assertTrue(summary["dismissed"])
+        self.assertEqual(summary["removedDeleteRules"], 1, "dismissal keeps the import summary")
+
     def test_shared_choice_migration_preserves_current_scan_approval_and_disabled_rules(self):
         organization = tasks.organization.normalize_settings({"automationMode": "scan", "tagUpdateEnabled": True})
         organization["approvedStrategyHash"] = tasks.organization.strategy_hash(organization)

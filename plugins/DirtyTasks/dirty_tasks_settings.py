@@ -123,6 +123,11 @@ def _migrate_legacy(client=None):
         storage._put_metadata(connection, NAMESPACE, "migrated", json.dumps(summary))
 
 
+def dismiss_migration_notice():
+    """Hide the one-time import summary for good; the summary itself stays."""
+    return storage.update_json_metadata(NAMESPACE, "migrated", lambda summary: dict(summary, dismissed=True))
+
+
 def migrate(client=None):
     _migrate_legacy(client)
     migrate_triggers()
