@@ -44,7 +44,8 @@ scene titles are blurred for the public repository.
 ![DirtyMultiscreen playback and grid settings](../../docs/images/dirty-multiscreen-settings.png)
 
 Configure the grid geometry, scene distribution, starting behavior, looping,
-muting, marker duration, and hidden-tab handling in one panel.
+muting, marker duration, hidden-tab handling, and the Stash header button in
+one panel.
 
 ## Installation
 
@@ -71,6 +72,10 @@ The plugin exposes settings for screen count, grid dimensions, randomization, sc
 
 The following playback options are enabled by default: **Random scenes**,
 **Start muted**, **Random start**, **Loop scenes**, and **Pause when hidden**.
+
+**Show DirtyMultiscreen in the Stash header** (enabled by default) hides or
+restores the grid button without a reload. While it is hidden, the button
+counts no scenes and the player stays reachable at `/plugins/multiscreen`.
 
 ## Source
 

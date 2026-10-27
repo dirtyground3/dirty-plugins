@@ -3,7 +3,10 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { createRenderer, element, events, findAll } = require("./ui_harness");
 const { chartModule, load } = require("./stats_modules");
-const { runSource } = require("./plugin_paths");
+const fs = require("node:fs");
+const vm = require("node:vm");
+const { runSource, runtimePath } = require("./plugin_paths");
+const { installRegistration } = require("./shared_runtime");
 
 /** A Stats component compiled with its own runtime, with the chart module installed as the route does. */
 function runComponent(file, globals, { external, modules }) {
@@ -547,4 +550,56 @@ test("the chart file loads once on demand and a failed load is retried", async (
   runtime.installCharts(module);
   assert.equal(runtime.charts, module.charts);
   assert.equal(runtime.world, module.world);
+});
+
+test("the header button follows showInMenu without a reload", async () => {
+  const stored = { showInMenu: false };
+  const renderer = createRenderer();
+  const patches = [];
+  const window = events({
+    location: { pathname: "/scenes", search: "" },
+    PluginApi: {
+      React: { ...renderer.hooks, createElement: element, Fragment: "fragment" },
+      components: {},
+      libraries: { ReactRouterDOM: {} },
+      register: { route() {} },
+      patch: { instead() {}, before: (name, callback) => patches.push({ name, callback }) },
+    },
+    DirtyPlugins: {
+      getPluginSettings: async pluginId => (pluginId === "dirtyStats" ? { ...stored } : {}),
+      react: { NavAction: "nav-action" },
+      theme: {
+        defaultKey: "classic",
+        currentKey: "classic",
+        normalizeKey: key => key,
+        ready: Promise.resolve("classic"),
+        subscribe: () => () => {},
+      },
+      debugLog() {},
+    },
+  });
+  installRegistration(window);
+  const context = vm.createContext({ window, document: { documentElement: { style: {} } }, console, URLSearchParams });
+  vm.runInContext(fs.readFileSync(runtimePath("DirtyStats", "dirtyStats.js"), "utf8"), context);
+  const utilityItems = patches.find(patch => patch.name === "MainNavBar.UtilityItems").callback;
+  const render = () => renderer.render(utilityItems({ children: "Native" })[0].children);
+  const button = () => findAll(renderer.tree, node => node.type === "nav-action")[0];
+  const changed = async pluginId => {
+    window.emit("dirty-plugins:configuration-changed", { detail: { pluginId } });
+    await renderer.flush(render);
+  };
+
+  render();
+  assert.equal(renderer.tree.children[0], "Native", "native items stay first");
+  assert.equal(button(), undefined, "the button waits for the stored setting instead of flashing");
+  await renderer.flush(render);
+  assert.equal(button(), undefined, "the stored setting hides the button");
+  stored.showInMenu = true;
+  await changed("multiscreen");
+  assert.equal(button(), undefined, "other plugins' changes do not apply Stats settings");
+  await changed("dirtyStats");
+  assert.equal(button().props.to, "/plugins/dirty-stats/dashboard", "turning it on shows the button");
+  stored.showInMenu = false;
+  await changed("dirtyStats");
+  assert.equal(button(), undefined, "turning it off hides the button again");
 });

@@ -1,4 +1,4 @@
-import { constants } from "@generated/dirtyStats.settings";
+import { constants, defaults } from "@generated/dirtyStats.settings";
 import { options as hubOptions } from "@generated/dirtyPlugins.settings";
 import { React, hub } from "./runtime";
 import type { SaveController } from "../../DirtyPlugins/src/save";
@@ -14,12 +14,14 @@ const DEFAULT_THEME = hub?.theme.defaultKey;
 // Choices and defaults come from schemas/dirtyStats.settings.json; the suite theme keys from the hub's schema.
 export const STATS_SETTING_SPECS = {
   visualTheme: { options: hubOptions.visualTheme.map(option => option.value) },
+  showInMenu: { options: [false, true] },
   ...(Object.fromEntries(Object.entries(constants.displayOptions).map(([name, options]) => [name, { options }])) as {
     [K in keyof typeof constants.displayOptions]: { options: (typeof constants.displayOptions)[K] };
   }),
 };
 export const statsSettings: StatsSettings = {
   visualTheme: hub?.theme.currentKey,
+  showInMenu: defaults.showInMenu,
   ...constants.displayDefaults,
 };
 const statsSettingsListeners = new Set<() => void>();

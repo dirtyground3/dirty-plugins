@@ -1,5 +1,12 @@
 {
-  "settings": {},
+  "settings": {
+    "showInMenu": {
+      "type": "BOOLEAN",
+      "displayName": "Show DirtyStats in the Stash header",
+      "description": "Add the DirtyStats bubble chart button to Stash's utility navigation. When hidden, Stats pages stay reachable by URL. Enabled by default.",
+      "default": true
+    }
+  },
   "constants": {
     "displayDefaults": {
       "showMapNumbers": false,

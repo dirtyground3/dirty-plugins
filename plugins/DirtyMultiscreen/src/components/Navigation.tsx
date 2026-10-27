@@ -1,7 +1,36 @@
+import { coerceBoolean } from "../../../DirtyPlugins/src/shared/values";
 import { isMarkerLaunchContext } from "../domain/context";
-import { contexts, counts, DirtyPlugins, PluginApi, queries, React } from "../runtime";
+import { DEFAULT_SETTINGS } from "../domain/settings";
+import { contexts, counts, DirtyPlugins, PLUGIN_ID, PluginApi, queries, React } from "../runtime";
 const ROUTE_PATH = "/plugins/multiscreen",
   SCENE_COUNT_DEBOUNCE_MS = 300;
+
+/** Header button; hidden until settings load and while `showInMenu` is off, so hidden buttons count nothing. */
+export function MultiscreenNavLink() {
+  const [visible, setVisible] = React.useState(false);
+  React.useEffect(() => {
+    let active = true;
+    function refresh() {
+      DirtyPlugins.getPluginSettings(PLUGIN_ID)
+        .then(stored => {
+          if (active) setVisible(coerceBoolean(stored.showInMenu, DEFAULT_SETTINGS.showInMenu));
+        })
+        .catch(error => console.error("DirtyMultiscreen could not refresh navigation settings", error));
+    }
+    function configurationChanged(event: Event) {
+      const pluginId = (event as CustomEvent<{ pluginId?: string }>).detail?.pluginId;
+      if (!pluginId || pluginId === PLUGIN_ID) refresh();
+    }
+    refresh();
+    window.addEventListener("dirty-plugins:configuration-changed", configurationChanged);
+    return () => {
+      active = false;
+      window.removeEventListener("dirty-plugins:configuration-changed", configurationChanged);
+    };
+  }, []);
+  return visible ? <ContextualMultiscreenNavLink /> : null;
+}
+
 export function ContextualMultiscreenNavLink() {
   const location = PluginApi.libraries.ReactRouterDOM.useLocation();
   const [contextRevision, setContextRevision] = React.useState(0);

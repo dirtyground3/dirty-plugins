@@ -80,6 +80,8 @@ while changing scenes quickly, is not reported. It is repeated after 1, 2, 4,
 Open **Dirty Plugins settings → DirtyCaptions**. Settings autosave through the
 shared hub:
 
+![DirtyCaptions playback and caption index settings](../../docs/images/dirty-captions-settings.png)
+
 | Setting | Default | Effect |
 | --- | --- | --- |
 | **Load embedded captions** | On | Detect and extract embedded text tracks when a native scene player opens. Turning this off removes DirtyCaptions tracks from open players. |

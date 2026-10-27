@@ -75,6 +75,12 @@
       "displayName": "Pause when hidden",
       "description": "Pause playback while the browser tab is hidden. Enabled by default.",
       "default": true
+    },
+    "showInMenu": {
+      "type": "BOOLEAN",
+      "displayName": "Show DirtyMultiscreen in the Stash header",
+      "description": "Add the DirtyMultiscreen grid button to Stash's utility navigation. When hidden, the player stays reachable by URL. Enabled by default.",
+      "default": true
     }
   }
 }

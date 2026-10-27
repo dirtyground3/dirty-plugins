@@ -167,7 +167,20 @@ export function DirtyStatsRoute(): R.ReactElement | null {
   );
 }
 
+/** Header button to the dashboard; hidden until settings load and while `showInMenu` is off. */
 export function NavIcon(): R.ReactElement | null {
+  const [shown] = useStatsSetting("showInMenu");
+  const [loaded, setLoaded] = React.useState(false);
+  React.useEffect(() => {
+    let active = true;
+    void statsSettingsReady.then(() => {
+      if (active) setLoaded(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+  if (!loaded || !shown) return null;
   return (
     <hub.react.NavAction
       to={dashboardRoute}

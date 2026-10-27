@@ -1092,9 +1092,37 @@ async function pagedPlayback() {
   await late.flush();
   assert.equal(late.nodes(node => node.type === "native-player").length, 0);
 }
+async function navigationSetting() {
+  const stored = { showInMenu: false };
+  const h = await start({ mode: "nav", loadSettings: () => ({ ...stored }) });
+  const button = () => h.nodes(node => node.type === "NavAction")[0];
+  const changed = async pluginId => {
+    h.window.emit("dirty-plugins:configuration-changed", { detail: { pluginId } });
+    await h.flush();
+  };
+  assert.equal(h.tree.children[0].type, "original-nav", "native items stay first");
+  assert.equal(button(), undefined, "the stored setting hides the button");
+  h.patches.get("SceneList")({
+    filter: { makeFindFilter: () => ({ sort: "title" }), makeFilter: () => ({}) },
+    selectedIds: new Set(),
+  });
+  await h.tick();
+  assert.equal(h.calls.length, 0, "a hidden button counts no scenes");
+  stored.showInMenu = true;
+  await changed("dirtyStats");
+  assert.equal(button(), undefined, "other plugins' changes do not apply Multiscreen settings");
+  await changed("multiscreen");
+  assert.equal(button().props.to, "/plugins/multiscreen", "turning it on shows the button");
+  stored.showInMenu = false;
+  await changed("multiscreen");
+  assert.equal(button(), undefined, "turning it off hides the button again");
+  await h.unmount();
+  assert.equal(h.window.handlers.get("dirty-plugins:configuration-changed")?.size || 0, 0);
+}
 (async () => {
   await registration();
   await contextsAndCounts();
+  await navigationSetting();
   await playbackAndCleanup();
   await markersAndLoops();
   await stablePaneSubscriptions();

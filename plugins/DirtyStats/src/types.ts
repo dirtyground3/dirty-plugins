@@ -274,6 +274,7 @@ export interface StatsTheme {
 export type SettingValue = string | number | boolean;
 export interface StatsSettings extends Record<string, SettingValue> {
   visualTheme: string;
+  showInMenu: boolean;
   showMapNumbers: boolean;
   sceneRatingRounding: number;
   performerRatingRounding: number;

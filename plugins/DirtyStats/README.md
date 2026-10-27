@@ -8,7 +8,9 @@ modules it uses and its world map data are in `assets/dirtyStatsCharts.js`, whic
 loads only when a Stats page opens. Stash users need no Node or TypeScript tooling.
 
 Explore Stash statistics from the **bubble chart icon** (red, blue, and white
-circles) in the utility navigation.
+circles) in the utility navigation. **Show DirtyStats in the Stash header** in
+the DirtyStats tab of the Dirty Plugins settings hides or restores it without a
+reload; Stats pages stay reachable by URL.
 The icon opens a customizable **Dashboard** at
 `/plugins/dirty-stats/dashboard`. Choose **Edit dashboard** to add or remove any available statistic,
 reorder widgets by dragging their edit-mode handle or using arrow keys on it,
@@ -367,6 +369,13 @@ grouping, the range slider, and PNG export.
 
 The constellation as a large dashboard widget, with gender-coloured nodes sized
 by matching scenes.
+
+### Settings
+
+![DirtyStats settings tab with the Stash header button toggle](../../docs/images/dirty-stats-settings.png)
+
+The DirtyStats tab of the Dirty Plugins settings hides or restores the bubble
+chart button in the Stash header.
 
 ## Bundled dependencies
 

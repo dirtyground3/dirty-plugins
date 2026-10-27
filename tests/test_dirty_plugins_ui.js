@@ -127,6 +127,10 @@ async function main() {
   assert.equal(numberField.max, 36);
   assert.equal(domain.fieldDefinition("dirtyPlugins", { name: "visualTheme", type: "STRING" }).options.length, 7);
   assert.equal(domain.fieldDefinition("multiscreen", { name: "randomize", type: "BOOLEAN" }).kind, "checkbox");
+  // An unset Stats header setting shows its schema default, as Stats itself applies it.
+  const statsMenu = { name: "showInMenu", type: "BOOLEAN" };
+  assert.equal(domain.initialFieldValue("dirtyStats", statsMenu, {}), true);
+  assert.equal(domain.initialFieldValue("dirtyStats", statsMenu, { showInMenu: false }), false);
   const patch = h.patches.find(item => item.name === "PluginSettings").callback;
   assert.equal(
     patch({ id: "unmanaged" }, () => "native settings"),

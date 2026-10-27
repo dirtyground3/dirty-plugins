@@ -1,6 +1,6 @@
 name: DirtyPlugins
 description: Shared settings page for Dirty plugins.
-version: 1.0.8
+version: 1.0.9
 
 ui:
   javascript:

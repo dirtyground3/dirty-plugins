@@ -4,6 +4,8 @@ DirtyTasks combines file organization, encoding and optional scene tag updates.
 It depends on DirtyPlugins, Python 3.9+, and (for encoding) FFmpeg/FFprobe.
 Open **Dirty Plugins → DirtyTasks**.
 
+![DirtyTasks file organization, tag update and encoding rule triggers](../../docs/images/dirty-tasks-settings.png)
+
 ## Action triggers
 
 Move into folders, Rename files, Update scene tags, and each encoding rule have

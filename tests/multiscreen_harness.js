@@ -186,7 +186,7 @@ function createMultiscreenHarness(options = {}) {
       querySelectorAll: () => [...media.values()].map(pair => pair.video).filter(video => video.isConnected),
       contains: video => [...media.values()].some(pair => pair.video === video && video.isConnected),
     });
-  const window = {
+  const window = events({
     DirtyPlugins: hub,
     location: {
       get pathname() {
@@ -238,7 +238,7 @@ function createMultiscreenHarness(options = {}) {
         },
       },
     },
-  };
+  });
   installRegistration(window, { error: (...args) => errors.push(args) });
   class Observer {
     constructor(callback) {

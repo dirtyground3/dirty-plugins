@@ -1,4 +1,4 @@
-import { ContextualMultiscreenNavLink } from "./components/Navigation";
+import { MultiscreenNavLink } from "./components/Navigation";
 import { MultiscreenRoute } from "./components/Route";
 import { contexts, DirtyPlugins, PLUGIN_ID, PluginApi, React } from "./runtime";
 
@@ -30,7 +30,7 @@ DirtyPlugins?.registerPlugin(PLUGIN_ID, () => {
       children: (
         <React.Fragment>
           {props.children}
-          <ContextualMultiscreenNavLink />
+          <MultiscreenNavLink />
         </React.Fragment>
       ),
     },

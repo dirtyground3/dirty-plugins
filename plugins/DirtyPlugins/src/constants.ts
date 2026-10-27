@@ -2,6 +2,7 @@ import * as captions from "@generated/dirtyCaptions.settings";
 import * as hubSettings from "@generated/dirtyPlugins.settings";
 import * as extractor from "@generated/extractScenes.settings";
 import * as multiscreen from "@generated/multiscreen.settings";
+import { defaults, integers, limits, options, order } from "@generated/dirtyStats.settings";
 export const ROUTE_PATH = "/plugins/dirty-plugins";
 export const CONFIGURATION_CHANGED_EVENT = "dirty-plugins:configuration-changed";
 export const FIELD_ACTIONS_CHANGED_EVENT = "dirty-plugins:field-actions-changed";
@@ -27,6 +28,8 @@ const STANDARD_SETTINGS: Record<string, StandardSettings> = {
   dirtyCaptions: captions,
   extractScenes: extractor,
   multiscreen,
+  // Only the tables: Stats display constants stay out of the hub bundle.
+  dirtyStats: { order, defaults, options, limits, integers },
 };
 function standardTable<T>(pick: (settings: StandardSettings) => T): Record<string, T> {
   return Object.fromEntries(Object.entries(STANDARD_SETTINGS).map(([id, settings]) => [id, pick(settings)]));

@@ -15,13 +15,13 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.9 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.10 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.7 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.15 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.16 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.4 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.8 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.9 |
 
 ## Shared look and settings
 
@@ -81,6 +81,12 @@ Scene cards below the chart are replaced by a placeholder in capture mode.
 The cast constellation links performers who share scenes; node size follows
 scene count and colour follows gender.
 
+#### DirtyStats settings
+
+![DirtyStats settings tab with the Stash header button toggle](docs/images/dirty-stats-settings.png)
+
+The only setting hides or restores the bubble chart button in the Stash header.
+
 ### DirtyRank
 
 - **Gender boxes**: each box selects a group of genders and has its own
@@ -123,8 +129,9 @@ each category's rank and rating.
 ![DirtyRank gender boxes, presentation, confidence goal and scoring settings](docs/images/dirty-rank-settings.png)
 
 Configure gender boxes, navigation buttons, leaderboard and battle
-presentation, the confidence goal, overall scoring, categories, and advanced
-Glicko-2 parameters. Every change saves automatically.
+presentation, the confidence goal, and overall scoring. Categories, their
+weights, and advanced Glicko-2 parameters follow further down the same tab.
+Every change saves automatically.
 
 ### DirtyMultiscreen
 
@@ -149,7 +156,8 @@ the public repository.
 ![DirtyMultiscreen playback and grid settings](docs/images/dirty-multiscreen-settings.png)
 
 Set the screen count and geometry, then choose how scenes are distributed,
-started, looped, muted, and paused.
+started, looped, muted, and paused. The last setting hides or restores the grid
+button in the Stash header.
 
 ### DirtyFileExtractor
 
@@ -189,9 +197,13 @@ capture.
 
 [DirtyTasks documentation and upgrade instructions](plugins/DirtyTasks/).
 
-![Organization strategy, now in DirtyTasks](docs/images/dirty-tidy-settings.png)
+#### DirtyTasks settings
 
-![Encoding rule editor, now in DirtyTasks](docs/images/dirty-compactor-settings.png)
+![DirtyTasks file organization, tag update and encoding rule triggers](docs/images/dirty-tasks-settings.png)
+
+One tab holds the organization strategy with its preview, the tag update, and
+the ordered encoding rules. Each row has its own trigger; rule summaries show
+the matching scenes and the estimated output size.
 
 ### DirtyCaptions
 
@@ -216,6 +228,13 @@ or turn captions off. Existing external captions remain available. Settings
 live in **Dirty Plugins settings → DirtyCaptions**. See the
 [DirtyCaptions guide](plugins/DirtyCaptions/README.md) for
 setup, supported formats, and troubleshooting.
+
+#### DirtyCaptions settings
+
+![DirtyCaptions playback and caption index settings](docs/images/dirty-captions-settings.png)
+
+Playback options, automatic index maintenance, and the caption index status
+with **Refresh caption index** and **Reprobe all files**.
 
 ## Installation from Stash
 
@@ -245,12 +264,14 @@ link to the shared Dirty Plugins settings page. Each installed plugin has its
 own tab there.
 
 - **General:** choose the suite theme and create database backups.
-- **DirtyStats:** no settings are needed. Open the bubble chart icon in the
-  utility navigation and choose **Edit dashboard** to arrange your widgets.
+- **DirtyStats:** open the bubble chart icon in the utility navigation and
+  choose **Edit dashboard** to arrange your widgets. Its tab can hide the icon;
+  Stats pages stay reachable by URL.
 - **DirtyRank:** set up gender boxes, their categories and weights, and the
   desired confidence goal. The crossed-swords and trophy buttons open Battles
   and Leaderboards.
 - **DirtyMultiscreen:** choose the desired pane count and playback defaults.
+  Its tab can also hide the grid button from the Stash header.
 - **DirtyFileExtractor:** choose an absolute destination directory on the
   machine or container running Stash.
 - **DirtyTasks organization:** configure the folder and filename rows, select **Preview**,
@@ -530,6 +551,12 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyStats 1.0.10, DirtyMultiscreen 1.0.16 and DirtyPlugins 1.0.9:** the
+  DirtyStats and DirtyMultiscreen tabs of the Dirty Plugins settings can hide
+  their buttons from the Stash header. A button disappears or returns as soon
+  as the setting changes, and its pages stay reachable by URL. A hidden
+  DirtyMultiscreen button no longer counts scenes in the background.
 
 - **DirtyStats 1.0.9:** ECharts and the world map moved into a separate file
   that loads the first time a Stats page opens. The Stats script that every

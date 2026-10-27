@@ -25,7 +25,8 @@
       "dirtyPlugins",
       "dirtyCaptions",
       "extractScenes",
-      "multiscreen"
+      "multiscreen",
+      "dirtyStats"
     ],
     "generatedFiles": [
       "dirty_plugins_metadata.py"
