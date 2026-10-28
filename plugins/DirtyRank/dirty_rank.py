@@ -218,7 +218,7 @@ def normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
     if confidence_goal not in {"all", "ranking", "top"}:
         confidence_goal = DEFAULTS["confidenceGoal"]
     overall_strategy = source.get("overallScoreStrategy")
-    if overall_strategy not in ("weighted", "power"):
+    if overall_strategy not in ("weighted", "power", "rating", "proven"):
         overall_strategy = DEFAULTS["overallScoreStrategy"]
     initial_deviation = _bounded(source, "initialDeviation")
     # Floor and provisional threshold are bounded by the other deviations, not only their static limits.

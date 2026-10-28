@@ -60,7 +60,7 @@
     "overallScoreStrategy": {
       "type": "STRING",
       "displayName": "Overall scoring strategy",
-      "description": "Choose Simple weighted (default) or Power mean. Applies to existing overall scores without changing category ratings or battle history.",
+      "description": "Choose Simple weighted (default), Power mean, Rating strength or Proven rating strength. Applies to existing overall scores without changing category ratings or battle history.",
       "default": "weighted"
     },
     "overallPower": {
@@ -193,8 +193,8 @@
     "provisionalDeviation": {
       "type": "NUMBER",
       "displayName": "Provisional threshold",
-      "description": "Ratings at or below this deviation are Refined; Excellent uses 60% of this threshold or the deviation floor, whichever is higher. Defaults to 100.",
-      "default": 100,
+      "description": "Ratings at or below this deviation are Refined; Excellent uses 60% of this threshold or the deviation floor, whichever is higher. Defaults to 85.",
+      "default": 85,
       "min": 1,
       "max": 1000,
       "step": 1
@@ -221,13 +221,13 @@
       {
         "id": "default",
         "name": "Default",
-        "description": "Original DirtyRank values. 2× evidence, 12 recent pairs avoided, 10% calibration, tau 0.5.",
+        "description": "Standard DirtyRank values. 2× evidence, 12 recent pairs avoided, 10% calibration, tau 0.5.",
         "settings": {
           "initialRating": 1000,
           "initialDeviation": 350,
           "initialVolatility": 0.06,
           "deviationFloor": 30,
-          "provisionalDeviation": 100,
+          "provisionalDeviation": 85,
           "evidenceWeight": 2,
           "avoidRepeatWindow": 12,
           "calibrationPercent": 10,
@@ -259,7 +259,7 @@
           "initialDeviation": 350,
           "initialVolatility": 0.06,
           "deviationFloor": 30,
-          "provisionalDeviation": 100,
+          "provisionalDeviation": 85,
           "evidenceWeight": 2,
           "avoidRepeatWindow": 24,
           "calibrationPercent": 5,
@@ -275,7 +275,7 @@
           "initialDeviation": 350,
           "initialVolatility": 0.06,
           "deviationFloor": 30,
-          "provisionalDeviation": 100,
+          "provisionalDeviation": 85,
           "evidenceWeight": 3,
           "avoidRepeatWindow": 48,
           "calibrationPercent": 0,

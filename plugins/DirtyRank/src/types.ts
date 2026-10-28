@@ -62,6 +62,7 @@ export interface RankSettingsSectionProps {
   removeCategory?: (index: number) => void;
   addCategory?: () => void;
   resetCategoryPool?: (cohort: string, category: RankCategory) => void;
+  showCategories?: () => void;
   toggleCohort?: (cohort: string, enabled: boolean) => void;
   updateBox?: (id: string, update: Partial<RankGenderBox>) => void;
   addBox?: () => void;

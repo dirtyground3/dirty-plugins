@@ -1801,11 +1801,21 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.dirty-rank-settings-tabs {
+  margin-bottom: 0;
+}
+
+.dirty-rank-settings-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.dirty-rank-settings-panel[hidden] {
+  display: none;
+}
+
 .dirty-rank-preset-current {
-  --dirty-ui-accent: var(--dirty-ui-success);
-  --dirty-ui-accent-strong: #a0ebbc;
-  --dirty-ui-on-accent: #133421;
-  --dirty-ui-focus: var(--dirty-ui-success);
+  margin-left: 0.5rem;
 }
 
 .dirty-rank-preset-row {
@@ -1841,65 +1851,104 @@
   padding: 0.9rem;
 }
 
-.dirty-rank-category-basics {
-  align-items: start;
-  display: grid;
-  gap: 0.8rem;
-  grid-template-columns: minmax(0, 1fr) minmax(7rem, 0.3fr);
-}
-
-.dirty-rank-category-toolbar,
 .dirty-rank-settings-actions,
 .dirty-rank-data-tools {
   gap: 0.5rem;
 }
 
-.dirty-rank-category-sex {
+.dirty-rank-category-rows {
+  gap: 0.5rem;
+}
+
+.dirty-rank-category-row {
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--dirty-ui-border-soft);
+  border-radius: var(--dirty-ui-radius);
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.dirty-rank-category-main {
+  align-items: start;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 2rem minmax(0, 1fr) 7rem 3.5rem 4rem;
+}
+
+.dirty-rank-category-main > .dirty-rank-category-enabled,
+.dirty-rank-category-share,
+.dirty-rank-category-main > .dirty-rank-data-tools {
+  align-items: center;
+  display: flex;
+  min-height: calc(1.5em + 0.75rem + 2px);
+}
+
+.dirty-rank-category-heading {
   color: var(--dirty-ui-muted);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.04em;
+  /* Matches the rows' border and padding so the headings sit over their inputs. */
+  border: 1px solid transparent;
+  padding: 0 0.75rem;
   text-transform: uppercase;
 }
 
-.dirty-rank-advanced {
-  background: rgba(0, 0, 0, 0.12);
-  border: 1px solid var(--dirty-ui-border-soft);
-  border-radius: var(--dirty-ui-radius);
-  overflow: hidden;
+.dirty-rank-category-heading > :nth-child(4),
+.dirty-rank-category-share {
+  justify-content: flex-end;
+  text-align: right;
 }
 
-.dirty-rank-advanced-summary {
-  align-items: center;
-  cursor: pointer;
-  display: flex;
+.dirty-rank-category-share {
+  color: var(--dirty-ui-muted);
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
+}
+
+.dirty-rank-category-off .dirty-rank-category-main > :not(.dirty-rank-category-enabled) {
+  opacity: 0.55;
+}
+
+.dirty-rank-compact-field > label,
+.dirty-rank-visually-hidden {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.dirty-rank-category-more {
+  padding-left: 2.75rem;
+}
+
+.dirty-rank-category-more > summary {
+  color: var(--dirty-ui-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dirty-rank-category-more > summary:hover {
+  color: var(--dirty-ui-text);
+}
+
+.dirty-rank-category-more-body {
+  display: grid;
   gap: 0.75rem;
-  justify-content: space-between;
-  list-style-position: inside;
-  padding: 1rem;
+  padding-top: 0.6rem;
 }
 
-.dirty-rank-advanced-summary:hover {
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.dirty-rank-advanced-hint,
 .dirty-rank-advanced-copy {
   color: var(--dirty-ui-muted);
   font-size: 0.8rem;
-  font-weight: 400;
-}
-
-.dirty-rank-advanced-body {
-  border-top: 1px solid var(--dirty-ui-border-soft);
-  display: grid;
-  gap: 1rem;
-  padding: 1rem;
-}
-
-.dirty-rank-advanced-copy {
-  margin: 0;
+  margin: 0.75rem 0 0;
 }
 
 .dirty-rank-settings-actions {
@@ -2095,13 +2144,26 @@
     grid-template-columns: 1fr;
   }
 
-  .dirty-rank-category-basics {
-    grid-template-columns: 1fr;
+  .dirty-rank-category-heading {
+    display: none;
   }
 
-  .dirty-rank-advanced-summary {
-    align-items: flex-start;
-    flex-direction: column;
+  .dirty-rank-category-main {
+    grid-template-columns: 2rem minmax(0, 1fr) 5rem;
+  }
+
+  .dirty-rank-category-main > .dirty-rank-data-tools {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .dirty-rank-category-share {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  .dirty-rank-category-more {
+    padding-left: 0;
   }
 
   .dirty-rank-actions .btn {

@@ -178,7 +178,7 @@
         "evidenceWeight": 2.0,
         "tau": 0.5,
         "deviationFloor": 30.0,
-        "provisionalDeviation": 100.0
+        "provisionalDeviation": 85.0
       }
     },
     {
@@ -367,7 +367,7 @@
         "evidenceWeight": 2.0,
         "tau": 0.5,
         "deviationFloor": 30.0,
-        "provisionalDeviation": 100.0
+        "provisionalDeviation": 85.0
       }
     },
     {
@@ -736,7 +736,7 @@
         "evidenceWeight": 2.0,
         "tau": 0.5,
         "deviationFloor": 30.0,
-        "provisionalDeviation": 100.0
+        "provisionalDeviation": 85.0
       }
     }
   ],

@@ -85,7 +85,7 @@ const ratingStates = {};
     initialDeviation: 350,
     initialVolatility: 0.06,
     deviationFloor: 30,
-    provisionalDeviation: 100,
+    provisionalDeviation: 85,
     evidenceWeight: 2,
     avoidRepeatWindow: 12,
     calibrationPercent: 10,
@@ -886,7 +886,7 @@ function performer(id, rating, deviation, matches) {
   assert.strictEqual(singleRemaining.refined, 299);
   const targetBattles = algorithms.estimatedMatchesToConfidence(
     pool(1000, 250, 1),
-    100,
+    maleSettings.provisionalDeviation,
     pool(1000, 75, 1),
     maleSettings,
   );
@@ -1122,6 +1122,84 @@ function performer(id, rating, deviation, matches) {
     50,
     "empty category sets remain neutral",
   );
+}
+
+{
+  const near = (actual, expected, message) => assert(Math.abs(actual - expected) < 1e-9, message);
+  const settingsFor = strategy =>
+    algorithms.settingsFromConfiguration({
+      categories: { FEMALE: [{ name: "Appearance" }, { name: "Performance" }] },
+      overallScoreStrategy: strategy,
+    });
+  const people = ["star", "allround", "a", "b", "c", "d", "unrated"].map(id => ({
+    id: "strength-" + id,
+    name: id,
+    gender: "FEMALE",
+    image_path: "/portrait.svg",
+  }));
+  const [star, allround, unrated] = [people[0], people[1], people[6]];
+  // The star leads one category by far with few battles; the all-rounder is second and first.
+  const appearance = [4000, 1700, 700, 1000, 1300, 1600];
+  const performance = [1050, 1700, 700, 1000, 1300, 1600];
+  const deviations = [340, 50, 50, 50, 50, 50];
+  const performanceDeviations = [300, 50, 50, 50, 50, 50];
+  const states = {};
+  for (let i = 0; i < 6; i += 1) {
+    states[people[i].id] = {
+      pools: {
+        "appearance|FEMALE": pool(appearance[i], deviations[i], 10),
+        "performance|FEMALE": pool(performance[i], performanceDeviations[i], 10),
+      },
+    };
+  }
+  algorithms.setOverallReferencePerformers(people);
+  algorithms.applyRatingIndex({ revision: 3000, states });
+  const overall = (person, settings) => algorithms.leaderboardPoolFor(person, "__overall__", "FEMALE", settings).rating;
+  const strength = (values, value) => {
+    const mean = values.reduce((sum, item) => sum + item, 0) / values.length;
+    const spread = Math.sqrt(values.reduce((sum, item) => sum + (item - mean) ** 2, 0) / values.length);
+    return (value - mean) / spread;
+  };
+  const rating = settingsFor("rating");
+  const proven = settingsFor("proven");
+  near(
+    overall(star, rating),
+    (strength(appearance, 4000) + strength(performance, 1050)) / 2,
+    "rating strength averages standard deviations above each category mean",
+  );
+  near(
+    overall(star, proven),
+    (strength(appearance, 4000 - 340) + strength(performance, 1050 - 300)) / 2,
+    "proven strength subtracts each category RD before comparing",
+  );
+  const leader = settings => algorithms.leaderboardData(people, "__overall__", "FEMALE", settings).ranked[0].id;
+  assert.strictEqual(leader(settingsFor("weighted")), allround.id, "percentiles favor the all-rounder");
+  assert.strictEqual(leader(rating), star.id, "rating strength keeps the star's large rating gap");
+  assert.strictEqual(leader(proven), allround.id, "proven strength discounts the star's uncertain ratings");
+  assert(overall(unrated, proven) < overall(unrated, rating), "unrated categories carry the initial RD penalty");
+  for (const settings of [rating, proven]) {
+    assert.deepStrictEqual(
+      algorithms.sortPerformersByOverall(people, "DESC", settings).map(person => person.id),
+      algorithms
+        .leaderboardData(people, "__overall__", "FEMALE", settings)
+        .ranked.map(person => person.id)
+        .concat(unrated.id),
+      "native sorting and the overall leaderboard use the same strategy",
+    );
+    assert.strictEqual(
+      algorithms.leaderboardPoolFor(star, "appearance", "FEMALE", settings).rating,
+      4000,
+      "strategies never change category Glicko ratings",
+    );
+    assert.strictEqual(
+      algorithms.settingsFromConfiguration(algorithms.serializedSettings(settings)).overallScoreStrategy,
+      settings.overallScoreStrategy,
+      "rating strategies survive settings serialization",
+    );
+  }
+  const display = { overallScore: true, rating: -0.4567, deviation: 50, matches: 20, precision: { id: "refined" } };
+  assert.strictEqual(algorithms.leaderboardRatingText(display, rating), "-0.46", "rating strengths show two decimals");
+  assert.strictEqual(algorithms.leaderboardRatingText(display, settingsFor("weighted")), "-0.5");
 }
 
 {

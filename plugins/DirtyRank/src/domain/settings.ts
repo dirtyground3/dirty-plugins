@@ -29,20 +29,40 @@ function defaultCategoriesByCohort() {
   });
   return result;
 }
+// Rating strategies subtract `uncertainty` category RDs before comparing with the category average.
 export const OVERALL_SCORE_STRATEGIES = [
   {
     id: "weighted",
     name: "Simple weighted",
+    uncertainty: null,
     description:
       "80% category position + 20% matchup strength, averaged using category weights. Scores stay between 0 and 100.",
   },
   {
     id: "power",
     name: "Power mean",
+    uncertainty: null,
     description:
       "Combine the current category scores with a weighted power mean. Strong categories compensate more for weaker ones, while every category still contributes. Scores stay between 0 and 100.",
   },
+  {
+    id: "rating",
+    name: "Rating strength",
+    uncertainty: 0,
+    description:
+      "How far each category rating is above that category's average, in standard deviations, averaged using category weights. Large rating gaps at the top count fully. 0 is average; most scores fall between -2 and 3.",
+  },
+  {
+    id: "proven",
+    name: "Proven rating strength",
+    uncertainty: 1,
+    description:
+      "Rating strength after subtracting each category's rating deviation (RD), so performers with few battles must earn their place. Unrated categories count as a new rating. 0 is average.",
+  },
 ];
+export function ratingStrengthStrategy(value: unknown) {
+  return overallScoreStrategy(value).uncertainty !== null;
+}
 export const OVERALL_SCORE_PARAMETERS = [
   {
     key: "overallPower" as const,

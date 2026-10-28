@@ -17,7 +17,11 @@ import type * as R from "react";
 import type { PanelProps } from "../../DirtyPlugins/src/types";
 import { CategoryEditor } from "./components/settings/CategoryEditor";
 import { GenderBoxEditor } from "./components/settings/GenderBoxEditor";
-import { PresentationSettings } from "./components/settings/PresentationSettings";
+import {
+  BattleSettings,
+  LeaderboardSettings,
+  OverallScoringSettings,
+} from "./components/settings/PresentationSettings";
 import { RatingSettings } from "./components/settings/RatingSettings";
 import type { RankCategory, RankGenderBox, RankOperationResult, RankPerformer, RankSettingsDraft } from "./types";
 
@@ -31,6 +35,15 @@ export function DirtyRankSettings(props: PanelProps) {
   const [editingCohort, setEditingCohort] = React.useState(
     () => settingsFromConfiguration(props.configuration).defaultCohort,
   );
+  const [tab, setTab] = React.useState(storedSettingsTab);
+  const selectTab = (next: SettingsTab) => {
+    setTab(next);
+    try {
+      window.localStorage?.setItem(SETTINGS_TAB_STORAGE_KEY, next);
+    } catch {
+      // The remembered tab is only a convenience.
+    }
+  };
   const [busy, setBusy] = React.useState(false);
   const [localStatus, setStatus] = React.useState("");
   const [localError, setError] = React.useState("");
@@ -300,6 +313,19 @@ export function DirtyRankSettings(props: PanelProps) {
         : status
     : error || status;
 
+  // Inactive tabs stay mounted but hidden, so unsaved input and validation survive switching.
+  const panel = (id: SettingsTab, children: R.ReactNode) => (
+    <div
+      aria-labelledby={"dirty-rank-settings-tab-" + id}
+      className="dirty-rank-settings-panel"
+      hidden={tab !== id}
+      id={"dirty-rank-settings-panel-" + id}
+      role="tabpanel"
+    >
+      {children}
+    </div>
+  );
+
   return (
     <ui.SettingsCard
       className="dirty-rank-settings-card dirty-ui-pilot"
@@ -315,39 +341,111 @@ export function DirtyRankSettings(props: PanelProps) {
         </div>
       }
     >
-      <GenderBoxEditor
-        draft={draft}
-        changed={changed}
-        setEditingCohort={setEditingCohort}
-        toggleCohort={toggleCohort}
-        updateBox={updateBox}
-        addBox={addBox}
-        removeBox={removeBox}
-      />
-      <PresentationSettings draft={draft} changed={changed} />
-      <CategoryEditor
-        draft={draft}
-        busy={busy}
-        saving={saving}
-        dirty={dirty}
-        editingCohort={editingCohort}
-        editingCategories={editingCategories}
-        setEditingCohort={setEditingCohort}
-        categoryNameError={categoryNameError}
-        updateCategory={updateCategory}
-        moveCategory={moveCategory}
-        removeCategory={removeCategory}
-        addCategory={addCategory}
-        resetCategoryPool={resetCategoryPool}
-      />
-      <RatingSettings
-        draft={draft}
-        changed={changed}
-        busy={busy}
-        currentParameters={currentParameters}
-        presetEstimate={presetEstimate}
-        estimateError={estimateError}
-      />
+      <SettingsTabs active={tab} onSelect={selectTab} />
+      {panel(
+        "categories",
+        <React.Fragment>
+          <CategoryEditor
+            draft={draft}
+            busy={busy}
+            saving={saving}
+            dirty={dirty}
+            editingCohort={editingCohort}
+            editingCategories={editingCategories}
+            setEditingCohort={setEditingCohort}
+            categoryNameError={categoryNameError}
+            updateCategory={updateCategory}
+            moveCategory={moveCategory}
+            removeCategory={removeCategory}
+            addCategory={addCategory}
+            resetCategoryPool={resetCategoryPool}
+          />
+          <OverallScoringSettings draft={draft} changed={changed} />
+        </React.Fragment>,
+      )}
+      {panel("battles", <BattleSettings draft={draft} changed={changed} />)}
+      {panel("leaderboards", <LeaderboardSettings draft={draft} changed={changed} />)}
+      {panel(
+        "boxes",
+        <GenderBoxEditor
+          draft={draft}
+          changed={changed}
+          setEditingCohort={setEditingCohort}
+          showCategories={() => selectTab("categories")}
+          toggleCohort={toggleCohort}
+          updateBox={updateBox}
+          addBox={addBox}
+          removeBox={removeBox}
+        />,
+      )}
+      {panel(
+        "advanced",
+        <RatingSettings
+          draft={draft}
+          changed={changed}
+          busy={busy}
+          currentParameters={currentParameters}
+          presetEstimate={presetEstimate}
+          estimateError={estimateError}
+        />,
+      )}
     </ui.SettingsCard>
+  );
+}
+
+const SETTINGS_TABS = [
+  ["categories", "Categories"],
+  ["battles", "Battles"],
+  ["leaderboards", "Leaderboards"],
+  ["boxes", "Gender boxes"],
+  ["advanced", "Advanced"],
+] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number][0];
+const SETTINGS_TAB_STORAGE_KEY = "dirtyRank:settingsTab";
+
+function storedSettingsTab(): SettingsTab {
+  try {
+    const stored = window.localStorage?.getItem(SETTINGS_TAB_STORAGE_KEY);
+    return SETTINGS_TABS.find(item => item[0] === stored)?.[0] || "categories";
+  } catch {
+    return "categories";
+  }
+}
+
+function SettingsTabs(props: { active: SettingsTab; onSelect: (tab: SettingsTab) => void }) {
+  function onKeyDown(event: R.KeyboardEvent<HTMLButtonElement>, index: number) {
+    const offset = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+    if (!offset) return;
+    event.preventDefault();
+    const next = SETTINGS_TABS[(index + offset + SETTINGS_TABS.length) % SETTINGS_TABS.length][0];
+    props.onSelect(next);
+    document.getElementById("dirty-rank-settings-tab-" + next)?.focus();
+  }
+  return (
+    <div
+      aria-label="DirtyRank settings"
+      className="nav nav-tabs dirty-plugins-tabs dirty-rank-settings-tabs"
+      role="tablist"
+    >
+      {SETTINGS_TABS.map(([id, label], index) => {
+        const selected = id === props.active;
+        return (
+          <button
+            aria-controls={"dirty-rank-settings-panel-" + id}
+            aria-selected={selected}
+            className={"nav-link dirty-plugins-tab" + (selected ? " active" : "")}
+            id={"dirty-rank-settings-tab-" + id}
+            key={id}
+            onClick={() => props.onSelect(id)}
+            onKeyDown={event => onKeyDown(event, index)}
+            role="tab"
+            tabIndex={selected ? 0 : -1}
+            type="button"
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

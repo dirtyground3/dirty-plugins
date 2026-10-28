@@ -15,7 +15,7 @@ export function GenderBoxEditor(props: RankSettingsSectionProps) {
     <React.Fragment>
       <ui.SettingsSection
         title="Gender boxes"
-        description="Name each box and choose the genders that battle and rank together. Each box has its own categories and ratings. Rename or expand an existing box to keep its ratings; new boxes start unrated."
+        description="Performers only battle and rank against others in the same box. Each box has its own categories and ratings. Renaming or adding genders keeps a box's ratings; new boxes start unrated."
       >
         <div className="dirty-rank-category-list">
           {draft.genderBoxes.map(box => {
@@ -82,9 +82,7 @@ export function GenderBoxEditor(props: RankSettingsSectionProps) {
                   <RankButton
                     onClick={() => {
                       setEditingCohort(box.id);
-                      const section = document.getElementById && document.getElementById("dirty-rank-category-cohort");
-                      if (section && section.scrollIntoView)
-                        section.scrollIntoView({ block: "center", behavior: "smooth" });
+                      props.showCategories?.();
                     }}
                   >
                     Edit categories

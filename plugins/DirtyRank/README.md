@@ -38,10 +38,10 @@ volatility instead of relying on a capped integer score.
   Category IDs and bookmarkable leaderboard URLs follow the category label;
   matching sanitized labels receive `-1`, `-2`, and so on. Renaming a category
   keeps its ratings and battle history.
-  Categories have a weight. Choose **Simple weighted** (the original calculation)
-  or **Power mean** in settings. Both score from 0 to 100 and use only enabled
-  categories that include the performer's gender. Category Glicko-2 ratings
-  and battle history stay unchanged.
+  Categories have a weight. Choose **Simple weighted** (the original calculation),
+  **Power mean**, **Rating strength** or **Proven rating strength** in settings.
+  Every strategy uses only enabled categories that include the performer's
+  gender. Category Glicko-2 ratings and battle history stay unchanged.
 - High-precision ratings with no normal upper ceiling; the default starting
   rating is 1000.
 - Configurable evidence per battle defaults to 2.0, reflecting that subjective
@@ -60,7 +60,7 @@ volatility instead of relying on a capped integer score.
 - Each battle card can load media on demand. It prefers a curated marker from
   the performer's highest-rated scene that has markers, then falls back to the
   performer's highest-rated full Stash scene.
-- Enable **Automatically play top scenes** under **Battle presentation** to
+- Enable **Automatically play top scenes** on the **Battles** settings tab to
   open each performer's highest-rated full scene when a battle starts, including
   Gauntlet battles. This setting is off by default; when off, media is requested
   only when the play button is used.
@@ -123,7 +123,7 @@ volatility instead of relying on a capped integer score.
 - Standard battle headers keep only the DirtyRank title and controls; Gauntlet
   retains its target confidence bar. Category confidence details remain
   available on the Leaderboards page.
-- **Hide standings during battles** in Battle presentation hides the right-hand
+- **Hide standings during battles** on the Battles settings tab hides the right-hand
   standings and widens standard and Gauntlet battles. King of the hill always
   hides standings, regardless of this setting. Changes save automatically.
 - Standard and hill battles show how many eligible performers in the selected
@@ -140,7 +140,7 @@ volatility instead of relying on a capped integer score.
   category, and the weighted overall score. Choose **Podium** (the default
   gold/silver/bronze steps), **Mount Rushmore**, or **Fingers** to feature your
   leading performers. Choose this and the Gallery or Table standings view once
-  in DirtyRank's Leaderboard presentation settings; both save automatically.
+  on DirtyRank's Leaderboards settings tab; both save automatically.
   **Performers per page** includes the featured top and the standings underneath,
   in either view. Use a multiple of 3 for Podium, 4 for Mount Rushmore, or 5 for
   Fingers, with a minimum of two rows. Changing the layout rounds the count up
@@ -181,14 +181,15 @@ volatility instead of relying on a capped integer score.
   each performer's weighted score from the default box when eligible, otherwise
   the first eligible enabled box, and
   keeps performers without a DirtyRank result at the end.
-- A **Reset ratings** button on each category in settings. Its confirmation names
+- A **Reset ratings** button on each category in settings, under the category's
+  **Description, reset and remove** details. Its confirmation names
   the gender box and category; resetting clears only that pool's ratings and
   battle history. Reset buttons wait for pending settings to finish saving.
   Full database backups are available in shared Dirty Plugins settings.
 
 ## Overall scoring
 
-Choose **Settings → DirtyRank → Overall scoring → Scoring strategy** to
+Choose **Settings → DirtyRank → Categories → Overall score → Scoring strategy** to
 experiment. Switching strategies or adjusting their parameters automatically
 recalculates the Overall leaderboard and Stash's Overall score performer sort.
 It does not change category ratings, battle history, or matchmaking.
@@ -197,8 +198,20 @@ It does not change category ratings, battle history, or matchmaking.
 | --- | --- | --- | --- |
 | Simple weighted | Weighted average of 0.8 × position + 0.2 × strength | Original behavior | 0–100 |
 | Power mean | (weighted average of category scores raised to p) raised to 1/p | Power 3; adjustable from 1 to 4 | 0–100 |
+| Rating strength | Weighted average of (rating − category mean) / category standard deviation | — | Unbounded; 0 is average |
+| Proven rating strength | Weighted average of (rating − RD − category mean) / category standard deviation | — | Unbounded; 0 is average |
 
 Hover an overall score to see the strategy, category ranks, and category scores.
+
+The percentile strategies (Simple weighted and Power mean) reward performers
+who are good in every category: a top-30 place costs only a few points against
+first place, while one weak category costs many. The rating strategies keep
+the real rating gaps instead, so a category where a performer is far ahead of
+everyone counts in full. Proven rating strength also subtracts each category's
+rating deviation, so a performer with few battles ranks lower until more votes
+confirm the rating. Unrated categories use the initial rating and RD, which is
+about average for Rating strength and below average for Proven rating strength.
+Rating strategies show scores with two decimals.
 
 Power mean changes only how the category scores are combined. Power 1
 matches Simple weighted exactly; power 2 mildly emphasizes strengths; power 3
@@ -206,7 +219,7 @@ is the suggested starting point; power 4 emphasizes them more. Decimal powers
 are supported. All enabled categories retain their weights, and missing
 categories contribute 50. A single category retains its original score.
 
-For both strategies, compare the performer with all other rated performers
+For both percentile strategies, compare the performer with all other rated performers
 in the same performer-sex cohort. Percentile position awards 100 to first place
 and 0 to last place, with ties sharing their average position. Matchup strength
 is the average rating-only expected score against those same performers:
@@ -262,9 +275,20 @@ Confidence stay in the toolbar; the gallery or table standings continue below.
 
 ![DirtyRank gender boxes, presentation, confidence goal and scoring settings](../../docs/images/dirty-rank-settings.png)
 
-Configure gender boxes, navigation buttons, leaderboard and battle
-presentation, the confidence goal, and overall scoring from the shared hub.
-Rating categories, resets, and advanced Glicko-2 parameters follow below.
+DirtyRank settings are split into tabs in the shared hub, and DirtyRank
+remembers the last one you opened:
+
+- **Categories:** each category on one row with an on/off switch, name,
+  weight and its share of the overall score. Description, **Reset ratings**
+  and **Remove category** sit under the row's details. **Overall score**
+  chooses the scoring strategy.
+- **Battles:** what battle cards reveal, the header button, and the
+  matchmaking goal.
+- **Leaderboards:** featured layout, page size, standings view and the header
+  button.
+- **Gender boxes:** box names, their genders and the default box.
+- **Advanced:** rating presets, matchmaking and Glicko-2 parameters, each with
+  a short explanation.
 
 ## Data and compatibility
 
@@ -294,17 +318,17 @@ on the battle page to inspect every category set.
 
 ## Rating presets
 
-Open **Advanced configuration** in DirtyRank settings for four presets. Selecting
+Open the **Advanced** tab in DirtyRank settings for four presets. Selecting
 one updates all its parameters in a single automatic save. Manual changes show
 **Custom configuration**; unrelated settings, gender boxes, ratings, and battle
 history are retained. Matching values highlight their preset; opening the page
 does not apply a preset or change existing values.
-The green **Current** button restores the advanced parameters loaded when this
+The **Undo changes** button restores the advanced parameters loaded when this
 settings page was opened, even after presets have saved. Other settings are kept.
 It stays available during automatic saves; an older save cannot overwrite the
 restored values.
 The estimate beside the presets updates immediately as you change parameters or
-the gender box selected under **Rating categories**. It projects a fresh category
+the gender box selected on the **Categories** tab. It projects a fresh category
 until every eligible performer reaches Refined, with each battle refining two
 performers. Existing category ratings are excluded. It assumes informative close
 matchups, so calibration, repeat avoidance, tau, and a common starting-rating
@@ -319,9 +343,10 @@ an unavailable estimate rather than a fabricated performer count.
 | Confident | 2× | 24 | 5% | 0.5 |
 | Extremely confident | 3× | 48 | 0% | 0.3 |
 
-**Default** restores the original DirtyRank parameters from before these presets
-were added: initial rating 1000, deviation 350, volatility 0.06, floor 30, and
-refinement threshold 100, along with the values in the table. Unlike **Current**,
+**Default** restores the standard DirtyRank parameters: initial rating 1000,
+deviation 350, volatility 0.06, floor 30, and refinement threshold 85, along
+with the values in the table. The threshold of 85 needs about 40% more battles
+than the original 100 before a rating counts as settled. Unlike **Undo changes**,
 it always restores this baseline rather than the page-opening snapshot.
 
 **Chess** uses Lichess's core values: initial rating 1500, initial deviation 500,
@@ -333,7 +358,7 @@ keeps one battle per rating period and no inactivity inflation or chess colour
 advantage. Repeat avoidance and calibration are DirtyRank matchmaking controls.
 
 **Confident** and **Extremely confident** retain DirtyRank's starting values
-(1000, deviation 350, volatility 0.06), floor 30, and refinement threshold 100.
+(1000, deviation 350, volatility 0.06), floor 30, and refinement threshold 85.
 Higher evidence weight reduces uncertainty faster while counting each vote as
 one battle. Lower calibration favours informative close comparisons; longer
 repeat windows discourage reusing pairs. Both remain soft preferences, so small

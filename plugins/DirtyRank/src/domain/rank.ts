@@ -29,6 +29,7 @@ import {
   categoryById,
   categoryIncludes,
   overallScoreStrategy,
+  ratingStrengthStrategy,
   settingsFromConfiguration,
   slug,
 } from "./settings";
@@ -395,12 +396,7 @@ export async function prepareOverallScores(settings: RankSettings, cohorts: stri
     if (overallScoresReady(settings, cohorts)) return;
   }
 }
-export function overallCategoryScoreFor(
-  performer: RankPerformer,
-  categoryId: string,
-  cohort: string,
-  settings: RankSettings,
-) {
+function categoryScoreIndexFor(categoryId: string, cohort: string, settings: RankSettings) {
   const cacheKey = categoryScoreKey(categoryId, cohort, settings);
   if (!overallCategoryScoreCache.has(cacheKey)) {
     const pending = scorePreparations.get(cacheKey);
@@ -412,21 +408,56 @@ export function overallCategoryScoreFor(
       index: buildCategoryScoreIndex(categoryScoreEntries(context)),
     });
   }
+  return overallCategoryScoreCache.get(cacheKey)!.index;
+}
+export function overallCategoryScoreFor(
+  performer: RankPerformer,
+  categoryId: string,
+  cohort: string,
+  settings: RankSettings,
+) {
   // Missing categories and pools with no comparison evidence stay neutral.
   return (
-    overallCategoryScoreCache.get(cacheKey)!.index.performers.get(String(performer.id))?.score || {
+    categoryScoreIndexFor(categoryId, cohort, settings).performers.get(String(performer.id))?.score || {
       rating: 50,
       position: 50,
       strength: 50,
     }
   );
 }
+/** Standard deviations above the category's average rating after subtracting `uncertainty` RDs. */
+export function overallCategoryStrengthFor(
+  performer: RankPerformer,
+  categoryId: string,
+  cohort: string,
+  settings: RankSettings,
+  uncertainty: number,
+) {
+  const index = categoryScoreIndexFor(categoryId, cohort, settings);
+  // Unrated pools keep the initial rating and RD, so they sit near average before the penalty.
+  const pool = poolFor(performer, categoryId, cohort, settings);
+  const mean = index.performers.size ? index.mean : settings.initialRating;
+  // A tied or empty population has no spread; the initial RD keeps scores on a comparable scale.
+  const spread = index.spread > 0 ? index.spread : settings.initialDeviation;
+  return (pool.rating - uncertainty * pool.deviation - mean) / spread;
+}
+/** The category value the selected overall strategy combines. */
+function overallCategoryValue(performer: RankPerformer, categoryId: string, cohort: string, settings: RankSettings) {
+  const uncertainty = overallScoreStrategy(settings.overallScoreStrategy).uncertainty;
+  return uncertainty === null
+    ? overallCategoryScoreFor(performer, categoryId, cohort, settings).rating
+    : overallCategoryStrengthFor(performer, categoryId, cohort, settings, uncertainty);
+}
+/** Percentile strategies score 0–100 with one decimal; rating strengths are small signed values. */
+export function overallScoreText(value: number, settings: RankSettings) {
+  return ratingStrengthStrategy(settings.overallScoreStrategy) ? value.toFixed(2) : value.toFixed(1);
+}
 export function overallPoolFor(performer: RankPerformer, cohort: string, settings: RankSettings) {
   const categories = scoredCategories(performer, cohort, settings);
   const totalWeight = categories.reduce((sum, category) => sum + Number(category.weight), 0);
   if (!totalWeight) {
     return {
-      rating: 50,
+      rating: ratingStrengthStrategy(settings.overallScoreStrategy) ? 0 : 50,
       deviation: settings.initialDeviation,
       matches: 0,
       overallScore: true,
@@ -440,7 +471,7 @@ export function overallPoolFor(performer: RankPerformer, cohort: string, setting
     (result, category) => {
       const pool = poolFor(performer, category.id, cohort, settings);
       const weight = Number(category.weight);
-      const score = overallCategoryScoreFor(performer, category.id, cohort, settings).rating;
+      const score = overallCategoryValue(performer, category.id, cohort, settings);
       result.rating += score * weight;
       // Power mean combines the same non-negative category scores as Simple weighted.
       // Scaling before exponentiation keeps intermediates in the 0–1 range.
@@ -590,7 +621,7 @@ export function overallCategoryScoresTitle(
   const overall = overallPoolFor(performer, cohort, settings);
   return (
     "Overall: " +
-    overall.rating.toFixed(1) +
+    overallScoreText(overall.rating, settings) +
     " · " +
     overallScoreStrategy(settings.overallScoreStrategy).name +
     " · " +
@@ -602,7 +633,7 @@ export function overallCategoryScoresTitle(
       .map(category => {
         const pool = poolFor(performer, category.id, cohort, settings);
         const rank = categoryLeaderboardRankFor(performer, category.id, cohort, settings);
-        const score = overallCategoryScoreFor(performer, category.id, cohort, settings);
+        const score = overallCategoryValue(performer, category.id, cohort, settings);
         return (
           category.name +
           ": " +
@@ -610,7 +641,7 @@ export function overallCategoryScoresTitle(
             ? (rank ? "#" + rank.toLocaleString() : "Unranked") + " (" + Math.round(pool.rating).toLocaleString() + ")"
             : "Unrated") +
           " · score " +
-          score.rating.toFixed(2)
+          score.toFixed(2)
         );
       })
       .join("\n")
@@ -654,7 +685,7 @@ function categoryLeaderboardRankFor(
 }
 export function leaderboardRatingText(pool: DisplayPool, settings: RankSettings) {
   const precision = pool.precision || precisionTier(pool, settings);
-  const text = pool.overallScore ? pool.rating.toFixed(1) : Math.round(pool.rating).toLocaleString();
+  const text = pool.overallScore ? overallScoreText(pool.rating, settings) : Math.round(pool.rating).toLocaleString();
   return text + (precision.id === "refined" || precision.id === "excellent" ? "" : "*");
 }
 export function leaderboardEntries(ranked: RankPerformer[]) {

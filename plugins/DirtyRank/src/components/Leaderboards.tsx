@@ -27,6 +27,7 @@ import {
   loadNativePerformerCard,
   loadRatingIndex,
   overallCategoryScoresTitle,
+  overallScoreText,
   paginatedLeaderboard,
   queryLeaderboardPerformerIds,
   queryPerformers,
@@ -600,7 +601,9 @@ export function DirtyRankLeaderboardsRoute(): R.JSX.Element | null {
                   detail="Highest to lowest rated"
                   label={selectedCategory ? "Rating spread" : "Score spread"}
                   value={
-                    selectedCategory ? Math.round(stats.ratingSpread).toLocaleString() : stats.ratingSpread.toFixed(1)
+                    selectedCategory
+                      ? Math.round(stats.ratingSpread).toLocaleString()
+                      : overallScoreText(stats.ratingSpread, settings)
                   }
                 />
               </section>

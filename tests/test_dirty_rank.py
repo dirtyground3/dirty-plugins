@@ -495,7 +495,7 @@ class DirtyRankOperationTests(unittest.TestCase):
 class SettingsTests(unittest.TestCase):
     def test_overall_scoring_strategies(self):
         self.assertEqual(dirty_rank.normalize_settings({})["overallScoreStrategy"], "weighted")
-        for strategy in ("weighted", "power"):
+        for strategy in ("weighted", "power", "rating", "proven"):
             self.assertEqual(dirty_rank.normalize_settings({"overallScoreStrategy": strategy})["overallScoreStrategy"], strategy)
         for invalid in ("unknown", "", None, [], {}):
             self.assertEqual(dirty_rank.normalize_settings({"overallScoreStrategy": invalid})["overallScoreStrategy"], "weighted")

@@ -1,8 +1,100 @@
 import { Field, RankButton } from "../Primitives";
 import { RATING_PRESETS, ratingPresetFor } from "../../domain/settings";
-import { React } from "../../runtime";
+import { React, ui } from "../../runtime";
 import { limits } from "@generated/dirtyRank.settings";
 import type { RankSettingsDraft, RankSettingsSectionProps } from "../../types";
+interface ParameterDefinition {
+  key: keyof RankSettingsDraft;
+  id?: string;
+  label: string;
+  help: string;
+  min: number;
+  max: number;
+  step?: number;
+}
+const MATCHMAKING_PARAMETERS: ParameterDefinition[] = [
+  {
+    key: "evidenceWeight",
+    id: "dirty-rank-evidence-weight",
+    label: "Evidence per battle",
+    ...limits.evidenceWeight,
+    help: "How much one vote reduces uncertainty. 1 is standard Glicko-2; 2 counts a consistent choice twice, so ratings settle in about half the battles.",
+  },
+  {
+    key: "avoidRepeatWindow",
+    id: "dirty-rank-repeat-window",
+    label: "Recent pairs to avoid",
+    ...limits.avoidRepeatWindow,
+    help: "Prefer different pairings within this many recent battles. A small pool may still repeat a pair.",
+  },
+  {
+    key: "calibrationPercent",
+    id: "dirty-rank-calibration",
+    label: "Calibration matches (%)",
+    ...limits.calibrationPercent,
+    help: "Chance of a matchup across a wider rating gap. Lower values focus on the most informative matchups.",
+  },
+];
+const RATING_PARAMETERS: ParameterDefinition[] = [
+  {
+    key: "provisionalDeviation",
+    label: "Provisional threshold (RD)",
+    ...limits.provisionalDeviation,
+    help: "A rating counts as settled (Refined) once its deviation is at or below this, and Excellent at 60% of it. Lower values need more battles: 70 needs about twice as many as 100.",
+  },
+  {
+    key: "initialRating",
+    label: "Initial rating",
+    ...limits.initialRating,
+    help: "Starting rating for unrated performers. It only shifts the scale.",
+  },
+  {
+    key: "initialDeviation",
+    label: "Initial deviation",
+    ...limits.initialDeviation,
+    help: "Starting uncertainty. Higher values let the first battles move a rating further.",
+  },
+  {
+    key: "deviationFloor",
+    label: "Deviation floor",
+    ...limits.deviationFloor,
+    help: "Uncertainty never drops below this, so settled ratings can still move.",
+  },
+  {
+    key: "initialVolatility",
+    label: "Initial volatility",
+    ...limits.initialVolatility,
+    help: "How much a performer's true rating is expected to drift between battles.",
+  },
+  { key: "tau", label: "Tau", ...limits.tau, help: "Limits how quickly volatility can change. Lower is steadier." },
+];
+function ParameterFields(props: { definitions: ParameterDefinition[] } & RankSettingsSectionProps) {
+  return (
+    <div className="dirty-rank-settings-grid">
+      {props.definitions.map(definition => {
+        const id = definition.id || "dirty-rank-" + definition.key;
+        return (
+          <Field id={id} key={definition.key} label={definition.label} help={definition.help}>
+            <input
+              className="form-control"
+              id={id}
+              min={definition.min}
+              max={definition.max}
+              step={definition.step}
+              onChange={event => {
+                const update: Partial<RankSettingsDraft> = {};
+                Object.assign(update, { [definition.key]: Number(event.target.value) });
+                props.changed!(update);
+              }}
+              type="number"
+              value={props.draft[definition.key] as number | string}
+            />
+          </Field>
+        );
+      })}
+    </div>
+  );
+}
 export function RatingSettings(props: RankSettingsSectionProps) {
   const draft = props.draft;
   const changed = props.changed!;
@@ -10,139 +102,76 @@ export function RatingSettings(props: RankSettingsSectionProps) {
   const currentParameters = props.currentParameters!;
   const presetEstimate = props.presetEstimate;
   const estimateError = props.estimateError;
+  const preset = ratingPresetFor(draft);
   return (
     <React.Fragment>
-      <details className="dirty-rank-advanced">
-        <summary className="dirty-rank-advanced-summary">
-          <span>Advanced configuration</span>
-          <span className="dirty-rank-advanced-hint">Matchmaking and Glicko-2 parameters</span>
-        </summary>
-        <div className="dirty-rank-advanced-body">
-          <div className="dirty-rank-preset-row">
-            <div
-              className="dirty-rank-data-tools d-flex flex-wrap align-items-center"
-              role="group"
-              aria-label="Rating presets"
+      <ui.SettingsSection
+        title="Presets"
+        description="Presets apply to future battles. Existing ratings and history are kept; starting values only affect unrated performers."
+      >
+        <div className="dirty-rank-preset-row">
+          <div
+            className="dirty-rank-data-tools d-flex flex-wrap align-items-center"
+            role="group"
+            aria-label="Rating presets"
+          >
+            {RATING_PRESETS.map(option => {
+              const selected = preset === option;
+              return (
+                <RankButton
+                  key={option.id}
+                  disabled={busy}
+                  pressed={selected}
+                  tone={selected ? "primary" : "secondary"}
+                  onClick={() => {
+                    changed(option.settings);
+                  }}
+                >
+                  {option.name}
+                </RankButton>
+              );
+            })}
+            <RankButton
+              className="dirty-rank-preset-current"
+              disabled={busy}
+              title="Restore the advanced values from when this settings page was opened"
+              onClick={() => {
+                changed(currentParameters);
+              }}
             >
-              <RankButton
-                className="dirty-rank-preset-current"
-                disabled={busy}
-                tone="primary"
-                title="Restore advanced values from when this settings page was opened"
-                onClick={() => {
-                  changed(currentParameters);
-                }}
-              >
-                Current
-              </RankButton>
-              {RATING_PRESETS.map(preset => {
-                const selected = ratingPresetFor(draft) === preset;
-                return (
-                  <RankButton
-                    key={preset.id}
-                    disabled={busy}
-                    pressed={selected}
-                    tone={selected ? "primary" : "secondary"}
-                    onClick={() => {
-                      changed(preset.settings);
-                    }}
-                  >
-                    {preset.name}
-                  </RankButton>
-                );
-              })}
-            </div>
-            <span
-              className="dirty-rank-preset-estimate"
-              role="status"
-              aria-live="polite"
-              title="Fresh category for the gender box selected under Rating categories. Assumes informative close matchups until every performer reaches Refined; each battle updates two performers. Actual totals depend on results and matchmaking. Parameters that do not change predicted uncertainty can leave the rounded total unchanged."
-            >
-              {presetEstimate
-                ? (presetEstimate.capped ? "≥" : "") +
-                  presetEstimate.battles.toLocaleString() +
-                  " battles expected to rank 1 category for " +
-                  presetEstimate.performers.toLocaleString() +
-                  " performers"
-                : estimateError
-                  ? "Battle estimate unavailable"
-                  : "Loading battle estimate…"}
-            </span>
+              Undo changes
+            </RankButton>
           </div>
-          <p className="dirty-rank-advanced-copy" aria-live="polite">
-            {ratingPresetFor(draft)
-              ? ratingPresetFor(draft)!.description
-              : "Custom configuration. Choose a preset or adjust the values below."}
-          </p>
-          <p className="dirty-rank-advanced-copy">
-            Presets save automatically and apply to future battles. Existing ratings and history are kept; starting
-            values apply to unrated performers. Battle weight drives faster refinement; lower tau limits volatility
-            changes. Recent-pair avoidance and calibration are soft matchmaking preferences. DirtyRank does not inflate
-            uncertainty during inactivity.
-          </p>
-          <div className="dirty-rank-settings-grid">
-            {[
-              {
-                key: "evidenceWeight",
-                id: "dirty-rank-evidence-weight",
-                label: "Evidence per battle",
-                ...limits.evidenceWeight,
-                help: "How strongly one comparison reduces uncertainty. 1.0 is standard Glicko-2; 2.0 treats a consistent subjective choice as twice the rating evidence while still recording one battle.",
-              },
-              {
-                key: "avoidRepeatWindow",
-                id: "dirty-rank-repeat-window",
-                label: "Recent pairs to avoid",
-                ...limits.avoidRepeatWindow,
-                help: "Prefer different pairings within this many recent battles. A small pool may still repeat a pair.",
-              },
-              {
-                key: "calibrationPercent",
-                id: "dirty-rank-calibration",
-                label: "Calibration matches (%)",
-                ...limits.calibrationPercent,
-                help: "Chance of favouring broader rating gaps. Lower values focus on the matchups expected to reduce uncertainty most.",
-              },
-              { key: "initialRating", label: "Initial rating", ...limits.initialRating },
-              { key: "initialDeviation", label: "Initial deviation", ...limits.initialDeviation },
-              { key: "initialVolatility", label: "Initial volatility", ...limits.initialVolatility },
-              { key: "tau", label: "Tau", ...limits.tau },
-              { key: "deviationFloor", label: "Deviation floor", ...limits.deviationFloor },
-              { key: "provisionalDeviation", label: "Provisional threshold", ...limits.provisionalDeviation },
-            ].map(
-              (definition: {
-                key: string;
-                id?: string;
-                label: string;
-                help?: string;
-                min: number;
-                max: number;
-                step?: number;
-              }) => {
-                const id = definition.id || "dirty-rank-" + definition.key;
-                return (
-                  <Field id={id} key={definition.key} label={definition.label} help={definition.help}>
-                    <input
-                      className="form-control"
-                      id={id}
-                      min={definition.min}
-                      max={definition.max}
-                      step={definition.step}
-                      onChange={event => {
-                        const update: Partial<RankSettingsDraft> = {};
-                        Object.assign(update, { [definition.key]: Number(event.target.value) });
-                        changed(update);
-                      }}
-                      type="number"
-                      value={draft[definition.key as keyof RankSettingsDraft] as number | string}
-                    />
-                  </Field>
-                );
-              },
-            )}
-          </div>
+          <span
+            className="dirty-rank-preset-estimate"
+            role="status"
+            aria-live="polite"
+            title="Fresh category for the gender box selected under Categories. Assumes informative close matchups until every performer reaches Refined; each battle updates two performers. Actual totals depend on results and matchmaking."
+          >
+            {presetEstimate
+              ? (presetEstimate.capped ? "≥" : "") +
+                presetEstimate.battles.toLocaleString() +
+                " battles expected to rank 1 category for " +
+                presetEstimate.performers.toLocaleString() +
+                " performers"
+              : estimateError
+                ? "Battle estimate unavailable"
+                : "Loading battle estimate…"}
+          </span>
         </div>
-      </details>
+        <p className="dirty-rank-advanced-copy" aria-live="polite">
+          {preset ? preset.description : "Custom configuration. Choose a preset or adjust the values below."}
+        </p>
+      </ui.SettingsSection>
+      <ui.SettingsSection title="Matchmaking" description="Soft preferences for choosing the next pair.">
+        <ParameterFields definitions={MATCHMAKING_PARAMETERS} {...props} />
+      </ui.SettingsSection>
+      <ui.SettingsSection
+        title="Rating model"
+        description="Glicko-2 parameters. DirtyRank does not increase uncertainty during inactivity."
+      >
+        <ParameterFields definitions={RATING_PARAMETERS} {...props} />
+      </ui.SettingsSection>
     </React.Fragment>
   );
 }

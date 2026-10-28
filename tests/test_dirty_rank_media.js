@@ -15,7 +15,15 @@ const React = {
     // Render the extracted, hook-free settings sections just as React would.
     if (
       typeof type === "function" &&
-      ["GenderBoxEditor", "PresentationSettings", "CategoryEditor", "RatingSettings"].includes(type.name)
+      [
+        "GenderBoxEditor",
+        "BattleSettings",
+        "LeaderboardSettings",
+        "OverallScoringSettings",
+        "CategoryEditor",
+        "RatingSettings",
+        "ParameterFields",
+      ].includes(type.name)
     )
       return type(props || {});
     return element(type, props, ...children.flat());
@@ -580,7 +588,69 @@ async function main() {
   await verifyCategoryResets();
   await verifyNavigationSettings();
   await verifyNamedGenderBoxes();
+  await verifySettingsTabs();
   console.log("DirtyRank media and leaderboard behavior tests passed");
+}
+
+async function verifySettingsTabs() {
+  const originalRunOperation = runtime.runPluginOperation;
+  const configuration = {
+    categories: {
+      FEMALE: [
+        { name: "Face", weight: 3 },
+        { name: "Body", weight: 1 },
+        { name: "Voice", weight: 5, enabled: false },
+      ],
+    },
+  };
+  runtime.runPluginOperation = (pluginId, args) =>
+    args.mode === "getSettings"
+      ? Promise.resolve({ revision: 0, settings: configuration })
+      : originalRunOperation(pluginId, args);
+  const state = { slots: [], effects: [], cursor: 0 };
+  function render() {
+    active = state;
+    state.cursor = 0;
+    const tree = plugin.testing.DirtyRankSettings({ configuration, plugin: {} });
+    state.effects.splice(0).forEach(effect => effect());
+    return tree;
+  }
+  try {
+    let tree = render();
+    await flush();
+    tree = render();
+    const tabs = ["categories", "battles", "leaderboards", "boxes", "advanced"];
+    const hidden = () =>
+      tabs.map(id => find(tree, node => node.props.id === "dirty-rank-settings-panel-" + id).props.hidden);
+    assert.deepStrictEqual(
+      hidden(),
+      [false, true, true, true, true],
+      "Categories opens first; other tabs stay mounted",
+    );
+    assert.deepStrictEqual(
+      findAll(tree, node => node.props.className === "dirty-rank-category-share").map(node => visibleText(node).trim()),
+      ["75%", "25%", "—"],
+      "each enabled category shows its share of the overall weight",
+    );
+    find(tree, node => typeof node.type === "function" && node.type.name === "SettingsTabs").props.onSelect("advanced");
+    tree = render();
+    assert.deepStrictEqual(hidden(), [true, true, true, true, false]);
+    find(
+      tree,
+      node =>
+        typeof node.type === "function" &&
+        node.type.name === "RankButton" &&
+        visibleText(node).trim() === "Edit categories",
+    ).props.onClick();
+    tree = render();
+    assert.deepStrictEqual(hidden(), [false, true, true, true, true], "Edit categories returns to the Categories tab");
+  } finally {
+    state.slots.forEach(slot => {
+      if (slot && slot.cleanup) slot.cleanup();
+    });
+    runtime.runPluginOperation = originalRunOperation;
+    timers.clear();
+  }
 }
 
 async function verifySettingsFieldValidation() {
@@ -702,9 +772,11 @@ async function verifyRatingPresets() {
       find(
         tree,
         node =>
-          typeof node.type === "function" && node.type.name === "RankButton" && visibleText(node).trim() === "Current",
+          typeof node.type === "function" &&
+          node.type.name === "RankButton" &&
+          visibleText(node).trim() === "Undo changes",
       );
-    assert(currentButton().props.className.includes("dirty-rank-preset-current"), "Current has its own green styling");
+    assert.notStrictEqual(currentButton().props.tone, "primary", "Undo changes never looks like a selected preset");
     assert.strictEqual(currentButton().props.disabled, false);
     assert.strictEqual(saved.length, 0, "opening advanced configuration does not choose a preset");
     assert(presetButtons().every(button => !button.props.pressed));
@@ -1063,11 +1135,11 @@ async function verifyLeaderboardPresentationSettings() {
     assert.strictEqual(scoringSelect().props.value, "weighted");
     assert.deepStrictEqual(
       scoringSelect().children.map(node => node.props.value),
-      ["weighted", "power"],
+      ["weighted", "power", "rating", "proven"],
     );
     assert.deepStrictEqual(
       scoringSelect().children.map(node => node.children.join("")),
-      ["Simple weighted", "Power mean"],
+      ["Simple weighted", "Power mean", "Rating strength", "Proven rating strength"],
     );
     assert(!scoringInput("overallPower"), "Simple weighted has no additional scoring control");
     scoringSelect().props.onChange({ target: { value: "power" } });

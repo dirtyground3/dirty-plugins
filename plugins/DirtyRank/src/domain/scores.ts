@@ -14,6 +14,9 @@ interface RatingGroup {
 export interface CategoryScoreIndex {
   performers: Map<string, RatingGroup>;
   groups: Map<number, RatingGroup>;
+  /** Population mean and standard deviation of the category's Glicko ratings. */
+  mean: number;
+  spread: number;
 }
 export interface CategoryScoreUpdate {
   id: string;
@@ -40,6 +43,12 @@ function comparisonWeights(groups: RatingGroup[]) {
 }
 function publishScores(index: CategoryScoreIndex, groups = orderedGroups(index)) {
   const count = index.performers.size;
+  let sum = 0,
+    squares = 0;
+  for (const group of groups) sum += group.rating * group.count;
+  index.mean = count ? sum / count : 0;
+  for (const group of groups) squares += group.count * (group.rating - index.mean) ** 2;
+  index.spread = count ? Math.sqrt(squares / count) : 0;
   let below = 0;
   for (const group of groups) {
     const position = count > 1 ? (100 * (below + (group.count - 1) / 2)) / (count - 1) : 50;
@@ -50,7 +59,7 @@ function publishScores(index: CategoryScoreIndex, groups = orderedGroups(index))
   }
 }
 function* categoryScoreWork(entries: Iterable<{ id: string; rating: number }>) {
-  const index: CategoryScoreIndex = { performers: new Map(), groups: new Map() };
+  const index: CategoryScoreIndex = { performers: new Map(), groups: new Map(), mean: 0, spread: 0 };
   for (const entry of entries) {
     let group = index.groups.get(entry.rating);
     if (!group) {

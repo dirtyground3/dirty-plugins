@@ -16,7 +16,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 | Plugin | What it does | Version |
 | --- | --- | ---: |
 | [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.10 |
-| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.7 |
+| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.8 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.16 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.4 |
@@ -102,9 +102,10 @@ The only setting hides or restores the bubble chart button in the Stash header.
   in which the winner climbs the standings against fresh challengers.
 - Optional scene playback below each card, preferring a curated marker and
   falling back to the performer's highest-rated scene.
-- Leaderboards per category plus a weighted **Overall** score (Simple weighted
-  or Power mean), featuring a **Podium**, **Mount Rushmore**, or **Fingers**
-  display above gallery or table standings. Native performer filters and search
+- Leaderboards per category plus a weighted **Overall** score (Simple weighted,
+  Power mean, Rating strength or Proven rating strength), featuring a
+  **Podium**, **Mount Rushmore**, or **Fingers** display above gallery or table
+  standings. Native performer filters and search
   narrow the results without changing global ranks.
 - Adds an **Overall score** option to Stash's performer sort.
 - Stores ratings and battle history outside Stash performer fields, avoiding
@@ -551,6 +552,21 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyRank 1.0.8:** two new overall scoring strategies under **Settings →
+  DirtyRank → Categories → Overall score**. **Rating strength** compares
+  category ratings with each category's average, so a large lead at the top
+  counts in full instead of a few percentile points. **Proven rating strength**
+  also subtracts each rating's deviation, so performers with few battles rank
+  lower until more votes confirm them. Simple weighted stays the default.
+  DirtyRank settings are now split into Categories, Battles, Leaderboards,
+  Gender boxes and Advanced tabs. Categories fit on one row each with their
+  share of the overall score, and Reset ratings moved into each category's
+  details. Advanced parameters have short explanations, and **Current** is now
+  **Undo changes**. The default provisional threshold is now 85 instead of 100,
+  also in the Default, Confident and Extremely confident presets, so a rating
+  needs more battles before it counts as settled. Saved settings keep their
+  value.
 
 - **DirtyStats 1.0.10, DirtyMultiscreen 1.0.16 and DirtyPlugins 1.0.9:** the
   DirtyStats and DirtyMultiscreen tabs of the Dirty Plugins settings can hide
