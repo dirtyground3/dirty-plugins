@@ -769,18 +769,26 @@ async function fixedSessionSearch() {
   assert.equal(players()[1].props.scene.id, "34");
   await h.unmount();
 
-  const fixed = await start({
+  const library = await start({
     scenes,
-    graphql: () => ({ findScenes: { count: scenes.length, scenes: scenes.slice(1, 3) } }),
+    graphql: (query, variables) =>
+      /MultiscreenSceneSearch/.test(query)
+        ? { findScenes: { count: 1, scenes: scenes.slice(45, 46) } }
+        : { findScenes: { count: scenes.length, scenes: scenes.slice(1, 3) } },
   });
-  fixed.button("Search scenes for screen 1").props.onClick();
-  await fixed.flush();
-  fixed.nodes(node => node.type === "input")[0].props.onChange({ target: { value: "Available 45" } });
-  await fixed.flush();
-  await fixed.tick(300);
-  assert.match(fixed.text(), /No scenes match/);
-  assert.equal(fixed.calls.length, 1, "an unscoped launch searches only its original sampled pool");
-  await fixed.unmount();
+  library.button("Search scenes for screen 1").props.onClick();
+  await library.flush();
+  library.nodes(node => node.type === "input")[0].props.onChange({ target: { value: "Available 45" } });
+  await library.flush();
+  await library.tick(300);
+  await library.flush();
+  assert.doesNotMatch(library.text(), /No scenes match/, "an unscoped launch searches the whole library");
+  const libraryQuery = library.calls.at(-1);
+  assert.match(libraryQuery.query, /MultiscreenSceneSearch/);
+  assert.deepEqual(JSON.parse(JSON.stringify(libraryQuery.variables.scene_filter)), {
+    title: { value: "(?i)Available 45", modifier: "MATCHES_REGEX" },
+  });
+  await library.unmount();
 }
 
 async function searchDuringMarkersAndPaging() {
@@ -962,6 +970,37 @@ async function searchedQueueNavigation() {
   await random.unmount();
 }
 
+async function unscopedLibraryPaging() {
+  const scenes = Array.from({ length: 30 }, (_, index) => ({
+    id: String(index),
+    title: "Scene " + index,
+    paths: { stream: "/" + index },
+  }));
+  const requests = [];
+  const h = await start({
+    scenes,
+    settings: { rows: 1, columns: 1, totalScreens: 1, sceneOrder: "newest" },
+    graphql: async (_query, variables) => {
+      requests.push(variables.filter);
+      const { page, per_page: size } = variables.filter;
+      return { findScenes: { count: scenes.length, scenes: scenes.slice((page - 1) * size, page * size) } };
+    },
+  });
+  const player = () => h.nodes(node => node.type === "native-player")[0];
+  const size = requests[0].per_page;
+  assert.equal(requests[0].sort, "created_at");
+  const seen = new Set([player().props.scene.id]);
+  for (let i = 1; i < scenes.length; i++) {
+    player().props.onNext();
+    await h.flush();
+    seen.add(player().props.scene.id);
+  }
+  assert(requests.length > 1 && requests.every(filter => filter.sort === "created_at"));
+  assert.equal(seen.size, scenes.length, "a launch without a list context continues through the whole library");
+  assert(size < scenes.length);
+  await h.unmount();
+}
+
 async function pagedPlayback() {
   const scenes = Array.from({ length: 1001 }, (_, index) => ({
     id: String(index),
@@ -1136,6 +1175,7 @@ async function navigationSetting() {
   await searchDuringMarkersAndPaging();
   await searchedQueueNavigation();
   await pagedPlayback();
+  await unscopedLibraryPaging();
   console.log("DirtyMultiscreen compiled registration, navigation, players, grid, counters and cleanup passed");
 })().catch(error => {
   console.error(error);

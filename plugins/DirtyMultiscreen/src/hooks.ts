@@ -89,7 +89,7 @@ function useItems<T>(settings: Settings, context: LaunchContext | null, enabled:
       let loadedPage = 1;
       let next = await loadPage(loadedPage);
       // Skip wholly unplayable pages while retaining only one bounded response.
-      while (current() && context && !variables.ids) {
+      while (current() && !variables.ids) {
         const value = next as { count: number; scenes?: Scene[]; scene_markers?: Marker[] };
         if (
           (value.scenes || value.scene_markers || []).length ||

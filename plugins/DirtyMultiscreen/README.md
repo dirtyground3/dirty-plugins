@@ -22,8 +22,9 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - The source/settings menu opens to the left of its button so it stays visible in right-hand panes, including with themes that override the native menu width.
 - With Refract, every pane uses the same native source menu and its own speed and projection controls. Refract's single-player replacement panel is hidden inside the grid; its ordinary player styling is preserved.
 - Search video titles available in the current session from each screen without
-  interrupting the others. Explicit selections and sampled queues stay fixed;
-  filtered sessions include later queue pages and preserve all launch filters.
+  interrupting the others. Explicit selections stay fixed; every other session,
+  including one opened without a list, searches its whole scope, continues
+  through later queue pages and preserves all launch filters.
   Choosing a result moves that screen to its position in the session queue, so
   Previous/Next follows from there, including across pages.
 - Scene titles and search buttons use translucent backgrounds over the video.
@@ -93,9 +94,9 @@ Each pane gets its own playback list. **Scene order** decides how it is built:
 | Mix favourites with unwatched scenes | Like a smart shuffle: two scenes from the favourites order, then one from the unwatched order, never repeating a scene. |
 | Keep the list order | The launching list's own sort, or title order when launched without a list. |
 
-Every order except Favour recently added scenes and Keep the list order
-samples a random page of the launching list, so the weighting works on a
-different selection each session. Weighted shuffles use the Efraimidis-Spirakis
+Every order except Favour recently added scenes and Keep the list order loads
+the launching list (or the whole library) in a random order, one page at a time,
+and weights each page as it arrives; playback continues through every page. Weighted shuffles use the Efraimidis-Spirakis
 method: a scene with weight w leads w times as often as a scene with weight 1.
 
 **Spread performers and studios** keeps scenes that share a performer or studio

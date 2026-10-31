@@ -72,9 +72,9 @@ export function MultiscreenRoute() {
   const explicitSelection = launchContext?.source === "selection" || launchContext?.source === "marker-selection";
   const searchSession = React.useCallback<SessionSearch>(
     async (text, page, signal) => {
-      // These sessions have a fixed, already loaded pool. Do not expand an
-      // unscoped random launch or an explicit selection into a library query.
-      if (!launchContext || explicitSelection) {
+      // An explicit selection is a fixed, already loaded pool; do not expand it
+      // into a library query. Every other launch searches its whole scope.
+      if (explicitSelection) {
         const term = text.trim().toLocaleLowerCase();
         const matches = items.filter(item => getSceneTitle(item.scene).toLocaleLowerCase().includes(term));
         return { count: matches.length, items: matches.slice((page - 1) * SEARCH_PAGE_SIZE, page * SEARCH_PAGE_SIZE) };
@@ -91,15 +91,7 @@ export function MultiscreenRoute() {
       const data = await scenesQuery.search(text, page, signal);
       return { count: data.count, items: data.scenes.map(getSceneItem).filter(item => item !== null) };
     },
-    [
-      launchContext,
-      explicitSelection,
-      items,
-      markerMode,
-      markersQuery.search,
-      scenesQuery.search,
-      settings.markerDuration,
-    ],
+    [explicitSelection, items, markerMode, markersQuery.search, scenesQuery.search, settings.markerDuration],
   );
   const pageSize = getSceneLimit(settings);
   const [seed, now] = React.useMemo(() => [Math.floor(Math.random() * 4294967296), Date.now()], [items]);
@@ -116,9 +108,8 @@ export function MultiscreenRoute() {
     () => pagePlaylists(initialItems, settings.totalScreens, ordering, settings.splitScenes, seed, initialPage),
     [initialItems, settings.totalScreens, ordering, settings.splitScenes, seed, initialPage],
   );
-  const pageCount = launchContext
-    ? Math.ceil((explicitSelection ? items.length : activeQuery.result.count) / pageSize)
-    : 1;
+  // Seeded sorts keep pages disjoint, so every launch continues through its whole scope.
+  const pageCount = Math.ceil((explicitSelection ? items.length : activeQuery.result.count) / pageSize);
   const continuation = React.useMemo(
     () =>
       pageCount > 0
@@ -143,7 +134,6 @@ export function MultiscreenRoute() {
           }
         : undefined,
     [
-      launchContext,
       pageCount,
       initialPage,
       explicitSelection,
