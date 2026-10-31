@@ -1,4 +1,5 @@
-import type { Item } from "../types";
+import type { Item, Scene } from "../types";
+import { orderMultiscreenItems, type Ordering } from "./order";
 
 /** Keep searched items from another split lane between this lane's neighbors. */
 export function locatePlaylistItem(playlists: Item[][], screen: number, selected: Item) {
@@ -12,17 +13,6 @@ export function locatePlaylistItem(playlists: Item[][], screen: number, selected
   return { items: [...own.slice(0, cursor), selected, ...own.slice(cursor)], cursor };
 }
 
-export function shuffleMultiscreenItems<T>(items: T[], random: () => number = Math.random): T[] {
-  const shuffledItems = items.slice();
-  for (let i = shuffledItems.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
-    const item = shuffledItems[i];
-    shuffledItems[i] = shuffledItems[j];
-    shuffledItems[j] = item;
-  }
-  return shuffledItems;
-}
-
 export function splitMultiscreenItemsByIndex<T>(items: T[], total: number): T[][] {
   const groups = Array.from({ length: Math.max(0, total) }, () => [] as T[]);
   items.forEach((item, index) => {
@@ -32,30 +22,27 @@ export function splitMultiscreenItemsByIndex<T>(items: T[], total: number): T[][
   return groups;
 }
 
-export function createMultiscreenPlaylists<T>(
+export function createMultiscreenPlaylists<T extends { scene?: Scene }>(
   items: T[],
   totalScreens: number,
-  randomize: boolean,
+  ordering: Ordering,
   splitItems: boolean,
   random: () => number = Math.random,
 ): T[][] {
   if (items.length === 0) {
     return Array.from({ length: Math.max(0, totalScreens) }, () => [] as T[]);
   }
-  if (splitItems) {
-    const sourceItems = randomize ? shuffleMultiscreenItems(items, random) : items;
-    return splitMultiscreenItemsByIndex(sourceItems, totalScreens);
-  }
-  return Array.from({ length: Math.max(0, totalScreens) }, () =>
-    randomize ? shuffleMultiscreenItems(items, random) : items,
-  );
+  // Split lanes play neighbouring items at the same time, so spreading spans one row of panes.
+  const ordered = () => orderMultiscreenItems(items, ordering, random, splitItems ? totalScreens : 1);
+  if (splitItems) return splitMultiscreenItemsByIndex(ordered(), totalScreens);
+  return Array.from({ length: Math.max(0, totalScreens) }, ordered);
 }
 
 /** Repeatable per-page permutations keep split assignments stable when panes advance independently. */
-export function pagePlaylists<T>(
+export function pagePlaylists<T extends { scene?: Scene }>(
   items: T[],
   totalScreens: number,
-  randomize: boolean,
+  ordering: Ordering,
   split: boolean,
   seed: number,
   page: number,
@@ -65,5 +52,5 @@ export function pagePlaylists<T>(
     value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
     return value / 4294967296;
   };
-  return createMultiscreenPlaylists(items, totalScreens, randomize, split, random);
+  return createMultiscreenPlaylists(items, totalScreens, ordering, split, random);
 }

@@ -6,6 +6,7 @@ const SOURCES = {
   contexts: "src/contexts.ts",
   counts: "src/counts.ts",
   items: "src/domain/items.ts",
+  order: "src/domain/order.ts",
   playlists: "src/domain/playlists.ts",
   queries: "src/queries.ts",
   settings: "src/domain/settings.ts",
@@ -18,7 +19,18 @@ const h = createMultiscreenHarness(),
 const storedValues = h.storage;
 global.window = h.window;
 const contexts = feature("contexts").createContexts();
-const a = { ...settings, ...queries, ...feature("playlists"), ...feature("context"), ...feature("items") };
+const a = {
+  ...settings,
+  ...queries,
+  ...feature("order"),
+  ...feature("playlists"),
+  ...feature("context"),
+  ...feature("items"),
+};
+const seeded = seed => () => {
+  seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+  return seed / 4294967296;
+};
 const plain = value => JSON.parse(JSON.stringify(value));
 async function main() {
   const defaults = a.normalizeSettings({});
@@ -26,7 +38,8 @@ async function main() {
     totalScreens: 4,
     rows: 2,
     columns: 2,
-    randomize: true,
+    sceneOrder: "random",
+    spreadScenes: true,
     splitScenes: false,
     startMuted: true,
     randomStart: true,
@@ -43,11 +56,15 @@ async function main() {
   assert.equal(a.normalizeSettings({ totalScreens: 0, rows: 0, columns: 40 }).totalScreens, 1);
   assert.equal(a.normalizeSettings({ rows: 40 }).rows, 12);
   assert.equal(a.normalizeSettings({ markerDuration: 10000 }).markerDuration, 600);
-  assert.equal(a.normalizeSettings({ randomize: "false" }).randomize, false);
+  assert.equal(a.normalizeSettings({ sceneOrder: "fresh" }).sceneOrder, "fresh");
+  assert.equal(a.normalizeSettings({ sceneOrder: "sideways" }).sceneOrder, "random", "unknown orders fall back");
+  assert.equal(a.normalizeSettings({ spreadScenes: "false" }).spreadScenes, false);
   assert.equal(a.normalizeSettings({ pauseWhenHidden: "invalid" }).pauseWhenHidden, true);
 
   const items = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }, { id: "e" }];
-  const reused = a.createMultiscreenPlaylists(items, 3, false, false);
+  const listOrder = { order: "list", spread: true, now: 0 },
+    randomOrder = { order: "random", spread: false, now: 0 };
+  const reused = a.createMultiscreenPlaylists(items, 3, listOrder, false);
   assert.equal(reused.length, 3);
   reused.forEach(playlist => {
     assert.deepEqual(plain(playlist.map(item => item.id)), ["a", "b", "c", "d", "e"]);
@@ -60,21 +77,21 @@ async function main() {
     "the source list must stay untouched",
   );
 
-  const split = a.createMultiscreenPlaylists(items, 2, false, true);
+  const split = a.createMultiscreenPlaylists(items, 2, listOrder, true);
   assert.deepEqual(plain(split.map(playlist => playlist.map(item => item.id))), [
     ["a", "c", "e"],
     ["b", "d"],
   ]);
-  assert.equal(a.createMultiscreenPlaylists([], 3, true, true).length, 3);
+  assert.equal(a.createMultiscreenPlaylists([], 3, randomOrder, true).length, 3);
   assert.deepEqual(
-    plain(a.pagePlaylists(items, 3, true, true, 42, 2)),
-    plain(a.pagePlaylists(items, 3, true, true, 42, 2)),
+    plain(a.pagePlaylists(items, 3, randomOrder, true, 42, 2)),
+    plain(a.pagePlaylists(items, 3, randomOrder, true, 42, 2)),
     "split assignments stay identical when different panes request the page at different times",
   );
   assert.deepEqual(
     plain(
       a
-        .pagePlaylists(items, 3, true, true, 42, 2)
+        .pagePlaylists(items, 3, randomOrder, true, 42, 2)
         .flat()
         .map(item => item.id)
         .sort(),
@@ -87,7 +104,7 @@ async function main() {
   const random = Math.random;
   Math.random = () => 0;
   assert.deepEqual(plain(a.shuffleMultiscreenItems(["a", "b", "c"])), ["b", "c", "a"]);
-  const shuffledSplit = a.createMultiscreenPlaylists(items, 2, true, true);
+  const shuffledSplit = a.createMultiscreenPlaylists(items, 2, randomOrder, true);
   Math.random = random;
   assert.deepEqual(
     plain(shuffledSplit.map(playlist => playlist.map(item => item.id))),
@@ -98,12 +115,109 @@ async function main() {
     "randomized splits must use the shuffled order",
   );
 
+  const clock = Date.parse("2026-10-31T00:00:00Z");
+  const daysAgo = days => new Date(clock - days * 86400000).toISOString();
+  const scene = (id, fields = {}) => ({ id, scene: { id, ...fields } });
+  const leadCounts = (pool, ordering, trials = 400) => {
+    const random = seeded(7),
+      counts = {};
+    for (let trial = 0; trial < trials; trial++) {
+      const lead = a.orderMultiscreenItems(pool, ordering, random)[0].id;
+      counts[lead] = (counts[lead] || 0) + 1;
+    }
+    return counts;
+  };
+  const weighted = order => ({ order, spread: false, now: clock });
+  let counts = leadCounts([scene("new", { play_count: 0 }), scene("seen", { play_count: 3 })], weighted("unwatched"));
+  assert(counts.new > counts.seen * 20, "unwatched scenes lead about 64x as often as scenes played three times");
+  counts = leadCounts(
+    [scene("loved", { rating100: 100, o_counter: 2 }), scene("unrated"), scene("low", { rating100: 20 })],
+    weighted("favorites"),
+  );
+  assert(counts.loved > counts.unrated && counts.unrated > (counts.low || 0), "ratings and O counts raise the chance");
+  counts = leadCounts(
+    [scene("fresh", { created_at: daysAgo(1) }), scene("old", { created_at: daysAgo(120) })],
+    weighted("newest"),
+  );
+  assert(counts.fresh > counts.old * 8, "recently added scenes lead far more often");
+  const many = Array.from({ length: 5000 }, (_, index) => ({ id: String(index) }));
+  assert.equal(
+    new Set(a.weightedShuffle(many, () => -800, seeded(3))).size,
+    5000,
+    "extreme log weights keep a full permutation",
+  );
+
+  const recent = scene("recent", { last_played_at: daysAgo(0.5) });
+  const unplayed = Array.from({ length: 9 }, (_, index) => scene("u" + index));
+  let position = 0;
+  const freshRandom = seeded(11);
+  for (let trial = 0; trial < 200; trial++)
+    position += a
+      .orderMultiscreenItems([recent, ...unplayed], weighted("fresh"), freshRandom)
+      .findIndex(item => item.id === "recent");
+  assert(position / 200 > 7, "fewer repeats moves a just-played scene towards the end (uniform mean is 4.5)");
+  assert(
+    a.repeatPenalty([recent, ...unplayed], clock) > a.repeatPenalty([...unplayed, recent], clock),
+    "recent plays cost more early",
+  );
+  assert.equal(a.repeatPenalty(unplayed, clock), 0);
+
+  const performerPool = ["A", "A", "A", "A", "B", "B", "B", "B", "C", "D", "E", "F"].map((performer, index) =>
+    scene(String(index), { performers: [{ id: performer }] }),
+  );
+  const adjacentRepeats = spread => {
+    const random = seeded(5);
+    let repeats = 0;
+    for (let trial = 0; trial < 300; trial++) {
+      const ordered = a.orderMultiscreenItems(performerPool, { order: "random", spread, now: clock }, random);
+      for (let index = 1; index < ordered.length; index++)
+        if (ordered[index].scene.performers[0].id === ordered[index - 1].scene.performers[0].id) repeats++;
+    }
+    return repeats;
+  };
+  assert(adjacentRepeats(true) * 3 < adjacentRepeats(false), "spreading rarely plays one performer back to back");
+  assert.deepEqual(
+    plain(
+      a
+        .spreadShuffle(performerPool, item => item.scene.performers[0].id, seeded(1))
+        .map(item => item.id)
+        .sort(),
+    ),
+    performerPool.map(item => item.id).sort(),
+  );
+
+  const groupItems = ["A1", "A2", "B1", "A3", "C1"].map(id => ({ id }));
+  assert.deepEqual(
+    a.separateGroups(groupItems, item => [item.id[0]], 1).map(item => item.id),
+    ["A1", "B1", "A2", "C1", "A3"],
+    "separation keeps priority while avoiding a shared group with the previous item",
+  );
+  assert.deepEqual(
+    a.separateGroups([{ id: "A1" }, { id: "A2" }], item => [item.id[0]], 1).map(item => item.id),
+    ["A1", "A2"],
+    "an unavoidable repeat keeps the priority order",
+  );
+  assert.deepEqual(a.mixOrders([1, 2, 3, 4, 5, 6], [6, 5, 4, 3, 2, 1]), [1, 2, 6, 3, 4, 5]);
+  const mixed = a.orderMultiscreenItems(
+    [scene("top", { rating100: 100, play_count: 9 }), scene("mid", { rating100: 80, play_count: 9 }), scene("new")],
+    { order: "mix", spread: true, now: clock },
+    seeded(2),
+  );
+  assert.equal(new Set(mixed.map(item => item.id)).size, 3, "the mix plays each scene once");
+  assert.strictEqual(
+    a.orderMultiscreenItems(performerPool, { order: "list", spread: true, now: clock }),
+    performerPool,
+  );
+
   const settings = a.normalizeSettings({ totalScreens: 4 });
   assert.equal(a.getSceneLimit(settings), 48);
   assert.equal(a.getSceneLimit(Object.assign({}, settings, { splitScenes: true })), 32);
   assert.equal(a.getSceneLimit(Object.assign({}, settings, { totalScreens: 30 })), 240);
-  assert.equal(a.getSceneSort({ randomize: true }), "random");
-  assert.equal(a.getSceneSort({ randomize: false }), "title");
+  assert.match(a.playbackSort("random", "title", 7).sort, /^random_7$/);
+  assert.match(a.playbackSort("unwatched", "title", 7).sort, /^random_7$/, "weighted orders sample at random");
+  assert.deepEqual(plain(a.playbackSort("newest", "title", 7)), { sort: "created_at", direction: "DESC" });
+  assert.deepEqual(plain(a.playbackSort("list", "date", 7)), { sort: "date" });
+  assert.deepEqual(plain(a.playbackSort("list", "random", 7)), { sort: "random_7" });
   assert.deepEqual(plain(a.getPlaybackSettings(settings)), {
     startMuted: true,
     randomStart: true,
@@ -162,7 +276,7 @@ async function main() {
   assert.equal(a.getMarkerItem(Object.assign({}, marker, { title: " Named " }), 30).title, "Named");
   assert.equal(a.getMarkerItem(Object.assign({}, marker, { scene: noStreamScene }), 30), null);
 
-  const nonRandom = a.normalizeSettings({ randomize: false });
+  const nonRandom = a.normalizeSettings({ sceneOrder: "list" });
   assert.deepEqual(
     plain(a.getMarkerQueryVariables(defaults, { source: "marker-selection", selectedIds: ["1", "2"] })),
     {
@@ -209,8 +323,16 @@ async function main() {
 
   const defaultVariables = await a.getSceneQueryVariables(defaults, null);
   assert.deepEqual(plain(defaultVariables), {
-    filter: { page: 1, per_page: a.getSceneLimit(defaults), sort: "random" },
+    filter: { page: 1, per_page: a.getSceneLimit(defaults), sort: defaultVariables.filter.sort },
   });
+  assert.match(defaultVariables.filter.sort, /^random_\d+$/);
+  const newestVariables = await a.getSceneQueryVariables(a.normalizeSettings({ sceneOrder: "newest" }), {
+    source: "filter",
+    filter: { sort: "title", direction: "ASC" },
+    sceneFilter: {},
+  });
+  assert.equal(newestVariables.filter.sort, "created_at");
+  assert.equal(newestVariables.filter.direction, "DESC", "newest overrides the list direction");
 
   const searchRequests = [];
   const sessionQueries = feature("queries").createQueries({

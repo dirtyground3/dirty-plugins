@@ -1,9 +1,10 @@
-import { defaults as DEFAULT_SETTINGS, limits as LIMITS } from "@generated/multiscreen.settings";
+import { defaults as DEFAULT_SETTINGS, limits as LIMITS, options as OPTIONS } from "@generated/multiscreen.settings";
 import { clampInteger, coerceBoolean } from "../../../DirtyPlugins/src/shared/values";
-import type { Settings, PlaybackSettings } from "../types";
+import type { Settings, PlaybackSettings, SceneOrder } from "../types";
 
 const MAX_SCENE_PAGE_SIZE = 240;
 export const NON_RANDOM_SCENE_SORT = "title";
+const SCENE_ORDERS = new Set<string>(OPTIONS.sceneOrder.map(option => option.value));
 export { DEFAULT_SETTINGS };
 
 export function normalizeSettings(rawSettings: Record<string, unknown>): Settings {
@@ -23,7 +24,10 @@ export function normalizeSettings(rawSettings: Record<string, unknown>): Setting
     ),
     rows,
     columns,
-    randomize: coerceBoolean(rawSettings.randomize, DEFAULT_SETTINGS.randomize),
+    sceneOrder: (typeof rawSettings.sceneOrder === "string" && SCENE_ORDERS.has(rawSettings.sceneOrder)
+      ? rawSettings.sceneOrder
+      : DEFAULT_SETTINGS.sceneOrder) as SceneOrder,
+    spreadScenes: coerceBoolean(rawSettings.spreadScenes, DEFAULT_SETTINGS.spreadScenes),
     splitScenes: coerceBoolean(rawSettings.splitScenes, DEFAULT_SETTINGS.splitScenes),
     startMuted: coerceBoolean(rawSettings.startMuted, DEFAULT_SETTINGS.startMuted),
     randomStart: coerceBoolean(rawSettings.randomStart, DEFAULT_SETTINGS.randomStart),
@@ -48,8 +52,4 @@ export function getPlaybackSettings(settings: Settings): PlaybackSettings {
 export function getSceneLimit(settings: Pick<Settings, "splitScenes" | "totalScreens">) {
   const multiplier = settings.splitScenes ? 8 : 12;
   return Math.min(MAX_SCENE_PAGE_SIZE, Math.max(settings.totalScreens, settings.totalScreens * multiplier));
-}
-export function getSceneSort(settings: Pick<Settings, "randomize">) {
-  if (settings.randomize) return "random";
-  return NON_RANDOM_SCENE_SORT;
 }

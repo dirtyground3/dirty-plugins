@@ -17,11 +17,11 @@ a shared SQLite database, and is installed automatically as a dependency.
 | --- | --- | ---: |
 | [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.10 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.8 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.16 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.17 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.4 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.9 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.10 |
 
 ## Shared look and settings
 
@@ -139,8 +139,12 @@ Every change saves automatically.
 - Launches from scene and marker lists, selections, performer and studio pages,
   and other supported Stash contexts, preserving the active list order.
 - Configures the number of screens and grid rows/columns.
-- Supports ordered or random playback, split scene lists, random start points,
-  looping, start-muted playback, and pausing while the tab is hidden.
+- Orders scenes at random, with fewer repeats, favouring unwatched, highly
+  rated or recently added scenes, as a mix of favourites and unwatched scenes,
+  or in the list's own order. Scenes that share a performer or studio are kept
+  apart.
+- Supports split scene lists, random start points, looping, start-muted
+  playback, and pausing while the tab is hidden.
 - Plays bounded markers and applies a configurable duration when a marker has
   no end time.
 - Each pane has an O-counter button that counts once per playback session.
@@ -552,6 +556,14 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyMultiscreen 1.0.17 and DirtyPlugins 1.0.10:** **Scene order** replaces
+  the **Random scenes** switch with seven orders: Random, Fewer repeats, Favour
+  unwatched scenes, Favour high ratings and O counts, Favour recently added
+  scenes, Mix favourites with unwatched scenes, and Keep the list order. The new
+  **Spread performers and studios** setting, enabled by default, keeps scenes
+  that share a performer or studio apart in a pane and across split panes.
+  Random stays the default.
 
 - **DirtyRank 1.0.8:** two new overall scoring strategies under **Settings →
   DirtyRank → Categories → Overall score**. **Rating strength** compares

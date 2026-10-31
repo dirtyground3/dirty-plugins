@@ -68,10 +68,38 @@ runtime files and Stash's package-provenance `manifest` during a local update.
 
 ## Configuration
 
-The plugin exposes settings for screen count, grid dimensions, randomization, scene splitting, random start positions, looping, marker duration, muting, tab visibility behavior, and fallback scene sorting.
+The plugin exposes settings for screen count, grid dimensions, scene order, performer spreading, scene splitting, random start positions, looping, marker duration, muting and tab visibility behavior.
 
-The following playback options are enabled by default: **Random scenes**,
-**Start muted**, **Random start**, **Loop scenes**, and **Pause when hidden**.
+The following playback options are enabled by default: **Spread performers and
+studios**, **Start muted**, **Random start**, **Loop scenes**, and **Pause when
+hidden**.
+
+### Scene order
+
+Each pane gets its own playback list. **Scene order** decides how it is built:
+
+| Order | How it works |
+| --- | --- |
+| Random (default) | A uniform shuffle of the session's scenes. |
+| Fewer repeats | Like Spotify's Fewer Repeats shuffle: draws up to 16 shuffles and keeps the one that plays recently watched scenes last. A play counts half as much after each week. |
+| Favour unwatched scenes | A weighted shuffle. A scene played once comes early 8 times less often than an unwatched one, twice 27 times less often. |
+| Favour high ratings and O counts | A weighted shuffle. Every 20 rating points multiply the weight by about 2.7, unrated scenes count as 50, and each O count adds the base weight once more. |
+| Favour recently added scenes | Loads the newest scenes first, then shuffles them with a weight that halves every 30 days since a scene was added. |
+| Mix favourites with unwatched scenes | Like a smart shuffle: two scenes from the favourites order, then one from the unwatched order, never repeating a scene. |
+| Keep the list order | The launching list's own sort, or title order when launched without a list. |
+
+Every order except Favour recently added scenes and Keep the list order
+samples a random page of the launching list, so the weighting works on a
+different selection each session. Weighted shuffles use the Efraimidis-Spirakis
+method: a scene with weight w leads w times as often as a scene with weight 1.
+
+**Spread performers and studios** keeps scenes that share a performer or studio
+apart. Random and Fewer repeats use Spotify's original artist spreading: each
+performer's scenes (or a studio's, for scenes without performers) are placed at
+evenly spaced positions with a random start
+and up to 20% jitter. The weighted orders keep their priority but pull forward
+the nearest scene that shares nothing with the previous one, or with the scenes
+the other panes play alongside it when **Split scenes** is on.
 
 **Show DirtyMultiscreen in the Stash header** (enabled by default) hides or
 restores the grid button without a reload. While it is hidden, the button

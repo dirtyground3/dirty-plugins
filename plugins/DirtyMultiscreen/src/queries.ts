@@ -1,7 +1,10 @@
-import { DEFAULT_SETTINGS, getSceneLimit, getSceneSort, NON_RANDOM_SCENE_SORT } from "./domain/settings";
+import { playbackSort } from "./domain/order";
+import { getSceneLimit, NON_RANDOM_SCENE_SORT, normalizeSettings } from "./domain/settings";
 import type { Hub, LaunchContext, MarkerContext, QueryResult, QueryVariables, Settings } from "./types";
 
-const SCENE_FIELDS = "id title paths{stream} sceneStreams{url mime_type label}";
+// Play history, ratings, dates, performers and studios feed the scene orders.
+const SCENE_FIELDS =
+  "id title paths{stream} sceneStreams{url mime_type label} play_count last_played_at o_counter rating100 created_at performers{id} studio{id}";
 const SCENES =
   "query MultiscreenScenes($filter:FindFilterType,$scene_filter:SceneFilterType,$ids:[ID!]){findScenes(filter:$filter,scene_filter:$scene_filter,ids:$ids){count scenes{" +
   SCENE_FIELDS +
@@ -25,15 +28,14 @@ const PERFORMER_IDS =
 const STUDIO_IDS =
   "query MultiscreenStudios($filter:FindFilterType,$studio_filter:StudioFilterType){findStudios(filter:$filter,studio_filter:$studio_filter){studios{id}}}";
 const INCREMENT_O = "mutation MultiscreenIncrementSceneO($id:ID!){sceneIncrementO(id:$id)}";
-const playbackSort = (settings: Settings, contextualSort: string) =>
-  settings.randomize || contextualSort === "random"
-    ? "random_" + Math.floor(Math.random() * 2147483647)
-    : contextualSort;
+/** One seed per query keeps every continuation page of a random order disjoint. */
+const sortFor = (settings: Settings, contextualSort: string) =>
+  playbackSort(settings.sceneOrder, contextualSort, Math.floor(Math.random() * 2147483647));
 
 export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
   const graphqlRequest: Hub["graphql"] = (query, variables, options) => DirtyPlugins.graphql(query, variables, options);
   const selection = (ids: string[]): QueryVariables => ({ ids, filter: { page: 1, per_page: -1 } });
-  /** Keep the list's own sort unless playback is randomized. */
+  /** Keep the list's own sort and direction only for the list order. */
   function filtered(
     settings: Settings,
     filter: Record<string, unknown>,
@@ -42,7 +44,7 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
   ): QueryVariables {
     const contextualSort = typeof filter.sort === "string" ? filter.sort : NON_RANDOM_SCENE_SORT;
     return {
-      filter: { ...filter, page: 1, per_page: getSceneLimit(settings), sort: playbackSort(settings, contextualSort) },
+      filter: { ...filter, page: 1, per_page: getSceneLimit(settings), ...sortFor(settings, contextualSort) },
       [key]: objectFilter,
     };
   }
@@ -64,7 +66,7 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
     } else return null;
     if (!ids.length) return null;
     return {
-      filter: { page: 1, per_page: getSceneLimit(settings), sort: playbackSort(settings, NON_RANDOM_SCENE_SORT) },
+      filter: { page: 1, per_page: getSceneLimit(settings), ...sortFor(settings, NON_RANDOM_SCENE_SORT) },
       scene_filter: {
         [entity === "studio" ? "studios" : "performers"]: {
           value: ids,
@@ -84,7 +86,7 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
       return filtered(settings, launchContext.filter, launchContext.sceneFilter, "scene_filter");
     if (source.startsWith("performer-")) return relatedSceneVariables(settings, launchContext!, "performer");
     if (source.startsWith("studio-")) return relatedSceneVariables(settings, launchContext!, "studio");
-    return { filter: { page: 1, per_page: getSceneLimit(settings), sort: getSceneSort(settings) } };
+    return { filter: { page: 1, per_page: getSceneLimit(settings), ...sortFor(settings, NON_RANDOM_SCENE_SORT) } };
   }
   function getMarkerQueryVariables(settings: Settings, launchContext: MarkerContext): QueryVariables {
     if (launchContext.source === "marker-selection") return selection(launchContext.selectedIds);
@@ -96,8 +98,8 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
       return launchContext.selectedIds.length;
     const marker = launchContext.source === "marker-filter";
     const variables = marker
-      ? getMarkerQueryVariables(DEFAULT_SETTINGS, launchContext)
-      : await getSceneQueryVariables(DEFAULT_SETTINGS, launchContext);
+      ? getMarkerQueryVariables(normalizeSettings({}), launchContext)
+      : await getSceneQueryVariables(normalizeSettings({}), launchContext);
     if (!variables) return 0;
     const data = await graphqlRequest<QueryResult>(marker ? MARKER_COUNT : SCENE_COUNT, {
       ...variables,

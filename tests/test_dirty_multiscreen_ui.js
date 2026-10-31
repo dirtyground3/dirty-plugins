@@ -170,7 +170,7 @@ async function markersAndLoops() {
     scenes,
     markers: [marker],
     launch: { source: "marker-selection", selectedIds: ["m"] },
-    settings: { rows: 1, columns: 1, totalScreens: 1, randomize: false, randomStart: true, loopScenes: true },
+    settings: { rows: 1, columns: 1, totalScreens: 1, sceneOrder: "list", randomStart: true, loopScenes: true },
   });
   const player = h.nodes(node => node.type === "native-player")[0];
   assert.equal(player.props.initialTimestamp, 0, "native startup must not seek before a playable source exists");
@@ -200,7 +200,7 @@ async function markersAndLoops() {
       rows: 1,
       columns: 1,
       totalScreens: 1,
-      randomize: false,
+      sceneOrder: "list",
       randomStart: true,
       loopScenes: false,
       markerDuration: 2,
@@ -291,7 +291,7 @@ async function counters() {
   await retry.flush();
   const partialPending = [],
     partial = await start({
-      settings: { rows: 1, columns: 2, totalScreens: 2, splitScenes: true, randomize: false, randomStart: false },
+      settings: { rows: 1, columns: 2, totalScreens: 2, splitScenes: true, sceneOrder: "list", randomStart: false },
       graphql: (query, variables) => {
         if (query.includes("MultiscreenScenes"))
           return {
@@ -353,7 +353,7 @@ async function stablePaneSubscriptions() {
     scenes,
     markers,
     launch: { source: "marker-selection", selectedIds: markers.map(marker => marker.id) },
-    settings: { rows: 1, columns: 2, totalScreens: 2, randomize: false, splitScenes: false, loopScenes: false },
+    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "list", splitScenes: false, loopScenes: false },
   });
   const panes = h.nodes(node => node.type === "native-player");
   const media = [...h.media.values()].filter(pair => pair.video.isConnected);
@@ -394,7 +394,7 @@ async function gridsAndAsync() {
       columns: 2,
       totalScreens: 99,
       splitScenes: true,
-      randomize: false,
+      sceneOrder: "list",
       pauseWhenHidden: false,
       randomStart: false,
     },
@@ -429,7 +429,7 @@ async function gridsAndAsync() {
   await loader.flush();
   assert.equal(loader.nativeCalls.length, 0);
   const random = createMultiscreenHarness({
-    settings: { rows: 1, columns: 1, totalScreens: 1, randomize: false, randomStart: true },
+    settings: { rows: 1, columns: 1, totalScreens: 1, sceneOrder: "list", randomStart: true },
   });
   require("node:vm").runInContext("Math.random=()=>.25", random.context);
   random.load();
@@ -548,7 +548,7 @@ async function independentNativePlayerIdentities() {
   }));
   const h = await start({
     scenes,
-    settings: { rows: 2, columns: 2, totalScreens: 4, splitScenes: true, randomize: false, randomStart: false },
+    settings: { rows: 2, columns: 2, totalScreens: 4, splitScenes: true, sceneOrder: "list", randomStart: false },
   });
   const pairs = [...h.media.values()].filter(pair => pair.video.isConnected);
   const ids = pairs.map(pair => pair.player.id());
@@ -713,7 +713,7 @@ async function fixedSessionSearch() {
   const h = await start({
     scenes,
     launch: { source: "selection", selectedIds: scenes.slice(1).map(scene => scene.id) },
-    settings: { rows: 1, columns: 2, totalScreens: 2, splitScenes: true, randomize: false },
+    settings: { rows: 1, columns: 2, totalScreens: 2, splitScenes: true, sceneOrder: "list" },
   });
   const results = () => h.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result");
   const search = async value => {
@@ -797,7 +797,7 @@ async function searchDuringMarkersAndPaging() {
     scenes,
     markers: [marker, { ...marker, id: "n", title: "Second range", seconds: 5, end_seconds: 7 }],
     launch: { source: "marker-selection", selectedIds: ["m", "n"] },
-    settings: { rows: 1, columns: 3, totalScreens: 3, splitScenes: true, randomize: false, randomStart: false },
+    settings: { rows: 1, columns: 3, totalScreens: 3, splitScenes: true, sceneOrder: "list", randomStart: false },
   });
   const choose = async (label, index) => {
     h.button(label).props.onClick();
@@ -935,7 +935,7 @@ async function searchedQueueNavigation() {
   const random = await start({
     scenes: scenes.slice(0, 20),
     launch: { source: "selection", selectedIds: scenes.slice(0, 20).map(scene => scene.id) },
-    settings: { randomize: true, splitScenes: false },
+    settings: { sceneOrder: "random", splitScenes: false },
   });
   const queues = [...random.owners.values()]
     .flatMap(owner => owner.slots)
@@ -1038,7 +1038,7 @@ async function pagedPlayback() {
 
   const selection = await start({
     scenes,
-    settings: { rows: 1, columns: 2, totalScreens: 2, randomize: true },
+    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "random" },
     launch: { source: "selection", selectedIds: scenes.map(scene => scene.id) },
   });
   assert.equal(

@@ -1,11 +1,13 @@
 import type * as R from "react";
 import type { HubApi } from "../../DirtyPlugins/src/types";
+export type SceneOrder = "random" | "fresh" | "unwatched" | "favorites" | "newest" | "mix" | "list";
 export type Hub = Pick<HubApi, "graphql" | "react" | "native" | "getPluginSettings" | "captureEnabled" | "debugLog">;
 export interface Settings {
   totalScreens: number;
   rows: number;
   columns: number;
-  randomize: boolean;
+  sceneOrder: SceneOrder;
+  spreadScenes: boolean;
   splitScenes: boolean;
   startMuted: boolean;
   randomStart: boolean;
@@ -26,6 +28,13 @@ export interface Scene {
   paths?: { stream?: string | null; vtt?: string | null };
   sceneStreams?: { url: string; mime_type?: string; label?: string }[];
   files?: { duration?: number }[];
+  play_count?: number | null;
+  last_played_at?: string | null;
+  o_counter?: number | null;
+  rating100?: number | null;
+  created_at?: string | null;
+  performers?: { id: string }[];
+  studio?: { id: string } | null;
 }
 export interface Marker {
   id: string;

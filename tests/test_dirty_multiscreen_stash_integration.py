@@ -69,7 +69,7 @@ const graphql = async (query, variables) => {
   return result.data;
 };
 const queries = requireSource('DirtyMultiscreen', 'src/queries.ts').createQueries({ graphql });
-const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').normalizeSettings({ randomize: true });
+const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').normalizeSettings({ sceneOrder: 'random' });
 (async () => {
   const variables = await queries.getSceneQueryVariables(settings, { source: 'filter', filter: {}, sceneFilter: {} });
   assert(variables.filter.per_page <= 240);
@@ -135,7 +135,7 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
         with urllib.request.urlopen(urllib.request.Request(url, headers={"Range": "bytes=0-31"})) as response:
             assert response.status == 206
             assert len(response.read()) == 32
-    set_settings(fixture, totalScreens=4, rows=2, columns=2, randomize=False, splitScenes=True, startMuted=True,
+    set_settings(fixture, totalScreens=4, rows=2, columns=2, sceneOrder='list', splitScenes=True, startMuted=True,
                  randomStart=False, loopScenes=False, markerDuration=2, pauseWhenHidden=True)
     snapshot = fixture.gql('{findScenes(filter:{per_page:-1}){scenes{id title details files{id path} performers{id} studio{id}}}}')["findScenes"]["scenes"]
     (fixture.root / "acceptance.json").write_text(json.dumps({"hashes": hashes, "scenes": snapshot}), encoding="utf-8")

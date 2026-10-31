@@ -30,10 +30,46 @@
       "max": 12,
       "step": 1
     },
-    "randomize": {
+    "sceneOrder": {
+      "type": "STRING",
+      "displayName": "Scene order",
+      "description": "How each pane orders its playback list. Fewer repeats plays recently watched scenes last; the favour orders shuffle a random sample and bring matching scenes forward more often; the mix inserts an unwatched scene after every two favourites. Defaults to random.",
+      "default": "random",
+      "options": [
+        {
+          "value": "random",
+          "label": "Random"
+        },
+        {
+          "value": "fresh",
+          "label": "Fewer repeats"
+        },
+        {
+          "value": "unwatched",
+          "label": "Favour unwatched scenes"
+        },
+        {
+          "value": "favorites",
+          "label": "Favour high ratings and O counts"
+        },
+        {
+          "value": "newest",
+          "label": "Favour recently added scenes"
+        },
+        {
+          "value": "mix",
+          "label": "Mix favourites with unwatched scenes"
+        },
+        {
+          "value": "list",
+          "label": "Keep the list order"
+        }
+      ]
+    },
+    "spreadScenes": {
       "type": "BOOLEAN",
-      "displayName": "Random scenes",
-      "description": "Shuffle scene playback lists. Enabled by default.",
+      "displayName": "Spread performers and studios",
+      "description": "Keep scenes that share a performer or studio apart, in a pane and across split panes. Ignored when keeping the list order. Enabled by default.",
       "default": true
     },
     "splitScenes": {

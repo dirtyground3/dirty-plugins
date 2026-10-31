@@ -151,7 +151,7 @@ function createMultiscreenHarness(options = {}) {
             rows: 1,
             columns: 2,
             totalScreens: 2,
-            randomize: false,
+            sceneOrder: "list",
             randomStart: false,
             loopScenes: false,
           },

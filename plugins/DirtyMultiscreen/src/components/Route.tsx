@@ -102,16 +102,19 @@ export function MultiscreenRoute() {
     ],
   );
   const pageSize = getSceneLimit(settings);
-  const seed = React.useMemo(() => Math.floor(Math.random() * 4294967296), [items]);
+  const [seed, now] = React.useMemo(() => [Math.floor(Math.random() * 4294967296), Date.now()], [items]);
+  const ordering = React.useMemo(
+    () => ({ order: settings.sceneOrder, spread: settings.spreadScenes, now }),
+    [settings.sceneOrder, settings.spreadScenes, now],
+  );
   const initialPage = explicitSelection ? 1 : activeQuery.page;
   const initialItems = React.useMemo(
     () => (explicitSelection ? items.slice(0, pageSize) : items),
     [items, explicitSelection, pageSize],
   );
   const playlists = React.useMemo(
-    () =>
-      pagePlaylists(initialItems, settings.totalScreens, settings.randomize, settings.splitScenes, seed, initialPage),
-    [initialItems, settings.totalScreens, settings.randomize, settings.splitScenes, seed, initialPage],
+    () => pagePlaylists(initialItems, settings.totalScreens, ordering, settings.splitScenes, seed, initialPage),
+    [initialItems, settings.totalScreens, ordering, settings.splitScenes, seed, initialPage],
   );
   const pageCount = launchContext
     ? Math.ceil((explicitSelection ? items.length : activeQuery.result.count) / pageSize)
@@ -135,14 +138,7 @@ export function MultiscreenRoute() {
                 const data = await scenesQuery.loadPage(page);
                 nextItems = data.scenes.map(getSceneItem).filter(item => item !== null);
               }
-              return pagePlaylists(
-                nextItems,
-                settings.totalScreens,
-                settings.randomize,
-                settings.splitScenes,
-                seed,
-                page,
-              );
+              return pagePlaylists(nextItems, settings.totalScreens, ordering, settings.splitScenes, seed, page);
             },
           }
         : undefined,
@@ -157,7 +153,7 @@ export function MultiscreenRoute() {
       markersQuery.loadPage,
       scenesQuery.loadPage,
       settings.totalScreens,
-      settings.randomize,
+      ordering,
       settings.splitScenes,
       settings.markerDuration,
       seed,
