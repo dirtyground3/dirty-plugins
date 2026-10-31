@@ -19,7 +19,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.8 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.20 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
-| [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.4 |
+| [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.5 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
 | [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.12 |
 
@@ -191,15 +191,15 @@ capture.
 - Ordered **Resize** and **Reencode** rules create additional validated files on
   the same scene. Original files stay on disk and remain primary.
 - Quality presets, visual-quality measurement, custom bitrate, H.264/H.265 and
-  hardware encoding with CPU fallback remain available. Preview compares sizes;
-  run results report additional disk usage.
+  hardware encoding with CPU fallback remain available. Preview and run results
+  compare each new file with its original, for example **Created a 40% smaller file**.
 - Optional tag updates merge tags from a selected stash-box source after the selected Scan or Generate job,
   with bounded lookups, a one-day successful-check cache and **Refresh tags now**.
 - Organization settings save explicitly; encoding rules autosave. Each action and encoding rule selects its own Manual, after Scan or after Generate trigger
   and autosaves that choice. Shared reservations prevent concurrent
   organization and encoding; internal scans never start another automation cycle.
-- Cancellation and a small recovery journal handle interrupted encoding and
-  attachment. There is no media Delete action or output-review stage.
+- Encoding runs can be paused and resumed. Cancellation and a small recovery
+  journal handle interrupted encoding and attachment. There is no media Delete action or output-review stage.
 
 [DirtyTasks documentation and upgrade instructions](plugins/DirtyTasks/).
 
@@ -561,6 +561,11 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyTasks 1.0.5:** encoding runs have **Pause** and **Resume**. Pausing
+  stops the current encode at once and discards its unfinished output; resuming
+  starts that file again and continues with the rest. Results say how much
+  smaller each new file is than its original instead of reporting added disk space.
 
 - **DirtyMultiscreen 1.0.20 and DirtyPlugins 1.0.12:** the new **Avoid the same
   scene on several screens** setting, enabled by default, starts every screen on

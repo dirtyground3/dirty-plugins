@@ -21,7 +21,8 @@ class Run(TypedDict):
 
 RUN_TRANSITIONS = {
     "queued": {"running", "failed", "queued", "reconciling"},
-    "running": {"reconciling", "recovery", "completed", "cancelled", "queued"},
+    "running": {"reconciling", "recovery", "completed", "cancelled", "queued", "paused"},
+    "paused": {"queued", "cancelled"},
     "reconciling": {"finalizing", "recovery", "reconciling", "queued"},
     "finalizing": {"queued", "recovery", "reconciling"},
     "recovery": {"queued", "reconciling", "cancelled"},

@@ -377,6 +377,46 @@ class CompactorPipelineTests(unittest.TestCase):
         self.assertEqual(run["status"], "cancelled")
         self.assertEqual(self.source.read_bytes(), self.original)
 
+    def test_pause_discards_the_current_encode_and_resume_encodes_it_again(self):
+        run_id = compactor.start_run(self.client, self.preview(), {})["id"]
+        def pause_midway(command, current, *args):
+            Path(command[-1]).write_bytes(b"partial encode")
+            compactor.pause_run(self.client, {"id": current})
+            self.assertTrue(compactor.public_record(compactor.get("run", current))["pauseRequested"])
+            compactor.check_stop(current)
+        with patch.object(compactor, "run_process", side_effect=pause_midway):
+            run = compactor.worker(self.client, run_id)
+        op = run["operations"][0]
+        self.assertEqual((run["status"], op["status"]), ("paused", "ready"))
+        self.assertFalse(Path(op["output"]).exists())
+        self.assertNotIn("pauseRequested", compactor.public_record(run))
+        self.assertIsNone(compactor.storage.get_metadata(compactor.reservation.NAMESPACE, "active"),
+                          "a paused run lets organization use the files")
+        self.assertEqual(self.source.read_bytes(), self.original)
+        compactor.resume_run(self.client, {"id": run_id})
+        self.assertEqual(self.client.jobs[-1], {"mode": "worker", "id": run_id})
+        run = compactor.worker(self.client, run_id)
+        self.assertEqual((run["status"], run["operations"][0]["status"]), ("reconciling", "reconciling"))
+
+    def test_pause_waits_for_recovery_and_a_paused_run_can_be_cancelled(self):
+        run_id = compactor.start_run(self.client, self.preview(), {})["id"]
+        run = compactor.get("run", run_id)
+        run["status"] = "recovery"
+        compactor.save("run", run)
+        with self.assertRaisesRegex(compactor.PluginError, "recovery"):
+            compactor.pause_run(self.client, {"id": run_id})
+        run["status"] = "queued"
+        compactor.save("run", run)
+        compactor.pause_run(self.client, {"id": run_id})
+        with patch.object(compactor, "encode", side_effect=AssertionError("a pause before the file must not encode")):
+            self.assertEqual(compactor.worker(self.client, run_id)["status"], "paused")
+        compactor.cancel_run(self.client, {"id": run_id})
+        run = compactor.get("run", run_id)
+        self.assertEqual((run["status"], run["operations"][0]["status"]), ("cancelled", "cancelled"))
+        with self.assertRaisesRegex(compactor.PluginError, "not paused"):
+            compactor.resume_run(self.client, {"id": run_id})
+        self.assertEqual(self.source.read_bytes(), self.original)
+
     def test_reencode_preserves_dimensions_and_reduces_bitrate(self):
         self.set_rules([rule(action="reencode")])
         run = self.start()

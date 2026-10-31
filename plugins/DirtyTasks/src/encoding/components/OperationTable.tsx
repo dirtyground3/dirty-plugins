@@ -1,5 +1,5 @@
 import { React, ui } from "../runtime";
-import { bytes } from "../domain/rules";
+import { bytes, createdFiles, sizeComparison } from "../domain/rules";
 import { hidden } from "./RuleField";
 import type { ResultsProps } from "./Results";
 export function OperationTable(props: Pick<ResultsProps, "record" | "capture" | "excluded" | "onExclude" | "onPage">) {
@@ -70,7 +70,13 @@ export function OperationTable(props: Pick<ResultsProps, "record" | "capture" | 
                     )}
                     <div className="dirty-compactor-muted">{op.rule.name}</div>
                   </td>
-                  <td>{op.addedBytes ? bytes(op.addedBytes) + " added" : bytes(op.savings) + " smaller"}</td>
+                  <td>
+                    {op.addedBytes && op.identity
+                      ? createdFiles(op.addedBytes, op.identity.size, 1)
+                      : op.savings && op.identity
+                        ? "~" + sizeComparison(op.identity.size - op.savings, op.identity.size)
+                        : "—"}
+                  </td>
                   <td>
                     <ui.Badge>{op.status}</ui.Badge>
                     {op.reason && (

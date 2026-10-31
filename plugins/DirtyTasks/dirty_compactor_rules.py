@@ -37,6 +37,10 @@ class Cancelled(PluginError):
     pass
 
 
+class Paused(Cancelled):
+    """The run stops now and continues later; unfinished outputs are discarded."""
+
+
 class Skipped(PluginError):
     """A run decided not to change this file; the original is untouched."""
 

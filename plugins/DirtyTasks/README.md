@@ -55,12 +55,15 @@ Preview and confirm a manual run. Each validated output is saved beside its
 source with a distinct name, scanned, and attached to the **same scene**.
 Both files remain on disk and attached. The original remains the primary file;
 there is no media Delete action, replacement, or output-review step.
-Size differences compare versions; **Added to disk** reports actual additional
-storage, not reclaimed space. Outputs must pass stream, dimensions, duration,
+Results compare each new file with its original (**Created a 40% smaller
+file**); both files stay on disk, so no space is reclaimed. Outputs must pass stream, dimensions, duration,
 size and decode validation before publication. Generated versions are skipped
 by later encoding runs, and the same original/settings combination is not
 encoded again while its output remains attached.
 
+Pause stops the encoder at once and discards its unfinished temporary output;
+Resume revalidates and encodes that file again, then continues with the rest.
+While paused, the run releases its file reservation so organization can run.
 Cancel stops the encoder and cleans its unfinished temporary output. Once an
 output is published, attachment finishes before cancellation. An interrupted
 publication or failed attachment keeps the output and offers Retry recovery;

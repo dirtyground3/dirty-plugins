@@ -365,6 +365,9 @@ class AdditionalEncodingTests(unittest.TestCase):
         public = encoding.public_record(run)
         self.assertEqual(public["actualSavings"], 0)
         self.assertEqual(public["addedBytes"], output.stat().st_size)
+        self.assertEqual(public["originalBytes"], len(self.case.original))
+        listed = encoding.list_runs(self.case.client, {})[0]
+        self.assertEqual((listed["originalBytes"], listed["counts"]), (len(self.case.original), {"completed": 1}))
         self.case.set_rules([encoding_tests.rule(id="recreated-rule", trigger="generate")])
         again = self.case.preview()
         self.assertTrue(all(op["status"] == "unchanged" for op in again["operations"]), again)

@@ -1,6 +1,6 @@
 import { React, hub, ui, ID, operation } from "../runtime";
 import { copy, newRule, normalize, validation } from "../domain/rules";
-import { FINISHED, PLANNING, RECOVERABLE, previewDescription } from "../domain/workflow";
+import { FINISHED, PLANNING, RECOVERABLE, previewDescription, runDescription } from "../domain/workflow";
 import { RuleRow } from "./RuleRow";
 import { Results } from "./Results";
 import { RunHistory } from "./RunHistory";
@@ -303,7 +303,7 @@ export function Settings(props: SettingsProps) {
             (run.automatic ? "Automatic run" : "Manual run") +
             (run.created ? " · " + new Date(run.created * 1000).toLocaleString() : "")
           }
-          description={"Status: " + run.status}
+          description={runDescription(run)}
           actions={
             runActive ? (
               <React.Fragment>
@@ -322,14 +322,38 @@ export function Settings(props: SettingsProps) {
                     </ui.Button>
                   </React.Fragment>
                 ) : (
-                  <ui.Button
-                    disabled={Boolean(busy)}
-                    onClick={() => {
-                      act("cancelRun", { id: run.id });
-                    }}
-                  >
-                    Cancel run
-                  </ui.Button>
+                  <React.Fragment>
+                    {run.status === "paused" ? (
+                      <ui.Button
+                        tone="primary"
+                        busy={busy === "resumeRun"}
+                        disabled={Boolean(busy)}
+                        onClick={() => {
+                          act("resumeRun", { id: run.id });
+                        }}
+                      >
+                        Resume
+                      </ui.Button>
+                    ) : (
+                      <ui.Button
+                        busy={busy === "pauseRun"}
+                        disabled={Boolean(busy) || Boolean(run.pauseRequested)}
+                        onClick={() => {
+                          act("pauseRun", { id: run.id });
+                        }}
+                      >
+                        {run.pauseRequested ? "Pausing…" : "Pause"}
+                      </ui.Button>
+                    )}
+                    <ui.Button
+                      disabled={Boolean(busy)}
+                      onClick={() => {
+                        act("cancelRun", { id: run.id });
+                      }}
+                    >
+                      Cancel run
+                    </ui.Button>
+                  </React.Fragment>
                 )}
                 {run.status !== "recovery" && RECOVERABLE.indexOf(run.status) >= 0 && (
                   <ui.ActionMenu

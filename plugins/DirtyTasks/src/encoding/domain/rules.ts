@@ -36,6 +36,20 @@ export function bytes(value?: number): string {
   return amount.toFixed(index ? 2 : 0) + " " + units[index];
 }
 
+// Encoded versions sit beside their originals: compare the new file with its
+// original instead of reporting the extra disk space as a gain.
+export function sizeComparison(output?: number, original?: number): string {
+  let percent = original ? Math.round((1 - Number(output || 0) / original) * 100) : 0;
+  return percent > 0 ? percent + "% smaller" : percent < 0 ? -percent + "% larger" : "the same size";
+}
+
+export function createdFiles(output: number, original: number, count: number): string {
+  let comparison = sizeComparison(output, original);
+  if (comparison === "the same size")
+    return count > 1 ? "Created files of the same size" : "Created a file of the same size";
+  return count > 1 ? "Created " + comparison + " files" : "Created a " + comparison + " file";
+}
+
 export function newRule(): Rule {
   return {
     id: "rule-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2),

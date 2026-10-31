@@ -237,6 +237,32 @@ async function jobsReviewAndCleanup() {
   await h.run({ ...run, status: "running", review: undefined });
   await h.click("Cancel run");
   assert(h.calls.some(call => call.mode === "cancelRun"));
+  await h.click("Pause");
+  assert(h.calls.some(call => call.mode === "pauseRun" && call.id === run.id));
+  await h.run({ ...run, pauseRequested: true });
+  assert.equal(h.button("Pausing…").props.disabled, true);
+  await h.run({ ...run, status: "paused" });
+  assert.equal(h.button("Pause"), undefined);
+  assert(h.button("Cancel run"), "a paused run can still be cancelled");
+  await h.click("Resume");
+  assert(h.calls.some(call => call.mode === "resumeRun" && call.id === run.id));
+  // Encoded versions are kept beside their originals: report the size of the new file, not disk growth.
+  const encoded = { ...file, status: "completed", addedBytes: 600, identity: { size: 1000 } };
+  await h.run({
+    ...run,
+    status: "completed",
+    counts: { completed: 1 },
+    addedBytes: 600,
+    originalBytes: 1000,
+    operations: [encoded],
+  });
+  await h.click("Show files");
+  assert(text(h.tree).includes("Created a 40% smaller file"));
+  assert(text(h.tree).includes("created a 40% smaller file"), "run history compares sizes too");
+  assert(!/B added|Added to disk/.test(text(h.tree)));
+  assert.equal(rules.createdFiles(1100, 1000, 3), "Created 10% larger files");
+  assert.equal(rules.sizeComparison(1000, 1000), "the same size");
+  await h.click("Close");
   // Failed/incomplete/generation events never queue compaction.
   const event = {
     type: "REMOVE",

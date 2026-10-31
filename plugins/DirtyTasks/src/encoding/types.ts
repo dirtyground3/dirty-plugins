@@ -80,6 +80,7 @@ export interface WorkflowRecord {
   estimatedSavings?: number;
   actualSavings?: number;
   addedBytes?: number;
+  originalBytes?: number;
   outputSize?: number;
   created?: number;
   automatic?: boolean;
@@ -87,6 +88,7 @@ export interface WorkflowRecord {
   progress?: { stage: string; progress: number; eta?: number | null };
   skipReasons?: [string, number][];
   cancelRequested?: boolean;
+  pauseRequested?: boolean;
   readyActions?: { resize: number; reencode: number };
 }
 export interface Capabilities {
@@ -103,6 +105,8 @@ export interface OperationResults {
   cancelPreview: unknown;
   discardPreview: unknown;
   cancelRun: unknown;
+  pauseRun: unknown;
+  resumeRun: unknown;
   retryRecovery: unknown;
   startAutomaticRun: unknown;
 }

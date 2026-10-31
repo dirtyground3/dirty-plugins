@@ -1,5 +1,5 @@
 import { React, ui } from "../runtime";
-import { bytes, timeLeft } from "../domain/rules";
+import { bytes, sizeComparison, timeLeft } from "../domain/rules";
 import { OperationTable } from "./OperationTable";
 import type { ReactNode } from "react";
 import type { WorkflowRecord } from "../types";
@@ -29,7 +29,7 @@ export function Results(props: ResultsProps) {
         ]
       : [
           ["Done", (counts.completed || 0) + " of " + record.total],
-          ["Added to disk", bytes(record.addedBytes)],
+          ["New files", record.addedBytes ? sizeComparison(record.addedBytes, record.originalBytes) : "—"],
           ["Failed", String(counts.failed || 0)],
         ];
   return (

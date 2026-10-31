@@ -22,7 +22,7 @@ import dirty_plugins_storage as storage
 from dirty_plugins_client import StashClient as BaseClient, contain_child_process
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dirty_compactor_rules import (
-    ENCODERS, PluginError, Cancelled, Skipped, digest, file_hash, identity, validate_settings, dimensions, target_mbps,
+    ENCODERS, PluginError, Cancelled, Paused, Skipped, digest, file_hash, identity, validate_settings, dimensions, target_mbps,
     quick_hash, container_video_bitrate,
 )
 import dirty_compactor_quality as quality
@@ -267,6 +267,13 @@ def check_cancel(run_id):
         raise Cancelled("Cancelled; original retained")
 
 
+def check_stop(run_id):
+    """Cancellation, or a pause that stops the current encode until resumed."""
+    check_cancel(run_id)
+    if (records.get("pause", run_id) or {}).get("requested"):
+        raise Paused("Paused; the interrupted file starts over when resumed")
+
+
 def run_process(command, run_id, stage, duration=1):
     PRIVATE.mkdir(parents=True, exist_ok=True)
     log_path = PRIVATE / (uuid.uuid4().hex + ".log")
@@ -285,7 +292,7 @@ def run_process(command, run_id, stage, duration=1):
             try:
                 while process.poll() is None:
                     if time.monotonic() - last > 1:
-                        check_cancel(run_id)
+                        check_stop(run_id)
                         report(run_id, stage, progress)
                         last = time.monotonic()
                     try:
@@ -468,11 +475,11 @@ def measure_quality(ffmpeg, run, op, encoder):
         tests = [0]
 
         def step():
-            check_cancel(run["id"])
+            check_stop(run["id"])
             tests[0] += 1
             report(run["id"], "Measuring quality · test %d" % tests[0], min(0.95, (tests[0] - 1) / quality.SEARCH_STEPS))
         choice = quality.search(ffmpeg, op["source"], media, op["dimensions"], rule["codec"], encoder, rule["vmaf"],
-                                PRIVATE / ("quality-" + op["id"]), step, lambda: check_cancel(run["id"]))
+                                PRIVATE / ("quality-" + op["id"]), step, lambda: check_stop(run["id"]))
         # Same file and settings give the same answer; later previews and runs reuse it.
         records.put("qualitySearch", key, {k: choice[k] for k in ("crf", "vmaf", "mbps", "reached")})
     op.update(crf=choice["crf"], vmaf=choice["vmaf"], mbps=choice["mbps"])
@@ -569,7 +576,7 @@ def encode(client, run, op):
         output.unlink(missing_ok=True)
         op.update(encoder=ENCODERS[codec]["cpu"], fallback=True)
         run_process(command_for(ffmpeg, op, output, op["encoder"]), run["id"], "Encoding (CPU fallback)", op["media"]["duration"])
-    result = probe(ffprobe, output, lambda: check_cancel(run["id"]))
+    result = probe(ffprobe, output, lambda: check_stop(run["id"]))
     original = op["media"]
     if [result["width"], result["height"]] != op["dimensions"] or abs(result["duration"] - original["duration"]) > max(0.25, original["duration"] * 0.001):
         raise PluginError("Output dimensions or duration failed validation")
@@ -654,7 +661,7 @@ def worker(client, run_id):
         for op in run["operations"]:
             if op["status"] != "ready":
                 continue
-            check_cancel(run_id)
+            check_stop(run_id)
             if run["automatic"] and get_section("execution")["encoding"].get(str(op["rule"]["id"]), "manual") != run.get("automationTrigger", "scan"):
                 raise Cancelled("Rule trigger changed")
             try:
@@ -676,6 +683,16 @@ def worker(client, run_id):
                 op["status"] = "failed"
                 save("run", run)
         complete_run(client, run)
+    except Paused:
+        # Nothing was published; the interrupted file is encoded again on resume.
+        for op in run["operations"]:
+            if op["status"] in ("encoding", "validated"):
+                discard_outputs(op)
+                op["status"] = "ready"
+        transition_run(run, "paused", save)
+        records.put("pause", run_id, {"requested": False})
+        # Organization may run meanwhile; resuming revalidates every file.
+        reservation.release("encoding", run_id)
     except Cancelled as error:
         for op in run["operations"]:
             if op["status"] in ("ready", "encoding", "validated"):
@@ -756,6 +773,7 @@ def public_record(record, page=1):
                   readyActions={action: sum(o["status"] == "ready" and o["rule"]["action"] == action for o in operations) for action in ("resize", "reencode")},
                   actualSavings=sum(o.get("actualSavings", 0) for o in operations),
                   addedBytes=sum(o.get("addedBytes", 0) for o in operations),
+                  originalBytes=original_bytes(operations),
                   skipReasons=skip_reasons(operations),
                   operations=[{k: o.get(k) for k in ("id", "sceneId", "title", "fileId", "source", "destination", "status", "reason", "savings", "dimensions", "mbps", "crf", "vmaf", "convert", "identity", "media", "rule", "actualSavings", "outputSize", "addedBytes")} for o in operations[(page - 1) * 25:page * 25]])
     result["progress"] = records.get("progress", record["id"]) if record["status"] in ("running", "planning", "reconciling", "finalizing") else None
@@ -763,7 +781,14 @@ def public_record(record, page=1):
         result["progress"]["eta"] = eta(result["progress"])
     if "rulesDigest" not in record and record["status"] in ("queued", "planning"):
         result["cancelRequested"] = bool(records.get("cancel", record["id"]))
+    if "rulesDigest" in record and record["status"] not in TERMINAL | {"paused"}:
+        result["pauseRequested"] = bool((records.get("pause", record["id"]) or {}).get("requested"))
     return result
+
+
+def original_bytes(operations):
+    """Size of the originals that have an encoded version, to compare with addedBytes."""
+    return sum((o.get("identity") or {}).get("size", 0) for o in operations if o.get("addedBytes"))
 
 
 def start_run(client, preview, args, automatic=False, trigger=None):
@@ -962,7 +987,10 @@ def get_run(client, args):
 
 def list_runs(client, args):
     return [{"id": run["id"], "status": run["status"], "created": run["created"], "automatic": run["automatic"],
-             "addedBytes": sum(o.get("addedBytes", 0) for o in run["operations"])} for run in records.list_records("run")]
+             "addedBytes": sum(o.get("addedBytes", 0) for o in run["operations"]),
+             "originalBytes": original_bytes(run["operations"]),
+             "counts": {"completed": sum(o["status"] == "completed" for o in run["operations"])}}
+            for run in records.list_records("run")]
 
 
 def cancel_preview(client, args):
@@ -975,7 +1003,12 @@ def cancel_run(client, args):
     if run["status"] in TERMINAL:
         return {"requested": False}
     records.put("cancel", run["id"], {"requested": True})
-    if run["status"] == "recovery" and not tasks_active(client):
+    if run["status"] == "paused":
+        for item in run["operations"]:
+            if item["status"] == "ready":
+                item.update(status="cancelled", reason="Cancelled; original retained")
+        complete_run(client, run, "cancelled")
+    elif run["status"] == "recovery" and not tasks_active(client):
         op = next((o for o in run["operations"] if o["status"] in ("publishing", "reconciling", "attaching")), None)
         if op and Path(op["destination"]).is_file() and file_hash(op["destination"]) == op.get("outputHash"):
             recover(client, run)
@@ -987,6 +1020,28 @@ def cancel_run(client, args):
             complete_run(client, run, "cancelled")
     # Published files are retained and attachment finishes before stopping.
     return {"requested": True}
+
+
+def pause_run(client, args):
+    run = get("run", args["id"])
+    if run["status"] in TERMINAL or run["status"] == "paused":
+        return {"requested": False}
+    if run["status"] == "recovery":
+        raise PluginError("Retry recovery or cancel the run before pausing it")
+    # The encoder stops at its next check; a published file finishes attaching first.
+    records.put("pause", run["id"], {"requested": True})
+    return {"requested": True}
+
+
+def resume_run(client, args):
+    run = get("run", args["id"])
+    if run["status"] != "paused":
+        raise PluginError("This run is not paused")
+    reservation.acquire("encoding", run["id"])
+    records.put("pause", run["id"], {"requested": False})
+    transition_run(run, "queued", save)
+    client.queue(PLUGIN_ID, {"mode": "worker", "id": run["id"]}, "DirtyTasks: encoding: resume")
+    return {"id": run["id"]}
 
 
 def recover_run(client, args):
@@ -1010,6 +1065,8 @@ HANDLERS = {
     'listRuns': list_runs,
     'cancelPreview': cancel_preview,
     'cancelRun': cancel_run,
+    'pauseRun': pause_run,
+    'resumeRun': resume_run,
     'retryRecovery': recover_run,
 }
 
