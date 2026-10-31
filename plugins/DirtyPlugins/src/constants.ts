@@ -2,7 +2,7 @@ import * as captions from "@generated/dirtyCaptions.settings";
 import * as hubSettings from "@generated/dirtyPlugins.settings";
 import * as extractor from "@generated/extractScenes.settings";
 import * as multiscreen from "@generated/multiscreen.settings";
-import { defaults, integers, limits, options, order } from "@generated/dirtyStats.settings";
+import { defaults, disabledWhen, integers, limits, options, order, sections } from "@generated/dirtyStats.settings";
 export const ROUTE_PATH = "/plugins/dirty-plugins";
 export const CONFIGURATION_CHANGED_EVENT = "dirty-plugins:configuration-changed";
 export const FIELD_ACTIONS_CHANGED_EVENT = "dirty-plugins:field-actions-changed";
@@ -22,6 +22,10 @@ interface StandardSettings {
   options: Record<string, { value: string; label: string }[]>;
   limits: Record<string, { min?: number; max?: number; step?: number }>;
   integers: string[];
+  /** Optional headed groups of the authored order. */
+  sections: { title: string; description?: string; settings: string[] }[];
+  /** A control is disabled while another setting holds the given option. */
+  disabledWhen: Record<string, { setting: string; value: string | number }>;
 }
 const STANDARD_SETTINGS: Record<string, StandardSettings> = {
   dirtyPlugins: hubSettings,
@@ -29,7 +33,7 @@ const STANDARD_SETTINGS: Record<string, StandardSettings> = {
   extractScenes: extractor,
   multiscreen,
   // Only the tables: Stats display constants stay out of the hub bundle.
-  dirtyStats: { order, defaults, options, limits, integers },
+  dirtyStats: { order, defaults, options, limits, integers, sections, disabledWhen },
 };
 function standardTable<T>(pick: (settings: StandardSettings) => T): Record<string, T> {
   return Object.fromEntries(Object.entries(STANDARD_SETTINGS).map(([id, settings]) => [id, pick(settings)]));
@@ -39,3 +43,5 @@ export const PLUGIN_DEFAULTS = standardTable(settings => settings.defaults);
 export const FIELD_OPTIONS = standardTable(settings => settings.options);
 export const FIELD_LIMITS = standardTable(settings => settings.limits);
 export const FIELD_INTEGERS = standardTable(settings => new Set(settings.integers));
+export const PLUGIN_SECTIONS = standardTable(settings => settings.sections);
+export const FIELD_DISABLED_WHEN = standardTable(settings => settings.disabledWhen);

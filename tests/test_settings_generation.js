@@ -80,6 +80,47 @@ async function main() {
     ["count"],
     "authored integer requirements reach TypeScript validation",
   );
+  const grouped = {
+    settings: {
+      mode: {
+        type: "STRING",
+        displayName: "Mode",
+        description: "Mode.",
+        options: [
+          { value: "a", label: "A" },
+          { value: "b", label: "B" },
+        ],
+      },
+      extra: {
+        type: "BOOLEAN",
+        displayName: "Extra",
+        description: "Extra.",
+        disabledWhen: { setting: "mode", value: "b" },
+      },
+    },
+    sections: [
+      { title: "Mode", description: "Choose.", settings: ["mode"] },
+      { title: "More", settings: ["extra"] },
+    ],
+  };
+  assert.equal(generator.validateSchema("example", grouped), grouped);
+  assert.deepEqual(generator.settingsTables(grouped).disabledWhen, { extra: { setting: "mode", value: "b" } });
+  assert.match(generator.typescriptModule("example", grouped), /export const sections = \[/);
+  assert.throws(
+    () =>
+      generator.validateSchema("example", {
+        ...grouped,
+        settings: {
+          ...grouped.settings,
+          extra: { ...grouped.settings.extra, disabledWhen: { setting: "mode", value: "c" } },
+        },
+      }),
+    /disabledWhen must name another setting and one of its option values/,
+  );
+  assert.throws(
+    () => generator.validateSchema("example", { ...grouped, sections: [...grouped.sections].reverse() }),
+    /in schema order/,
+  );
   const invalid = [
     [{ settings: {}, constants: null }, /example\.settings\.json: constants must be an object/],
     [{ settings: { broken: null } }, /example\.settings\.json: broken must be an object/],
@@ -90,6 +131,14 @@ async function main() {
       /example\.settings\.json: mode options must be a list/,
     ]),
     [{ settings: {}, extra: true }, /unknown key extra/],
+    [{ ...valid, sections: [{ title: "Size", settings: [] }] }, /sections must be a list/],
+    [{ ...valid, sections: [{ title: "", settings: ["count"] }] }, /sections must be a list/],
+    [{ ...valid, sections: [{ title: "Size", settings: ["count", "count"] }] }, /every setting once, in schema order/],
+    [{ ...valid, sections: [{ title: "Size", settings: ["other"] }] }, /every setting once, in schema order/],
+    [
+      { settings: { count: { ...valid.settings.count, disabledWhen: { setting: "count", value: 2 } } } },
+      /disabledWhen must name another setting/,
+    ],
     [{ settings: { count: { ...valid.settings.count, default: 5 } } }, /outside min\/max/],
     [{ settings: { count: { ...valid.settings.count, default: 1.5 } } }, /whole number/],
     [{ settings: { count: { ...valid.settings.count, min: 5 } } }, /min exceeds max/],

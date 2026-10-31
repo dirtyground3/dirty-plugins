@@ -1528,6 +1528,20 @@ body.dirty-ui-modal-open {
   padding-bottom: 0;
 }
 
+.dirty-plugins-sections {
+  display: grid;
+  gap: 1rem;
+}
+
+.dirty-ui-settings-section-heading + .dirty-plugins-setting {
+  padding-top: 0;
+}
+
+/* A setting that does not apply to the current choices stays visible but inactive. */
+.dirty-plugins-setting:has(> input:disabled, > select:disabled) > :is(label, .dirty-ui-field-help) {
+  opacity: 0.5;
+}
+
 .dirty-plugins-setting > label {
   grid-column: 1;
   grid-row: 1;

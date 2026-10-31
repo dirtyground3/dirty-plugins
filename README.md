@@ -17,11 +17,11 @@ a shared SQLite database, and is installed automatically as a dependency.
 | --- | --- | ---: |
 | [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.10 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.8 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.17 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.18 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.4 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.10 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.11 |
 
 ## Shared look and settings
 
@@ -160,9 +160,10 @@ the public repository.
 
 ![DirtyMultiscreen playback and grid settings](docs/images/dirty-multiscreen-settings.png)
 
-Set the screen count and geometry, then choose how scenes are distributed,
-started, looped, muted, and paused. The last setting hides or restores the grid
-button in the Stash header.
+Settings are grouped into Grid, Scenes, Playback and Navigation: set the grid
+geometry, choose the scene order and how scenes are shared between panes, how
+they start, loop, mute and pause, and whether the grid button appears in the
+Stash header.
 
 ### DirtyFileExtractor
 
@@ -487,6 +488,9 @@ Settings shown in Stash (labels, descriptions, defaults, bounds and options) and
 constants shared by browser and backend are authored once in `schemas/`; the build
 generates the manifest `settings:` section, TypeScript tables and, where a
 backend needs them, Python constants such as `dirty_rank_metadata.py`.
+A schema may also group its settings under headed `sections` (listing every
+setting once, in schema order) and give a setting a `disabledWhen` rule naming
+another setting's option; the hub renders both for ordinary settings tabs.
 
 Always use `.build/plugins/<Directory>/` for local installs and packages. Raw
 source directories are not installable: they contain no compiled bundle.
@@ -556,6 +560,12 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyMultiscreen 1.0.18 and DirtyPlugins 1.0.11:** the DirtyMultiscreen
+  settings tab is grouped into Grid, Scenes, Playback and Navigation, with
+  shorter descriptions. **Spread performers and studios** is greyed out while
+  **Keep the list order** is selected, where it has no effect. Saved settings
+  keep their values.
 
 - **DirtyMultiscreen 1.0.17 and DirtyPlugins 1.0.10:** **Scene order** replaces
   the **Random scenes** switch with seven orders: Random, Fewer repeats, Favour

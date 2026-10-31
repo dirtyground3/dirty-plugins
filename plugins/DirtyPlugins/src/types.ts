@@ -90,6 +90,7 @@ export interface PanelProps {
   onConfigurationChanged?(): void;
 }
 export interface SettingInputProps {
+  disabled?: boolean;
   pluginId: string;
   setting: Setting;
   value: FieldValue;

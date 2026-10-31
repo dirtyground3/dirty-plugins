@@ -3,7 +3,7 @@ import { React } from "../runtime";
 import { fieldDefinition, getFieldAction } from "../settings";
 import type { SettingInputProps } from "../types";
 import { SettingsField } from "./SettingsField";
-export function SettingInput({ pluginId, setting, value, onChange, actionRevision }: SettingInputProps) {
+export function SettingInput({ disabled, pluginId, setting, value, onChange, actionRevision }: SettingInputProps) {
   const maskedPath =
     pluginId === "extractScenes" &&
     setting.name === "destinationFolder" &&
@@ -19,7 +19,7 @@ export function SettingInput({ pluginId, setting, value, onChange, actionRevisio
       definition={fieldDefinition(pluginId, setting)}
       className="dirty-plugins-setting"
       value={maskedPath ? "Path hidden for documentation" : value}
-      disabled={maskedPath}
+      disabled={maskedPath || disabled}
       onChange={onChange}
       action={actionButton}
     />

@@ -68,11 +68,16 @@ runtime files and Stash's package-provenance `manifest` during a local update.
 
 ## Configuration
 
-The plugin exposes settings for screen count, grid dimensions, scene order, performer spreading, scene splitting, random start positions, looping, marker duration, muting and tab visibility behavior.
+The DirtyMultiscreen tab of the Dirty Plugins settings has four groups:
 
-The following playback options are enabled by default: **Spread performers and
-studios**, **Start muted**, **Random start**, **Loop scenes**, and **Pause when
-hidden**.
+- **Grid:** rows, columns and the number of panes to fill (up to rows x columns).
+- **Scenes:** scene order, **Spread performers and studios** and **Split scenes
+  between panes**.
+- **Playback:** **Start muted**, **Random start**, **Loop scenes**, **Pause when
+  hidden** and the length of markers without an end time.
+- **Navigation:** whether the grid button appears in the Stash header.
+
+Spreading, muting, random starts, looping and pausing are enabled by default.
 
 ### Scene order
 
@@ -99,9 +104,9 @@ performer's scenes (or a studio's, for scenes without performers) are placed at
 evenly spaced positions with a random start
 and up to 20% jitter. The weighted orders keep their priority but pull forward
 the nearest scene that shares nothing with the previous one, or with the scenes
-the other panes play alongside it when **Split scenes** is on.
+the other panes play alongside it when **Split scenes between panes** is on.
 
-**Show DirtyMultiscreen in the Stash header** (enabled by default) hides or
+**Show in the Stash header** (enabled by default) hides or
 restores the grid button without a reload. While it is hidden, the button
 counts no scenes and the player stays reachable at `/plugins/multiscreen`.
 

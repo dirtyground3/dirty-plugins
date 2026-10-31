@@ -1,19 +1,9 @@
 {
   "settings": {
-    "totalScreens": {
-      "type": "NUMBER",
-      "displayName": "Total screens",
-      "description": "Number of video panes to render. Defaults to 4.",
-      "default": 4,
-      "integer": true,
-      "min": 1,
-      "max": 36,
-      "step": 1
-    },
     "rows": {
       "type": "NUMBER",
       "displayName": "Rows",
-      "description": "Number of grid rows. Defaults to 2.",
+      "description": "Grid rows. Defaults to 2.",
       "default": 2,
       "integer": true,
       "min": 1,
@@ -23,17 +13,27 @@
     "columns": {
       "type": "NUMBER",
       "displayName": "Columns",
-      "description": "Number of grid columns. Defaults to 2.",
+      "description": "Grid columns. Defaults to 2.",
       "default": 2,
       "integer": true,
       "min": 1,
       "max": 12,
       "step": 1
     },
+    "totalScreens": {
+      "type": "NUMBER",
+      "displayName": "Total screens",
+      "description": "Video panes to fill, up to rows x columns. Defaults to 4.",
+      "default": 4,
+      "integer": true,
+      "min": 1,
+      "max": 36,
+      "step": 1
+    },
     "sceneOrder": {
       "type": "STRING",
       "displayName": "Scene order",
-      "description": "How each pane orders its playback list. Fewer repeats plays recently watched scenes last; the favour orders shuffle a random sample and bring matching scenes forward more often; the mix inserts an unwatched scene after every two favourites. Defaults to random.",
+      "description": "How each pane orders its scenes. The favour orders shuffle with a bias; Fewer repeats plays recently watched scenes last. Defaults to random.",
       "default": "random",
       "options": [
         {
@@ -69,13 +69,17 @@
     "spreadScenes": {
       "type": "BOOLEAN",
       "displayName": "Spread performers and studios",
-      "description": "Keep scenes that share a performer or studio apart, in a pane and across split panes. Ignored when keeping the list order. Enabled by default.",
-      "default": true
+      "description": "Avoid playing scenes with the same performer or studio back to back or side by side. Enabled by default.",
+      "default": true,
+      "disabledWhen": {
+        "setting": "sceneOrder",
+        "value": "list"
+      }
     },
     "splitScenes": {
       "type": "BOOLEAN",
-      "displayName": "Split scenes",
-      "description": "Split loaded scenes across panes instead of reusing the same list. Defaults to false.",
+      "displayName": "Split scenes between panes",
+      "description": "Give each pane its own share of the scenes instead of every pane drawing from the whole list. Disabled by default.",
       "default": false
     },
     "startMuted": {
@@ -87,36 +91,72 @@
     "randomStart": {
       "type": "BOOLEAN",
       "displayName": "Random start",
-      "description": "Start each scene at a random timestamp after metadata loads. Enabled by default.",
+      "description": "Jump to a random point when a scene starts. Enabled by default.",
       "default": true
     },
     "loopScenes": {
       "type": "BOOLEAN",
       "displayName": "Loop scenes",
-      "description": "Loop each scene instead of advancing at the end. Enabled by default.",
+      "description": "Repeat a scene instead of advancing to the next one. Enabled by default.",
+      "default": true
+    },
+    "pauseWhenHidden": {
+      "type": "BOOLEAN",
+      "displayName": "Pause when hidden",
+      "description": "Pause every pane while the browser tab is hidden. Enabled by default.",
       "default": true
     },
     "markerDuration": {
       "type": "NUMBER",
-      "displayName": "Marker fallback duration",
-      "description": "Seconds to play markers that do not have an end time. Defaults to 30.",
+      "displayName": "Marker length without an end time",
+      "description": "Seconds to play a marker that has no end time. Defaults to 30.",
       "default": 30,
       "integer": true,
       "min": 1,
       "max": 600,
       "step": 1
     },
-    "pauseWhenHidden": {
-      "type": "BOOLEAN",
-      "displayName": "Pause when hidden",
-      "description": "Pause playback while the browser tab is hidden. Enabled by default.",
-      "default": true
-    },
     "showInMenu": {
       "type": "BOOLEAN",
-      "displayName": "Show DirtyMultiscreen in the Stash header",
-      "description": "Add the DirtyMultiscreen grid button to Stash's utility navigation. When hidden, the player stays reachable by URL. Enabled by default.",
+      "displayName": "Show in the Stash header",
+      "description": "Show the DirtyMultiscreen button in Stash's top bar. When hidden, the player stays reachable by URL. Enabled by default.",
       "default": true
     }
-  }
+  },
+  "sections": [
+    {
+      "title": "Grid",
+      "description": "How many panes play at once.",
+      "settings": [
+        "rows",
+        "columns",
+        "totalScreens"
+      ]
+    },
+    {
+      "title": "Scenes",
+      "description": "Which scene each pane plays next.",
+      "settings": [
+        "sceneOrder",
+        "spreadScenes",
+        "splitScenes"
+      ]
+    },
+    {
+      "title": "Playback",
+      "settings": [
+        "startMuted",
+        "randomStart",
+        "loopScenes",
+        "pauseWhenHidden",
+        "markerDuration"
+      ]
+    },
+    {
+      "title": "Navigation",
+      "settings": [
+        "showInMenu"
+      ]
+    }
+  ]
 }

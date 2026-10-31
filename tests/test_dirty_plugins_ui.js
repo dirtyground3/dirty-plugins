@@ -164,9 +164,16 @@ async function main() {
   const inputs = h.nodes(node => node.type === "input");
   assert.deepEqual(
     inputs.map(node => node.props.id),
-    ["dirty-plugin-multiscreen-totalScreens", "dirty-plugin-multiscreen-rows", "dirty-plugin-multiscreen-columns"],
+    ["dirty-plugin-multiscreen-rows", "dirty-plugin-multiscreen-columns", "dirty-plugin-multiscreen-totalScreens"],
+    "settings follow their schema sections",
   );
-  inputs[0].props.onChange({ target: { value: "8" } });
+  assert.deepEqual(
+    h.nodes(node => node.type === "h3").map(node => node.props.children),
+    ["Grid"],
+    "only sections with reported settings render",
+  );
+  const screens = () => h.nodes(node => node.props.id === "dirty-plugin-multiscreen-totalScreens")[0];
+  screens().props.onChange({ target: { value: "8" } });
   await h.settle();
   assert.match(h.text(), /Unsaved changes/);
   assert.equal(h.window.handlers.get("beforeunload").size, 1);
@@ -178,13 +185,13 @@ async function main() {
   const write = h.requests.find(request => request.variables?.args?.mode === "setSettings").variables.args;
   assert.equal(write.expectedRevision, 1);
   assert.equal(write.settings.rows, 2);
-  h.nodes(node => node.type === "input")[0].props.onChange({ target: { value: "invalid" } });
+  screens().props.onChange({ target: { value: "invalid" } });
   await h.settle();
   await h.tick();
   assert.match(h.text(), /must be a number/);
-  assert.equal(h.nodes(node => node.type === "input")[0].props.value, "invalid", "invalid drafts keep the raw input");
+  assert.equal(screens().props.value, "invalid", "invalid drafts keep the raw input");
   assert.equal(h.settings.multiscreen.totalScreens, 8);
-  h.nodes(node => node.type === "input")[0].props.onChange({ target: { value: "9" } });
+  screens().props.onChange({ target: { value: "9" } });
   await h.settle();
   h.unmount();
   await h.tick();
@@ -217,6 +224,34 @@ async function main() {
   assert.equal(navTree.children[1], null, "the hub setting hides the button");
   nav.unmount();
   assert.equal(nav.window.handlers.get("dirty-plugins:configuration-changed")?.size || 0, 0);
+  // A setting that does not apply to another setting's choice is shown disabled until it applies.
+  const ordered = createHubHarness({
+    settings: { dirtyPlugins: { visualTheme: "classic" }, multiscreen: { sceneOrder: "list", spreadScenes: true } },
+    plugins: [
+      {
+        id: "multiscreen",
+        name: "DirtyMultiscreen",
+        enabled: true,
+        settings: [
+          { name: "spreadScenes", type: "BOOLEAN" },
+          { name: "sceneOrder", type: "STRING" },
+        ],
+      },
+      { id: "dirtyPlugins", name: "DirtyPlugins", enabled: true, settings: [] },
+    ],
+  });
+  ordered.load();
+  await ordered.settle();
+  const spread = () => ordered.nodes(node => node.props.id === "dirty-plugin-multiscreen-spreadScenes")[0];
+  assert.equal(spread().props.disabled, true, "spreading does not apply to the list order");
+  ordered
+    .nodes(node => node.props.id === "dirty-plugin-multiscreen-sceneOrder")[0]
+    .props.onChange({
+      target: { value: "random" },
+    });
+  await ordered.settle();
+  assert.equal(spread().props.disabled, false);
+  ordered.unmount();
   // Both real compiled bundles cooperate: hook dirty reports drive the existing
   // hub route's browser/tab protection, including rejecting a leave attempt.
   const combined = createHubHarness({
