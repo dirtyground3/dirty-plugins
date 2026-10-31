@@ -80,9 +80,12 @@ export function validateSchema(pluginId, schema) {
         Object.keys(rule).some(key => key !== "setting" && key !== "value") ||
         rule.setting === name ||
         !isObject(target) ||
-        !(target.options || []).some(option => option.value === rule.value)
+        !(
+          (target.options || []).some(option => option.value === rule.value) ||
+          (target.type === "BOOLEAN" && typeof rule.value === "boolean")
+        )
       )
-        where("disabledWhen must name another setting and one of its option values");
+        where("disabledWhen must name another setting and one of its option values or a boolean");
     }
     if (setting.default === undefined) continue;
     const value = setting.default;

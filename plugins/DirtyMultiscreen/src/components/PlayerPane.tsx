@@ -1,5 +1,5 @@
 import { React } from "../runtime";
-import { locatePlaylistItem } from "../domain/playlists";
+import { locatePlaylistItem, nextFreeIndex } from "../domain/playlists";
 import type { GridProps, Item } from "../types";
 import { NativePlayerTile } from "./NativePlayerTile";
 import { PaneHeader } from "./SceneSearch";
@@ -8,13 +8,16 @@ interface PaneProps
   extends Pick<GridProps, "nativePlayer" | "playback" | "useFindScene" | "continuation" | "searchSession"> {
   playlist: Item[];
   screenIndex: number;
-  onSceneChange(index: number, id: string | null): void;
+  onSceneChange(index: number, item: Item | null): void;
+  /** Items the other panes are playing; absent when duplicates are allowed. */
+  playingElsewhere?(screen: number): Set<string>;
 }
 export function NativePlayerPane({
   playlist,
   screenIndex,
   continuation,
   onSceneChange,
+  playingElsewhere,
   searchSession,
   ...player
 }: PaneProps) {
@@ -48,7 +51,7 @@ export function NativePlayerPane({
   }, [playlist, continuation]);
   const item = state.items[state.cursor];
   React.useEffect(() => {
-    onSceneChange(screenIndex, item?.scene.id || null);
+    onSceneChange(screenIndex, item || null);
   }, [onSceneChange, screenIndex, item]);
   const navigate = async (direction: 1 | -1) => {
     const previous = current.current;
@@ -60,7 +63,12 @@ export function NativePlayerPane({
       current.current = next;
       setState(next);
     };
-    const cursor = previous.cursor + direction;
+    // Going forward skips items another pane is playing; going back never skips.
+    const playing = direction === 1 ? playingElsewhere?.(screenIndex) : undefined;
+    const firstFree = (items: Item[], from: number) =>
+      playing ? nextFreeIndex(items, from, playing) : from < items.length ? from : -1;
+    const startOf = (items: Item[]) => (direction === 1 ? Math.max(0, firstFree(items, 0)) : items.length - 1);
+    const cursor = direction === 1 ? firstFree(previous.items, previous.cursor + 1) : previous.cursor - 1;
     if (cursor >= 0 && cursor < previous.items.length) {
       publish({ ...previous, cursor, busy: false, error: "" });
       return;
@@ -69,7 +77,7 @@ export function NativePlayerPane({
       if (previous.items.length)
         publish({
           ...previous,
-          cursor: direction === 1 ? 0 : previous.items.length - 1,
+          cursor: startOf(previous.items),
           busy: false,
           error: "",
         });
@@ -91,7 +99,7 @@ export function NativePlayerPane({
           publish({
             items,
             page,
-            cursor: direction === 1 ? 0 : items.length - 1,
+            cursor: startOf(items),
             busy: false,
             error: "",
           });

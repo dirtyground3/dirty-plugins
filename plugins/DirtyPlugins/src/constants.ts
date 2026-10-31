@@ -25,7 +25,7 @@ interface StandardSettings {
   /** Optional headed groups of the authored order. */
   sections: { title: string; description?: string; settings: string[] }[];
   /** A control is disabled while another setting holds the given option. */
-  disabledWhen: Record<string, { setting: string; value: string | number }>;
+  disabledWhen: Record<string, { setting: string; value: string | number | boolean }>;
 }
 const STANDARD_SETTINGS: Record<string, StandardSettings> = {
   dirtyPlugins: hubSettings,

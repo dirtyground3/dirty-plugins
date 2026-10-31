@@ -13,6 +13,8 @@ export interface Ordering {
   spread: boolean;
   /** One clock per pool keeps weighted pages identical when panes load them at different times. */
   now: number;
+  /** Start unsplit panes on different items. */
+  distinct: boolean;
 }
 
 const daysSince = (value: string | null | undefined, now: number) => {

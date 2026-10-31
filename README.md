@@ -17,11 +17,11 @@ a shared SQLite database, and is installed automatically as a dependency.
 | --- | --- | ---: |
 | [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.10 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.8 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.19 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.20 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.4 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.11 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.12 |
 
 ## Shared look and settings
 
@@ -490,7 +490,8 @@ generates the manifest `settings:` section, TypeScript tables and, where a
 backend needs them, Python constants such as `dirty_rank_metadata.py`.
 A schema may also group its settings under headed `sections` (listing every
 setting once, in schema order) and give a setting a `disabledWhen` rule naming
-another setting's option; the hub renders both for ordinary settings tabs.
+another setting's option or boolean value; the hub renders both for ordinary
+settings tabs.
 
 Always use `.build/plugins/<Directory>/` for local installs and packages. Raw
 source directories are not installable: they contain no compiled bundle.
@@ -560,6 +561,16 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyMultiscreen 1.0.20 and DirtyPlugins 1.0.12:** the new **Avoid the same
+  scene on several screens** setting, enabled by default, starts every screen on
+  a different scene and skips scenes already playing on another screen when a
+  screen moves forward. Going back and search results never skip, so the same
+  scene can still play on several screens on purpose. It is greyed out while
+  **Split scenes between panes** is on, where screens never share a scene. A
+  shuffle button beside the close button reshuffles every screen: its menu
+  lists the scene orders with the current one checked, and choosing another
+  order also saves it as the **Scene order** setting.
 
 - **DirtyMultiscreen 1.0.19:** opening DirtyMultiscreen without a list (for
   example from the header on the home page) now plays through the whole library

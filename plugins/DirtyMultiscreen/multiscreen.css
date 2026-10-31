@@ -168,6 +168,37 @@
   cursor: wait;
 }
 
+/* The reshuffle menu's toggle matches the round floating buttons beside it. */
+#root .ms-floating .ms-shuffle-menu .dirty-ui-action-menu-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.6rem;
+  min-width: 2.6rem;
+  height: 2.6rem;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: rgba(0, 0, 0, 0.62) !important;
+  color: #fff !important;
+  opacity: 0.45;
+}
+
+#root .ms-floating .ms-shuffle-menu .dirty-ui-action-menu-toggle::after {
+  display: none;
+}
+
+#root .ms-floating .ms-shuffle-menu .dirty-ui-action-menu-toggle:hover,
+#root .ms-floating .ms-shuffle-menu .dirty-ui-action-menu-toggle:focus-visible,
+#root .ms-floating .ms-shuffle-menu.show .dirty-ui-action-menu-toggle {
+  opacity: 1;
+}
+
+.ms-shuffle-check {
+  display: inline-block;
+  width: 1.2rem;
+}
+
 .ms-o-counter-dismissing {
   pointer-events: none;
   animation: ms-o-counter-dismiss 360ms ease-in forwards;

@@ -139,6 +139,15 @@ async function main() {
       { settings: { count: { ...valid.settings.count, disabledWhen: { setting: "count", value: 2 } } } },
       /disabledWhen must name another setting/,
     ],
+    [
+      {
+        settings: {
+          flag: { type: "BOOLEAN", displayName: "Flag", description: "Flag." },
+          count: { ...valid.settings.count, disabledWhen: { setting: "flag", value: "yes" } },
+        },
+      },
+      /or a boolean/,
+    ],
     [{ settings: { count: { ...valid.settings.count, default: 5 } } }, /outside min\/max/],
     [{ settings: { count: { ...valid.settings.count, default: 1.5 } } }, /whole number/],
     [{ settings: { count: { ...valid.settings.count, min: 5 } } }, /min exceeds max/],

@@ -22,7 +22,24 @@ export function splitMultiscreenItemsByIndex<T>(items: T[], total: number): T[][
   return groups;
 }
 
-export function createMultiscreenPlaylists<T extends { scene?: Scene }>(
+/** Move each list's first item not already leading an earlier list to the front; other items keep their order. */
+export function distinctStarts<T extends { id: string }>(playlists: T[][]): T[][] {
+  const leading = new Set<string>();
+  return playlists.map(items => {
+    const index = items.findIndex(item => !leading.has(item.id));
+    if (index < 0) return items;
+    leading.add(items[index].id);
+    return index === 0 ? items : [items[index], ...items.slice(0, index), ...items.slice(index + 1)];
+  });
+}
+
+/** The first item at or after `from` that is not playing elsewhere, or -1. */
+export function nextFreeIndex<T extends { id: string }>(items: T[], from: number, playing: Set<string>) {
+  for (let index = from; index < items.length; index++) if (!playing.has(items[index].id)) return index;
+  return -1;
+}
+
+export function createMultiscreenPlaylists<T extends { id: string; scene?: Scene }>(
   items: T[],
   totalScreens: number,
   ordering: Ordering,
@@ -35,11 +52,12 @@ export function createMultiscreenPlaylists<T extends { scene?: Scene }>(
   // Split lanes play neighbouring items at the same time, so spreading spans one row of panes.
   const ordered = () => orderMultiscreenItems(items, ordering, random, splitItems ? totalScreens : 1);
   if (splitItems) return splitMultiscreenItemsByIndex(ordered(), totalScreens);
-  return Array.from({ length: Math.max(0, totalScreens) }, ordered);
+  const playlists = Array.from({ length: Math.max(0, totalScreens) }, ordered);
+  return ordering.distinct ? distinctStarts(playlists) : playlists;
 }
 
 /** Repeatable per-page permutations keep split assignments stable when panes advance independently. */
-export function pagePlaylists<T extends { scene?: Scene }>(
+export function pagePlaylists<T extends { id: string; scene?: Scene }>(
   items: T[],
   totalScreens: number,
   ordering: Ordering,

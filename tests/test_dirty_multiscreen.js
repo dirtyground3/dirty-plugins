@@ -40,6 +40,7 @@ async function main() {
     columns: 2,
     sceneOrder: "random",
     spreadScenes: true,
+    avoidDuplicates: true,
     splitScenes: false,
     startMuted: true,
     randomStart: true,
@@ -77,6 +78,19 @@ async function main() {
     "the source list must stay untouched",
   );
 
+  const distinct = a.createMultiscreenPlaylists(items, 3, { ...listOrder, distinct: true }, false);
+  assert.deepEqual(plain(distinct.map(playlist => playlist.map(item => item.id))), [
+    ["a", "b", "c", "d", "e"],
+    ["b", "a", "c", "d", "e"],
+    ["c", "a", "b", "d", "e"],
+  ]);
+  assert.deepEqual(
+    plain(a.distinctStarts([[{ id: "a" }], [{ id: "a" }]]).map(playlist => playlist[0].id)),
+    ["a", "a"],
+    "lists without another item keep their first one",
+  );
+  assert.equal(a.nextFreeIndex(items, 1, new Set(["b", "c"])), 3);
+  assert.equal(a.nextFreeIndex(items, 4, new Set(["e"])), -1);
   const split = a.createMultiscreenPlaylists(items, 2, listOrder, true);
   assert.deepEqual(plain(split.map(playlist => playlist.map(item => item.id))), [
     ["a", "c", "e"],

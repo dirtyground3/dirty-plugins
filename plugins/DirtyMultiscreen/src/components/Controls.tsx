@@ -9,6 +9,7 @@ const ICON_NAMES = {
   previous: ["faBackwardStep", "faStepBackward"],
   reload: ["faRotateRight", "faRedo"],
   search: ["faMagnifyingGlass", "faSearch"],
+  shuffle: ["faShuffle", "faRandom"],
   success: ["faCheck", "faCheck"],
 };
 export function icon(name: keyof typeof ICON_NAMES) {

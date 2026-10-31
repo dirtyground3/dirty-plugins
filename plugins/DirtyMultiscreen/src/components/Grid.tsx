@@ -1,7 +1,8 @@
 import { React } from "../runtime";
-import type { GridProps } from "../types";
+import type { GridProps, Item } from "../types";
 import { NativePlayerPane } from "./PlayerPane";
 export function NativeMultiscreenGrid({
+  avoidDuplicates,
   columns,
   continuation,
   nativePlayer,
@@ -16,7 +17,11 @@ export function NativeMultiscreenGrid({
   const gridRef = React.useRef<HTMLDivElement | null>(null);
   const videosToResumeRef = React.useRef(new Set<HTMLVideoElement>());
   const [visibleByPane, setVisibleByPane] = React.useState<Array<string | null>>([]);
-  const onSceneChange = React.useCallback((index: number, id: string | null) => {
+  // Read when a pane advances, so it never waits for a render to see the others.
+  const playingByPane = React.useRef<Array<string | null>>([]);
+  const onSceneChange = React.useCallback((index: number, item: Item | null) => {
+    playingByPane.current[index] = item?.id ?? null;
+    const id = item?.scene.id ?? null;
     setVisibleByPane(current => {
       if (current[index] === id) return current;
       const next = current.slice();
@@ -24,6 +29,18 @@ export function NativeMultiscreenGrid({
       return next;
     });
   }, []);
+  const playingElsewhere = React.useMemo(
+    () =>
+      avoidDuplicates
+        ? (screen: number) =>
+            new Set(
+              playingByPane.current
+                .slice(0, totalScreens)
+                .filter((id, index): id is string => index !== screen && !!id),
+            )
+        : undefined,
+    [avoidDuplicates, totalScreens],
+  );
   const visibleSceneIds = React.useMemo(
     () => Array.from(new Set(visibleByPane.slice(0, totalScreens).filter((id): id is string => !!id))),
     [visibleByPane, totalScreens],
@@ -85,6 +102,7 @@ export function NativeMultiscreenGrid({
           playback={playback}
           useFindScene={useFindScene}
           onSceneChange={onSceneChange}
+          playingElsewhere={playingElsewhere}
           searchSession={searchSession}
         />
       ))}

@@ -82,6 +82,16 @@
       "description": "Give each pane its own share of the scenes instead of every pane drawing from the whole list. Disabled by default.",
       "default": false
     },
+    "avoidDuplicates": {
+      "type": "BOOLEAN",
+      "displayName": "Avoid the same scene on several screens",
+      "description": "Start every screen on a different scene, and skip scenes already playing on another screen when moving to the next one. Going back or choosing a search result can still repeat a scene. Enabled by default.",
+      "default": true,
+      "disabledWhen": {
+        "setting": "splitScenes",
+        "value": true
+      }
+    },
     "startMuted": {
       "type": "BOOLEAN",
       "displayName": "Start muted",
@@ -139,7 +149,8 @@
       "settings": [
         "sceneOrder",
         "spreadScenes",
-        "splitScenes"
+        "splitScenes",
+        "avoidDuplicates"
       ]
     },
     {

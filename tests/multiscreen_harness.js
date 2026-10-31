@@ -134,13 +134,20 @@ function createMultiscreenHarness(options = {}) {
     return React.createElement("native-player", props);
   }
   const controls = Object.fromEntries(
-    ["IconButton", "StateView", "NavAction", "Dialog", "Field", "Button", "Pagination"].map(name => [
-      name,
-      props => React.createElement(name, props, props.children),
-    ]),
+    ["IconButton", "StateView", "NavAction", "Dialog", "Field", "Button", "Pagination", "ActionMenu", "Glyph"].map(
+      name => [name, props => React.createElement(name, props, props.children)],
+    ),
   );
+  const saved = [],
+    notices = [];
   const hub = {
     react: { ...controls, usePageTitle() {} },
+    ui: { notify: (message, tone) => notices.push({ message, tone }) },
+    configurePlugin: async (id, settings) => {
+      saved.push({ id, settings });
+      if (options.saveFails) throw new Error("conflict");
+      return { revision: saved.length + 1, settings };
+    },
     captureEnabled: () => !!options.capture,
     debugLog() {},
     native: { loadComponent: async () => NativePlayer },
@@ -152,6 +159,7 @@ function createMultiscreenHarness(options = {}) {
             columns: 2,
             totalScreens: 2,
             sceneOrder: "list",
+            avoidDuplicates: false,
             randomStart: false,
             loopScenes: false,
           },
@@ -288,6 +296,8 @@ function createMultiscreenHarness(options = {}) {
     patches,
     patchNames,
     calls,
+    saved,
+    notices,
     errors,
     timers,
     observers,

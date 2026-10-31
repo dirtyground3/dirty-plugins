@@ -28,6 +28,7 @@ export function normalizeSettings(rawSettings: Record<string, unknown>): Setting
       ? rawSettings.sceneOrder
       : DEFAULT_SETTINGS.sceneOrder) as SceneOrder,
     spreadScenes: coerceBoolean(rawSettings.spreadScenes, DEFAULT_SETTINGS.spreadScenes),
+    avoidDuplicates: coerceBoolean(rawSettings.avoidDuplicates, DEFAULT_SETTINGS.avoidDuplicates),
     splitScenes: coerceBoolean(rawSettings.splitScenes, DEFAULT_SETTINGS.splitScenes),
     startMuted: coerceBoolean(rawSettings.startMuted, DEFAULT_SETTINGS.startMuted),
     randomStart: coerceBoolean(rawSettings.randomStart, DEFAULT_SETTINGS.randomStart),

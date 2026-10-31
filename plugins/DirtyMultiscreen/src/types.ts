@@ -8,6 +8,7 @@ export interface Settings {
   columns: number;
   sceneOrder: SceneOrder;
   spreadScenes: boolean;
+  avoidDuplicates: boolean;
   splitScenes: boolean;
   startMuted: boolean;
   randomStart: boolean;
@@ -139,6 +140,7 @@ export interface TileProps {
   useFindScene: UseFindScene;
 }
 export interface GridProps {
+  avoidDuplicates: boolean;
   continuation?: { initialPage: number; pageCount: number; loadPage(page: number): Promise<Item[][]> };
   columns: number;
   rows: number;

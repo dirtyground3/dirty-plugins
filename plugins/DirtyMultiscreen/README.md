@@ -27,6 +27,10 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   through later queue pages and preserves all launch filters.
   Choosing a result moves that screen to its position in the session queue, so
   Previous/Next follows from there, including across pages.
+- The shuffle button beside the close button reshuffles every screen. Its menu
+  lists the scene orders with the current one checked: choosing it loads a new
+  random sample, and choosing another order reshuffles with that order and saves
+  it as the **Scene order** setting.
 - Scene titles and search buttons use translucent backgrounds over the video.
 - The O-counter button fades away after one click per playback session. Failed saves can be retried without incrementing scenes that already succeeded.
 - Runs inside Stash and uses its existing scene and marker data.
@@ -72,13 +76,22 @@ runtime files and Stash's package-provenance `manifest` during a local update.
 The DirtyMultiscreen tab of the Dirty Plugins settings has four groups:
 
 - **Grid:** rows, columns and the number of panes to fill (up to rows x columns).
-- **Scenes:** scene order, **Spread performers and studios** and **Split scenes
-  between panes**.
+- **Scenes:** scene order, **Spread performers and studios**, **Split scenes
+  between panes** and **Avoid the same scene on several screens**.
 - **Playback:** **Start muted**, **Random start**, **Loop scenes**, **Pause when
   hidden** and the length of markers without an end time.
 - **Navigation:** whether the grid button appears in the Stash header.
 
-Spreading, muting, random starts, looping and pausing are enabled by default.
+Spreading, avoiding duplicates, muting, random starts, looping and pausing are
+enabled by default.
+
+**Avoid the same scene on several screens** applies when scenes are not split
+between panes, since split panes never share a scene. Every screen starts on a
+different scene, and a screen moving to its next scene skips scenes that another
+screen is playing. Going back with Previous never skips, and a search result
+always plays, so you can still put the same scene on several screens. With
+fewer playable scenes than screens, screens repeat a scene rather than stay
+empty.
 
 ### Scene order
 

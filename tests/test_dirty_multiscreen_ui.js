@@ -353,7 +353,15 @@ async function stablePaneSubscriptions() {
     scenes,
     markers,
     launch: { source: "marker-selection", selectedIds: markers.map(marker => marker.id) },
-    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "list", splitScenes: false, loopScenes: false },
+    settings: {
+      rows: 1,
+      columns: 2,
+      totalScreens: 2,
+      sceneOrder: "list",
+      splitScenes: false,
+      avoidDuplicates: false,
+      loopScenes: false,
+    },
   });
   const panes = h.nodes(node => node.type === "native-player");
   const media = [...h.media.values()].filter(pair => pair.video.isConnected);
@@ -1001,6 +1009,101 @@ async function unscopedLibraryPaging() {
   await h.unmount();
 }
 
+async function avoidsDuplicateScenes() {
+  const scenes = ["a", "b", "c", "d"].map(id => ({ id, title: id, paths: { stream: "/" + id } }));
+  const h = await start({
+    scenes,
+    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "list", randomStart: false },
+  });
+  const playing = () => h.nodes(node => node.type === "native-player").map(node => node.props.scene.id);
+  const pane = index => h.nodes(node => node.type === "native-player")[index].props;
+  assert.deepEqual(playing(), ["a", "b"], "screens start on different scenes");
+  pane(0).onNext();
+  await h.flush();
+  assert.deepEqual(playing(), ["c", "b"], "going forward skips the scene the other screen is playing");
+  pane(0).onPrevious();
+  await h.flush();
+  assert.deepEqual(playing(), ["b", "b"], "going back never skips, so a scene can play on both screens");
+  pane(1).onNext();
+  await h.flush();
+  assert.deepEqual(playing(), ["b", "a"]);
+  for (const expected of ["c", "d", "b"]) {
+    pane(0).onNext();
+    await h.flush();
+    assert.equal(playing()[0], expected, "wrapping around also skips the other screen's scene");
+  }
+  await h.unmount();
+  const tiny = await start({
+    scenes: scenes.slice(0, 1),
+    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "list" },
+  });
+  assert.deepEqual(
+    tiny.nodes(node => node.type === "native-player").map(node => node.props.scene.id),
+    ["a", "a"],
+    "a pool smaller than the grid still fills every screen",
+  );
+  await tiny.unmount();
+}
+
+async function reshuffleMenu() {
+  const scenes = ["a", "b", "c", "d"].map(id => ({ id, title: id, paths: { stream: "/" + id } }));
+  const h = await start({
+    scenes,
+    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "random", startMuted: true },
+  });
+  const menu = () => h.nodes(node => node.type === "ActionMenu")[0].props;
+  const choose = key =>
+    menu()
+      .items.find(item => item.key === key)
+      .onSelect();
+  const sceneQueries = () => h.calls.filter(call => call.query.includes("MultiscreenScenes"));
+  assert.equal(menu().ariaLabel, "Reshuffle scenes");
+  assert.deepEqual(
+    [
+      ...menu()
+        .items.filter(item => item.key)
+        .map(item => item.key),
+    ],
+    ["random", "fresh", "unwatched", "favorites", "newest", "mix", "list"],
+  );
+  const checked = () =>
+    menu()
+      .items.filter(item => item.key && JSON.stringify(item.label).includes("(current)"))
+      .map(item => item.key)
+      .join();
+  assert.equal(checked(), "random", "the current order is checked");
+  const before = sceneQueries().length;
+  choose("random");
+  await h.flush();
+  assert.equal(sceneQueries().length, before + 1, "the current order reloads a fresh sample");
+  assert.notEqual(sceneQueries().at(-1).variables.filter.sort, sceneQueries().at(-2).variables.filter.sort);
+  assert.equal(h.saved.length, 0, "reshuffling with the same order saves nothing");
+  choose("newest");
+  await h.flush();
+  assert.equal(sceneQueries().at(-1).variables.filter.sort, "created_at", "another order reloads with its sort");
+  assert.deepEqual(JSON.parse(JSON.stringify(h.saved.at(-1))), {
+    id: "multiscreen",
+    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "newest", startMuted: true },
+  });
+  assert.equal(checked(), "newest");
+  await h.unmount();
+
+  const unsaved = await start({ scenes, saveFails: true, settings: { sceneOrder: "random" } });
+  unsaved
+    .nodes(node => node.type === "ActionMenu")[0]
+    .props.items.find(item => item.key === "list")
+    .onSelect();
+  await unsaved.flush();
+  assert.equal(unsaved.notices.length, 1, "a failed save is reported");
+  assert.equal(unsaved.notices[0].tone, "error");
+  assert.equal(
+    unsaved.calls.filter(call => call.query.includes("MultiscreenScenes")).at(-1).variables.filter.sort,
+    "title",
+    "the session still uses the chosen order",
+  );
+  await unsaved.unmount();
+}
+
 async function pagedPlayback() {
   const scenes = Array.from({ length: 1001 }, (_, index) => ({
     id: String(index),
@@ -1077,7 +1180,7 @@ async function pagedPlayback() {
 
   const selection = await start({
     scenes,
-    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "random" },
+    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "random", avoidDuplicates: false },
     launch: { source: "selection", selectedIds: scenes.map(scene => scene.id) },
   });
   assert.equal(
@@ -1175,6 +1278,8 @@ async function navigationSetting() {
   await searchDuringMarkersAndPaging();
   await searchedQueueNavigation();
   await pagedPlayback();
+  await avoidsDuplicateScenes();
+  await reshuffleMenu();
   await unscopedLibraryPaging();
   console.log("DirtyMultiscreen compiled registration, navigation, players, grid, counters and cleanup passed");
 })().catch(error => {

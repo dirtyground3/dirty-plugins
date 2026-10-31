@@ -7,8 +7,9 @@ import { contexts, DirtyPlugins, PluginApi, React } from "../runtime";
 import { icon, PluginIconButton, StateView } from "./Controls";
 import { VisibleOCounterButton } from "./Counter";
 import { NativeMultiscreenGrid } from "./Grid";
+import { ShuffleMenu } from "./ShuffleMenu";
 import { SEARCH_PAGE_SIZE } from "../queries";
-import type { SessionSearch } from "../types";
+import type { SceneOrder, SessionSearch } from "../types";
 const PLUGIN_ID = "multiscreen";
 const closeRoute = () => {
   if (window.history.length > 1) window.history.back();
@@ -95,9 +96,11 @@ export function MultiscreenRoute() {
   );
   const pageSize = getSceneLimit(settings);
   const [seed, now] = React.useMemo(() => [Math.floor(Math.random() * 4294967296), Date.now()], [items]);
+  // Split lanes never share a scene, so only unsplit panes avoid duplicates.
+  const avoidDuplicates = settings.avoidDuplicates && !settings.splitScenes;
   const ordering = React.useMemo(
-    () => ({ order: settings.sceneOrder, spread: settings.spreadScenes, now }),
-    [settings.sceneOrder, settings.spreadScenes, now],
+    () => ({ order: settings.sceneOrder, spread: settings.spreadScenes, now, distinct: avoidDuplicates }),
+    [settings.sceneOrder, settings.spreadScenes, now, avoidDuplicates],
   );
   const initialPage = explicitSelection ? 1 : activeQuery.page;
   const initialItems = React.useMemo(
@@ -151,6 +154,18 @@ export function MultiscreenRoute() {
   );
   const loading = settingsQuery.loading || activeQuery.loading || nativePlayerQuery.loading;
   const error = settingsQuery.error ?? activeQuery.error ?? nativePlayerQuery.error;
+  /** The same order loads a fresh random sample; another order also becomes the saved Scene order. */
+  const reshuffle = (order: SceneOrder) => {
+    if (order === settings.sceneOrder) {
+      void activeQuery.refresh();
+      return;
+    }
+    const data = { ...rawSettings, sceneOrder: order };
+    setSettingsQuery(current => ({ ...current, data }));
+    DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
+      DirtyPlugins.ui.notify("Could not save the scene order. It applies to this session only.", "error"),
+    );
+  };
   const itemType = markerMode ? "markers" : "scenes";
   const docsCapture = DirtyPlugins.captureEnabled(window.location.search);
   const retryAll = () => {
@@ -179,6 +194,7 @@ export function MultiscreenRoute() {
         <NativeMultiscreenGrid
           rows={settings.rows}
           columns={settings.columns}
+          avoidDuplicates={avoidDuplicates}
           totalScreens={settings.totalScreens}
           playlists={playlists}
           searchSession={searchSession}
@@ -191,6 +207,7 @@ export function MultiscreenRoute() {
       )}
       <div className="ms-floating">
         <VisibleOCounterButton sceneIds={visibleNativeSceneIds} />
+        {!error && items.length > 0 && <ShuffleMenu order={settings.sceneOrder} onShuffle={reshuffle} />}
         <PluginIconButton ariaLabel="Close DirtyMultiscreen" fallback="x" icon={icon("close")} onClick={closeRoute} />
       </div>
     </div>
