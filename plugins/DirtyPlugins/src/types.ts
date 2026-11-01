@@ -185,7 +185,8 @@ export interface MenuProps extends SharedProps {
 }
 export interface SelectorProps extends SharedProps {
   value: string;
-  options?: { value: string; label: R.ReactNode }[];
+  /** An option with `to` is a link to that route; the others call `onSelect`. */
+  options?: { value: string; label: R.ReactNode; to?: string }[];
   onSelect?(value: string): void;
 }
 export interface NavProps extends SharedProps {

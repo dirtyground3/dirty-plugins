@@ -9,7 +9,7 @@ import type {
   StatsScene,
   WidgetOptions,
 } from "../types";
-import { fetchAllPages, PERFORMER_SCENE_RATINGS_QUERY } from "./data";
+import { fetchAllPages, PERFORMER_SCENE_RATINGS_QUERY, STUDIO_TREE_QUERY } from "./data";
 import { widgetOrder, widgets } from "./registry";
 export const SIZES = ["small", "medium", "large"];
 export const SIZE_LABELS = { small: "Small", medium: "Medium", large: "Large" };
@@ -207,6 +207,13 @@ export async function fetchPages(group: string, savedFilter: SavedFilter, signal
   } else if (group === "scenes") {
     query =
       "query DirtyStatsDashboardScenes($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id title rating100 play_count o_counter studio{id name image_path} files{id size duration}}}}";
+    root = "findScenes";
+    variables = (number: number) => ({
+      filter: Object.assign({}, savedFilter.find, { page: number, per_page: 500, sort: "id", direction: "ASC" }),
+      sceneFilter: savedFilter.object,
+    });
+  } else if (group === "studioTree") {
+    query = STUDIO_TREE_QUERY;
     root = "findScenes";
     variables = (number: number) => ({
       filter: Object.assign({}, savedFilter.find, { page: number, per_page: 500, sort: "id", direction: "ASC" }),

@@ -7,9 +7,11 @@ import {
   scatterGuideLines,
   scatterSeriesData,
   studioSeriesData,
+  tagBarSeriesData,
+  tagClusterPositions,
 } from "./analytics";
 import { formatBytes } from "./growth";
-import { themeColor } from "../settings";
+import { themeColor, themePalette } from "../settings";
 import type {
   ChartEvent,
   StatsConstellationLink,
@@ -19,7 +21,9 @@ import type {
   StatsQualityPoint,
   StatsRepeatRow,
   StatsScatterPoint,
+  StatsStudioNode,
   StatsStudioPoint,
+  StatsTagClusters,
   StatsTagDatum,
 } from "../types";
 
@@ -635,26 +639,229 @@ export function studioOption(points: StatsStudioPoint[], maxBytes: number, selec
 }
 
 /** @param {StatsTagDatum[]} data @param {string} metric */
+/** A multi-level pie: a studio's own scenes are the gap its sub-studios leave in the next ring. */
+export function studioTreeOption(nodes: StatsStudioNode[], total: number) {
+  return {
+    backgroundColor: themeColor("background"),
+    color: themePalette(),
+    tooltip: {
+      trigger: "item",
+      renderMode: "richText",
+      formatter: (p: ChartEvent) => {
+        if (!p.data || !p.data.id) return "";
+        const share = Math.round((p.data.value / total) * 1000) / 10;
+        return (
+          p.data.name +
+          "\n" +
+          p.data.value +
+          " scene" +
+          (p.data.value === 1 ? "" : "s") +
+          " (" +
+          share +
+          "%)" +
+          (p.data.children.length && p.data.direct ? "\n" + p.data.direct + " directly in this studio" : "")
+        );
+      },
+    },
+    series: [
+      {
+        type: "sunburst",
+        radius: ["0%", "96%"],
+        sort: null,
+        nodeClick: "rootToNode",
+        data: nodes,
+        itemStyle: { borderColor: themeColor("background"), borderWidth: 0.5 },
+        label: {
+          color: "#fff",
+          textBorderColor: "rgba(0,0,0,.5)",
+          textBorderWidth: 2,
+          minAngle: 6,
+          overflow: "truncate",
+          width: 90,
+        },
+        emphasis: { focus: "ancestor" },
+        levels: [
+          {},
+          // Radial labels converge toward the middle, so the inner ring needs wider segments.
+          { itemStyle: { opacity: 1 }, label: { minAngle: 12 } },
+          ...[0.85, 0.7, 0.55].map(opacity => ({ itemStyle: { opacity } })),
+        ],
+      },
+    ],
+  };
+}
+
+function tagDnaTooltipText(data: StatsTagDatum, metric: string) {
+  const line =
+    metric === "play_count"
+      ? "Views per scene " + data.playsPerScene.toFixed(1) + "\n" + data.plays + " total views"
+      : data.rating == null
+        ? "No rated scenes"
+        : "Average rating " +
+          data.rating.toFixed(1) +
+          "/10\n" +
+          data.rated +
+          " rated" +
+          (data.unrated ? ", " + data.unrated + " unrated" : "");
+  return data.name + "\n" + data.value + " scene" + (data.value === 1 ? "" : "s") + "\n" + line;
+}
+
+export function tagBarOption(data: ReturnType<typeof tagBarSeriesData>, visible = 25) {
+  const scrolls = data.length > visible;
+  return {
+    backgroundColor: themeColor("background"),
+    grid: { left: 12, right: scrolls ? 54 : 34, top: 10, bottom: 34, containLabel: true },
+    tooltip: {
+      trigger: "item",
+      renderMode: "richText",
+      formatter: (p: ChartEvent) => tagDnaTooltipText({ ...p.data, value: p.data.scenes }, "rating"),
+    },
+    xAxis: {
+      type: "value",
+      name: "Average rating",
+      nameLocation: "middle",
+      nameGap: 24,
+      nameTextStyle: { color: themeColor("muted") },
+      min: 0,
+      max: 10,
+      axisLabel: { color: themeColor("muted") },
+      splitLine: { lineStyle: { color: themeColor("grid") } },
+    },
+    yAxis: {
+      type: "category",
+      inverse: true,
+      data: data.map(item => item.name),
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: themeColor("border") } },
+      axisLabel: { color: themeColor("text"), interval: 0, width: 150, overflow: "truncate" },
+    },
+    dataZoom: scrolls
+      ? [
+          {
+            type: "slider",
+            yAxisIndex: 0,
+            right: 8,
+            width: 14,
+            startValue: 0,
+            endValue: visible - 1,
+            showDetail: false,
+            brushSelect: false,
+          },
+          // No wheel handling, so the wheel still scrolls the page past the chart.
+          { type: "inside", yAxisIndex: 0, zoomOnMouseWheel: false, moveOnMouseWheel: false },
+        ]
+      : [],
+    series: [
+      {
+        type: "bar",
+        data,
+        barMaxWidth: 28,
+        label: {
+          show: true,
+          position: "right",
+          color: themeColor("text"),
+          formatter: (p: ChartEvent) => p.value.toFixed(1),
+        },
+      },
+    ],
+  };
+}
+
+export function tagClusterOption(stats: StatsTagClusters, detailed = true) {
+  const palette = themePalette(),
+    layout = constellationLayout(stats.nodes.length),
+    largest = Math.max.apply(null, [1].concat(stats.nodes.map(item => item.value))),
+    positions = tagClusterPositions(stats.nodes),
+    labelled = new Set<number>();
+  const categories = stats.clusters.map((cluster, index) => ({
+    name: cluster.name,
+    itemStyle: {
+      color: cluster.name === "No close tags" ? themeColor("grid") : palette[index % palette.length],
+    },
+  }));
+  return {
+    backgroundColor: themeColor("background"),
+    legend: detailed
+      ? {
+          type: "scroll",
+          top: 8,
+          left: 10,
+          right: 10,
+          selectedMode: false,
+          data: categories.map(category => category.name),
+          textStyle: { color: themeColor("text"), fontSize: 10 },
+          itemWidth: 11,
+          itemHeight: 11,
+          pageTextStyle: { color: themeColor("text") },
+        }
+      : { show: false },
+    tooltip: {
+      trigger: "item",
+      renderMode: "richText",
+      formatter: (p: ChartEvent) =>
+        p.dataType === "edge"
+          ? p.data.sourceName +
+            " + " +
+            p.data.targetName +
+            "\n" +
+            p.data.shared +
+            " shared scene" +
+            (p.data.shared === 1 ? "" : "s")
+          : tagDnaTooltipText(p.data, "rating") + "\nCluster: " + stats.clusters[p.data.cluster].name,
+    },
+    series: [
+      {
+        type: "graph",
+        layout: "none",
+        top: detailed ? 44 : 8,
+        left: 16,
+        right: 70,
+        bottom: 12,
+        roam: true,
+        categories,
+        data: stats.nodes.map((item, index) => {
+          // Nodes are largest first, so this names each cluster's most common tag; hovering names the rest.
+          const leads = !labelled.has(item.cluster);
+          labelled.add(item.cluster);
+          return {
+            ...item,
+            x: positions[index][0],
+            y: positions[index][1],
+            category: item.cluster,
+            symbolSize: layout.symbolMin + layout.symbolRange * Math.sqrt(item.value / largest),
+            itemStyle: { borderColor: themeColor("background"), borderWidth: 1 },
+            label: { show: detailed && leads },
+          };
+        }),
+        // Links between clusters only appear when hovering a tag.
+        links: stats.links.map(link => ({
+          ...link,
+          lineStyle: {
+            width: 0.5 + 2 * link.value,
+            opacity: link.sameCluster ? 0.2 : 0,
+            color: themeColor("secondary"),
+            curveness: 0.06,
+          },
+        })),
+        label: { position: "right", color: themeColor("text"), fontSize: 11, formatter: "{b}" },
+        emphasis: {
+          focus: "adjacency",
+          label: { show: true },
+          itemStyle: { borderColor: themeColor("selection"), borderWidth: 3 },
+          lineStyle: { opacity: 0.9, color: themeColor("accent") },
+        },
+      },
+    ],
+  };
+}
+
 export function tagDnaOption(data: StatsTagDatum[], metric: string) {
   return {
     backgroundColor: themeColor("background"),
     tooltip: {
       trigger: "item",
       renderMode: "richText",
-      formatter: (p: ChartEvent) => {
-        const line =
-          metric === "play_count"
-            ? "Views per scene " + p.data.playsPerScene.toFixed(1) + "\n" + p.data.plays + " total views"
-            : p.data.rating == null
-              ? "No rated scenes"
-              : "Average rating " +
-                p.data.rating.toFixed(1) +
-                "/10\n" +
-                p.data.rated +
-                " rated" +
-                (p.data.unrated ? ", " + p.data.unrated + " unrated" : "");
-        return p.data.name + "\n" + p.data.value + " scene" + (p.data.value === 1 ? "" : "s") + "\n" + line;
-      },
+      formatter: (p: ChartEvent) => tagDnaTooltipText(p.data, metric),
     },
     series: [
       {

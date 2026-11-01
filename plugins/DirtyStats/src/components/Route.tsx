@@ -17,6 +17,7 @@ import {
   ratingRoute,
   repeatOffenderRoute,
   studioRoute,
+  studioTreeRoute,
   tagDnaRoute,
 } from "../domain/registry";
 import { React, api, charts, hub, loadCharts } from "../runtime";
@@ -43,21 +44,23 @@ export function DirtyStatsRoute(): R.ReactElement | null {
                 ? "qualityEfficiency"
                 : location.pathname === studioRoute
                   ? "studios"
-                  : location.pathname === tagDnaRoute
-                    ? "tags"
-                    : location.pathname === constellationRoute
-                      ? "constellation"
-                      : location.pathname === birthdayRoute
-                        ? "birthdays"
-                        : location.pathname === performerRatingRoute
-                          ? "performerRatings"
-                          : location.pathname === ratingRoute
-                            ? "ratings"
-                            : location.pathname === ageRoute
-                              ? "ages"
-                              : location.pathname === growthRoute
-                                ? "growth"
-                                : "origin";
+                  : location.pathname === studioTreeRoute
+                    ? "studioTree"
+                    : location.pathname === tagDnaRoute
+                      ? "tags"
+                      : location.pathname === constellationRoute
+                        ? "constellation"
+                        : location.pathname === birthdayRoute
+                          ? "birthdays"
+                          : location.pathname === performerRatingRoute
+                            ? "performerRatings"
+                            : location.pathname === ratingRoute
+                              ? "ratings"
+                              : location.pathname === ageRoute
+                                ? "ages"
+                                : location.pathname === growthRoute
+                                  ? "growth"
+                                  : "origin";
   hub.react.usePageTitle("DirtyStats", STATISTIC_LABELS[statistic]);
   const sceneView =
     statistic !== "origin" &&

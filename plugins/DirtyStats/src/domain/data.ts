@@ -11,6 +11,15 @@ import type {
 export const PERFORMER_SCENE_RATINGS_QUERY =
   "query DirtyStatsPerformerSceneRatings($filter:FindFilterType!,$performerFilter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performerFilter){count performers{id name rating100 scenes{id rating100}}}}";
 
+/** Deep enough to find the top of any real hierarchy; the chart shows its first levels. */
+const STUDIO_ANCESTORS = 7;
+export const STUDIO_TREE_QUERY =
+  "query DirtyStatsStudioTree($filter:FindFilterType!,$sceneFilter:SceneFilterType){findScenes(filter:$filter,scene_filter:$sceneFilter){count scenes{id studio{" +
+  "id name parent_studio{".repeat(STUDIO_ANCESTORS) +
+  "id name" +
+  "}".repeat(STUDIO_ANCESTORS) +
+  "}}}}";
+
 /**
  * @template T
  * @param {StatsPageRequest<T>} request

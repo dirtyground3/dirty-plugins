@@ -107,6 +107,20 @@ export interface StatsStudioPoint {
   rating: number | null;
   bytes: number;
 }
+export interface StatsStudioRef {
+  id: string;
+  name?: string;
+  image_path?: string;
+  parent_studio?: StatsStudioRef | null;
+}
+/** A ring segment: `value` includes the scenes of its sub-studios, `direct` does not. */
+export interface StatsStudioNode {
+  id: string;
+  name: string;
+  value: number;
+  direct: number;
+  children: StatsStudioNode[];
+}
 export interface StatsConstellationNode {
   id: string;
   name: string;
@@ -141,6 +155,25 @@ export interface StatsTagDatum {
   rating: number | null;
   rated: number;
   unrated: number;
+}
+export interface StatsTagClusterNode extends StatsTagDatum {
+  id: string;
+  cluster: number;
+}
+export interface StatsTagClusterLink {
+  source: string;
+  target: string;
+  sourceName: string;
+  targetName: string;
+  /** Similarity of the two tags' scenes, from just above 0 to 1. */
+  value: number;
+  shared: number;
+  sameCluster: boolean;
+}
+export interface StatsTagClusters {
+  nodes: StatsTagClusterNode[];
+  links: StatsTagClusterLink[];
+  clusters: { name: string; tags: number }[];
 }
 // ECharts owns series styling and formatter parameters; inputs above are domain data.
 export type StatsSeriesDatum = Record<string, unknown>;
@@ -179,7 +212,7 @@ export interface StatsScene {
   rating100?: number | string | null;
   play_count?: number | null;
   o_counter?: number | null;
-  studio?: { id: string; name?: string; image_path?: string };
+  studio?: StatsStudioRef | null;
   tags?: Array<{ id: string; name: string }>;
 }
 export interface BirthdayEntry {
@@ -205,6 +238,7 @@ export interface ChartEvent {
   componentType?: string;
   dataType?: string;
   event?: { offsetX: number; offsetY: number };
+  targetNode?: { getId(): string };
 }
 
 export interface GrowthZoomOption {
@@ -290,6 +324,7 @@ export interface StatsSettings extends Record<string, SettingValue> {
   scatterMaxScenes: number;
   countRatingMetric: string;
   studioMinScenes: number;
+  tagDnaView: string;
   tagDnaColorMetric: string;
   tagDnaMaxTags: number;
 }

@@ -17,7 +17,9 @@ import type {
   StatsRepeatRow,
   StatsScatterPoint,
   StatsScene,
+  StatsStudioNode,
   StatsStudioPoint,
+  StatsTagClusters,
   TagRow,
   WorldData,
   WorldFeature,
@@ -736,6 +738,54 @@ export function aggregateStudios(scenes: StatsScene[]) {
   };
 }
 
+export const STUDIO_TREE_LEVELS = 4;
+
+/** The studio's ancestors from the top down, ending with the studio itself. */
+export function studioPath(studio: StatsScene["studio"]) {
+  const path: { id: string; name: string }[] = [];
+  if (!studio || studio.id == null || !String(studio.name || "").trim()) return path;
+  for (let current = studio; current; current = current.parent_studio!)
+    path.unshift({ id: String(current.id), name: String(current.name) });
+  return path;
+}
+
+/** Scene counts by studio, nested to STUDIO_TREE_LEVELS; deeper studios count toward their last shown ancestor. */
+export function aggregateStudioTree(scenes: StatsScene[]) {
+  type Draft = Omit<StatsStudioNode, "children"> & { children: Map<string, Draft> };
+  const roots = new Map<string, Draft>();
+  let total = 0,
+    studios = 0,
+    missingStudio = 0,
+    merged = 0;
+  uniqueById(scenes).forEach(scene => {
+    const path = studioPath(scene.studio);
+    if (!path.length) {
+      missingStudio++;
+      return;
+    }
+    total++;
+    if (path.length > STUDIO_TREE_LEVELS) merged++;
+    const shown = path.slice(0, STUDIO_TREE_LEVELS);
+    let siblings = roots;
+    shown.forEach((studio, index) => {
+      let node = siblings.get(studio.id);
+      if (!node) {
+        node = { ...studio, value: 0, direct: 0, children: new Map() };
+        siblings.set(studio.id, node);
+        studios++;
+      }
+      node.value++;
+      if (index === shown.length - 1) node.direct++;
+      siblings = node.children;
+    });
+  });
+  const finished = (nodes: Map<string, Draft>): StatsStudioNode[] =>
+    Array.from(nodes.values())
+      .map(node => ({ ...node, children: finished(node.children) }))
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+  return { nodes: finished(roots), total, studios, missingStudio, merged };
+}
+
 export function aggregateTagDna(scenes: StatsScene[]) {
   const uniqueScenes = uniqueById(scenes),
     tags = new Map<
@@ -787,6 +837,187 @@ export function aggregateTagDna(scenes: StatsScene[]) {
   };
 }
 
+export const TAG_DNA_VIEW_LABELS: Record<string, string> = {
+  treemap: "Treemap",
+  bars: "Bar chart",
+  clusters: "Cluster plot",
+};
+/** The force layout gets slow beyond this, whatever Maximum tags says. */
+export const TAG_CLUSTER_LIMIT = 300;
+const TAG_CLUSTER_NEIGHBORS = 5;
+
+/** Repeatedly moves each node to the neighboring group that raises modularity most. */
+function modularityGroups(count: number, links: { a: number; b: number; weight: number }[]) {
+  const neighbors = Array.from({ length: count }, () => [] as [number, number][]),
+    degree = new Array<number>(count).fill(0);
+  let total = 0;
+  links.forEach(({ a, b, weight }) => {
+    neighbors[a].push([b, weight]);
+    neighbors[b].push([a, weight]);
+    degree[a] += weight;
+    degree[b] += weight;
+    total += 2 * weight;
+  });
+  const group = degree.map((_, index) => index),
+    groupDegree = degree.slice();
+  let moved = total > 0;
+  for (let pass = 0; moved && pass < 20; pass++) {
+    moved = false;
+    for (let node = 0; node < count; node++) {
+      const weights = new Map<number, number>();
+      neighbors[node].forEach(([other, weight]) => {
+        weights.set(group[other], (weights.get(group[other]) || 0) + weight);
+      });
+      const current = group[node];
+      groupDegree[current] -= degree[node];
+      const gain = (candidate: number) =>
+        (weights.get(candidate) || 0) - (groupDegree[candidate] * degree[node]) / total;
+      let best = current;
+      weights.forEach((_, candidate) => {
+        if (gain(candidate) > gain(best) + 1e-9) best = candidate;
+      });
+      groupDegree[best] += degree[node];
+      if (best !== current) {
+        group[node] = best;
+        moved = true;
+      }
+    }
+  }
+  return group;
+}
+
+/**
+ * Groups tags that appear on the same scenes. Links use cosine similarity, so a common tag does
+ * not link to everything, and only each tag's strongest links count.
+ */
+export function aggregateTagClusters(
+  scenes: StatsScene[],
+  stats: { rows: TagRow[] },
+  maxTags: number,
+): StatsTagClusters {
+  const limit = Number(maxTags) > 0 ? Math.min(Number(maxTags), TAG_CLUSTER_LIMIT) : TAG_CLUSTER_LIMIT;
+  const rows = stats.rows.slice(0, limit),
+    count = rows.length,
+    indexes = new Map(rows.map((row, index) => [row.id, index]));
+  const pairs = new Map<number, number>();
+  uniqueById(scenes).forEach(scene => {
+    const present = new Set<number>();
+    (scene.tags || []).forEach(tag => {
+      const index = indexes.get(String(tag && tag.id));
+      if (index != null) present.add(index);
+    });
+    const list = Array.from(present).sort((a, b) => a - b);
+    list.forEach((a, position) => {
+      for (let next = position + 1; next < list.length; next++) {
+        const key = a * count + list[next];
+        pairs.set(key, (pairs.get(key) || 0) + 1);
+      }
+    });
+  });
+  const strongest = rows.map(() => [] as { a: number; b: number; shared: number; weight: number }[]);
+  pairs.forEach((shared, key) => {
+    // One scene in common is a coincidence, not a relationship.
+    if (shared < 2) return;
+    const a = Math.floor(key / count),
+      b = key % count,
+      link = { a, b, shared, weight: shared / Math.sqrt(rows[a].scenes * rows[b].scenes) };
+    strongest[a].push(link);
+    strongest[b].push(link);
+  });
+  const kept = new Set<(typeof strongest)[number][number]>();
+  strongest.forEach(links => {
+    links
+      .sort((x, y) => y.weight - x.weight || x.a - y.a || x.b - y.b)
+      .slice(0, TAG_CLUSTER_NEIGHBORS)
+      .forEach(link => kept.add(link));
+  });
+  const links = Array.from(kept).sort((x, y) => x.a - y.a || x.b - y.b);
+  const group = modularityGroups(count, links);
+  // Rows are largest first, so each member list and the name from its first tags lead with the most common.
+  const members = new Map<number, number[]>();
+  group.forEach((id, index) => {
+    if (!members.has(id)) members.set(id, []);
+    members.get(id)!.push(index);
+  });
+  const lists = Array.from(members.values());
+  const grouped = lists.filter(list => list.length > 1).sort((a, b) => b.length - a.length || a[0] - b[0]);
+  const alone = lists.filter(list => list.length === 1).flat();
+  const clusterOf = new Array<number>(count);
+  grouped.forEach((list, cluster) => list.forEach(index => (clusterOf[index] = cluster)));
+  alone.forEach(index => (clusterOf[index] = grouped.length));
+  const clusters = grouped.map(list => ({
+    name: list
+      .slice(0, 2)
+      .map(index => rows[index].name)
+      .join(", "),
+    tags: list.length,
+  }));
+  if (alone.length) clusters.push({ name: "No close tags", tags: alone.length });
+  return {
+    clusters,
+    nodes: rows.map((row, index) => ({
+      id: row.id,
+      name: row.name,
+      value: row.scenes,
+      rating: row.rating,
+      rated: row.rated,
+      unrated: row.unrated,
+      plays: row.plays,
+      playsPerScene: row.playsPerScene,
+      cluster: clusterOf[index],
+    })),
+    links: links.map(({ a, b, shared, weight }) => ({
+      source: rows[a].id,
+      target: rows[b].id,
+      sourceName: rows[a].name,
+      targetName: rows[b].name,
+      value: weight,
+      shared,
+      sameCluster: clusterOf[a] === clusterOf[b] && clusterOf[a] < grouped.length,
+    })),
+  };
+}
+
+/**
+ * Plot positions: each cluster is a disc with its most common tag in the middle, and discs are
+ * placed largest first along a spiral stretched to suit a wide chart. The units are arbitrary
+ * because the chart scales them to fit.
+ */
+export function tagClusterPositions(nodes: { cluster: number }[]) {
+  const members = new Map<number, number[]>();
+  nodes.forEach((node, index) => {
+    if (!members.has(node.cluster)) members.set(node.cluster, []);
+    members.get(node.cluster)!.push(index);
+  });
+  const placed: { x: number; y: number; radius: number }[] = [],
+    positions = new Array<[number, number]>(nodes.length);
+  Array.from(members.keys())
+    .sort((a, b) => a - b)
+    .forEach(cluster => {
+      const list = members.get(cluster)!,
+        radius = Math.sqrt(list.length) + 0.5;
+      let x = 0,
+        y = 0;
+      for (
+        let step = 1;
+        placed.some(other => Math.hypot(x - other.x, y - other.y) < radius + other.radius + 1);
+        step++
+      ) {
+        x = 0.2 * step * Math.cos(0.4 * step) * 1.8;
+        y = 0.2 * step * Math.sin(0.4 * step);
+      }
+      placed.push({ x, y, radius });
+      // The golden angle spreads points evenly over a disc without any lining up.
+      list.forEach((node, index) => {
+        positions[node] = [
+          x + Math.sqrt(index) * Math.cos(index * 2.39996),
+          y + Math.sqrt(index) * Math.sin(index * 2.39996),
+        ];
+      });
+    });
+  return positions;
+}
+
 function tagDnaMetricValue(row: TagRow, metric: string) {
   return metric === "play_count" ? row.playsPerScene : row.rating;
 }
@@ -799,10 +1030,14 @@ function tagDnaColor(row: TagRow, metric: string, maximum: number) {
   const value = tagDnaMetricValue(row, metric);
   if (value == null || !Number.isFinite(value)) return themeColor("grid");
   let ratio = metric === "play_count" ? (maximum > 0 ? Math.log(1 + value) / Math.log(1 + maximum) : 0) : value / 10;
-  ratio = Math.max(0, Math.min(1, ratio));
+  return tagRampColor(ratio);
+}
+
+function tagRampColor(ratio: number) {
+  const clamped = Math.max(0, Math.min(1, ratio));
   const low = statsTheme().tagLow,
     high = statsTheme().tagHigh;
-  return "rgb(" + low.map((channel, index) => Math.round(channel + (high[index] - channel) * ratio)).join(",") + ")";
+  return "rgb(" + low.map((channel, index) => Math.round(channel + (high[index] - channel) * clamped)).join(",") + ")";
 }
 
 function chartLabelColor(background: string) {
@@ -851,6 +1086,37 @@ export function tagDnaSeriesData(stats: { rows: TagRow[] }, metric: string, maxT
       },
     };
   });
+}
+
+/**
+ * Bars: length is the average rating and color the scene count. The color uses a log scale across
+ * the counts shown, so that a few very common tags do not leave the rest looking alike. Maximum tags
+ * still picks the most common tags; those without a rated scene have no length to draw and are left out.
+ */
+export function tagBarSeriesData(stats: { rows: TagRow[] }, maxTags: number, selected: string | null) {
+  const limit = Number(maxTags);
+  const rows = (Number.isFinite(limit) && limit > 0 ? stats.rows.slice(0, limit) : stats.rows)
+    .filter((row): row is TagRow & { rating: number } => row.rating != null)
+    .sort((a, b) => b.rating - a.rating || b.scenes - a.scenes || a.name.localeCompare(b.name));
+  const counts = rows.map(row => Math.log(row.scenes)),
+    fewest = Math.min.apply(null, counts),
+    range = Math.max.apply(null, counts) - fewest;
+  return rows.map(row => ({
+    id: row.id,
+    name: row.name,
+    value: row.rating,
+    scenes: row.scenes,
+    rating: row.rating,
+    rated: row.rated,
+    unrated: row.unrated,
+    plays: row.plays,
+    playsPerScene: row.playsPerScene,
+    itemStyle: {
+      color: tagRampColor(range > 0 ? (Math.log(row.scenes) - fewest) / range : 1),
+      borderColor: themeColor("selection"),
+      borderWidth: row.id === selected ? 2 : 0,
+    },
+  }));
 }
 
 export function tagDnaScenes(scenes: StatsScene[], tagId: string | null) {

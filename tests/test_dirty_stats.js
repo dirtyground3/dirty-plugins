@@ -1443,6 +1443,7 @@ async function testNativeRouteLoading() {
     "repeatOffenders",
     "qualityEfficiency",
     "studios",
+    "studioTree",
     "tags",
     "constellation",
     "birthdays",

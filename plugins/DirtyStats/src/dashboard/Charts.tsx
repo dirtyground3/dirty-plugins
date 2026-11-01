@@ -11,7 +11,9 @@ import {
   aggregateRatings,
   aggregateRepeatOffenders,
   aggregateScatter,
+  aggregateStudioTree,
   aggregateStudios,
+  aggregateTagClusters,
   aggregateTagDna,
   birthdayDayLabel,
   countRatingLabel,
@@ -19,11 +21,17 @@ import {
   originMapOption,
   qualityEfficiencySeriesData,
   repeatOffenderSeriesData,
+  tagBarSeriesData,
   tagDnaMetricLabel,
   tagDnaSeriesData,
 } from "../domain/analytics";
 import { WIDGETS, resourceKey } from "../domain/dashboard";
-import { performerSceneRatingSeriesData } from "../domain/chartOptions";
+import {
+  performerSceneRatingSeriesData,
+  studioTreeOption,
+  tagBarOption,
+  tagClusterOption,
+} from "../domain/chartOptions";
 import { aggregateGrowth, forecastGrowth, formatBytes } from "../domain/growth";
 import { React, world } from "../runtime";
 import { themeColor, themePalette } from "../settings";
@@ -532,6 +540,29 @@ export function qualityEfficiencyWidget(scenes: StatsScene[], widget: DashboardW
   );
 }
 
+export function studioTreeWidget(scenes: StatsScene[], widget: DashboardWidgetModel): R.ReactElement | null {
+  const stats = aggregateStudioTree(scenes);
+  const option = studioTreeOption(stats.nodes, stats.total);
+  const [series] = option.series;
+  return (
+    <React.Fragment>
+      {widgetHeader(widget, metric("studios", stats.studios), metric("scenes", stats.total))}
+      {stats.nodes.length ? (
+        <Chart
+          option={{
+            ...option,
+            backgroundColor: "transparent",
+            series: [{ ...series, label: { ...series.label, show: widget.size === "large" } }],
+          }}
+          label="Multi-level pie chart of scenes per studio"
+        />
+      ) : (
+        <State title="No studios" detail="None of the matching scenes has a studio." />
+      )}
+    </React.Fragment>
+  );
+}
+
 export function studioWidget(scenes: StatsScene[], widget: DashboardWidgetModel): R.ReactElement | null {
   const stats = aggregateStudios(scenes);
   const points = stats.points.filter(point => point.rating != null && point.scenes >= widget.options.minScenes);
@@ -584,7 +615,9 @@ export function studioWidget(scenes: StatsScene[], widget: DashboardWidgetModel)
 export function tagDnaWidget(scenes: StatsScene[], widget: DashboardWidgetModel): R.ReactElement | null {
   const stats = aggregateTagDna(scenes);
   const data = tagDnaSeriesData(stats, widget.options.metric, widget.options.maxTags, null);
-  const option: ChartOption = {
+  const view = widget.options.view;
+  const bars = view === "bars" ? tagBarSeriesData(stats, widget.options.maxTags, null) : null;
+  const treemap: ChartOption = {
     backgroundColor: "transparent",
     tooltip: {
       trigger: "item",
@@ -623,6 +656,22 @@ export function tagDnaWidget(scenes: StatsScene[], widget: DashboardWidgetModel)
       },
     ],
   };
+  const compactLimit = widget.size === "small" ? 30 : widget.size === "medium" ? 60 : 0;
+  const clusterLimit = compactLimit
+    ? Math.min(compactLimit, Number(widget.options.maxTags) || compactLimit)
+    : widget.options.maxTags;
+  const option: ChartOption =
+    view === "clusters"
+      ? {
+          ...tagClusterOption(aggregateTagClusters(scenes, stats, clusterLimit), widget.size === "large"),
+          backgroundColor: "transparent",
+        }
+      : bars
+        ? {
+            ...tagBarOption(bars, widget.size === "small" ? 6 : widget.size === "medium" ? 10 : 25),
+            backgroundColor: "transparent",
+          }
+        : treemap;
   return (
     <React.Fragment>
       {widgetHeader(
@@ -631,16 +680,23 @@ export function tagDnaWidget(scenes: StatsScene[], widget: DashboardWidgetModel)
         metric("tagged scenes", stats.taggedScenes),
         widget.size === "large" ? metric("untagged", stats.untaggedScenes) : null,
       )}
-      {data.length ? (
+      {(bars || data).length ? (
         <Chart
           option={option}
           label={
-            "Tag DNA treemap sized by scene count and colored by " +
-            tagDnaMetricLabel(widget.options.metric).toLowerCase()
+            view === "clusters"
+              ? "Tag DNA cluster plot of tags that often appear on the same scenes"
+              : bars
+                ? "Tag DNA bar chart of average rating, colored by scene count"
+                : "Tag DNA treemap sized by scene count and colored by " +
+                  tagDnaMetricLabel(widget.options.metric).toLowerCase()
           }
         />
       ) : (
-        <State title="No tagged scenes" detail="No matching scenes contain tags." />
+        <State
+          title={bars ? "No rated tags" : "No tagged scenes"}
+          detail={bars ? "No matching tag has a rated scene." : "No matching scenes contain tags."}
+        />
       )}
     </React.Fragment>
   );
@@ -839,6 +895,7 @@ export function renderWidget(
   if (widget.statistic === "repeatOffenders") return repeatOffenderWidget(rows, widget);
   if (widget.statistic === "qualityEfficiency") return qualityEfficiencyWidget(rows, widget);
   if (widget.statistic === "studios") return studioWidget(rows, widget);
+  if (widget.statistic === "studioTree") return studioTreeWidget(rows, widget);
   if (widget.statistic === "tags") return tagDnaWidget(rows, widget);
   if (widget.statistic === "constellation") return constellationWidget(rows, widget);
   return birthdayWidget(rows, widget);

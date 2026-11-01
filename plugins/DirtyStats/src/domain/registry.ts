@@ -131,14 +131,27 @@ const statistics: Record<string, Required<StatsDefinition>> = {
     options: { minScenes: 1 },
     choices: { minScenes: [1, 2, 5, 10, 20] },
   },
+  studioTree: {
+    label: "Scenes per studio",
+    route: route + "/studio-tree",
+    entity: "scenes",
+    group: "studioTree",
+    size: "medium",
+    options: {},
+    choices: {},
+  },
   tags: {
     label: "Tag DNA",
     route: route + "/tags",
     entity: "scenes",
     group: "tags",
     size: "medium",
-    options: { metric: "rating", maxTags: 50 },
-    choices: { metric: ["rating", "play_count"], maxTags: [0, 25, 50, 100, 200] },
+    options: { view: "treemap", metric: "rating", maxTags: 50 },
+    choices: {
+      view: ["treemap", "bars", "clusters"],
+      metric: ["rating", "play_count"],
+      maxTags: [0, 25, 50, 100, 200],
+    },
   },
   constellation: {
     label: "Cast constellation",
@@ -190,6 +203,7 @@ export const repeatOffenderRoute = routeOf("repeatOffenders");
 export const qualityEfficiencyRoute = routeOf("qualityEfficiency");
 export const constellationRoute = routeOf("constellation");
 export const studioRoute = routeOf("studios");
+export const studioTreeRoute = routeOf("studioTree");
 export const tagDnaRoute = routeOf("tags");
 export const birthdayRoute = routeOf("birthdays");
 export const STATISTIC_ORDER = statisticOrder;

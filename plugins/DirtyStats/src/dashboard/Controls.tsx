@@ -1,4 +1,5 @@
 import { MAX_CARD_COUNT, WIDGETS, filterSummary } from "../domain/dashboard";
+import { TAG_DNA_VIEW_LABELS } from "../domain/analytics";
 import { React, ui } from "../runtime";
 import type * as R from "react";
 import type { CheckProps, FilterControlProps, NumberProps, SelectProps, WidgetOptionsProps } from "../props";
@@ -293,14 +294,25 @@ export function StatisticWidgetOptions(props: WidgetOptionsProps): R.ReactElemen
     return (
       <React.Fragment>
         {field(SelectControl, {
-          label: "Color by",
-          value: options.metric,
-          values: WIDGETS.tags.choices.metric as SettingValue[],
-          labels: { rating: "Average rating", play_count: "Views per scene" },
+          label: "View",
+          value: options.view,
+          values: WIDGETS.tags.choices.view as SettingValue[],
+          labels: TAG_DNA_VIEW_LABELS,
           onChange: value => {
-            set("metric", value);
+            set("view", value);
           },
         })}
+        {options.view === "clusters" || options.view === "bars"
+          ? null
+          : field(SelectControl, {
+              label: "Color by",
+              value: options.metric,
+              values: WIDGETS.tags.choices.metric as SettingValue[],
+              labels: { rating: "Average rating", play_count: "Views per scene" },
+              onChange: value => {
+                set("metric", value);
+              },
+            })}
         {field(SelectControl, {
           label: "Maximum tags",
           value: options.maxTags,

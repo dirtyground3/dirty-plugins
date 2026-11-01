@@ -11,6 +11,7 @@ import { DirtyStatsRoute, NavIcon, StatsPageRedirect } from "./components/Route"
 import { PerformerScatterPage } from "./components/Scatter";
 import { PerformerSceneRatingsPage } from "./components/PerformerSceneRatings";
 import { StudioValuePage } from "./components/Studios";
+import { StudioTreePage } from "./components/StudioTree";
 import { TagDnaPage } from "./components/Tags";
 import { entries, route } from "./domain/registry";
 import { api, filterBridge, hub, PLUGIN_ID, React } from "./runtime";
@@ -23,6 +24,7 @@ const SCENE_PAGES = {
   ages: AgePage,
   growth: GrowthPage,
   studios: StudioValuePage,
+  studioTree: StudioTreePage,
   tags: TagDnaPage,
   countRating: CountRatingPage,
   repeatOffenders: RepeatOffenderPage,

@@ -97,7 +97,7 @@ The statistic selector offers **Performer origin**, **Content growth**,
 **Age at scene**, **Scene ratings**, **Performer ratings**,
 **Performer cards**,
 **Rating vs scenes**, **Performer vs scene rating**, **Count vs rating**, **Repeat-offender curve**, **Quality efficiency**, **Studio value map**,
-**Tag DNA**, **Cast constellation**, and **Performer birthdays**.
+**Scenes per studio**, **Tag DNA**, **Cast constellation**, and **Performer birthdays**.
 Display choices such as map numbers, rating rounding, growth options, and the
 constellation, scatter, and studio limits are saved to the DirtyStats plugin
 settings and restored the next time the page is opened.
@@ -189,17 +189,38 @@ unavailable size are omitted and reported. Click a bubble to show that studio's
 scenes below, or click it again to clear the selection. PNG export is available
 inside the chart.
 
-**Tag DNA** is an interactive treemap using native scene filters and their saved
-defaults. Rectangle area represents the number of distinct matching scenes carrying
-the tag. Color can represent either the tag's average scene rating or average views
-per scene, making common, highly rated, and frequently revisited themes visible at
-a glance. Tags without rated scenes remain gray in rating mode. **Maximum tags**
-keeps large libraries readable by showing the 25, 50, 100, or 200 most common tags,
-or **All** removes the limit;
-the summary continues to report the complete tag and untagged-scene totals. Click a
-rectangle to show that tag's scene cards below, or click it again to clear the
-selection. Both display choices are remembered, and PNG export is available inside
-the chart.
+**Scenes per studio** is a multi-level pie chart using native scene filters and
+their saved defaults. The inner ring holds top-level studios and each ring outward
+holds their sub-studios, for up to four levels; scenes of deeper studios count
+toward their fourth-level ancestor. A gap in a ring is the share of scenes directly
+in the parent studio. Click a segment to zoom into that studio and show its scenes
+below, and click the center to go back up. Scenes without a studio are omitted and
+reported. PNG export is available inside the chart.
+
+**Tag DNA** shows tags from native scene filters and their saved defaults in one of
+three **View** choices:
+
+- **Treemap**: rectangle area represents the number of distinct matching scenes
+  carrying the tag.
+- **Bar chart**: bar length represents the tag's average scene rating out of ten and
+  color represents its number of scenes, with the best rated tags first. Tags without
+  a rated scene are left out. Drag the bars or use the slider when there are more
+  than 25.
+- **Cluster plot**: tags that often appear on the same scenes form a group with its
+  own color and position, with the most common tag in the middle, and dot size
+  represents scene count. Tags are compared by how much of their scenes they share,
+  so a very common tag does not join everything, and tags with no close match are
+  collected under **No close tags**. Hover over a tag to see its links, including
+  those to other groups, and scroll or drag to zoom and move around. This view shows
+  at most 300 tags.
+
+In the treemap, color can represent either the tag's average scene rating or average
+views per scene, making common, highly rated, and frequently revisited themes visible
+at a glance. Tags without rated scenes remain gray in rating mode. **Maximum tags** keeps large libraries readable by showing the 25, 50,
+100, or 200 most common tags, or **All** removes the limit; the summary continues to
+report the complete tag and untagged-scene totals. Click a tag to show its scene
+cards below, or click it again to clear the selection. The display choices are
+remembered, and PNG export is available inside the chart.
 
 **Scene ratings** uses native scene filters and saved defaults to count distinct
 scenes by their rating out of ten; unrated scenes are included separately.

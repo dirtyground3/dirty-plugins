@@ -11,16 +11,12 @@ let agePerformerFilter: StatsFilter | null = null;
 const performerFilterEvent = "dirty-stats:performer-filter";
 
 export function StatisticSelector(props: SelectorProps): R.ReactElement | null {
-  const history = api.libraries.ReactRouterDOM.useHistory();
   return (
     <hub.react.StatisticSelector
       id="dirty-stats-statistic"
       className="dirty-stats-selector"
       value={props.value}
-      options={STATISTIC_ORDER.map(key => ({ value: key, label: STATISTIC_LABELS[key] }))}
-      onSelect={value => {
-        if (STATISTIC_ROUTES[value]) history.push(hub.captureUrl(STATISTIC_ROUTES[value]));
-      }}
+      options={STATISTIC_ORDER.map(key => ({ value: key, label: STATISTIC_LABELS[key], to: STATISTIC_ROUTES[key] }))}
     />
   );
 }

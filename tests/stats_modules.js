@@ -24,6 +24,7 @@ const COMPONENTS = [
   "Counters",
   "Quality",
   "Studios",
+  "StudioTree",
   "Tags",
   "Route",
 ];

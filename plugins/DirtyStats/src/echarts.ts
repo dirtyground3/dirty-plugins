@@ -3,7 +3,16 @@
  * (0BSD). See vendor/ECHARTS-LICENSE, vendor/ECHARTS-NOTICE,
  * vendor/ECHARTS-LICENSE-d3, vendor/ZRENDER-LICENSE and vendor/TSLIB-LICENSE. */
 import { init, registerMap, use } from "echarts/core";
-import { BarChart, GraphChart, LineChart, MapChart, PieChart, ScatterChart, TreemapChart } from "echarts/charts";
+import {
+  BarChart,
+  GraphChart,
+  LineChart,
+  MapChart,
+  PieChart,
+  ScatterChart,
+  SunburstChart,
+  TreemapChart,
+} from "echarts/charts";
 import {
   AxisPointerComponent,
   DataZoomComponent,
@@ -29,6 +38,7 @@ use([
   MapChart,
   PieChart,
   ScatterChart,
+  SunburstChart,
   TreemapChart,
   AxisPointerComponent,
   DataZoomComponent,

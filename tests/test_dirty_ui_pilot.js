@@ -279,6 +279,37 @@ assert.equal(chosenStatistic, null, "selecting the current statistic does nothin
 statisticSelector.props.onSelect("faces");
 assert.equal(chosenStatistic, "faces");
 
+chosenStatistic = null;
+const routeSelector = ui.StatisticSelector({
+  id: "stat",
+  value: "overall",
+  options: [
+    { value: "overall", label: "Overall", to: "/stats/overall" },
+    { value: "faces", label: "Faces", to: "/stats/faces" },
+    { value: "local", label: "Local" },
+  ],
+  onSelect: value => {
+    chosenStatistic = value;
+  },
+});
+const [currentItem, facesItem, localItem] = routeSelector.children[1].children;
+assert.equal(facesItem.props.as, "a", "a route option renders the router Link");
+assert.equal(facesItem.props.to, "/stats/faces");
+assert.equal(localItem.props.as, undefined);
+routeSelector.props.onSelect("faces");
+assert.equal(chosenStatistic, null, "the Link navigates, so a route option does not call onSelect");
+routeSelector.props.onSelect("local");
+assert.equal(chosenStatistic, "local");
+assert.equal(facesItem.props.onClick, undefined);
+let keptPage = 0;
+const click = modifiers => currentItem.props.onClick({ ...modifiers, preventDefault: () => keptPage++ });
+click({});
+assert.equal(keptPage, 1, "a plain click on the current page keeps its URL");
+click({ ctrlKey: true });
+click({ metaKey: true });
+click({ shiftKey: true });
+assert.equal(keptPage, 1, "a modified click on the current page still opens it elsewhere");
+
 let page = 2;
 const pagination = ui.Pagination({
   page: 2,

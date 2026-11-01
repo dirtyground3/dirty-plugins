@@ -34,6 +34,7 @@
       "scatterMaxScenes": 10,
       "countRatingMetric": "play_count",
       "studioMinScenes": 1,
+      "tagDnaView": "treemap",
       "tagDnaColorMetric": "rating",
       "tagDnaMaxTags": 50
     },
@@ -111,6 +112,11 @@
         5,
         10,
         20
+      ],
+      "tagDnaView": [
+        "treemap",
+        "bars",
+        "clusters"
       ],
       "tagDnaColorMetric": [
         "rating",

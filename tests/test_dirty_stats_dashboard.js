@@ -28,7 +28,7 @@ const plain = value => JSON.parse(JSON.stringify(value));
 
 assert.equal(
   Object.keys(dashboard.registry).length,
-  16,
+  17,
   "every DirtyStats statistic, performer cards and default stats must be available as a widget",
 );
 assert.equal(dashboard.defaults.length, 5, "a curated dashboard should be created on first use");
@@ -95,7 +95,7 @@ assert.deepEqual(
 );
 assert.deepEqual(
   normalized[3].options,
-  { metric: "play_count", maxTags: 0, showHeader: true },
+  { view: "treemap", metric: "play_count", maxTags: 0, showHeader: true },
   "Tag DNA widget options must normalize and persist its unlimited choice",
 );
 assert.deepEqual(

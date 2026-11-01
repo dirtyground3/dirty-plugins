@@ -15,7 +15,7 @@ import {
   rankPerformers,
 } from "../domain/rank";
 import { boxFor, boxGendersLabel, categoriesFor } from "../domain/settings";
-import { DirtyPlugins, PluginApi, React, Router, ui } from "../runtime";
+import { PluginApi, React, ui } from "../runtime";
 import type * as R from "react";
 import type { SharedProps } from "../../../DirtyPlugins/src/types";
 import { OVERALL_LEADERBOARD_ID } from "../constants";
@@ -323,17 +323,13 @@ export function RankStatisticSelector(props: {
   categories: RankCategory[];
   boxId?: string;
 }): R.JSX.Element | null {
-  const history = Router.useHistory();
   return (
     <ui.StatisticSelector
       id="dirty-rank-statistic"
       value={props.value}
-      options={[{ value: OVERALL_LEADERBOARD_ID, label: "Overall" }].concat(
-        props.categories.map(category => ({ value: category.id, label: category.name })),
-      )}
-      onSelect={(id: string) => {
-        history.push(DirtyPlugins.captureUrl(leaderboardStatPath(id, props.boxId)));
-      }}
+      options={[{ value: OVERALL_LEADERBOARD_ID, label: "Overall" }]
+        .concat(props.categories.map(category => ({ value: category.id, label: category.name })))
+        .map(option => ({ ...option, to: leaderboardStatPath(option.value, props.boxId) }))}
     />
   );
 }

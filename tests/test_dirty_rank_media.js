@@ -1398,7 +1398,9 @@ async function verifyNamedGenderBoxes() {
         await flush();
         tree = renderLeaderboard();
         const selector = find(tree, component("RankStatisticSelector"));
-        selector.type(selector.props).props.onSelect(category);
+        const link = selector.type(selector.props).props.options.find(option => option.value === category).to;
+        assert(link.includes("?box="), "the link keeps the selected box");
+        context.window.PluginApi.libraries.ReactRouterDOM.useHistory().push(link);
         tree = renderLeaderboard();
       }
       const selector = find(tree, component("RankStatisticSelector"));
@@ -2402,10 +2404,11 @@ async function verifyLeaderboardDisplays() {
     categories: [{ id: "appearance", name: "Appearance" }],
   });
   assert.strictEqual(statSelector.type, runtime.react.StatisticSelector);
-  assert(statSelector.props.options.some(option => option.value === "appearance" && option.label === "Appearance"));
-  statSelector.props.onSelect("appearance");
-  assert.strictEqual(context.window.location.pathname, plugin.testing.leaderboardStatPath("appearance"));
-  assert.strictEqual(plugin.testing.leaderboardIdFromPath(context.window.location.pathname), "appearance");
+  const statOption = statSelector.props.options.find(option => option.value === "appearance");
+  assert.strictEqual(statOption.label, "Appearance");
+  assert.strictEqual(statOption.to, plugin.testing.leaderboardStatPath("appearance"));
+  assert.strictEqual(plugin.testing.leaderboardIdFromPath(statOption.to), "appearance");
+  context.window.location.pathname = statOption.to;
   assert.strictEqual(plugin.testing.leaderboardIdFromPath("/plugins/dirty-rank-leaderboards"), "__overall__");
   tree = render();
   assert.strictEqual(find(tree, node => node.type === plugin.testing.RankStatisticSelector).props.value, "appearance");
@@ -2416,14 +2419,14 @@ async function verifyLeaderboardDisplays() {
     "appearance",
     "a bookmarked stat opens directly",
   );
-  plugin.testing
+  const overallOption = plugin.testing
     .RankStatisticSelector({
       value: "appearance",
       label: "Appearance",
       categories: [{ id: "appearance", name: "Appearance" }],
     })
-    .props.onSelect("__overall__");
-  assert.strictEqual(context.window.location.pathname, "/plugins/dirty-rank-leaderboards/overall");
+    .props.options.find(option => option.value === "__overall__");
+  assert.strictEqual(overallOption.to, "/plugins/dirty-rank-leaderboards/overall");
   context.window.location.pathname = "/plugins/dirty-rank-leaderboards";
 
   configuration = { leaderboardTopCount: 5, leaderboardView: "table" };

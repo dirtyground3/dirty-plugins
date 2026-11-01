@@ -1,8 +1,11 @@
 import { SceneCards } from "./Cards";
 import { StatsState, chartImage, exportButton, pageToolbar } from "./Primitives";
 import {
+  TAG_DNA_VIEW_LABELS,
+  aggregateTagClusters,
   aggregateTagDna,
   sceneVariables,
+  tagBarSeriesData,
   tagDnaMetricLabel,
   tagDnaScenes,
   tagDnaSeriesData,
@@ -23,6 +26,7 @@ export function TagDnaPage(props: PageProps): R.ReactElement | null {
     error = pageData.error;
   const [chartError, setChartError] = React.useState("");
   const [selected, setSelected] = React.useState<string | null>(null);
+  const [view, setView] = useStatsSetting("tagDnaView");
   const [metric, setMetric] = useStatsSetting("tagDnaColorMetric");
   const [maxTags, setMaxTags] = useStatsSetting("tagDnaMaxTags");
   const [refresh, setRefresh] = React.useState(0);
@@ -34,6 +38,15 @@ export function TagDnaPage(props: PageProps): R.ReactElement | null {
     () => tagDnaSeriesData(stats, metric, maxTags, selected),
     [stats, metric, maxTags, selected, chartTheme],
   );
+  const clusters = React.useMemo(
+    () => (view === "clusters" ? aggregateTagClusters(scenes, stats, maxTags) : null),
+    [view, scenes, stats, maxTags],
+  );
+  const bars = React.useMemo(
+    () => (view === "bars" ? tagBarSeriesData(stats, maxTags, selected) : null),
+    [view, stats, maxTags, selected, chartTheme],
+  );
+  const shownTags = clusters ? clusters.nodes : bars || data;
   const selectedTag = React.useMemo(
     () => (selected == null ? null : stats.rows.find(row => row.id === selected)),
     [stats, selected],
@@ -43,8 +56,8 @@ export function TagDnaPage(props: PageProps): R.ReactElement | null {
     setSelected(null);
   }, [queryKey]);
   React.useEffect(() => {
-    if (selected != null && !data.some(item => item.id === selected)) setSelected(null);
-  }, [selected, data]);
+    if (selected != null && !shownTags.some(item => item.id === selected)) setSelected(null);
+  }, [selected, shownTags]);
   pageData.useLoad(
     {
       query:
@@ -55,7 +68,7 @@ export function TagDnaPage(props: PageProps): R.ReactElement | null {
     [queryKey, refresh],
   );
   chartLifecycle.useChart(() => {
-    if (loading || error || !node.current || !data.length) return;
+    if (loading || error || !node.current || !shownTags.length) return;
     return {
       node: node.current,
       chartRef,
@@ -64,14 +77,31 @@ export function TagDnaPage(props: PageProps): R.ReactElement | null {
           if (event.componentType === "series" && event.data && event.data.id)
             setSelected(current => (current === event.data.id ? null : event.data.id));
         });
-        chart.setOption(chartOptions.tagDnaOption(data, metric), true);
+        chart.setOption(
+          clusters
+            ? chartOptions.tagClusterOption(clusters)
+            : bars
+              ? chartOptions.tagBarOption(bars)
+              : chartOptions.tagDnaOption(data, metric),
+          true,
+        );
         setChartError("");
       },
       onError: err => {
         setChartError(err.message);
       },
     };
-  }, [data, metric, loading, error, chartTheme]);
+  }, [stats, clusters, view, metric, maxTags, loading, error, chartTheme]);
+  // Selecting a tag must not rebuild the chart: bars keep their scroll position and clusters their layout.
+  React.useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    if (clusters) {
+      chart.dispatchAction({ type: "downplay", seriesIndex: 0 });
+      const dataIndex = clusters.nodes.findIndex(item => item.id === selected);
+      if (dataIndex >= 0) chart.dispatchAction({ type: "highlight", seriesIndex: 0, dataType: "node", dataIndex });
+    } else chart.setOption({ series: [{ data: bars || data }] });
+  }, [selected]);
   return (
     <section className="dirty-stats-content">
       {pageToolbar(
@@ -86,8 +116,11 @@ export function TagDnaPage(props: PageProps): R.ReactElement | null {
       {error ? (
         <StatsState detail={error + " Use Refresh to retry."} role="alert" title="Could not load scene tags" />
       ) : null}
-      {!loading && !error && data.length ? (
-        <section className="dirty-stats-map-panel dirty-ui-panel" aria-label="Tag DNA treemap">
+      {!loading && !error && shownTags.length ? (
+        <section
+          className="dirty-stats-map-panel dirty-ui-panel"
+          aria-label={"Tag DNA " + TAG_DNA_VIEW_LABELS[view].toLowerCase()}
+        >
           <div className="dirty-stats-map-controls">
             {selected != null ? (
               <button
@@ -100,23 +133,43 @@ export function TagDnaPage(props: PageProps): R.ReactElement | null {
               </button>
             ) : null}
             <label className="dirty-stats-date-basis">
-              {"Color by"}
+              {"View"}
               <select
                 className="form-control dirty-ui-select dirty-stats-statistic"
-                value={metric}
+                value={view}
                 onChange={event => {
-                  setMetric(event.target.value);
+                  setView(event.target.value);
                 }}
               >
-                {STATS_SETTING_SPECS.tagDnaColorMetric.options.map(value => {
+                {STATS_SETTING_SPECS.tagDnaView.options.map(value => {
                   return (
                     <option key={value} value={value}>
-                      {tagDnaMetricLabel(value)}
+                      {TAG_DNA_VIEW_LABELS[value]}
                     </option>
                   );
                 })}
               </select>
             </label>
+            {clusters || bars ? null : (
+              <label className="dirty-stats-date-basis">
+                {"Color by"}
+                <select
+                  className="form-control dirty-ui-select dirty-stats-statistic"
+                  value={metric}
+                  onChange={event => {
+                    setMetric(event.target.value);
+                  }}
+                >
+                  {STATS_SETTING_SPECS.tagDnaColorMetric.options.map(value => {
+                    return (
+                      <option key={value} value={value}>
+                        {tagDnaMetricLabel(value)}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            )}
             <label className="dirty-stats-date-basis">
               {"Maximum tags"}
               <select
@@ -135,32 +188,48 @@ export function TagDnaPage(props: PageProps): R.ReactElement | null {
                 })}
               </select>
             </label>
-            <span
-              className="dirty-stats-tag-color-key"
-              title="Darker cells have a lower value; gold cells have a higher value."
-            >
-              <span>Lower</span>
-              <i aria-hidden={true} />
-              <span>Higher</span>
-            </span>
+            {clusters ? null : (
+              <span
+                className="dirty-stats-tag-color-key"
+                title={
+                  bars
+                    ? "Darker bars have fewer scenes; brighter bars have more."
+                    : "Darker cells have a lower value; gold cells have a higher value."
+                }
+              >
+                <span>Lower</span>
+                <i aria-hidden={true} />
+                <span>Higher</span>
+              </span>
+            )}
             {exportButton(chartRef, "DirtyStats-tag-dna.png", loading || Boolean(error) || Boolean(chartError))}
           </div>
           {chartImage(
             node,
             "dirty-stats-growth-chart dirty-stats-tag-chart",
-            "Treemap of tags sized by distinct scene count and colored by " +
-              tagDnaMetricLabel(metric).toLowerCase() +
-              ".",
+            clusters
+              ? "Cluster plot of tags that often appear on the same scenes, sized by distinct scene count."
+              : bars
+                ? "Bar chart of tags by average rating, colored by distinct scene count."
+                : "Treemap of tags sized by distinct scene count and colored by " +
+                  tagDnaMetricLabel(metric).toLowerCase() +
+                  ".",
           )}
         </section>
       ) : null}
       {chartError ? <StatsState detail={chartError} role="alert" title="Chart unavailable" /> : null}
-      {!loading && !error && !data.length ? <StatsState title="No tagged scenes match these filters." /> : null}
+      {!loading && !error && !shownTags.length ? (
+        <StatsState title={bars ? "No rated tags match these filters." : "No tagged scenes match these filters."} />
+      ) : null}
       <p>
-        {"Rectangle area represents distinct scene count. Color represents " +
-          tagDnaMetricLabel(metric).toLowerCase() +
-          "; gray tags have no rated scenes. Showing " +
-          data.length +
+        {(clusters
+          ? "Tags that often appear on the same scenes are linked and grouped by color; dot size represents distinct scene count. Hover over a tag to see its links, including those to other groups. Showing "
+          : bars
+            ? "Bar length represents average rating out of ten. Color represents distinct scene count, from dark for few scenes to bright for many. Tags without rated scenes are left out. Showing "
+            : "Rectangle area represents distinct scene count. Color represents " +
+              tagDnaMetricLabel(metric).toLowerCase() +
+              "; gray tags have no rated scenes. Showing ") +
+          shownTags.length +
           " of " +
           stats.tags +
           " tags. Click a tag to show its scenes below."}

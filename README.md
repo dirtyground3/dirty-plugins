@@ -15,13 +15,13 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.11 |
-| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.8 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.12 |
+| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.9 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.20 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.5 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.13 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.14 |
 
 ## Shared look and settings
 
@@ -563,6 +563,15 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyStats 1.0.12, DirtyRank 1.0.9 and DirtyPlugins 1.0.14:** the new **Scenes
+  per studio** statistic is a multi-level pie chart with up to four levels of
+  studios, as a page and a dashboard widget. Click a segment to zoom into a studio
+  and show its scenes. **Tag DNA** has a **View** choice beside the treemap: a **Bar
+  chart** of average rating colored by scene count, and a **Cluster plot** that
+  groups tags appearing on the same scenes. The entries of the DirtyStats page menu
+  and the DirtyRank leaderboard menu are real links, so they can be opened in a new
+  tab or window.
 
 - **DirtyStats 1.0.11:** the dashboard has an **Options** button beside **Edit
   dashboard** that opens the DirtyStats settings. The new **Replace default

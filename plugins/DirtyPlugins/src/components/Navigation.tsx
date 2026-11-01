@@ -3,6 +3,7 @@ import { PluginApi, React } from "../runtime";
 import type { ActionItem, MenuProps, NavProps, SelectorProps } from "../types";
 import { withClass } from "../shared/values";
 import { Glyph } from "./Controls";
+import type * as R from "react";
 export function NavAction(props: NavProps) {
   const LinkComponent = props.as || PluginApi.libraries.ReactRouterDOM.Link;
   return (
@@ -19,13 +20,20 @@ export function NavAction(props: NavProps) {
   );
 }
 
+/** Link skips a prevented click: a plain click on the current page keeps the filters in its URL. */
+function keepCurrentPage(event: R.MouseEvent) {
+  if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) event.preventDefault();
+}
+
 export function StatisticSelector(props: SelectorProps) {
   const bootstrap = PluginApi.libraries.Bootstrap,
-    Dropdown = bootstrap.Dropdown;
+    Dropdown = bootstrap.Dropdown,
+    Link = PluginApi.libraries.ReactRouterDOM.Link;
   const options = props.options || [];
   const selected = options.find(option => option.value === props.value);
   function select(value: string | null) {
-    if (value && value !== props.value && props.onSelect) props.onSelect(value);
+    const option = options.find(option => option.value === value);
+    if (option && !option.to && option.value !== props.value && props.onSelect) props.onSelect(option.value);
   }
   return (
     <Dropdown
@@ -45,6 +53,9 @@ export function StatisticSelector(props: SelectorProps) {
             className="bg-secondary text-white"
             eventKey={option.value}
             active={props.value === option.value}
+            as={option.to ? Link : undefined}
+            to={option.to ? captureUrl(option.to) : undefined}
+            onClick={option.to && props.value === option.value ? keepCurrentPage : undefined}
           >
             {option.label}
           </Dropdown.Item>
