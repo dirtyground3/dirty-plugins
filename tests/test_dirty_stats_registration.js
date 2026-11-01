@@ -151,7 +151,7 @@ assert.equal(f.routes.length, 1);
 assert.equal(f.routes[0].path, "/plugins/dirty-stats");
 assert.deepEqual(
   f.patches.map(p => p.name),
-  ["PerformerList", "SceneList", "MainNavBar.UtilityItems"],
+  ["PerformerList", "SceneList", "App", "MainNavBar.UtilityItems"],
 );
 assert.equal(f.listeners.size, 1);
 assert.equal(f.themes.size, 1);
@@ -159,7 +159,7 @@ assert.equal(f.window.echarts, undefined, "ECharts stays private to the bundle")
 assert.equal(f.window.__dirtyStatsWorld, undefined);
 f.load();
 assert.equal(f.routes.length, 1, "a reloaded bundle never registers twice");
-assert.equal(f.patches.length, 3);
+assert.equal(f.patches.length, 4);
 assert.equal(f.listeners.size, 1);
 const original = { native: true },
   filter = {};

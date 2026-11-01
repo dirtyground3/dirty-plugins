@@ -10,7 +10,11 @@ loads only when a Stats page opens. Stash users need no Node or TypeScript tooli
 Explore Stash statistics from the **bubble chart icon** (red, blue, and white
 circles) in the utility navigation. **Show DirtyStats in the Stash header** in
 the DirtyStats tab of the Dirty Plugins settings hides or restores it without a
-reload; Stats pages stay reachable by URL.
+reload; Stats pages stay reachable by URL. **Options** on the dashboard opens that
+tab. **Replace default stats page**, off by default,
+sends the Stash statistics button and `/stats` to the dashboard. **Hide widget
+titles**, also off by default, removes the title above every dashboard widget;
+titles stay editable while editing the dashboard.
 The icon opens a customizable **Dashboard** at
 `/plugins/dirty-stats/dashboard`. Choose **Edit dashboard** to add or remove any available statistic,
 reorder widgets by dragging their edit-mode handle or using arrow keys on it,
@@ -62,6 +66,10 @@ shared **Show header** switch hides all summary metrics. Age statistics use the
 histogram's counts: each performer counts once per age, regardless of repeated
 scenes at that age. Tied modes use the lowest age; median and average display up
 to one decimal place. Missing age data displays a dash.
+
+**Default stats** shows the figures of Stash's statistics page in one widget:
+scene and image sizes, durations, entity counts, O-count and play totals. It
+always covers the whole library, so it has no filters or full view.
 
 Dashboard widgets summarize the selected filter, or the entire library when no
 filter is active. Small widgets emphasize key

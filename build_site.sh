@@ -53,15 +53,15 @@ build_plugin() {
   plugin_dir=$(dirname "$manifest")
   plugin_id=$(basename "$manifest" .yml)
   name=$(sed -n 's/^name:[[:space:]]*//p' "$manifest" | head -n 1 | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
-  description=$(sed -n 's/^description:[[:space:]]*//p' "$manifest" | head -n 1 | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
   manifest_version=$(sed -n 's/^version:[[:space:]]*//p' "$manifest" | head -n 1 | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
   mapfile -t source_metadata < <(node scripts/package-metadata.mjs "$plugin_id")
-  if ((${#source_metadata[@]} != 2)); then
+  if ((${#source_metadata[@]} != 3)); then
     echo "Missing source build metadata for $plugin_id" >&2
     exit 1
   fi
   commit_version=${source_metadata[0]%$'\r'}
   updated=${source_metadata[1]%$'\r'}
+  description=${source_metadata[2]%$'\r'}
   zip_path="$output_dir/$plugin_id.zip"
   mapfile -t package_requires < <(ui_requires "$manifest")
 

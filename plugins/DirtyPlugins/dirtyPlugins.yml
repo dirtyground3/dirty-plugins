@@ -1,6 +1,6 @@
 name: DirtyPlugins
-description: Shared settings page for Dirty plugins.
-version: 1.0.12
+description: Required runtime and settings page for Dirty plugins. Install DirtyStats, DirtyRank or another Dirty plugin with it; on its own it adds only a settings link.
+version: 1.0.13
 
 ui:
   javascript:

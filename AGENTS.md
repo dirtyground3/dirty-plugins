@@ -7,7 +7,7 @@ documentation; this file covers architecture and the conventions to follow.
 
 A collection of integrated plugins for [Stash](https://stashapp.cc/). Each
 plugin ships as a self-contained directory under `plugins/`, and all of them
-depend on the shared, unlisted **DirtyPlugins** hub runtime.
+depend on the shared **DirtyPlugins** hub runtime.
 
 ## Repository layout
 

@@ -21,7 +21,7 @@ import {
   requiredResources,
   widgetTitle,
 } from "../domain/dashboard";
-import { React, ui } from "../runtime";
+import { React, api, hub, ui } from "../runtime";
 import { getStatsSettingExtra, setStatsSettingExtra, statsSettingsReady } from "../settings";
 import type * as R from "react";
 import type { DashboardPageProps } from "../props";
@@ -140,7 +140,8 @@ export function DashboardPage(props: DashboardPageProps): R.ReactElement | null 
       title: "",
       size: definition.size,
       options: normalizeOptions(definition, definition.options),
-      filter: null,
+      // Stash's stats query takes no filter, so this widget always covers the whole library.
+      filter: statistic === "libraryTotals" ? normalizeFilter(null) : null,
     });
   }
   function updateDraft(patch: Partial<Omit<DashboardWidgetModel, "filter"> & { filter: SavedFilter | null }>) {
@@ -204,6 +205,12 @@ export function DashboardPage(props: DashboardPageProps): R.ReactElement | null 
           <button type="button" className="btn btn-primary dirty-ui-button dirty-ui-control" onClick={toggleEditing}>
             {editing ? "Done editing" : "Edit dashboard"}
           </button>
+          <api.libraries.ReactRouterDOM.Link
+            className="btn btn-secondary dirty-ui-button dirty-ui-control"
+            to={hub.captureUrl("/plugins/dirty-plugins?plugin=dirtyStats")}
+          >
+            Options
+          </api.libraries.ReactRouterDOM.Link>
         </div>
       </div>
       <p className="dirty-stats-dashboard-visually-hidden" role="status" aria-live="polite">
@@ -275,20 +282,26 @@ export function DashboardPage(props: DashboardPageProps): R.ReactElement | null 
               />
             </div>
           </div>
-          <div className="dirty-stats-dashboard-filter-heading">
-            <div>
-              <h3>Filters</h3>
-              <p>Use the same native filters as the full view. Changes apply to this widget only.</p>
-            </div>
-            {draft!.filter ? <strong>{filterSummary(draft!.filter, WIDGETS[draft!.statistic].entity)}</strong> : null}
-          </div>
-          <DashboardFilterChooser
-            filterKey={"add-" + draft.id}
-            entity={WIDGETS[draft!.statistic].entity}
-            onChange={filter => {
-              updateDraft({ filter });
-            }}
-          />
+          {draft.statistic === "libraryTotals" ? null : (
+            <React.Fragment>
+              <div className="dirty-stats-dashboard-filter-heading">
+                <div>
+                  <h3>Filters</h3>
+                  <p>Use the same native filters as the full view. Changes apply to this widget only.</p>
+                </div>
+                {draft!.filter ? (
+                  <strong>{filterSummary(draft!.filter, WIDGETS[draft!.statistic].entity)}</strong>
+                ) : null}
+              </div>
+              <DashboardFilterChooser
+                filterKey={"add-" + draft.id}
+                entity={WIDGETS[draft!.statistic].entity}
+                onChange={filter => {
+                  updateDraft({ filter });
+                }}
+              />
+            </React.Fragment>
+          )}
           <div className="dirty-stats-dashboard-picker-actions">
             <button
               type="button"

@@ -115,7 +115,7 @@ export function FilterControl(props: FilterControlProps): R.ReactElement | null 
 export function WidgetOptions(props: WidgetOptionsProps): R.ReactElement | null {
   return (
     <React.Fragment>
-      {props.kind === "fields" ? null : (
+      {props.kind === "fields" || props.widget.statistic === "libraryTotals" ? null : (
         <CheckControl
           label="Show header"
           value={props.widget.options.showHeader}

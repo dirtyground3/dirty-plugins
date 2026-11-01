@@ -7,7 +7,7 @@ import { GrowthPage } from "./components/Growth";
 import { StatsPage } from "./components/Origin";
 import { QualityEfficiencyPage } from "./components/Quality";
 import { RatingPage } from "./components/Ratings";
-import { DirtyStatsRoute, NavIcon } from "./components/Route";
+import { DirtyStatsRoute, NavIcon, StatsPageRedirect } from "./components/Route";
 import { PerformerScatterPage } from "./components/Scatter";
 import { PerformerSceneRatingsPage } from "./components/PerformerSceneRatings";
 import { StudioValuePage } from "./components/Studios";
@@ -60,6 +60,16 @@ hub?.registerPlugin(PLUGIN_ID, () => {
     const Page = key ? SCENE_PAGES[key] : null;
     return Page && props?.filter ? <Page filter={props.filter} /> : next.apply(null, args);
   });
+  api.patch.before("App", props => [
+    {
+      children: (
+        <React.Fragment>
+          <StatsPageRedirect />
+          {props.children}
+        </React.Fragment>
+      ),
+    },
+  ]);
   api.patch.before("MainNavBar.UtilityItems", props => [
     {
       children: (

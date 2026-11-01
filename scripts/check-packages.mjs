@@ -20,7 +20,8 @@ for (const item of index) {
   if (
     item.path !== plugin.id + ".zip" ||
     item.version !== manifest.version + "-" + metadata.identity ||
-    item.date !== metadata.date
+    item.date !== metadata.date ||
+    item.metadata?.description !== manifest.description
   ) {
     throw new Error("Package metadata differs from source/build inputs: " + plugin.id);
   }

@@ -2,7 +2,7 @@ import { renderWidget } from "./Charts";
 import { FilterControl, SelectControl, WidgetOptions } from "./Controls";
 import { SIZES, SIZE_LABELS, WIDGETS, resourceKey, widgetHeightUnits, widgetTitle } from "../domain/dashboard";
 import { React, api, hub } from "../runtime";
-import { useChartTheme } from "../settings";
+import { useChartTheme, useStatsSetting } from "../settings";
 import type * as R from "react";
 import type { DashboardWidgetProps } from "../props";
 export function DashboardWidget(props: DashboardWidgetProps): R.ReactElement | null {
@@ -11,6 +11,9 @@ export function DashboardWidget(props: DashboardWidgetProps): R.ReactElement | n
   const title = widgetTitle(widget);
   const compact = widget.size !== "large" && !props.editing;
   const theme = useChartTheme();
+  const [hideTitles] = useStatsSetting("hideWidgetTitles");
+  const titleHidden = hideTitles && !props.editing;
+  const openable = widget.statistic !== "performerCards" && widget.statistic !== "libraryTotals";
   const resource = props.resources[resourceKey(widget)];
   const body = React.useMemo(
     () => renderWidget(widget, props.resources),
@@ -26,64 +29,67 @@ export function DashboardWidget(props: DashboardWidgetProps): R.ReactElement | n
         (compact ? " is-compact" : "") +
         (props.dragging ? " is-dragging" : "")
       }
+      aria-label={titleHidden ? title : undefined}
       data-statistic={widget.statistic}
       data-widget-index={props.index}
       aria-grabbed={props.dragging ? "true" : undefined}
     >
-      <header className={"dirty-stats-dashboard-widget-header" + (compact ? " is-compact" : "")}>
-        <div className="dirty-stats-dashboard-widget-title">
-          {props.editing ? (
-            <input
-              type="text"
-              className="dirty-stats-dashboard-title-input"
-              value={widget.title || ""}
-              placeholder={definition.label}
-              maxLength={100}
-              aria-label={definition.label + " widget title"}
-              onChange={event => {
-                props.onTitle(event.target.value);
-              }}
-            />
-          ) : (
-            <h2 title={title}>{title}</h2>
-          )}
-        </div>
-        <div className="dirty-stats-dashboard-widget-actions">
-          {props.editing || widget.statistic === "performerCards" ? null : (
-            <api.libraries.ReactRouterDOM.Link
-              className="dirty-stats-dashboard-open-link"
-              to={hub.captureUrl(definition.route)}
-              title={"Open " + definition.label + " full view"}
-              aria-label={"Open " + definition.label + " full view"}
-            >
-              <span aria-hidden={true}>↗</span>
-            </api.libraries.ReactRouterDOM.Link>
-          )}
-          {props.editing ? (
-            <React.Fragment>
-              <button
-                type="button"
-                className="dirty-ui-icon-button dirty-ui-icon-button-compact dirty-stats-dashboard-drag-handle"
-                title="Drag to reorder; arrow keys also move this widget"
-                aria-label={"Reorder " + title + "; use arrow keys or drag"}
-                onPointerDown={props.onDragStart}
-                onKeyDown={props.onDragKeyDown}
+      {titleHidden && !openable ? null : (
+        <header className={"dirty-stats-dashboard-widget-header" + (compact ? " is-compact" : "")}>
+          <div className="dirty-stats-dashboard-widget-title">
+            {props.editing ? (
+              <input
+                type="text"
+                className="dirty-stats-dashboard-title-input"
+                value={widget.title || ""}
+                placeholder={definition.label}
+                maxLength={100}
+                aria-label={definition.label + " widget title"}
+                onChange={event => {
+                  props.onTitle(event.target.value);
+                }}
+              />
+            ) : titleHidden ? null : (
+              <h2 title={title}>{title}</h2>
+            )}
+          </div>
+          <div className="dirty-stats-dashboard-widget-actions">
+            {props.editing || !openable ? null : (
+              <api.libraries.ReactRouterDOM.Link
+                className="dirty-stats-dashboard-open-link"
+                to={hub.captureUrl(definition.route)}
+                title={"Open " + definition.label + " full view"}
+                aria-label={"Open " + definition.label + " full view"}
               >
-                <span aria-hidden={true}>⠿</span>
-              </button>
-              <button
-                type="button"
-                className="dirty-ui-icon-button dirty-ui-icon-button-compact dirty-ui-icon-button-danger dirty-stats-dashboard-remove"
-                title="Remove widget"
-                aria-label={"Remove " + title + " widget"}
-                onClick={props.onRemove}
-              >
-                <span aria-hidden={true}>×</span>
-              </button>
-            </React.Fragment>
-          ) : null}
-        </div>
-      </header>
+                <span aria-hidden={true}>↗</span>
+              </api.libraries.ReactRouterDOM.Link>
+            )}
+            {props.editing ? (
+              <React.Fragment>
+                <button
+                  type="button"
+                  className="dirty-ui-icon-button dirty-ui-icon-button-compact dirty-stats-dashboard-drag-handle"
+                  title="Drag to reorder; arrow keys also move this widget"
+                  aria-label={"Reorder " + title + "; use arrow keys or drag"}
+                  onPointerDown={props.onDragStart}
+                  onKeyDown={props.onDragKeyDown}
+                >
+                  <span aria-hidden={true}>⠿</span>
+                </button>
+                <button
+                  type="button"
+                  className="dirty-ui-icon-button dirty-ui-icon-button-compact dirty-ui-icon-button-danger dirty-stats-dashboard-remove"
+                  title="Remove widget"
+                  aria-label={"Remove " + title + " widget"}
+                  onClick={props.onRemove}
+                >
+                  <span aria-hidden={true}>×</span>
+                </button>
+              </React.Fragment>
+            ) : null}
+          </div>
+        </header>
+      )}
       {props.editing ? (
         <div className="dirty-stats-dashboard-editor" role="group" aria-label={definition.label + " widget settings"}>
           <div className="dirty-stats-dashboard-fields">
@@ -94,7 +100,9 @@ export function DashboardWidget(props: DashboardWidgetProps): R.ReactElement | n
               labels={SIZE_LABELS}
               onChange={props.onSize}
             />
-            <FilterControl filter={widget.filter} entity={definition.entity} onChange={props.onFilter} />
+            {widget.statistic === "libraryTotals" ? null : (
+              <FilterControl filter={widget.filter} entity={definition.entity} onChange={props.onFilter} />
+            )}
             <WidgetOptions widget={widget} kind="fields" onChange={props.onOptions} />
           </div>
           <div className="dirty-stats-dashboard-toggles">

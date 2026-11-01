@@ -85,6 +85,7 @@ export function widgetTitle(widget: Pick<DashboardWidgetModel, "title" | "statis
 }
 
 export function widgetHeightUnits(widget: Pick<DashboardWidgetModel, "size" | "statistic" | "options">) {
+  if (widget.statistic === "libraryTotals") return widget.size === "medium" ? 2 : 1;
   if (widget.size === "small") return 1;
   if (widget.size === "medium") return widget.statistic === "birthdays" ? 2 : 1;
   return widget.statistic === "birthdays" ||

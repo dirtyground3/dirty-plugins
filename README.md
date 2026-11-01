@@ -5,7 +5,7 @@ Dirty Plugins is a collection of integrated plugins for
 media extraction, multiscreen playback, performer ranking, preview-first file
 organization, rule-based additional encodes, and embedded text subtitles.
 
-All plugins share the hidden **DirtyPlugins** runtime and settings hub. The hub
+All plugins share the **DirtyPlugins** runtime and settings hub. The hub
 keeps their interfaces consistent, stores settings and high-frequency data in
 a shared SQLite database, and is installed automatically as a dependency.
 
@@ -15,13 +15,13 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.10 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.11 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.8 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.20 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.5 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Unlisted shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.12 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.13 |
 
 ## Shared look and settings
 
@@ -261,7 +261,8 @@ The recommended installation method is the published package source.
 The source URL must end in `index.yml`; the GitHub repository URL is not a
 Stash package source. **DirtyPlugins** is pulled in automatically when a plugin
 declares it as a dependency—there is normally no need to install the hub
-separately.
+separately. On its own it adds only a link to the settings page: if that link is
+all you see, install one of the plugins above too.
 
 ### Initial configuration
 
@@ -271,8 +272,9 @@ own tab there.
 
 - **General:** choose the suite theme and create database backups.
 - **DirtyStats:** open the bubble chart icon in the utility navigation and
-  choose **Edit dashboard** to arrange your widgets. Its tab can hide the icon;
-  Stats pages stay reachable by URL.
+  choose **Edit dashboard** to arrange your widgets; **Options** beside it opens
+  this tab. The tab can hide the icon, with Stats pages staying reachable by URL,
+  and can open the dashboard instead of the Stash statistics page.
 - **DirtyRank:** set up gender boxes, their categories and weights, and the
   desired confidence goal. The crossed-swords and trophy buttons open Battles
   and Leaderboards.
@@ -561,6 +563,18 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyStats 1.0.11:** the dashboard has an **Options** button beside **Edit
+  dashboard** that opens the DirtyStats settings. The new **Replace default
+  stats page** setting, off by default, sends the Stash
+  statistics button and `/stats` to the dashboard. The new **Default stats**
+  widget shows the figures of that page, so the dashboard can fully replace it.
+  **Hide widget titles**, also off by default, removes the title above every
+  dashboard widget.
+
+- **DirtyPlugins 1.0.13:** the package list says that DirtyPlugins is the required
+  runtime and adds only a settings link on its own, and it shows every plugin's
+  full description instead of cutting longer ones off after the first line.
 
 - **DirtyTasks 1.0.5:** encoding runs have **Pause** and **Resume**. Pausing
   stops the current encode at once and discards its unfinished output; resuming

@@ -94,6 +94,9 @@ function createHooks(getOwner, onChange = () => {}) {
         });
       }
     },
+    useLayoutEffect(effect, deps) {
+      hooks.useEffect(effect, deps);
+    },
   };
   return hooks;
 }

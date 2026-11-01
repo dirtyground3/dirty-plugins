@@ -5,7 +5,7 @@ const { createRenderer, element, events, findAll } = require("./ui_harness");
 const { chartModule, load } = require("./stats_modules");
 const fs = require("node:fs");
 const vm = require("node:vm");
-const { runSource, runtimePath } = require("./plugin_paths");
+const { requireSource, runSource, runtimePath } = require("./plugin_paths");
 const { installRegistration } = require("./shared_runtime");
 
 /** A Stats component compiled with its own runtime, with the chart module installed as the route does. */
@@ -552,6 +552,80 @@ test("the chart file loads once on demand and a failed load is retried", async (
   assert.equal(runtime.world, module.world);
 });
 
+test("replaceStatsPage sends only the native statistics page to the dashboard", async () => {
+  const stored = {};
+  const renderer = createRenderer();
+  const patches = [];
+  const replaced = [];
+  const window = events({
+    location: { pathname: "/stats", search: "" },
+    PluginApi: {
+      React: { ...renderer.hooks, createElement: element, Fragment: "fragment" },
+      components: {},
+      libraries: {
+        ReactRouterDOM: {
+          useLocation: () => window.location,
+          useHistory: () => ({
+            replace: path => {
+              replaced.push(path);
+              window.location.pathname = path;
+            },
+          }),
+        },
+      },
+      register: { route() {} },
+      patch: { instead() {}, before: (name, callback) => patches.push({ name, callback }) },
+    },
+    DirtyPlugins: {
+      getPluginSettings: async () => ({ ...stored }),
+      captureUrl: path => path,
+      react: {},
+      theme: {
+        defaultKey: "classic",
+        currentKey: "classic",
+        normalizeKey: key => key,
+        ready: Promise.resolve("classic"),
+        subscribe: () => () => {},
+      },
+      debugLog() {},
+    },
+  });
+  installRegistration(window);
+  const context = vm.createContext({ window, document: { documentElement: { style: {} } }, console, URLSearchParams });
+  vm.runInContext(fs.readFileSync(runtimePath("DirtyStats", "dirtyStats.js"), "utf8"), context);
+  const app = patches.find(patch => patch.name === "App").callback;
+  const render = () => renderer.render(app({ children: "Native routes" })[0].children);
+  const changed = async () => {
+    window.emit("dirty-plugins:configuration-changed", { detail: { pluginId: "dirtyStats" } });
+    await renderer.flush(render);
+  };
+
+  render();
+  await renderer.flush(render);
+  assert.equal(renderer.tree.children.at(-1), "Native routes", "native routes stay in the tree");
+  assert.deepEqual(replaced, [], "the native page stays by default");
+
+  window.location.pathname = "/scenes";
+  stored.replaceStatsPage = true;
+  await changed();
+  assert.deepEqual(replaced, [], "other pages are not redirected");
+
+  window.location.pathname = "/stats";
+  render();
+  await renderer.flush(render);
+  assert.deepEqual(replaced, ["/plugins/dirty-stats/dashboard"], "the native page opens the dashboard");
+  render();
+  await renderer.flush(render);
+  assert.equal(replaced.length, 1, "the dashboard does not redirect again");
+
+  stored.replaceStatsPage = false;
+  await changed();
+  window.location.pathname = "/stats";
+  render();
+  await renderer.flush(render);
+  assert.equal(replaced.length, 1, "turning it off restores the native page");
+});
+
 test("the header button follows showInMenu without a reload", async () => {
   const stored = { showInMenu: false };
   const renderer = createRenderer();
@@ -602,4 +676,43 @@ test("the header button follows showInMenu without a reload", async () => {
   stored.showInMenu = false;
   await changed("dirtyStats");
   assert.equal(button(), undefined, "turning it off hides the button again");
+});
+
+test("default stats match the figures and formats of Stash's statistics page", () => {
+  const { formatLibraryDuration, formatLibrarySize, libraryTotals } = requireSource(
+    "DirtyStats",
+    "src/domain/totals.ts",
+  );
+  assert.equal(formatLibrarySize(0), "0 B");
+  assert.equal(formatLibrarySize(1536), "2 KiB", "whole numbers below GiB");
+  assert.equal(formatLibrarySize(4.6 * 1024 ** 4), "4.6 TiB", "one decimal from GiB up");
+  assert.equal(formatLibraryDuration(0), "-");
+  assert.equal(formatLibraryDuration(30 * 86400 + 7 * 86400 + 20 * 3600 + 125), "1M 1W 20h", "three largest units");
+  assert.equal(formatLibraryDuration(86400 + 12 * 3600 + 55 * 60), "1D 12h 55m");
+  assert.equal(formatLibraryDuration(3600 + 5), "1h 5s", "zero units are skipped");
+  const totals = libraryTotals({
+    scene_count: 1478,
+    scenes_size: 0,
+    scenes_duration: 0,
+    image_count: 0,
+    images_size: 0,
+    gallery_count: 0,
+    performer_count: 646,
+    studio_count: 506,
+    group_count: 0,
+    tag_count: 1224,
+    total_o_count: 24,
+    total_play_duration: 0,
+    total_play_count: 2810,
+    scenes_played: 1230,
+  });
+  assert.equal(totals.length, 14);
+  assert.deepEqual(
+    totals.slice(0, 2).map(total => [total.label, total.value]),
+    [
+      ["Scenes size", "0 B"],
+      ["Scenes", "1,478"],
+    ],
+  );
+  assert.equal(totals.find(total => total.label === "Total play count").value, "2,810");
 });

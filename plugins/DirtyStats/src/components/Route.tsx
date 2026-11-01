@@ -167,6 +167,18 @@ export function DirtyStatsRoute(): R.ReactElement | null {
   );
 }
 
+/** Stash's /stats route comes before plugin routes and cannot be patched, so `replaceStatsPage` redirects from it. */
+export function StatsPageRedirect(): null {
+  const [replaced] = useStatsSetting("replaceStatsPage");
+  const { pathname } = api.libraries.ReactRouterDOM.useLocation();
+  const history = api.libraries.ReactRouterDOM.useHistory();
+  const redirect = replaced && /^\/stats\/?$/.test(pathname);
+  React.useLayoutEffect(() => {
+    if (redirect) history.replace(hub.captureUrl(dashboardRoute));
+  }, [redirect]);
+  return null;
+}
+
 /** Header button to the dashboard; hidden until settings load and while `showInMenu` is off. */
 export function NavIcon(): R.ReactElement | null {
   const [shown] = useStatsSetting("showInMenu");

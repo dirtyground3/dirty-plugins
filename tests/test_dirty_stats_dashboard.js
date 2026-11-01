@@ -28,8 +28,8 @@ const plain = value => JSON.parse(JSON.stringify(value));
 
 assert.equal(
   Object.keys(dashboard.registry).length,
-  15,
-  "every DirtyStats statistic and performer cards must be available as a widget",
+  16,
+  "every DirtyStats statistic, performer cards and default stats must be available as a widget",
 );
 assert.equal(dashboard.defaults.length, 5, "a curated dashboard should be created on first use");
 
@@ -390,6 +390,25 @@ for (const name of [
 ])
   core.algorithms[name] = originCore.algorithms[name];
 context.window.echarts = { registerMap() {} };
+const titleDashboard = statsModules.dashboard(context, core.algorithms);
+const titleWidget = statistic => {
+  const widget = helpers.normalizeWidgets([{ statistic, size: "medium" }])[0];
+  return (editing = false) => nodes(titleDashboard.Widget({ ...widgetProps, widget, resources: {}, editing }));
+};
+const titlesOf = found => found.filter(node => node.type === "h2");
+const headersOf = found => found.filter(node => node.type === "header");
+assert.equal(titlesOf(titleWidget("ratings")()).length, 1, "titles show by default");
+assert.equal(titleDashboard.settings.statsSettings.hideWidgetTitles, false, "titles are not hidden by default");
+titleDashboard.settings.statsSettings.hideWidgetTitles = true;
+assert.equal(titlesOf(titleWidget("ratings")()).length, 0, "the global option hides titles");
+assert.equal(headersOf(titleWidget("ratings")()).length, 1, "the full-view link stays available");
+assert.equal(headersOf(titleWidget("libraryTotals")()).length, 0, "a widget with no actions drops its empty header");
+assert.ok(
+  titleWidget("ratings")(true).some(node => node.type === "input" && node.props.placeholder === "Scene ratings"),
+  "titles stay editable while editing",
+);
+titleDashboard.settings.statsSettings.hideWidgetTitles = false;
+
 const originDashboard = statsModules.dashboard(context, core.algorithms);
 let originChartComponent, originChartProps;
 for (const size of ["small", "medium", "large"]) {
@@ -553,6 +572,10 @@ for (const statistic of Object.keys(dashboard.registry)) {
         }),
       );
       const headerControls = controls.filter(node => node.props.label === "Show header");
+      if (statistic === "libraryTotals") {
+        assert.equal(headerControls.length, 0, "default stats are only figures, so nothing can be hidden");
+        continue;
+      }
       assert.equal(headerControls.length, 1, statistic + " has exactly one shared header control");
       headerControls[0].props.onChange(!showHeader);
       assert.deepEqual(
@@ -566,7 +589,7 @@ for (const statistic of Object.keys(dashboard.registry)) {
         ),
         "the toggle is not duplicated in the fields row",
       );
-      if (statistic === "performerCards") continue; // Native cards are exercised below.
+      if (statistic === "performerCards" || statistic === "libraryTotals") continue; // Exercised below.
       const rows = dashboard.registry[statistic].entity === "performers" ? headerPerformers : headerScenes;
       const resources = { [helpers.resourceKey(widget)]: { loading: false, rows, capacity: { total: 10000 } } };
       const rendered = nodes(originDashboard.Widget({ ...widgetProps, widget, resources, editing: false }));

@@ -275,6 +275,8 @@ export type SettingValue = string | number | boolean;
 export interface StatsSettings extends Record<string, SettingValue> {
   visualTheme: string;
   showInMenu: boolean;
+  replaceStatsPage: boolean;
+  hideWidgetTitles: boolean;
   showMapNumbers: boolean;
   sceneRatingRounding: number;
   performerRatingRounding: number;
@@ -326,11 +328,29 @@ export interface DashboardResource {
   filter: SavedFilter;
   limit: number;
 }
+export interface LibraryStats {
+  scene_count: number;
+  scenes_size: number;
+  scenes_duration: number;
+  image_count: number;
+  images_size: number;
+  gallery_count: number;
+  performer_count: number;
+  studio_count: number;
+  group_count: number;
+  tag_count: number;
+  total_o_count: number;
+  total_play_duration: number;
+  total_play_count: number;
+  scenes_played: number;
+}
+
 export interface ResourceState {
   loading: boolean;
   error: string;
   rows: Array<StatsScene & StatsPerformer>;
   capacity: Capacity | null;
+  totals?: LibraryStats | null;
 }
 
 export interface BirthdaySelection {

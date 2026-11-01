@@ -1030,6 +1030,41 @@
   font-size: .68rem;
 }
 
+.dirty-stats-dashboard-totals {
+  display: flex;
+  flex: 1 0 auto;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+/* Value above its label and the last row stretched, like Stash's statistics page. */
+.dirty-stats-dashboard-totals .dirty-stats-dashboard-metric {
+  flex: 1 1 calc(33.33% - .5rem);
+  flex-direction: column-reverse;
+  align-items: center;
+  justify-content: center;
+  padding: .6rem .5rem;
+  text-align: center;
+}
+
+.dirty-stats-dashboard-totals .dirty-stats-dashboard-metric strong {
+  max-width: 100%;
+  color: var(--dirty-stats-primary);
+  font-size: 1.35rem;
+}
+
+.dirty-stats-dashboard-totals .dirty-stats-dashboard-metric span {
+  font-size: .72rem;
+}
+
+.dirty-stats-dashboard-widget-small .dirty-stats-dashboard-totals .dirty-stats-dashboard-metric {
+  flex-basis: calc(50% - .5rem);
+}
+
+.dirty-stats-dashboard-widget-large .dirty-stats-dashboard-totals .dirty-stats-dashboard-metric {
+  flex-basis: calc(20% - .5rem);
+}
+
 .dirty-stats-dashboard-chart {
   flex: 1 0 100px;
   width: 100%;

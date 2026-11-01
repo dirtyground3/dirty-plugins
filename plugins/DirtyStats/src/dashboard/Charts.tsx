@@ -1,6 +1,7 @@
 import { PerformerCardWidget } from "./Cards";
 import { Chart, State, axes, metric, widgetHeader } from "./Chart";
 import { aggregateAges, aggregateBirthdays } from "../domain/ages";
+import { libraryTotals } from "../domain/totals";
 import {
   aggregate,
   aggregateConstellation,
@@ -816,6 +817,16 @@ export function renderWidget(
     return <State title={"Loading " + WIDGETS[widget.statistic].label.toLowerCase() + "…"} />;
   if (resource.error) return <State title="Could not load this widget" detail={resource.error} role="alert" />;
   const rows = resource.rows || [];
+  if (widget.statistic === "libraryTotals")
+    return resource.totals ? (
+      <div className="dirty-stats-dashboard-totals">
+        {libraryTotals(resource.totals).map(total => (
+          <React.Fragment key={total.label}>{metric(total.label, total.value)}</React.Fragment>
+        ))}
+      </div>
+    ) : (
+      <State title="Could not load this widget" role="alert" />
+    );
   if (widget.statistic === "performerCards") return <PerformerCardWidget widget={widget} rows={rows} />;
   if (widget.statistic === "origin") return originWidget(rows, widget);
   if (widget.statistic === "growth") return growthWidget(rows, resource.capacity, widget);

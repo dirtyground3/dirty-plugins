@@ -4,6 +4,15 @@ export const route = "/plugins/dirty-stats";
 const FREE_COUNT = "freeCount";
 
 const statistics: Record<string, Required<StatsDefinition>> = {
+  libraryTotals: {
+    label: "Default stats",
+    route,
+    entity: "scenes",
+    group: "libraryTotals",
+    size: "large",
+    options: {},
+    choices: {},
+  },
   origin: {
     label: "Performer origin",
     route,
@@ -164,7 +173,9 @@ export const entries: Record<string, StatsDefinition> = Object.assign({}, statis
   dashboard: { label: "Dashboard", route: route + "/dashboard" },
 });
 
-export const statisticOrder = ["dashboard"].concat(widgetOrder.filter(key => key !== "performerCards"));
+export const statisticOrder = ["dashboard"].concat(
+  widgetOrder.filter(key => key !== "performerCards" && key !== "libraryTotals"),
+);
 
 const routeOf = (key: string) => entries[key].route!;
 export const dashboardRoute = routeOf("dashboard");

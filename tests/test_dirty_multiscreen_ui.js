@@ -951,7 +951,8 @@ async function searchedQueueNavigation() {
   const random = await start({
     scenes: scenes.slice(0, 20),
     launch: { source: "selection", selectedIds: scenes.slice(0, 20).map(scene => scene.id) },
-    settings: { sceneOrder: "random", splitScenes: false },
+    // Otherwise the next scene is skipped whenever the shuffle already put it on another screen.
+    settings: { sceneOrder: "random", splitScenes: false, avoidDuplicates: false },
   });
   const queues = [...random.owners.values()]
     .flatMap(owner => owner.slots)

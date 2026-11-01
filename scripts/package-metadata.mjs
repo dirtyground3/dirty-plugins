@@ -1,3 +1,4 @@
+import path from "node:path";
 import lib from "./build-lib.cjs";
 
 const id = process.argv[2];
@@ -6,3 +7,4 @@ if (!plugin) throw new Error("Unknown package ID: " + id);
 const metadata = lib.sourceMetadata(plugin);
 console.log(metadata.identity);
 console.log(metadata.date);
+console.log(lib.readManifest(plugin, path.join(lib.pluginsRoot, plugin.directory)).description);

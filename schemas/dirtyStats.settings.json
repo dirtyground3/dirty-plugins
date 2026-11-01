@@ -5,6 +5,18 @@
       "displayName": "Show DirtyStats in the Stash header",
       "description": "Add the DirtyStats bubble chart button to Stash's utility navigation. When hidden, Stats pages stay reachable by URL. Enabled by default.",
       "default": true
+    },
+    "replaceStatsPage": {
+      "type": "BOOLEAN",
+      "displayName": "Replace default stats page",
+      "description": "Send the Stash statistics button and the /stats address to the DirtyStats dashboard. The native page returns when this is turned off. Disabled by default.",
+      "default": false
+    },
+    "hideWidgetTitles": {
+      "type": "BOOLEAN",
+      "displayName": "Hide widget titles",
+      "description": "Hide the title above every dashboard widget. Titles stay editable while editing the dashboard. Disabled by default.",
+      "default": false
     }
   },
   "constants": {

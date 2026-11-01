@@ -1,6 +1,7 @@
 import { fetchPages } from "../domain/dashboard";
+import { LIBRARY_STATS_QUERY } from "../domain/totals";
 import { React, hub } from "../runtime";
-import type { Capacity, DashboardResource, ResourceState } from "../types";
+import type { Capacity, DashboardResource, LibraryStats, ResourceState } from "../types";
 
 /** Keep each dataset alive until its last widget leaves the dashboard. */
 export function useDashboardResources(requests: DashboardResource[], ready: boolean) {
@@ -55,10 +56,17 @@ export function useDashboardResources(requests: DashboardResource[], ready: bool
           setResources(current => ({ ...current, [request.key]: state }));
       };
       Promise.all([
-        fetchPages(request.group, request.filter, controller.signal, request.limit),
+        request.group === "libraryTotals"
+          ? []
+          : fetchPages(request.group, request.filter, controller.signal, request.limit),
         request.group === "growth" ? capacity.current!.result : null,
+        request.group === "libraryTotals"
+          ? hub.graphql<{ stats: LibraryStats }>(LIBRARY_STATS_QUERY, {}, { signal: controller.signal })
+          : null,
       ])
-        .then(([rows, capacity]) => publish({ loading: false, rows, error: "", capacity }))
+        .then(([rows, capacity, totals]) =>
+          publish({ loading: false, rows, error: "", capacity, totals: totals && totals.stats }),
+        )
         .catch(error => publish({ loading: false, rows: [], error: error.message || String(error), capacity: null }));
     }
   }, [ready, key]);

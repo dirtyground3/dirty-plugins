@@ -1,8 +1,9 @@
 # DirtyPlugins
 
-DirtyPlugins provides the shared runtime and unlisted settings page used by
-plugins in this repository. It is installed automatically as a dependency
-when a Dirty plugin is installed from the package source.
+DirtyPlugins provides the shared runtime and settings page used by plugins in
+this repository. It is installed automatically as a dependency when a Dirty
+plugin is installed from the package source; on its own it adds only a settings
+link.
 
 The hub is written as TypeScript modules and focused TSX components under
 `src/`. Contributors must build first and install from

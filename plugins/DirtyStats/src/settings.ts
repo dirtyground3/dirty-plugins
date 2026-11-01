@@ -15,6 +15,8 @@ const DEFAULT_THEME = hub?.theme.defaultKey;
 export const STATS_SETTING_SPECS = {
   visualTheme: { options: hubOptions.visualTheme.map(option => option.value) },
   showInMenu: { options: [false, true] },
+  replaceStatsPage: { options: [false, true] },
+  hideWidgetTitles: { options: [false, true] },
   ...(Object.fromEntries(Object.entries(constants.displayOptions).map(([name, options]) => [name, { options }])) as {
     [K in keyof typeof constants.displayOptions]: { options: (typeof constants.displayOptions)[K] };
   }),
@@ -22,6 +24,8 @@ export const STATS_SETTING_SPECS = {
 export const statsSettings: StatsSettings = {
   visualTheme: hub?.theme.currentKey,
   showInMenu: defaults.showInMenu,
+  replaceStatsPage: defaults.replaceStatsPage,
+  hideWidgetTitles: defaults.hideWidgetTitles,
   ...constants.displayDefaults,
 };
 const statsSettingsListeners = new Set<() => void>();
