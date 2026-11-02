@@ -12,7 +12,7 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 
-// bailouts models React 17: an update that leaves every state unchanged still
+// bailouts models React: an update that leaves every state unchanged still
 // renders the component, then bails out, keeping its effect deps but not running them.
 function harness(overrides = {}, { bailouts = false } = {}) {
   const owner = { slots: [], cursor: 0, effects: [] },

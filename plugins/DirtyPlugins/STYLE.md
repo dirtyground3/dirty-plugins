@@ -191,8 +191,8 @@ also bundled. No other plugin should acquire these assets simply to share a
 control or colour token.
 
 Build-only dependencies are pinned in `package-lock.json`: TypeScript 5.9.3
-(Apache-2.0), esbuild 0.28.2 (MIT), YAML 2.9.1 (ISC), and React 17 type definitions
-17.0.93 (MIT), matching local Stash's React 17.0.2 API. React types depend on
-`@types/prop-types` 15.7.15, `@types/scheduler` 0.16.8, and `csstype` 3.2.3
-(all MIT). esbuild's platform binary packages are MIT. None of these packages,
-generators, or type declarations are installed into Stash.
+(Apache-2.0), esbuild 0.28.2 (MIT), YAML 2.9.1 (ISC), and React 18 type definitions
+18.3.31 (MIT), matching local Stash's React 18.3.1 API. React types depend on
+`@types/prop-types` 15.7.15 and `csstype` 3.2.3 (all MIT). esbuild's platform
+binary packages are MIT. None of these packages, generators, or type
+declarations are installed into Stash.

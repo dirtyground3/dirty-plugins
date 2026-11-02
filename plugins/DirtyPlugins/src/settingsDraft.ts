@@ -44,7 +44,7 @@ export function createSettingsDraftHook(hooks: Pick<typeof R, "useState" | "useR
     const [ready, setReady] = useState(false);
     const [status, setStatus] = useState<SettingsDraft<T>["status"]>({ state: "loading", message: "" });
     const [error, setError] = useState("");
-    // The saved baseline is state, not a ref: React 17 can render, see an
+    // The saved baseline is state, not a ref: React can render, see an
     // unchanged update and bail out, keeping the new effect deps without
     // running the effect, so a ref-derived dirty flag would never report false.
     const [saved, setSaved] = useState<string | null>(null);

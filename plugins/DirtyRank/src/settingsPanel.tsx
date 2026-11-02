@@ -100,7 +100,7 @@ export function DirtyRankSettings(props: PanelProps) {
     if (control.status.state === "error") control.retry();
   };
   const error = localError || control.error;
-  // React 17 may render the normalized saved draft before the controller's
+  // A render can see the normalized saved draft before the controller's
   // final status callback. A matching accepted baseline is already saved.
   const status =
     localStatus ||
