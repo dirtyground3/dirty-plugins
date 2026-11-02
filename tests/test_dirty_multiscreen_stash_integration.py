@@ -49,6 +49,10 @@ def exercise(fixture, transcode=False):
     studio = fixture.gql('mutation{studioCreate(input:{name:"Synthetic Multiscreen studio"}){id}}')["studioCreate"]["id"]
     for name in ("Alpha", "Beta"):
         fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}', {"input": {"id": ids[name], "performer_ids": [performer], "studio_id": studio}})
+    co_performer = fixture.gql('mutation{performerCreate(input:{name:"Co-performer fixture"}){id}}')["performerCreate"]["id"]
+    for name in ("Alpha", "Gamma"):
+        performer_ids = [performer, co_performer] if name == "Alpha" else [co_performer]
+        fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}', {"input": {"id": ids[name], "performer_ids": performer_ids}})
     tag = fixture.gql('mutation{tagCreate(input:{name:"Synthetic interval"}){id}}')["tagCreate"]["id"]
     markers = []
     for title, seconds, end in (("Explicit", 1, 3), ("Fallback", 4, None)):
@@ -84,6 +88,8 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
   assert.equal(search.count, 1);
   assert.equal(search.scenes[0].title, 'Alpha');
   assert(search.scenes[0].paths.stream);
+  assert.equal(search.scenes[0].performers.length, 2);
+  assert(search.scenes[0].performers.every(performer => performer.id && performer.name && performer.image_path), 'scene queues include each performer name and portrait URL');
   const missing = (await queries.searchSession(scope, false, 'Beta', 1, new AbortController().signal)).findScenes;
   assert.equal(missing.count, 0);
   assert.throws(() => queries.searchSession({ filter: {}, ids: [search.scenes[0].id] }, false, 'Beta', 1, new AbortController().signal), /searched locally/);
@@ -140,7 +146,7 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
     snapshot = fixture.gql('{findScenes(filter:{per_page:-1}){scenes{id title details files{id path} performers{id} studio{id}}}}')["findScenes"]["scenes"]
     (fixture.root / "acceptance.json").write_text(json.dumps({"hashes": hashes, "scenes": snapshot}), encoding="utf-8")
     print("PASS: synthetic scene/marker/performer/studio contexts, title order, selected IDs, exact counts, HTTP seeking and fixture settings", flush=True)
-    return {"scenes": ids, "markers": markers, "performer": performer, "studio": studio}
+    return {"scenes": ids, "markers": markers, "performer": performer, "coPerformer": co_performer, "studio": studio}
 
 
 def verify_unchanged(fixture):

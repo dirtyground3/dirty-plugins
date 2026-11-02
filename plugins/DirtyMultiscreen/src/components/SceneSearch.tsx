@@ -4,6 +4,7 @@ import { DirtyPlugins, PluginApi, React } from "../runtime";
 import { SEARCH_PAGE_SIZE } from "../queries";
 import type { Item, SessionSearch, SessionSearchResult } from "../types";
 import { icon, PluginIconButton } from "./Controls";
+import { PerformerNavigation } from "./PerformerNavigation";
 
 function SceneSearchDialog({
   screenIndex,
@@ -127,15 +128,19 @@ function SceneSearchDialog({
 }
 
 export function PaneHeader({
+  busy,
   item,
   screenIndex,
   onSelect,
   searchSession,
+  onNavigatePerformer,
 }: {
+  busy: boolean;
   item?: Item;
   screenIndex: number;
   onSelect(item: Item): void;
   searchSession: SessionSearch;
+  onNavigatePerformer(performerId: string): void;
 }) {
   const [open, setOpen] = React.useState(false);
   const openerRef = React.useRef<HTMLButtonElement>(null);
@@ -162,6 +167,12 @@ export function PaneHeader({
           icon={icon("search")}
           buttonRef={openerRef}
           onClick={() => setOpen(true)}
+        />
+        <PerformerNavigation
+          performers={item?.scene.performers ?? []}
+          screenIndex={screenIndex}
+          busy={busy}
+          onNext={onNavigatePerformer}
         />
       </div>
       {open && (

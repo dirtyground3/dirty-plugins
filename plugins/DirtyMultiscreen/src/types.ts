@@ -22,6 +22,11 @@ export interface PlaybackSettings {
   loop: boolean;
   pauseWhenHidden: boolean;
 }
+export interface Performer {
+  id: string;
+  name?: string | null;
+  image_path?: string | null;
+}
 export interface Scene {
   id: string;
   title?: string | null;
@@ -34,7 +39,7 @@ export interface Scene {
   o_counter?: number | null;
   rating100?: number | null;
   created_at?: string | null;
-  performers?: { id: string }[];
+  performers?: Performer[];
   studio?: { id: string } | null;
 }
 export interface Marker {

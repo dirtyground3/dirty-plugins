@@ -17,7 +17,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 | --- | --- | ---: |
 | [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.13 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.10 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.21 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.22 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.10 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.8 |
@@ -564,6 +564,12 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyMultiscreen 1.0.22:** each performer has a portrait button with a Next
+  icon beside the screen's title and search. Click a portrait to move to another
+  scene featuring that performer in the screen's session queue, including across
+  pages and wrapping at the end. Tooltips explain the action; missing photos use
+  initials. Other screens keep playing, and no-match results preserve playback.
 
 - **DirtyCaptions 1.0.8:** edits to the **Production date** field added in Stash
   0.32 count as metadata saves and no longer queue caption-index work.

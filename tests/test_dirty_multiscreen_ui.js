@@ -991,6 +991,214 @@ async function searchedQueueNavigation() {
   await random.unmount();
 }
 
+async function performerNavigation() {
+  const names = { p1: "Alex", p2: "Blair", p3: "Casey" };
+  const scenes = [
+    ["a", ["p1", "p2"]],
+    ["b", ["p2", "p1"]],
+    ["none", []],
+    ["c", ["p1"]],
+    ["d", ["p3"]],
+    ["e", ["p1"]],
+    ["outside", ["p1"]],
+  ].map(([id, performers]) => ({
+    id,
+    title: id,
+    performers: performers.map(id => ({
+      id,
+      name: names[id],
+      image_path: id === "p3" ? null : `/performer/${id}/image`,
+    })),
+    paths: { stream: "/" + id },
+  }));
+  const h = await start({
+    scenes,
+    launch: { source: "selection", selectedIds: scenes.slice(0, -1).map(scene => scene.id) },
+  });
+  const players = () => h.nodes(node => node.type === "native-player");
+  const button = name =>
+    h.nodes(node => node.type === "Button" && node.props.ariaLabel === `Next scene featuring ${name} for screen 1`)[0];
+  const step = async name => {
+    button(name).props.onClick();
+    await h.flush();
+    return players()[0].props.scene.id;
+  };
+  const images = () => h.nodes(node => node.type === "img" && node.props.className === "ms-performer-image");
+  assert.equal(images().length, 4, "both performers have portraits in each screen");
+  assert.equal(images()[0].props.src, "/performer/p1/image");
+  assert.equal(images()[1].props.src, "/performer/p2/image");
+  assert.match(button("Blair").props.title, /Blair.*session queue.*Wraps at the end.*other screens keep playing/);
+  assert.equal(h.nodes(node => /Previous scene with|same first performer/.test(node.props?.ariaLabel || "")).length, 0);
+  images()[0].props.onError();
+  await h.flush();
+  assert.equal(images().length, 3, "a failed portrait falls back without breaking navigation");
+  assert(h.nodes(node => node.props?.className === "ms-performer-placeholder").length);
+  assert.equal(await step("Alex"), "b", "the chosen performer can appear anywhere in the next scene's cast");
+  assert.equal(await step("Alex"), "c");
+  assert.equal(players()[1].props.scene.id, "a", "performer navigation leaves other screens alone");
+  assert.equal(await step("Alex"), "e");
+  assert.equal(await step("Alex"), "a", "next wraps without including scenes outside the session");
+  assert.equal(await step("Blair"), "b", "a secondary performer has its own navigation button");
+  assert.equal(await step("Blair"), "a", "navigation keeps the chosen performer when cast order changes");
+  players()[0].props.onNext();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "b", "native Next still follows the ordinary queue");
+  players()[0].props.onNext();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "none");
+  assert.equal(button("Alex"), undefined, "a scene without performers has no performer navigation buttons");
+  players()[0].props.onNext();
+  await h.flush();
+  assert.equal(button("Blair"), undefined, "the cast buttons update when the scene changes");
+  players()[0].props.onNext();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "d");
+  assert.equal(await step("Casey"), "d");
+  assert.match(h.text(), /No other scenes featuring Casey/);
+  players()[0].props.onNext();
+  await h.flush();
+  assert.doesNotMatch(h.text(), /No other scenes featuring/);
+  assert.equal(h.calls.length, 1, "fixed session navigation never queries or expands the library");
+  await h.unmount();
+
+  const capture = await start({ scenes, capture: true });
+  assert.equal(
+    capture.nodes(node => node.type === "img" && node.props.className === "ms-performer-image").length,
+    0,
+    "documentation capture never loads performer photos",
+  );
+  assert(capture.nodes(node => node.props?.className === "ms-performer-placeholder").length);
+  await capture.unmount();
+
+  const duplicate = await start({
+    scenes: [scenes[0], scenes[3]],
+    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "list", avoidDuplicates: true },
+  });
+  duplicate
+    .nodes(node => node.type === "Button" && node.props.ariaLabel === "Next scene featuring Alex for screen 1")[0]
+    .props.onClick();
+  await duplicate.flush();
+  assert.deepEqual(
+    duplicate.nodes(node => node.type === "native-player").map(node => node.props.scene.id),
+    ["c", "c"],
+    "explicit performer choices can play a matching scene that is already on another screen",
+  );
+  await duplicate.unmount();
+
+  const markers = [
+    ["m1", scenes[0], 2],
+    ["m2", scenes[0], 5],
+    ["m3", scenes[3], 8],
+  ].map(([id, scene, seconds]) => ({
+    id,
+    scene,
+    title: id,
+    seconds,
+    end_seconds: seconds + 1,
+    primary_tag: { name: "Test" },
+  }));
+  const marker = await start({
+    scenes,
+    markers,
+    launch: { source: "marker-selection", selectedIds: markers.map(marker => marker.id) },
+    settings: { rows: 1, columns: 1, totalScreens: 1, sceneOrder: "list", randomStart: false },
+  });
+  const clock = () => [...marker.media.values()].find(pair => pair.video.isConnected).video.currentTime;
+  const nextMarker = () =>
+    marker
+      .nodes(node => node.type === "Button" && node.props.ariaLabel === "Next scene featuring Alex for screen 1")[0]
+      .props.onClick();
+  nextMarker();
+  await marker.flush();
+  assert.equal(marker.nodes(node => node.type === "native-player")[0].props.scene.id, "c");
+  assert.equal(clock(), 8, "skipping other markers from the same scene preserves the destination range");
+  nextMarker();
+  await marker.flush();
+  assert.equal(clock(), 2, "wrapping retains the matching scene's marker range");
+  await marker.unmount();
+}
+
+async function pagedPerformerNavigation() {
+  const scenes = Array.from({ length: 75 }, (_, index) => ({
+    id: String(index),
+    title: `Scene ${index}`,
+    paths: { stream: "/" + index },
+    performers: [{ id: [0, 3, 50, 74].includes(index) ? "p1" : index === 2 ? "unique" : "p2" }],
+  }));
+  let fail = false,
+    hold;
+  const signals = [];
+  const h = await start({
+    scenes,
+    launch: { source: "filter", filter: { sort: "title", q: "session" }, sceneFilter: { organized: true } },
+    graphql: async (_query, variables, options) => {
+      const { page, per_page: size } = variables.filter;
+      if (page === 3) {
+        if (hold) {
+          signals.push(options.signal);
+          await hold.promise;
+        }
+        if (fail) throw Error("Performer queue unavailable");
+      }
+      return { findScenes: { count: scenes.length, scenes: scenes.slice((page - 1) * size, page * size) } };
+    },
+  });
+  const players = () => h.nodes(node => node.type === "native-player");
+  const button = (id = "p1") =>
+    h.nodes(
+      node => node.type === "Button" && node.props.ariaLabel === `Next scene featuring Performer ${id} for screen 1`,
+    )[0];
+  const step = async (id = "p1") => {
+    button(id).props.onClick();
+    await h.flush();
+    return players()[0].props.scene.id;
+  };
+  assert.equal(await step(), "3");
+  fail = true;
+  assert.equal(await step(), "3", "a failed page keeps the playing scene and queue position");
+  assert.match(h.text(), /Performer queue unavailable/);
+  fail = false;
+  h.nodes(node => node.type === "button" && node.props.className?.includes("dirty-ui-button"))[0].props.onClick();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "50", "retry retains the chosen performer navigation request");
+  assert.equal(await step(), "74");
+  assert.equal(await step(), "0", "performer navigation wraps across queue pages");
+  assert.equal(await step(), "3");
+  assert.equal(players()[1].props.scene.id, "0");
+  hold = deferred();
+  await step();
+  assert.equal(players()[0].props.scene.id, "3", "the scene stays visible while finding another match");
+  assert(button().props.disabled);
+  assert.match(h.text(), /Finding next scene featuring this performer/);
+  const pendingCalls = h.calls.length;
+  button().props.onClick();
+  await h.flush();
+  assert.equal(h.calls.length, pendingCalls, "a pending performer navigation cannot be started twice");
+  players()[0].props.onPrevious();
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "2");
+  hold.resolve();
+  hold = null;
+  await h.flush();
+  assert.equal(players()[0].props.scene.id, "2", "a late performer lookup cannot overwrite newer navigation");
+  assert.equal(await step("unique"), "2");
+  assert.match(h.text(), /No other scenes featuring Performer unique/);
+  for (const call of h.calls) {
+    assert(call.variables.filter.per_page <= 240);
+    assert.equal(call.variables.filter.q, "session", "paging preserves the session's text search");
+    assert.equal(call.variables.scene_filter.organized, true, "paging preserves all session filters");
+  }
+  players()[0].props.onNext();
+  await h.flush();
+  hold = deferred();
+  await step();
+  await h.unmount();
+  assert(signals.at(-1).aborted, "leaving playback aborts a pending performer lookup");
+  hold.resolve();
+  await h.flush();
+  assert.equal(players().length, 0);
+}
+
 async function unscopedLibraryPaging() {
   const scenes = Array.from({ length: 30 }, (_, index) => ({
     id: String(index),
@@ -1290,6 +1498,8 @@ async function navigationSetting() {
   await fixedSessionSearch();
   await searchDuringMarkersAndPaging();
   await searchedQueueNavigation();
+  await performerNavigation();
+  await pagedPerformerNavigation();
   await pagedPlayback();
   await avoidsDuplicateScenes();
   await reshuffleMenu();
