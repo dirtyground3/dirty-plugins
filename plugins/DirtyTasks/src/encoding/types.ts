@@ -85,12 +85,22 @@ export interface WorkflowRecord {
   created?: number;
   automatic?: boolean;
   error?: string;
-  progress?: { stage: string; progress: number; eta?: number | null };
+  progress?: { stage: string; progress: number | null; eta?: number | null };
   skipReasons?: [string, number][];
   cancelRequested?: boolean;
   pauseRequested?: boolean;
   readyActions?: { resize: number; reencode: number };
+  fileActions?: { makePrimary: boolean; deleteOriginals: boolean; error?: string };
+  fileAction?: {
+    mode: FileActionMode;
+    status: "queued" | "running" | "completed" | "failed";
+    changed: number;
+    skipped: number;
+    failed: number;
+    reasons: [string, number][];
+  };
 }
+export type FileActionMode = "makePrimary" | "deleteOriginals";
 export interface Capabilities {
   encoders: Record<string, string[]>;
 }
@@ -109,6 +119,8 @@ export interface OperationResults {
   resumeRun: unknown;
   retryRecovery: unknown;
   startAutomaticRun: unknown;
+  makePrimary: WorkflowRecord;
+  deleteOriginals: WorkflowRecord;
 }
 export type OperationMode = keyof OperationResults;
 export type Operation = <M extends OperationMode>(

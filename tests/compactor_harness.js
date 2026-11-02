@@ -93,6 +93,7 @@ function createCompactorHarness(options = {}) {
     react: ui,
     notifyConfigurationChanged() {},
     captureEnabled: () => Boolean(options.capture),
+    captureUrl: to => (options.capture ? to + (to.includes("?") ? "&" : "?") + "docsCapture=1" : to),
     ui: { notify: message => notifications.push(message) },
     registerSettingsPanel(id, component) {
       registrations.push(id);

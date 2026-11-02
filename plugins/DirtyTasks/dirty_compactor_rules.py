@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 
 # Quality tables are generated from schemas/dirtyCompactor.settings.json and shared with the browser.
@@ -49,11 +50,16 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def file_hash(path):
+def file_hash(path, progress=None):
     result = hashlib.sha256()
     with open(path, "rb") as source:
+        size = os.fstat(source.fileno()).st_size if progress else 0
+        done = 0
         for block in iter(lambda: source.read(4 * 1024 * 1024), b""):
             result.update(block)
+            if progress:
+                done += len(block)
+                progress(min(1, done / max(size, 1)))
     return result.hexdigest()
 
 

@@ -87,11 +87,16 @@ Rebuild after changing plugin source, schemas or scripts: tests read
   to check one registration, section saves and aggregate unsaved-change protection.
 - `test_dirty_tasks.py` covers migration, stale section saves, task reservations,
   keeping both files, attachment retry, collision cancellation, repeated encoding
-  prevention and organization of multiple versions. Store concurrency and media
+  prevention, organization of multiple versions, and job-wide primary/deletion
+  actions with content checks, shared-file protection and interrupted-action recovery. Store concurrency and media
   process containment retain their separate behavior tests.
+- `test_dirty_compactor.py` also checks MP4/M4V timecode regeneration and MOV
+  timecode copying with synthetic video and audio, including packet contents,
+  rejection of changed output timecodes, and blocking of unknown data tracks.
 - `test_dirty_compactor_stash_integration.py` now tests additive encoding in an
   isolated Stash with synthetic media: same scene, two files, retained original
-  bytes/metadata/primary file and no duplicate encoding. The organization fixture
+  bytes/metadata/primary file, no duplicate encoding, and explicit job-wide primary
+  changes and old-file deletion. The organization fixture
   also checks confirmed native moves and cached tag updates through DirtyTasks.
   Neither fixture uses port 9999 or changes the normal library.
 - Every opt-in Stash fixture shares `verify_served_bundle`. By default it checks

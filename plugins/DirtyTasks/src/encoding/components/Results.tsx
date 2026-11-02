@@ -1,8 +1,10 @@
 import { React, ui } from "../runtime";
 import { bytes, sizeComparison, timeLeft } from "../domain/rules";
 import { OperationTable } from "./OperationTable";
+import { RunFileActions } from "./RunFileActions";
+import { FINISHED } from "../domain/workflow";
 import type { ReactNode } from "react";
-import type { WorkflowRecord } from "../types";
+import type { Act, WorkflowRecord } from "../types";
 export interface ResultsProps {
   kind: "preview" | "run";
   record: WorkflowRecord;
@@ -13,6 +15,8 @@ export interface ResultsProps {
   excluded?: string[];
   onExclude?(id: string, remove: boolean): void;
   actions?: ReactNode;
+  busy?: boolean;
+  onFileAction?: Act;
 }
 export function Results(props: ResultsProps) {
   const { useState } = React;
@@ -40,15 +44,17 @@ export function Results(props: ResultsProps) {
       {record.progress && (
         <div className="dirty-compactor-progress" role="status">
           <span>{record.progress.stage}</span>
-          <progress max="1" value={record.progress.progress} />
+          <progress max="1" value={record.progress.progress ?? undefined} />
           <span>
-            {Math.round(record.progress.progress * 100) +
-              "%" +
-              (record.progress.eta != null
-                ? " · " + timeLeft(record.progress.eta)
-                : props.kind === "preview"
-                  ? " · estimating time left…"
-                  : "")}
+            {record.progress.progress == null
+              ? "Working…"
+              : Math.round(record.progress.progress * 100) +
+                "%" +
+                (record.progress.eta != null
+                  ? " · " + timeLeft(record.progress.eta)
+                  : props.kind === "preview"
+                    ? " · estimating time left…"
+                    : "")}
           </span>
         </div>
       )}
@@ -90,6 +96,9 @@ export function Results(props: ResultsProps) {
         <span className="dirty-ui-spacer" />
         {props.actions}
       </div>
+      {props.kind === "run" && FINISHED.includes(record.status) && Boolean(counts.completed) && props.onFileAction && (
+        <RunFileActions key={record.id} record={record} busy={Boolean(props.busy)} onAction={props.onFileAction} />
+      )}
       {showFiles && (
         <OperationTable
           record={record}

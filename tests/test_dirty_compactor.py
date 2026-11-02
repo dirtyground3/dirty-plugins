@@ -1,5 +1,6 @@
 from plugin_paths import runtime_path
 import copy
+import hashlib
 import importlib.util
 import os
 from pathlib import Path
@@ -35,6 +36,28 @@ class FakeClient:
 
     def scene(self, scene_id):
         return copy.deepcopy(next((s for s in self.data if s["id"] == str(scene_id)), None))
+
+    def file_action_scenes(self, scene_ids):
+        for scene_id in scene_ids:
+            scene = self.scene(scene_id)
+            if scene:
+                yield scene
+
+    def set_primary(self, scene_id, file_id):
+        scene = next(s for s in self.data if s["id"] == str(scene_id))
+        file = next(f for f in scene["files"] if f["id"] == str(file_id))
+        scene["files"].remove(file)
+        scene["files"].insert(0, file)
+
+    def delete_file(self, file_id):
+        for scene in self.data:
+            for file in list(scene["files"]):
+                if file["id"] == str(file_id):
+                    if scene["files"][0] is file:
+                        raise RuntimeError("Cannot delete a primary file")
+                    Path(file["path"]).unlink()
+                    scene["files"].remove(file)
+                    self.deleted.append(str(file_id))
 
     def has_shared_files(self, scene_id, file_ids):
         scene = self.scene(scene_id)
@@ -88,6 +111,40 @@ class FakeClient:
 
 
 class CompactorRulesTests(unittest.TestCase):
+    def test_hash_progress_preserves_the_complete_content_digest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "hash.bin"
+            content = b"synthetic hash fixture" * 450000
+            path.write_bytes(content)
+            fractions = []
+            self.assertEqual(compactor.file_hash(path, progress=fractions.append), hashlib.sha256(content).hexdigest())
+            self.assertTrue(any(0 < value < 1 for value in fractions))
+            self.assertEqual(fractions, sorted(fractions))
+            self.assertEqual(fractions[-1], 1)
+            path.write_bytes(b"")
+            self.assertEqual(compactor.file_hash(path, progress=fractions.append), hashlib.sha256(b"").hexdigest())
+
+    def test_reported_hash_progress_is_throttled_and_never_completes_a_failed_read(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "hash.bin"
+            content = b"synthetic hash fixture" * 450000
+            path.write_bytes(content)
+            clock = iter([0, 0.1, 1.2, 1.3])
+            updates = []
+            with patch.object(compactor.time, "monotonic", side_effect=lambda: next(clock)), \
+                    patch.object(compactor, "report", side_effect=lambda _id, stage, progress: updates.append((stage, progress))):
+                result = compactor.hash_file("run", path, "Checking file")
+            self.assertEqual(result, hashlib.sha256(content).hexdigest())
+            self.assertEqual(updates[0], ("Checking file", 0))
+            self.assertEqual(updates[-1], ("Checking file", 1))
+            self.assertEqual(len(updates), 3, "frequent byte callbacks do not write progress on every block")
+            updates.clear()
+            with patch.object(compactor, "file_hash", side_effect=OSError("read failed")), \
+                    patch.object(compactor, "report", side_effect=lambda _id, stage, progress: updates.append(progress)):
+                with self.assertRaises(OSError):
+                    compactor.hash_file("run", path, "Checking file")
+            self.assertEqual(updates, [0])
+
     def test_dimensions_never_upscale_and_keep_portrait_orientation(self):
         self.assertEqual(compactor.dimensions(1920, 1080, rule()), (320, 180))
         self.assertEqual(compactor.dimensions(1080, 1920, rule()), (180, 320))
@@ -252,6 +309,36 @@ class CompactorRulesTests(unittest.TestCase):
             compactor.container_for("a.avi", rule(), media)
         self.assertEqual(compactor.container_for("a.avi", rule(format="allow"), media), (".mkv", "matroska"))
 
+    def test_format_policy_preserves_known_timecode_and_blocks_other_data(self):
+        video = {"codec_type": "video", "avg_frame_rate": "25/1", "start_time": "0.000000",
+                 "tags": {"timecode": "01:00:00:00"}}
+        timecode = {"codec_type": "data", "codec_tag_string": "tmcd", "nb_frames": "1",
+                    "avg_frame_rate": "12800/512", "start_time": "0.000000", "tags": {"timecode": "01:00:00:00"}}
+        media = {"streams": [video, timecode]}
+        for suffix, muxer in ((".mp4", "mp4"), (".m4v", "mp4"), (".mov", "mov")):
+            with self.subTest(suffix=suffix):
+                self.assertEqual(compactor.container_for("a" + suffix, rule(), media), (suffix, muxer))
+        self.assertEqual(compactor.container_for("a.avi", rule(format="allow"), media), (".mov", "mov"))
+        with self.assertRaisesRegex(compactor.PluginError, "Timecode tracks require"):
+            compactor.container_for("a.mkv", rule(), media)
+        media["streams"].append({"codec_type": "data", "codec_tag_string": "gpmd"})
+        with self.assertRaisesRegex(compactor.PluginError, "Unsupported data streams.*gpmd"):
+            compactor.container_for("a.mp4", rule(format="allow"), media)
+
+    def test_mp4_timecode_regeneration_requires_a_continuous_matching_track(self):
+        video = {"codec_type": "video", "avg_frame_rate": "25/1", "start_time": "0",
+                 "tags": {"timecode": "01:00:00:00"}}
+        timecode = {"codec_type": "data", "codec_tag_string": "tmcd", "nb_frames": "1",
+                    "avg_frame_rate": "25/1", "start_time": "0", "tags": {"timecode": "01:00:00:00"}}
+        self.assertEqual(compactor.mp4_timecode({"streams": [video, timecode]}), ("01:00:00:00", 25))
+        for change in ({"nb_frames": "2"}, {"nb_frames": None}, {"tags": {}},
+                       {"tags": {"timecode": "02:00:00:00"}}, {"avg_frame_rate": "24/1"},
+                       {"avg_frame_rate": "0/0"}, {"start_time": "1"}):
+            with self.subTest(change=change), self.assertRaisesRegex(compactor.PluginError, "timecode"):
+                compactor.container_for("a.mp4", rule(), {"streams": [video, dict(timecode, **change)]})
+        with self.assertRaisesRegex(compactor.PluginError, "one continuous track"):
+            compactor.container_for("a.mp4", rule(), {"streams": [video, timecode, dict(timecode)]})
+
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg/FFprobe required")
 class CompactorPipelineTests(unittest.TestCase):
@@ -295,6 +382,32 @@ class CompactorPipelineTests(unittest.TestCase):
     def start(self, review=True):
         result = compactor.start_run(self.client, self.preview(), {"reviewOutputs": review})
         return compactor.worker(self.client, result["id"])
+
+    def test_validation_reports_decode_progress_and_distinct_following_steps(self):
+        stages = []
+        original_process = compactor.run_process
+        original_report = compactor.report
+        def process(command, run_id, stage, duration):
+            if stage == "Validating":
+                # Slow only this synthetic decode so intermediate telemetry is observable.
+                command = list(command)
+                command.insert(command.index("-i"), "-re")
+            return original_process(command, run_id, stage, duration)
+        def report(run_id, stage, progress=0):
+            stages.append((stage, progress))
+            return original_report(run_id, stage, progress)
+        with patch.object(compactor, "run_process", side_effect=process), patch.object(compactor, "report", side_effect=report):
+            run = self.start()
+        progress = [fraction for stage, fraction in stages if stage == "Validating"]
+        self.assertEqual(progress[0], 0)
+        self.assertTrue(any(0 < fraction < 1 for fraction in progress), "the real validator emits progress while decoding")
+        self.assertEqual(progress[-1], 1)
+        self.assertIn(("Checking encoded file details", None), stages)
+        self.assertIn(("Checking encoded file contents", 1), stages)
+        self.assertIn(("Rechecking encoded file contents", 1), stages)
+        self.assertEqual(stages[-1], ("Indexing encoded file", None))
+        public = compactor.public_record(run)
+        self.assertIsNone(public["progress"]["progress"])
 
 
 
@@ -424,6 +537,65 @@ class CompactorPipelineTests(unittest.TestCase):
         media = run["operations"][0]["outputMedia"]
         self.assertEqual((media["width"], media["height"]), (640, 360))
         self.assertLess(media["bitrate"], run["operations"][0]["media"]["bitrate"])
+
+    def add_timecode(self, suffix=".mp4"):
+        source = self.folder / ("with-timecode" + suffix)
+        subprocess.run([shutil.which("ffmpeg"), "-v", "error", "-i", str(self.source),
+                        "-f", "lavfi", "-i", "sine=frequency=1000:sample_rate=48000", "-t", "2",
+                        "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac",
+                        "-timecode", "01:00:00:00", "-f", "mov" if suffix == ".mov" else "mp4", str(source)],
+                       check=True, capture_output=True)
+        self.source = source
+        self.original = source.read_bytes()
+        self.client = FakeClient(source)
+
+    def assert_timecode_output(self, suffix):
+        run = self.start()
+        self.assertEqual(run["status"], "reconciling")
+        op = run["operations"][0]
+        self.assertEqual(Path(op["destination"]).suffix, suffix)
+        self.assertEqual([s["codec_type"] for s in op["outputMedia"]["streams"]], ["video", "audio", "data"])
+        for media in (op["media"], op["outputMedia"]):
+            track = compactor.timecode_streams(media)[0]
+            self.assertEqual(track["tags"]["timecode"], "01:00:00:00")
+        def packets(path):
+            return subprocess.run([shutil.which("ffprobe"), "-v", "error", "-select_streams", "d",
+                                   "-show_packets", "-show_data_hash", "sha256", "-show_entries", "packet=data_hash",
+                                   "-of", "json", str(path)], check=True, capture_output=True).stdout
+        self.assertEqual(packets(self.source), packets(op["destination"]), "timecode packet contents are retained")
+        self.assertEqual(self.source.read_bytes(), self.original)
+        return op
+
+    def test_mp4_timecode_survives_a_lower_bitrate_hevc_encode(self):
+        self.add_timecode()
+        self.set_rules([rule(action="reencode", codec="hevc")])
+        op = self.assert_timecode_output(".mp4")
+        self.assertEqual(op["outputMedia"]["codec"], "hevc")
+        self.assertLess(op["outputMedia"]["bitrate"], op["media"]["bitrate"])
+
+    def test_m4v_timecode_survives_resize(self):
+        self.add_timecode(".m4v")
+        self.assert_timecode_output(".m4v")
+
+    def test_mov_timecode_is_copied_during_resize(self):
+        self.add_timecode(".mov")
+        self.assert_timecode_output(".mov")
+
+    def test_changed_output_timecode_is_rejected_before_publication(self):
+        self.add_timecode()
+        original_probe = compactor.probe
+        def probe(executable, path, stop=lambda: None):
+            media = original_probe(executable, path, stop)
+            if str(path).endswith(".tmp"):
+                compactor.timecode_streams(media)[0]["tags"]["timecode"] = "02:00:00:00"
+            return media
+        with patch.object(compactor, "probe", side_effect=probe):
+            run = self.start()
+        op = run["operations"][0]
+        self.assertEqual(op["status"], "failed")
+        self.assertIn("preservation failed validation", op["reason"])
+        self.assertFalse(Path(op["destination"]).exists())
+        self.assertEqual(self.source.read_bytes(), self.original)
 
     def test_same_as_source_converts_without_requiring_a_smaller_file(self):
         # The fixture is a tiny, very high quality H.264 file; an H.265 conversion

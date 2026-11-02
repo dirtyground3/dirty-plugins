@@ -50,16 +50,42 @@ If that rule uses a different trigger, the scene is skipped instead of falling
 through to a later rule. Rules autosave; new rules are disabled.
 Quality presets, visual-quality measurement, custom bitrate, codec, hardware
 encoder detection/CPU fallback and container preservation remain available.
+MP4/M4V files with a single continuous embedded timecode track are supported;
+MOV timecode tracks are copied. The output must preserve the timecode, video,
+audio and subtitles. Unknown data tracks and timecode layouts that cannot be
+preserved remain blocked, even when the source file exists.
+**View scenes** beside the filter selector opens the matching scene list in a
+new tab, with the selected filters applied. **All scenes** opens the unfiltered list.
 
 Preview and confirm a manual run. Each validated output is saved beside its
 source with a distinct name, scanned, and attached to the **same scene**.
-Both files remain on disk and attached. The original remains the primary file;
-there is no media Delete action, replacement, or output-review step.
+Both files remain on disk and attached. The original remains the primary file
+until you choose otherwise in the finished job's details.
 Results compare each new file with its original (**Created a 40% smaller
 file**); both files stay on disk, so no space is reclaimed. Outputs must pass stream, dimensions, duration,
 size and decode validation before publication. Generated versions are skipped
 by later encoding runs, and the same original/settings combination is not
 encoded again while its output remains attached.
+Validation shows progress through the full decode. Content checks show progress
+through the file's bytes, and indexing/attachment have their own activity labels.
+
+Finished job details offer **Make all new files primary** and **Delete all old
+files…**, covering successful encodes across every page of that job. Making
+primary skips scenes where a new file is already primary. If several originals
+were encoded in one scene, it prefers the current primary's new version;
+each scene can have only one primary.
+Both buttons are disabled when no eligible files remain, or availability cannot
+be checked. Availability refreshes from current scene attachments, primary choices,
+file presence and size, and shared-file ownership across the whole job.
+Polling does not reread full media contents; deletion still performs its full content checks.
+
+Deletion asks for confirmation, checks each original and replacement against
+their recorded content, and skips shared, changed or missing files. It makes
+the replacement primary first when needed, then removes the original through
+Stash, respecting Stash's trash setting. Other scene files and metadata stay
+intact. Both actions run in Stash's task queue and report changed, skipped and
+failed counts. Use **Recover interrupted file action** in the details' file
+action menu if its Stash task stopped before finishing.
 
 Pause stops the encoder at once and discards its unfinished temporary output;
 Resume revalidates and encodes that file again, then continues with the rest.

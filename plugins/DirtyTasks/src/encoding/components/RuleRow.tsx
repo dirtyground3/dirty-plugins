@@ -83,6 +83,14 @@ export function RuleRow(props: RuleRowProps) {
   let saving = guess && guess.saved > 0 ? "≈ " + bytes(guess.saved) + " smaller output" : "";
   let condition = r.condition || {};
   let hasFilter = condition.all || Object.keys(condition.scene || {}).length || (condition.find || {}).q;
+  // Preserve native criterion encoding and repeated criteria; start at page one.
+  const sceneQuery = condition.all
+    ? "sortby=date"
+    : (condition.query || "")
+        .replace(/^\?/, "")
+        .split("&")
+        .filter(part => !/^(p|page|per_page)=/.test(part))
+        .join("&");
   let quality = rules.quality(r),
     advanced = [
       r.codec === "hevc" ? "H.265" : "H.264",
@@ -153,6 +161,19 @@ export function RuleRow(props: RuleRowProps) {
                 >
                   {hasFilter && !condition.all ? "Edit filter" : "Choose filter"}
                 </ui.Button>
+                {hasFilter && sceneQuery ? (
+                  <a
+                    className="btn btn-secondary dirty-ui-button"
+                    href={hub.captureUrl("/scenes?" + sceneQuery)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="View matching scenes (opens in a new tab)"
+                  >
+                    View scenes
+                  </a>
+                ) : (
+                  <ui.Button disabled>View scenes</ui.Button>
+                )}
                 <ui.SettingsToggle
                   checked={condition.all}
                   label="All scenes"

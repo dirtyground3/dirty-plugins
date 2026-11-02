@@ -304,6 +304,8 @@ export function Settings(props: SettingsProps) {
             (run.created ? " · " + new Date(run.created * 1000).toLocaleString() : "")
           }
           description={runDescription(run)}
+          busy={Boolean(busy)}
+          onFileAction={act}
           actions={
             runActive ? (
               <React.Fragment>

@@ -332,6 +332,269 @@ class TaskSettingsTests(unittest.TestCase):
         self.assertEqual(dispatch.call_args.args[1]["jobId"], "7")
 
 
+class EncodingFileActionTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.folder = Path(temporary.name)
+        environment = patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(self.folder / "shared.sqlite3")})
+        environment.start()
+        self.addCleanup(environment.stop)
+        self.client = encoding_tests.FakeClient(self.folder / "original-1.mp4")
+        self.client.data = []
+        self.record = {"id": "file-actions", "status": "completed", "created": 1, "automatic": False,
+                    "rulesDigest": "fixture", "operations": []}
+        self.add_scene("1")
+        self.persist()
+
+    def add_scene(self, scene_id):
+        source, output = (self.folder / (prefix + scene_id + ".mp4") for prefix in ("original-", "encoded-"))
+        source.write_bytes(b"original bytes " + scene_id.encode())
+        output.write_bytes(b"new " + scene_id.encode())
+        op = {"id": scene_id, "sceneId": scene_id, "fileId": "old-" + scene_id, "outputFileId": "new-" + scene_id,
+              "status": "completed", "source": str(source), "destination": str(output),
+              "identity": encoding.identity(source), "sourceHash": encoding.file_hash(source),
+              "outputSize": output.stat().st_size, "outputHash": encoding.file_hash(output), "rule": encoding_tests.rule()}
+        self.record["operations"].append(op)
+        self.client.data.append({"id": scene_id, "files": [{"id": op["fileId"], "path": str(source)},
+                                                          {"id": op["outputFileId"], "path": str(output)}]})
+        return op
+
+    def persist(self):
+        encoding.save("run", self.record)
+
+    def queue(self, mode="makePrimary", **args):
+        return encoding.dispatch(self.client, {"mode": mode, "id": self.record["id"], **args})
+
+    def finish(self, mode="makePrimary", **args):
+        self.queue(mode, **args)
+        with patch.object(encoding, "queue_pending"), patch.object(encoding.reservation, "queue_pending"):
+            return encoding.dispatch(self.client, self.client.jobs[-1])
+
+    def test_primary_checks_live_state_and_processes_every_page(self):
+        for number in range(2, 29):
+            self.add_scene(str(number))
+        self.persist()
+        self.client.set_primary("2", "new-2")
+        with patch.object(self.client, "set_primary", wraps=self.client.set_primary) as change:
+            result = self.finish(page=2)
+        self.assertEqual(result["fileAction"]["changed"], 27)
+        self.assertEqual(result["fileAction"]["skipped"], 1)
+        self.assertEqual(change.call_count, 27)
+        self.assertTrue(all(scene["files"][0]["id"].startswith("new-") for scene in self.client.data))
+        self.assertTrue(Path(self.record["operations"][0]["source"]).exists())
+        self.assertFalse(encoding.get_run(self.client, {"id": self.record["id"], "page": 2})["fileActions"]["makePrimary"])
+        with self.assertRaisesRegex(encoding.PluginError, "No eligible files"):
+            self.queue()
+
+    def test_multiple_outputs_prefer_current_primarys_replacement(self):
+        second = self.add_scene("2")
+        second["sceneId"] = "1"
+        self.client.data[0]["files"].extend(self.client.data.pop()["files"])
+        self.client.set_primary("1", "old-2")
+        self.persist()
+        self.finish()
+        self.assertEqual(self.client.scene("1")["files"][0]["id"], "new-2")
+        with self.assertRaisesRegex(encoding.PluginError, "No eligible files"):
+            self.queue()
+
+    def test_delete_promotes_originals_primary_and_is_idempotent(self):
+        result = self.finish("deleteOriginals", confirmed=True)
+        self.assertEqual(result["fileAction"]["changed"], 1)
+        self.assertEqual(self.client.scene("1")["files"][0]["id"], "new-1")
+        self.assertFalse(Path(self.record["operations"][0]["source"]).exists())
+        self.assertTrue(Path(self.record["operations"][0]["destination"]).exists())
+        self.assertEqual(encoding.get_run(self.client, {"id": self.record["id"]})["fileActions"],
+                         {"makePrimary": False, "deleteOriginals": False})
+        with self.assertRaisesRegex(encoding.PluginError, "No eligible files"):
+            self.queue("deleteOriginals", confirmed=True)
+        self.assertEqual(self.client.deleted, ["old-1"])
+
+    def test_delete_uses_file_ids_after_organization_renames(self):
+        for file in self.client.data[0]["files"]:
+            destination = self.folder / (file["id"] + "-renamed.mp4")
+            Path(file["path"]).rename(destination)
+            file["path"] = str(destination)
+        self.assertEqual(self.finish("deleteOriginals", confirmed=True)["fileAction"]["changed"], 1)
+
+    def test_delete_retains_changed_shared_or_missing_replacements_and_continues(self):
+        for number in range(2, 7):
+            self.add_scene(str(number))
+        self.persist()
+        Path(self.record["operations"][0]["destination"]).write_bytes(b"bad 1")  # same length; hash must catch this
+        Path(self.record["operations"][1]["source"]).write_bytes(b"changed")
+        self.client.data[2]["files"].pop()
+        self.client.data.append({"id": "shared", "files": [self.client.data[3]["files"][0].copy()]})
+        Path(self.record["operations"][4]["destination"]).unlink()
+        result = self.finish("deleteOriginals", confirmed=True)
+        self.assertEqual(result["fileAction"]["changed"], 1)
+        self.assertEqual(self.client.deleted, ["old-6"])
+        self.assertTrue(all(Path(op["source"]).exists() for op in self.record["operations"][:5]))
+        self.assertIsNone(storage.get_metadata(tasks.reservation.NAMESPACE, "active"))
+
+    def test_delete_only_completed_originals_preserves_other_files_and_metadata(self):
+        failed = self.add_scene("2")
+        failed["status"] = "failed"
+        self.client.data[0]["title"] = "Keep title"
+        unrelated = self.folder / "unrelated.mp4"
+        unrelated.write_bytes(b"unrelated")
+        self.client.data[0]["files"].append({"id": "unrelated", "path": str(unrelated)})
+        self.persist()
+        self.finish("deleteOriginals", confirmed=True)
+        self.assertEqual(self.client.deleted, ["old-1"])
+        self.assertEqual(self.client.scene("1")["title"], "Keep title")
+        self.assertTrue(unrelated.exists())
+        self.assertTrue(Path(failed["source"]).exists())
+
+    def test_delete_keeps_unrelated_primary_and_deletes_multiple_originals(self):
+        second = self.add_scene("2")
+        second["sceneId"] = "1"
+        self.client.data[0]["files"].extend(self.client.data.pop()["files"])
+        self.client.set_primary("1", "new-2")
+        self.persist()
+        self.assertEqual(self.finish("deleteOriginals", confirmed=True)["fileAction"]["changed"], 2)
+        self.assertEqual(self.client.scene("1")["files"][0]["id"], "new-2")
+        self.assertEqual(len(self.client.scene("1")["files"]), 2)
+
+    def test_confirmation_finished_run_and_shared_reservation_are_required(self):
+        with self.assertRaisesRegex(encoding.PluginError, "Confirm"):
+            self.queue("deleteOriginals")
+        self.record["status"] = "paused"
+        self.persist()
+        with self.assertRaisesRegex(encoding.PluginError, "Finish or cancel"):
+            self.queue()
+        self.record["status"] = "cancelled"
+        self.persist()
+        tasks.reservation.acquire("organization", "other-task")
+        with self.assertRaisesRegex(RuntimeError, "Another file task"):
+            self.queue()
+
+    def test_recovery_checks_queue_and_stale_workers_cannot_replay(self):
+        self.queue()
+        old = self.client.jobs[-1]
+        with self.assertRaisesRegex(encoding.PluginError, "still active"):
+            self.queue()
+        with patch.object(encoding, "tasks_active", return_value=True):
+            with self.assertRaisesRegex(encoding.PluginError, "still active"):
+                self.queue(retry=True)
+        self.queue(retry=True)
+        latest = self.client.jobs[-1]
+        self.assertNotEqual(latest["actionId"], old["actionId"])
+        encoding.dispatch(self.client, old)
+        self.assertEqual(self.client.scene("1")["files"][0]["id"], "old-1")
+        with patch.object(encoding, "queue_pending"), patch.object(encoding.reservation, "queue_pending"):
+            result = encoding.dispatch(self.client, latest)
+        self.assertEqual(result["fileAction"]["changed"], 1)
+
+    def test_queue_failure_releases_only_its_own_reservation(self):
+        with patch.object(self.client, "queue", side_effect=RuntimeError("offline")):
+            with self.assertRaisesRegex(RuntimeError, "offline"):
+                self.queue()
+        self.assertIsNone(storage.get_metadata(tasks.reservation.NAMESPACE, "active"))
+        self.assertEqual(encoding.get("run", self.record["id"])["fileAction"]["status"], "failed")
+
+    def test_recovery_needs_a_valid_queue_answer_and_clears_completed_reservations(self):
+        self.queue()
+        with patch.object(self.client, "call", return_value={}):
+            with self.assertRaisesRegex(encoding.PluginError, "Could not check"):
+                self.queue(retry=True)
+        stored = encoding.get("run", self.record["id"])
+        stored["fileAction"]["status"] = "completed"
+        encoding.save("run", stored)
+        self.queue()
+        self.assertNotEqual(self.client.jobs[-1]["actionId"], stored["fileAction"]["id"])
+
+    def test_stash_mutations_use_only_recorded_ids_and_verify_responses(self):
+        client = encoding.Client({})
+        with patch.object(client, "call", return_value={"sceneUpdate": {"files": [{"id": "new-1"}]}}) as call:
+            client.set_primary("1", "new-1")
+            self.assertEqual(call.call_args.args[1], {"input": {"id": "1", "primary_file_id": "new-1"}})
+        with patch.object(client, "call", return_value={"sceneUpdate": {"files": [{"id": "old-1"}]}}):
+            with self.assertRaises(encoding.PluginError):
+                client.set_primary("1", "new-1")
+        with patch.object(client, "call", return_value={"deleteFiles": True}) as call:
+            client.delete_file("old-1")
+            self.assertEqual(call.call_args.args[1], {"ids": ["old-1"]})
+        with patch.object(client, "call", return_value={"deleteFiles": False}):
+            with self.assertRaises(encoding.PluginError):
+                client.delete_file("old-1")
+
+    def test_availability_uses_live_files_without_rereading_whole_media(self):
+        availability = lambda: encoding.get_run(self.client, {"id": self.record["id"]})["fileActions"]
+        with patch.object(encoding, "file_hash", side_effect=AssertionError("Polling must not hash media")):
+            self.assertEqual(availability(), {"makePrimary": True, "deleteOriginals": True})
+            self.client.set_primary("1", "new-1")
+            self.assertEqual(availability(), {"makePrimary": False, "deleteOriginals": True})
+            self.client.set_primary("1", "old-1")
+            Path(self.record["operations"][0]["destination"]).unlink()
+            self.assertEqual(availability(), {"makePrimary": False, "deleteOriginals": False})
+
+    def test_availability_rejects_shared_changed_and_missing_originals_and_failed_lookups(self):
+        availability = lambda: encoding.get_run(self.client, {"id": self.record["id"]})["fileActions"]
+        self.client.data.append({"id": "other", "files": [self.client.data[0]["files"][0].copy()]})
+        self.assertEqual(availability(), {"makePrimary": True, "deleteOriginals": False})
+        self.client.data.pop()
+        Path(self.record["operations"][0]["source"]).write_bytes(b"changed size")
+        self.assertFalse(availability()["deleteOriginals"])
+        self.client.data[0]["files"].pop(0)
+        self.assertFalse(availability()["deleteOriginals"])
+        with patch.object(self.client, "file_action_scenes", side_effect=RuntimeError("offline")):
+            unavailable = availability()
+        self.assertFalse(unavailable["makePrimary"])
+        self.assertFalse(unavailable["deleteOriginals"])
+        self.assertIn("Could not check", unavailable["error"])
+
+    def test_known_invalid_contents_disable_actions_until_the_file_changes(self):
+        output = Path(self.record["operations"][0]["destination"])
+        output.write_bytes(b"bad 1")
+        result = self.finish("deleteOriginals", confirmed=True)
+        self.assertEqual(result["fileAction"]["changed"], 0)
+        self.assertEqual(encoding.get_run(self.client, {"id": self.record["id"]})["fileActions"],
+                         {"makePrimary": False, "deleteOriginals": False})
+        output.write_bytes(b"new 1")
+        self.assertTrue(encoding.get_run(self.client, {"id": self.record["id"]})["fileActions"]["deleteOriginals"])
+        self.assertEqual(self.finish("deleteOriginals", confirmed=True)["fileAction"]["changed"], 1)
+
+    def test_a_valid_alternate_remains_available_when_the_preferred_output_is_missing(self):
+        second = self.add_scene("2")
+        second["sceneId"] = "1"
+        self.client.data[0]["files"].extend(self.client.data.pop()["files"])
+        Path(self.record["operations"][0]["destination"]).unlink()
+        self.persist()
+        self.assertTrue(encoding.get_run(self.client, {"id": self.record["id"]})["fileActions"]["makePrimary"])
+        self.assertEqual(self.finish()["fileAction"]["changed"], 1)
+        self.assertEqual(self.client.scene("1")["files"][0]["id"], "new-2")
+
+    def test_invalid_original_contents_disable_deletion_without_disabling_primary(self):
+        source = Path(self.record["operations"][0]["source"])
+        source.write_bytes(b"changed  bytes 1")
+        self.assertEqual(source.stat().st_size, self.record["operations"][0]["identity"]["size"])
+        self.assertEqual(self.finish("deleteOriginals", confirmed=True)["fileAction"]["changed"], 0)
+        self.assertEqual(encoding.get_run(self.client, {"id": self.record["id"]})["fileActions"],
+                         {"makePrimary": True, "deleteOriginals": False})
+
+    def test_availability_scene_queries_are_bounded(self):
+        client = encoding.Client({})
+        def call(_query, variables):
+            return {"findScenes": {"scenes": [{"id": scene_id, "files": []} for scene_id in variables["ids"]]}}
+        with patch.object(client, "call", side_effect=call) as calls:
+            scenes = list(client.file_action_scenes([str(number) for number in range(205)]))
+        self.assertEqual(len(scenes), 205)
+        self.assertEqual([len(call.args[1]["ids"]) for call in calls.call_args_list], [100, 100, 5])
+        self.assertEqual([scene["id"] for scene in scenes], [str(number) for number in range(205)])
+
+    def test_a_temporary_read_failure_does_not_mark_original_contents_invalid(self):
+        source = Path(self.record["operations"][0]["source"])
+        file_hash = encoding.file_hash
+        def read(path, *args, **kwargs):
+            if Path(path) == source:
+                raise PermissionError("Temporary read failure")
+            return file_hash(path, *args, **kwargs)
+        with patch.object(encoding, "file_hash", side_effect=read):
+            self.assertEqual(self.finish("deleteOriginals", confirmed=True)["fileAction"]["changed"], 0)
+        self.assertTrue(encoding.get_run(self.client, {"id": self.record["id"]})["fileActions"]["deleteOriginals"])
+
+
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg tools required")
 class AdditionalEncodingTests(unittest.TestCase):
     @classmethod

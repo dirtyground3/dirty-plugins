@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import os
+from fractions import Fraction
 from pathlib import Path
 import queue
 import shutil
@@ -85,6 +86,23 @@ class Client(BaseClient):
 
     def scene(self, scene_id):
         return self.call("query($id:ID!){findScene(id:$id){" + FIELDS + "}}", {"id": str(scene_id)})["findScene"]
+
+    def file_action_scenes(self, scene_ids):
+        ids = list(scene_ids)
+        for offset in range(0, len(ids), 100):
+            scenes = self.call("query($ids:[ID!]!){findScenes(ids:$ids,filter:{per_page:100}){scenes{id files{id path size}}}}",
+                               {"ids": ids[offset:offset + 100]})["findScenes"]["scenes"]
+            yield from scenes
+
+    def set_primary(self, scene_id, file_id):
+        result = self.call("mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){files{id}}}",
+                           {"input": {"id": str(scene_id), "primary_file_id": str(file_id)}})["sceneUpdate"]
+        if not result or not result["files"] or str(result["files"][0]["id"]) != str(file_id):
+            raise PluginError("Stash did not make the encoded file primary")
+
+    def delete_file(self, file_id):
+        if not self.call("mutation($ids:[ID!]!){deleteFiles(ids:$ids)}", {"ids": [str(file_id)]})["deleteFiles"]:
+            raise PluginError("Stash did not delete the original file")
 
     def has_shared_files(self, scene_id, file_ids):
         # Stash's explicit IDs bypass filters. Keep the ID inside scene_filter
@@ -224,15 +242,51 @@ def plausible_bitrate(stream_rate, format_rate):
     return rate
 
 
+def timecode_streams(media):
+    return [s for s in media["streams"] if s.get("codec_type") == "data" and s.get("codec_tag_string") == "tmcd"]
+
+
+def mp4_timecode(media):
+    """Only a single, continuous timecode track can be regenerated losslessly."""
+    tracks = timecode_streams(media)
+    video = next(s for s in media["streams"] if s.get("codec_type") == "video" and not s.get("disposition", {}).get("attached_pic"))
+    if len(tracks) != 1 or str(tracks[0].get("nb_frames")) != "1":
+        raise PluginError("MP4 timecode must be one continuous track; no streams will be discarded")
+    track = tracks[0]
+    value = track.get("tags", {}).get("timecode")
+    try:
+        rate = Fraction(track.get("avg_frame_rate") or "0")
+        video_rate = Fraction(video.get("avg_frame_rate") or "0")
+        aligned = float(track.get("start_time", "nan")) == float(video.get("start_time", "nan")) == 0
+    except (ValueError, ZeroDivisionError):
+        rate = video_rate = 0
+        aligned = False
+    if not value or video.get("tags", {}).get("timecode", value) != value or rate <= 0 or rate != video_rate or not aligned:
+        raise PluginError("MP4 timecode cannot be preserved from its metadata; no streams will be discarded")
+    return value, rate
+
+
 def container_for(path, rule, media):
     suffix = Path(path).suffix.lower()
     # Stream-copy compatibility is deliberately conservative.
     types = {s.get("codec_type") for s in media["streams"]}
-    if not types.issubset({"video", "audio", "subtitle", "attachment"}):
-        raise PluginError("Unsupported data streams; no streams will be silently discarded")
+    unsupported = [s for s in media["streams"] if s.get("codec_type") not in {"video", "audio", "subtitle", "attachment"}
+                   and s not in timecode_streams(media)]
+    if unsupported:
+        details = ", ".join(sorted({str(s.get("codec_tag_string") or s.get("codec_name") or s.get("codec_type") or "unknown") for s in unsupported}))
+        raise PluginError("Unsupported data streams (" + details + "); no streams will be silently discarded")
     audio = {s.get("codec_name") for s in media["streams"] if s.get("codec_type") == "audio"}
     subtitles = {s.get("codec_name") for s in media["streams"] if s.get("codec_type") == "subtitle"}
     mp4 = audio.issubset({"aac", "mp3", "ac3", "eac3", "alac"}) and subtitles.issubset({"mov_text"}) and "attachment" not in types
+    if timecode_streams(media):
+        if suffix == ".mov" and mp4:
+            return suffix, "mov"
+        if suffix in (".mp4", ".m4v") and mp4:
+            mp4_timecode(media)
+            return suffix, "mp4"
+        if rule["format"] == "allow" and mp4:
+            return ".mov", "mov"
+        raise PluginError("Timecode tracks require an MP4/MOV-compatible output; no streams will be discarded")
     if suffix in (".mkv", ".mk3d"):
         return suffix, "matroska"
     if suffix in (".mp4", ".m4v", ".mov") and mp4:
@@ -259,7 +313,22 @@ def report(run_id, stage, progress=0):
     previous = records.get("progress", run_id) or {}
     records.put("progress", run_id, {"id": run_id, "stage": stage, "progress": progress, "heartbeat": time.time(),
                                                "pid": os.getpid(), "started": previous.get("started") or time.time()})
-    print("\x01p\x02" + str(max(0, min(1, progress))), file=sys.stderr, flush=True)
+    if progress is not None:
+        print("\x01p\x02" + str(max(0, min(1, progress))), file=sys.stderr, flush=True)
+
+
+def hash_file(run_id, path, stage):
+    report(run_id, stage, 0)
+    last = time.monotonic()
+    def progress(fraction):
+        nonlocal last
+        now = time.monotonic()
+        if now - last >= 1 and fraction < 1:
+            report(run_id, stage, fraction)
+            last = now
+    result = file_hash(path, progress=progress)
+    report(run_id, stage, 1)
+    return result
 
 
 def check_cancel(run_id):
@@ -287,9 +356,11 @@ def run_process(command, run_id, stage, duration=1):
                     events.put(line.decode(errors="replace").strip())
             reader = threading.Thread(target=read, daemon=True)
             reader.start()
-            last = 0
+            last = time.monotonic()
             progress = 0
             try:
+                check_stop(run_id)
+                report(run_id, stage, 0)
                 while process.poll() is None:
                     if time.monotonic() - last > 1:
                         check_stop(run_id)
@@ -298,7 +369,7 @@ def run_process(command, run_id, stage, duration=1):
                     try:
                         line = events.get(timeout=0.2)
                         if line.startswith("out_time_us="):
-                            progress = min(1, float(line.split("=", 1)[1]) / 1e6 / max(duration, 1))
+                            progress = max(0, min(1, float(line.split("=", 1)[1]) / 1e6 / max(duration, 1)))
                     except (queue.Empty, ValueError):
                         pass
             finally:
@@ -314,6 +385,7 @@ def run_process(command, run_id, stage, duration=1):
                 close_job()
         if process.returncode:
             raise PluginError(log_path.read_text(errors="replace")[-2000:] or "FFmpeg failed")
+        report(run_id, stage, 1)
     finally:
         log_path.unlink(missing_ok=True)
 
@@ -505,13 +577,13 @@ def revalidate(client, run, op):
         changed = (not current or current["path"] != op["source"] or identity(op["source"]) != op["identity"]
                    or (op.get("quickHash") and quick_hash(op["source"]) != op["quickHash"]))
         if not changed and op.get("sourceHash"):
-            changed = file_hash(op["source"]) != op["sourceHash"]
+            changed = hash_file(run["id"], op["source"], "Checking original file contents") != op["sourceHash"]
         if changed:
             raise PluginError("Original changed since preview; it has been retained")
         if not op.get("sourceHash"):
             # First check in a run: fingerprint the whole original now, before
             # anything is encoded or replaced; replacement and recovery use it.
-            op["sourceHash"] = file_hash(op["source"])
+            op["sourceHash"] = hash_file(run["id"], op["source"], "Checking original file contents")
             save("run", run)
     for rule in run["settings"]["rules"]:
         if rule.get("enabled") and client.matches_scene(op["sceneId"], rule["condition"]):
@@ -534,6 +606,12 @@ def command_for(ffmpeg, op, output, encoder):
     rule, media = op["rule"], op["media"]
     command = [ffmpeg, "-hide_banner", "-v", "error", "-nostdin", "-n", "-noautorotate", "-i", op["source"],
                "-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-c", "copy", "-c:v:0", encoder]
+    if op["muxer"] == "mp4" and timecode_streams(media):
+        # FFmpeg cannot copy codec-none tmcd packets into MP4. Recreate the
+        # single continuous track from its verified timecode and frame rate.
+        # MOV instead copies the original track through the normal -map 0.
+        timecode, _ = mp4_timecode(media)
+        command += ["-map", "-0:d", "-metadata:s:v:0", "timecode=" + timecode, "-write_tmcd", "1"]
     if op.get("crf") is not None:
         # Constant quality, capped at the source bitrate so it never grows.
         command += quality.quality_args(encoder, op["crf"], media.get("bitrate") or None)
@@ -576,14 +654,23 @@ def encode(client, run, op):
         output.unlink(missing_ok=True)
         op.update(encoder=ENCODERS[codec]["cpu"], fallback=True)
         run_process(command_for(ffmpeg, op, output, op["encoder"]), run["id"], "Encoding (CPU fallback)", op["media"]["duration"])
+    report(run["id"], "Checking encoded file details", None)
     result = probe(ffprobe, output, lambda: check_stop(run["id"]))
     original = op["media"]
     if [result["width"], result["height"]] != op["dimensions"] or abs(result["duration"] - original["duration"]) > max(0.25, original["duration"] * 0.001):
         raise PluginError("Output dimensions or duration failed validation")
     def streams(media):
-        return [(s["codec_type"], s.get("codec_name") if s["codec_type"] != "video" else "video") for s in media["streams"]]
+        # Regenerated MP4 timecode follows the copied audio/subtitle streams.
+        ordinary = [(s["codec_type"], s.get("codec_name") if s["codec_type"] != "video" else "video")
+                    for s in media["streams"] if s["codec_type"] != "data"]
+        data = [(s["codec_type"], s.get("codec_name"), s.get("codec_tag_string"), s.get("tags", {}).get("timecode"))
+                for s in media["streams"] if s["codec_type"] == "data"]
+        return ordinary + data
     if streams(result) != streams(original) or len(result["chapters"]) != len(original["chapters"]):
         raise PluginError("Output stream/chapters preservation failed validation")
+    if op["muxer"] == "mp4" and timecode_streams(original):
+        if mp4_timecode(result) != mp4_timecode(original):
+            raise PluginError("Output timecode preservation failed validation")
     # Conversions at the original bitrate ("Same bitrate", or a target above
     # the original) are not required to shrink.
     converting = op["rule"].get("quality") == "source" or op.get("convert")
@@ -595,8 +682,10 @@ def encode(client, run, op):
         raise PluginError("Output is not smaller; original retained")
     if not converting and op["rule"]["action"] == "reencode" and (not result["bitrate"] or result["bitrate"] >= original["bitrate"]):
         raise PluginError("Could not validate a lower video bitrate")
-    run_process([ffmpeg, "-v", "error", "-xerror", "-nostdin", "-i", str(output), "-map", "0:v", "-map", "0:a?", "-f", "null", "-"], run["id"], "Validating", original["duration"])
-    op.update(outputHash=file_hash(output), outputMedia=result, outputSize=output.stat().st_size, status="validated")
+    run_process([ffmpeg, "-v", "error", "-xerror", "-nostdin", "-i", str(output), "-map", "0:v", "-map", "0:a?",
+                 "-progress", "pipe:1", "-f", "null", "-"], run["id"], "Validating", original["duration"])
+    op.update(outputHash=hash_file(run["id"], output, "Checking encoded file contents"),
+              outputMedia=result, outputSize=output.stat().st_size, status="validated")
     save("run", run)
 
 def cleanup_output(op):
@@ -616,7 +705,7 @@ def commit(client, run, op):
     revalidate(client, run, op)
     check_cancel(run["id"])
     output, destination = Path(op["output"]), Path(op["destination"])
-    if file_hash(output) != op["outputHash"]:
+    if hash_file(run["id"], output, "Rechecking encoded file contents") != op["outputHash"]:
         raise PluginError("Encoded output changed; original retained")
     op["status"] = "publishing"
     save("run", run)
@@ -630,6 +719,7 @@ def commit(client, run, op):
     cleanup_output(op)
     op["status"] = "reconciling"
     transition_run(run, "reconciling", save)
+    report(run["id"], "Indexing encoded file", None)
     op["scanJob"] = str(client.scan(destination))
     save("run", run)
     client.queue(PLUGIN_ID, {"mode": "finalize", "id": run["id"]}, "DirtyTasks: encoding: attach encoded file")
@@ -709,7 +799,7 @@ def finalize(client, run_id):
     op = next(o for o in run["operations"] if o["status"] in ("reconciling", "attaching"))
     try:
         target = Path(op["destination"])
-        if not target.is_file() or file_hash(target) != op["outputHash"]:
+        if not target.is_file() or hash_file(run["id"], target, "Checking indexed file contents") != op["outputHash"]:
             raise PluginError("Encoded file changed before attachment; original retained")
         # Preserve the original association as well as every pre-existing file.
         before = client.scene(op["sceneId"])
@@ -717,6 +807,7 @@ def finalize(client, run_id):
             raise PluginError("Original scene associations changed before attachment")
         op["status"] = "attaching"
         save("run", run)
+        report(run["id"], "Attaching encoded file", None)
         attached = client.attach(op["sceneId"], target)
         if int(attached["size"]) != target.stat().st_size or [int(attached["width"]), int(attached["height"])] != op["dimensions"]:
             raise PluginError("Stash has not indexed the expected encoded file")
@@ -826,8 +917,12 @@ def tasks_active(client):
 
     Stash prefixes task descriptions, e.g. "Running plugin task: DirtyCompactor: ...".
     """
-    jobs = client.call("{jobQueue{id description status}}").get("jobQueue") or []
-    return any(j.get("status") in ("RUNNING", "READY") and "DirtyTasks: encoding:" in str(j.get("description", "")) for j in jobs)
+    state = client.call("{jobQueue{id description status}}")
+    jobs = state.get("jobQueue")
+    if "jobQueue" not in state or (jobs is not None and not isinstance(jobs, list)):
+        raise PluginError("Could not check the encoding task status. Try again.")
+    return any(j.get("status") not in ("FINISHED", "FAILED", "CANCELLED")
+               and "DirtyTasks: encoding:" in str(j.get("description", "")) for j in jobs or [])
 
 
 def recover(client, run):
@@ -982,7 +1077,14 @@ def finalize_handler(client, args):
 
 
 def get_run(client, args):
-    return public_record(get("run", args["id"]), args.get("page", 1))
+    run = get("run", args["id"])
+    result = public_record(run, args.get("page", 1))
+    try:
+        result["fileActions"] = available_file_actions(client, run)
+    except Exception:
+        result["fileActions"] = {"makePrimary": False, "deleteOriginals": False,
+                                 "error": "Could not check available files. Retrying…"}
+    return result
 
 
 def list_runs(client, args):
@@ -1049,6 +1151,209 @@ def recover_run(client, args):
     return {"id": args["id"]}
 
 
+def queue_file_action(client, args):
+    run = get("run", args["id"])
+    if run["status"] not in TERMINAL:
+        raise PluginError("Finish or cancel this run before managing its files")
+    if args["mode"] == "deleteOriginals" and args.get("confirmed") is not True:
+        raise PluginError("Confirm deletion of this run's original files first")
+    previous = run.get("fileAction") or {}
+    if previous.get("status") in ("queued", "running"):
+        if not args.get("retry") or tasks_active(client):
+            raise PluginError("This run's file action is still active; recover it only if its Stash task has stopped")
+        reservation.release("encoding", run["id"] + ":" + previous["id"])
+    elif previous.get("id") and not tasks_active(client):
+        # A process can stop after saving its final result but before releasing.
+        reservation.release("encoding", run["id"] + ":" + previous["id"])
+    if not any(o["status"] == "completed" and o.get("outputFileId") for o in run["operations"]):
+        raise PluginError("This run has no completed encoded files")
+    if not (args.get("retry") and previous.get("status") in ("queued", "running")):
+        if not available_file_actions(client, run)[args["mode"]]:
+            raise PluginError("No eligible files remain for this action")
+    # Each action reserves file work independently. An explicit recovery checks
+    # Stash's queue before releasing an interrupted action's exact reservation.
+    action = {"id": uuid.uuid4().hex, "mode": args["mode"], "status": "queued",
+              "changed": 0, "skipped": 0, "failed": 0, "reasons": []}
+    run["fileAction"] = action
+    owner = run["id"] + ":" + action["id"]
+    reservation.acquire("encoding", owner)
+    saved = False
+    try:
+        save("run", run)
+        saved = True
+        client.queue(PLUGIN_ID, {"mode": "runFileAction", "id": run["id"], "actionId": action["id"]},
+                     "DirtyTasks: encoding: " + ("delete old files" if args["mode"] == "deleteOriginals" else "make new files primary"))
+    except Exception:
+        try:
+            if saved:
+                action["status"] = "failed"
+                save("run", run)
+        finally:
+            reservation.release("encoding", owner)
+        raise
+    return public_record(run)
+
+
+def encoded_file(scene, op, *, verify=False):
+    file = next((f for f in scene["files"] if str(f["id"]) == str(op["outputFileId"])), None)
+    if not file or str(file["id"]) == str(op["fileId"]):
+        raise PluginError("Encoded replacement is no longer attached")
+    # Resolve by the recorded ID: organization may have moved either file.
+    try:
+        current = identity(file["path"])
+        valid = current["size"] == op.get("outputSize") and current != op.get("invalidOutputIdentity")
+        if verify:
+            if valid and op.get("outputHash") and file_hash(file["path"]) != op["outputHash"]:
+                # Remember a failed content check without rereading the file on
+                # every UI poll. A changed file identity allows another attempt.
+                op["invalidOutputIdentity"] = identity(file["path"])
+                valid = False
+            valid = valid and bool(op.get("outputHash"))
+    except OSError:
+        valid = False
+    if not valid:
+        raise PluginError("Encoded replacement is missing or changed")
+    return file
+
+
+def primary_candidate(scene, operations):
+    if not scene["files"]:
+        return None
+    primary = str(scene["files"][0]["id"])
+    candidates = []
+    for op in operations:
+        try:
+            file = encoded_file(scene, op)
+        except (PluginError, OSError):
+            continue
+        if str(file["id"]) == primary:
+            return None
+        candidates.append((op, file))
+    return next((file for op, file in candidates if str(op["fileId"]) == primary),
+                candidates[0][1] if candidates else None)
+
+
+def original_file(scene, op, output_ids):
+    source = next((f for f in scene["files"] if str(f["id"]) == str(op["fileId"])), None)
+    if not source:
+        raise PluginError("Original is already removed or no longer attached")
+    if str(source["id"]) in output_ids:
+        raise PluginError("Original is also a replacement in this job")
+    current = identity(source["path"])
+    if (not op.get("sourceHash") or not op.get("outputHash") or current == op.get("invalidSourceIdentity")
+            or current["size"] != op["identity"]["size"]):
+        raise PluginError("Original is missing or changed; retained")
+    return source
+
+
+def file_action_groups(run):
+    groups = {}
+    for op in run["operations"]:
+        if op["status"] == "completed" and op.get("outputFileId"):
+            groups.setdefault(str(op["sceneId"]), []).append(op)
+    return groups
+
+
+def available_file_actions(client, run):
+    available = {"makePrimary": False, "deleteOriginals": False}
+    if run["status"] not in TERMINAL or (run.get("fileAction") or {}).get("status") in ("queued", "running"):
+        return available
+    groups = file_action_groups(run)
+    if not groups:
+        return available
+    for scene in client.file_action_scenes(groups):
+        operations = groups[str(scene["id"])]
+        if not available["makePrimary"] and primary_candidate(scene, operations):
+            available["makePrimary"] = True
+        if not available["deleteOriginals"]:
+            output_ids = {str(op["outputFileId"]) for op in operations}
+            for op in operations:
+                try:
+                    original_file(scene, op, output_ids)
+                    encoded_file(scene, op)
+                except (PluginError, OSError):
+                    continue
+                available["deleteOriginals"] = not client.has_shared_files(scene["id"], [str(f["id"]) for f in scene["files"]])
+                break
+        if all(available.values()):
+            break
+    return available
+
+
+def run_file_action(client, args):
+    run = get("run", args["id"])
+    action = run.get("fileAction") or {}
+    if action.get("id") != args.get("actionId") or action.get("status") != "queued":
+        return public_record(run)
+    action["status"] = "running"
+    save("run", run)
+    deleting = action["mode"] == "deleteOriginals"
+    groups = file_action_groups(run)
+    reasons = {}
+
+    def note(reason, failed=False):
+        action["failed" if failed else "skipped"] += 1
+        reasons[reason] = reasons.get(reason, 0) + 1
+
+    try:
+        reservation.acquire("encoding", run["id"] + ":" + action["id"])
+        for scene_id, operations in groups.items():
+            if deleting:
+                for op in operations:
+                    try:
+                        scene = client.scene(scene_id)
+                        if not scene:
+                            raise PluginError("Scene no longer exists")
+                        source = original_file(scene, op, {str(o["outputFileId"]) for o in operations})
+                        replacement = encoded_file(scene, op, verify=True)
+                        try:
+                            unchanged = (bool(op.get("sourceHash"))
+                                         and identity(source["path"])["size"] == op["identity"]["size"]
+                                         and file_hash(source["path"]) == op["sourceHash"])
+                        except OSError:
+                            raise PluginError("Original could not be read; retained")
+                        if not unchanged:
+                            try:
+                                op["invalidSourceIdentity"] = identity(source["path"])
+                            except (OSError, PluginError):
+                                pass
+                            raise PluginError("Original is missing or changed; retained")
+                        if client.has_shared_files(scene_id, [str(f["id"]) for f in scene["files"]]):
+                            raise PluginError("Scene has shared files; originals retained")
+                        if str(scene["files"][0]["id"]) == str(source["id"]):
+                            client.set_primary(scene_id, replacement["id"])
+                        client.delete_file(source["id"])
+                        action["changed"] += 1
+                    except PluginError as error:
+                        note(str(error))
+                    except Exception:
+                        note("Could not delete an original; check Stash and retry", failed=True)
+            else:
+                try:
+                    scene = client.scene(scene_id)
+                    if not scene or not scene["files"]:
+                        raise PluginError("Scene no longer exists or has no files")
+                    replacement = primary_candidate(scene, operations)
+                    if replacement is None:
+                        note("No new file needs to become primary or its replacement is unavailable")
+                    else:
+                        client.set_primary(scene_id, replacement["id"])
+                        action["changed"] += 1
+                except PluginError as error:
+                    note(str(error))
+                except Exception:
+                    note("Could not update a scene; check Stash and retry", failed=True)
+            action["reasons"] = sorted(([reason, count] for reason, count in reasons.items()), key=lambda item: (-item[1], item[0]))
+            save("run", run)
+        action["status"] = "completed"
+        save("run", run)
+    finally:
+        reservation.release("encoding", run["id"] + ":" + action["id"])
+        reservation.queue_pending(client)
+        queue_pending(client)
+    return public_record(run)
+
+
 HANDLERS = {
     'capabilities': capabilities_handler,
     'preview': queue_preview,
@@ -1068,6 +1373,9 @@ HANDLERS = {
     'pauseRun': pause_run,
     'resumeRun': resume_run,
     'retryRecovery': recover_run,
+    'makePrimary': queue_file_action,
+    'deleteOriginals': queue_file_action,
+    'runFileAction': run_file_action,
 }
 
 def dispatch(client, args):

@@ -246,6 +246,16 @@ async function jobsReviewAndCleanup() {
   assert(h.button("Cancel run"), "a paused run can still be cancelled");
   await h.click("Resume");
   assert(h.calls.some(call => call.mode === "resumeRun" && call.id === run.id));
+  await h.run({ ...run, progress: { stage: "Validating", progress: 0.46 } });
+  assert.equal(h.nodes(node => node.type === "progress")[0].props.value, 0.46);
+  assert(text(h.nodes(node => node.props?.className === "dirty-compactor-progress")[0]).includes("46%"));
+  await h.run({ ...run, progress: { stage: "Checking encoded file details", progress: null } });
+  assert.equal(h.nodes(node => node.type === "progress")[0].props.value, undefined);
+  assert.equal(
+    text(h.nodes(node => node.props?.className === "dirty-compactor-progress")[0]),
+    "Checking encoded file detailsWorking…",
+    "steps without a measurable fraction show activity instead of a stale percentage",
+  );
   // Encoded versions are kept beside their originals: report the size of the new file, not disk growth.
   const encoded = { ...file, status: "completed", addedBytes: 600, identity: { size: 1000 } };
   await h.run({
@@ -327,12 +337,134 @@ async function workflowErrorAfterSave() {
   h.unmount();
 }
 
+async function finishedJobFileActions() {
+  const h = createCompactorHarness({ settings, run });
+  h.load();
+  await h.flush();
+  assert.equal(h.button("Make all new files primary"), undefined, "active jobs cannot manage files");
+  const completed = {
+    ...run,
+    status: "completed",
+    counts: { completed: 28 },
+    total: 28,
+    pages: 2,
+    fileActions: { makePrimary: true, deleteOriginals: true },
+  };
+  await h.run(completed);
+  const details = h.nodes(node => node.type === "SettingsSection" && /^Manual run/.test(node.props.title))[0];
+  assert(text(details).includes("Make all new files primary"), "the buttons belong to job details");
+  assert(text(details).includes("Delete all old files…"));
+  await h.click("Make all new files primary");
+  const primary = h.calls.find(call => call.mode === "makePrimary");
+  assert.equal(primary.id, run.id);
+  assert.equal(primary.page, undefined, "the action covers all pages of this job");
+  assert.equal(primary.task, "encoding");
+  await h.click("Delete all old files…");
+  let dialog = h.nodes(
+    node => node.type === "Dialog" && node.props.ariaLabel === "Delete this job's original files",
+  )[0];
+  assert.equal(dialog.props.open, true);
+  assert(text(dialog).includes("using Stash’s configured trash setting"));
+  assert(!h.calls.some(call => call.mode === "deleteOriginals"), "deletion waits for confirmation");
+  await h.click("Keep old files");
+  assert(!h.calls.some(call => call.mode === "deleteOriginals"));
+  await h.click("Delete all old files…");
+  await h.click("Delete old files");
+  const deletion = h.calls.find(call => call.mode === "deleteOriginals");
+  assert.equal(deletion.id, run.id);
+  assert.equal(deletion.confirmed, true);
+  const fileAction = {
+    mode: "deleteOriginals",
+    status: "running",
+    changed: 3,
+    skipped: 1,
+    failed: 0,
+    reasons: [["Original is missing or changed; retained", 1]],
+  };
+  await h.run({ ...completed, fileAction });
+  assert.equal(h.button("Make all new files primary").props.disabled, true);
+  assert.equal(h.button("Delete all old files…").props.disabled, true);
+  assert(text(h.tree).includes("3 changed · 1 skipped · 0 failed"));
+  const recovery = h.nodes(node => node.type === "ActionMenu" && node.props.ariaLabel === "File action recovery")[0];
+  recovery.props.items[0].onSelect();
+  await h.flush();
+  await h.click("Delete old files");
+  assert.equal(h.calls.filter(call => call.mode === "deleteOriginals").at(-1).retry, true);
+  await h.run({ ...completed, fileAction: { ...fileAction, status: "completed" } });
+  assert.equal(h.button("Delete all old files…").props.disabled, false);
+  await h.run({ ...completed, fileActions: { makePrimary: false, deleteOriginals: true } });
+  assert.equal(h.button("Make all new files primary").props.disabled, true, "all replacements are already primary");
+  assert.equal(h.button("Delete all old files…").props.disabled, false, "eligible originals still remain");
+  await h.click("Delete all old files…");
+  await h.run({ ...completed, fileActions: { makePrimary: false, deleteOriginals: false } });
+  assert.equal(h.button("Make all new files primary").props.disabled, true);
+  assert.equal(h.button("Delete all old files…").props.disabled, true, "no eligible originals remain");
+  assert.equal(h.button("Delete old files").props.disabled, true, "confirmation follows the latest availability too");
+  await h.click("Keep old files");
+  await h.run({ ...completed, fileActions: undefined });
+  assert.equal(h.button("Make all new files primary").props.disabled, true, "unknown availability is disabled");
+  assert.equal(h.button("Delete all old files…").props.disabled, true);
+  await h.run({
+    ...completed,
+    fileActions: { makePrimary: false, deleteOriginals: false, error: "Could not check files" },
+  });
+  assert(text(h.tree).includes("Could not check files"));
+  assert.equal(h.button("Delete all old files…").props.disabled, true);
+  await h.click("Close");
+  assert.equal(h.button("Make all new files primary"), undefined, "closing details hides both actions");
+  h.unmount();
+}
+
+async function viewFilteredScenes() {
+  const h = createCompactorHarness({ settings: { ...settings, rules: [{ ...rule, condition: {} }] } });
+  h.load();
+  await h.flush();
+  const menu = h.nodes(node => node.type === "ActionMenu" && /^Actions for/.test(node.props.ariaLabel))[0];
+  menu.props.items[0].onSelect();
+  await h.flush();
+  assert.equal(h.button("View scenes").props.disabled, true, "choose scenes before opening the list");
+  const query =
+    'q=beach%20%26%20sun&c=("type":"tags","value":("items":[("id":"1","label":"A%2BB")]))' +
+    '&c=("type":"rating100","value":("value":50))&sortby=date&p=9';
+  const filter = h.nodes(node => node.type === "SceneFilterEditor")[0];
+  filter.props.onChange({ all: false, scene: { tags: {} }, find: { q: "beach & sun" }, query });
+  await h.flush();
+  const link = h.nodes(node => node.type === "a" && text(node) === "View scenes")[0];
+  assert.equal(link.props.href, "/scenes?" + query.replace("&p=9", ""));
+  assert.equal(link.props.target, "_blank");
+  assert.equal(link.props.rel, "noopener noreferrer");
+  const controls = h.nodes(
+    node => node.props.className === "dirty-ui-control-row" && text(node).includes("Edit filter"),
+  )[0];
+  assert(text(controls).includes("View scenes"), "the link is beside the filter selector");
+  const allScenes = h.nodes(node => node.type === "SettingsToggle" && node.props.label === "All scenes")[0];
+  allScenes.props.onChange(true);
+  await h.flush();
+  assert.equal(h.nodes(node => node.type === "a" && text(node) === "View scenes")[0].props.href, "/scenes?sortby=date");
+  h.unmount();
+  const captured = createCompactorHarness({ settings, capture: true });
+  captured.load();
+  await captured.flush();
+  captured
+    .nodes(node => node.type === "ActionMenu" && /^Actions for/.test(node.props.ariaLabel))[0]
+    .props.items[0].onSelect();
+  await captured.flush();
+  assert.equal(
+    captured.nodes(node => node.type === "a" && text(node) === "View scenes")[0].props.href,
+    "/scenes?sortby=date&docsCapture=1",
+    "the scene list retains documentation capture mode",
+  );
+  captured.unmount();
+}
+
 async function main() {
   await registration();
   await editingAndSaving();
   await serializedSavesAndFailures();
   await jobsReviewAndCleanup();
   await workflowErrorAfterSave();
+  await finishedJobFileActions();
+  await viewFilteredScenes();
   console.log(
     "DirtyCompactor compiled TSX, host React, guards, settings, filters, serialized writes, cancellation, attachment, automation and cleanup passed",
   );

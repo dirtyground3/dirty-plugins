@@ -293,6 +293,41 @@ def exercise(fixture):
     assert source.read_bytes() == original
     print("PASS: per-rule Generate trigger runs encoding, deduplicates events and Manual blocks automation", flush=True)
 
+    def manage(mode, run_id):
+        queued = fixture.op(mode, id=run_id, **({"confirmed": True} if mode == "deleteOriginals" else {}))
+        action_id = queued["fileAction"]["id"]
+        def finished():
+            action = fixture.op("getRun", id=run_id).get("fileAction") or {}
+            return action if action.get("id") == action_id and action.get("status") == "completed" else None
+        return wait_for(finished)
+
+    assert manage("makePrimary", run["id"])["changed"] == 1
+    assert not fixture.op("getRun", id=run["id"])["fileActions"]["makePrimary"], "Already primary: action is unavailable"
+    try:
+        fixture.op("makePrimary", id=run["id"])
+        raise AssertionError("A stale click must not queue an action with no eligible files")
+    except RuntimeError as error:
+        assert "No eligible files" in str(error)
+    # Retain an original whose bytes changed after encoding, even at the same size.
+    source.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+    assert manage("deleteOriginals", run["id"])["changed"] == 0
+    assert source.exists()
+    source.write_bytes(original)
+    assert manage("makePrimary", automatic["id"])["changed"] == 1
+    assert manage("deleteOriginals", run["id"])["changed"] == 1
+    assert not source.exists(), "Only the original is deleted from disk"
+    current = fixture.gql("query($id:ID!){findScene(id:$id){title details rating100 files{id path}}}", {"id": scene["id"]})["findScene"]
+    assert len(current["files"]) == 2 and all(Path(file["path"]).is_file() for file in current["files"])
+    assert current["files"][0]["id"] != output["id"], "An unrelated current primary is preserved"
+    assert current["title"] == "Synthetic encoding fixture" and current["details"] == "Preserve this metadata" and current["rating100"] == 80
+    assert not fixture.op("getRun", id=run["id"])["fileActions"]["deleteOriginals"], "Deleted originals: action is unavailable"
+    try:
+        fixture.op("deleteOriginals", id=run["id"], confirmed=True)
+        raise AssertionError("A stale deletion click must not queue an empty action")
+    except RuntimeError as error:
+        assert "No eligible files" in str(error)
+    print("PASS: job-scoped primary changes, already-primary skip, changed-original retention and native old-file deletion", flush=True)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

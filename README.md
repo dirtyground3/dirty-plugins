@@ -19,7 +19,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.9 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.20 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
-| [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.5 |
+| [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.10 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
 | [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.14 |
 
@@ -190,7 +190,8 @@ capture.
 - File organization uses metadata templates for folders and filenames, with an
   immutable preview and explicit confirmation. Multiple versions keep distinct names.
 - Ordered **Resize** and **Reencode** rules create additional validated files on
-  the same scene. Original files stay on disk and remain primary.
+  the same scene. Original files stay on disk and remain primary until you use
+  the finished job's actions to make new files primary or delete old files.
 - Quality presets, visual-quality measurement, custom bitrate, H.264/H.265 and
   hardware encoding with CPU fallback remain available. Preview and run results
   compare each new file with its original, for example **Created a 40% smaller file**.
@@ -564,6 +565,29 @@ main/
 ```
 
 ## Release notes
+- **DirtyTasks 1.0.10:** Resize/Reencode preserves continuous MP4/M4V timecode
+  tracks and copies MOV timecode tracks. Outputs must retain their timecode;
+  other unsupported data tracks remain blocked with their format identified.
+
+- **DirtyTasks 1.0.9:** job file-action buttons are enabled only while eligible
+  files remain. Availability follows current scene files and primary choices;
+  missing replacements, removed originals and shared files disable the affected
+  action. Full content checks still run before deletion.
+
+- **DirtyTasks 1.0.8:** validation now reports decode progress. Full content
+  checks show byte-based progress, and indexing/attachment show separate
+  activity labels. Validation checks and encoding settings are unchanged.
+
+- **DirtyTasks 1.0.7:** **View scenes** beside each encoding rule's filter
+  selector opens its matching scenes in a new tab with the selected filter.
+
+- **DirtyTasks 1.0.6:** finished Resize/Reencode job details have **Make all new
+  files primary** and **Delete all old files…** actions for the whole job.
+  Already-primary new files are skipped. Confirmed deletion verifies each
+  replacement and original, retains shared or changed files, and uses Stash's
+  trash setting. Actions run in the task queue with progress counts and recovery
+  for interrupted work.
+
 
 - **DirtyStats 1.0.12, DirtyRank 1.0.9 and DirtyPlugins 1.0.14:** the new **Scenes
   per studio** statistic is a multi-level pie chart with up to four levels of
