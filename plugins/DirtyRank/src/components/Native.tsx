@@ -120,9 +120,9 @@ export function DirtyRankBattleNavLink(): R.JSX.Element | null {
   return (
     <ui.NavAction
       as={Router.NavLink}
-      className="dirty-rank-nav-link dirty-rank-nav-button"
+      className="dirty-rank-nav-link"
       exact={false}
-      icon={RankNavGlyph("battle")}
+      icon={<ui.NavIcon name="battles" />}
       label="DirtyRank performer battles"
       to={ROUTE_PATH}
     />
@@ -175,50 +175,13 @@ export function DirtyRankGauntletLaunch(props: { performer: RankPerformer }): R.
   );
 }
 
-function RankNavGlyph(kind: string): R.JSX.Element | null {
-  return (
-    <i aria-hidden="true" className="dirty-rank-nav-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="var(--dirty-ui-icon-white)" strokeWidth="1.8">
-        {kind === "battle" ? (
-          ["red", "blue"].map((color, index) => {
-            return (
-              <g
-                key={color}
-                transform={index ? "translate(24 0) scale(-1 1)" : undefined}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              >
-                <path
-                  d="M2.5 2.5l4 1L17 14l-3 3L3.5 6.5z"
-                  fill={"var(--dirty-ui-icon-" + color + ")"}
-                  strokeWidth="0.7"
-                />
-                <path d="M16.5 16.5l4 4" strokeWidth="3.2" />
-                <path d="M16.5 16.5l4 4" stroke="var(--dirty-ui-icon-blue)" strokeWidth="1.6" />
-                <path d="M12.5 18.5l6-6M19 22l3-3" strokeWidth="1.8" />
-              </g>
-            );
-          })
-        ) : (
-          <React.Fragment>
-            <path d="M7 5H4v2c0 2 1 3 4 4" stroke="var(--dirty-ui-icon-red)" />
-            <path d="M17 5h3v2c0 2-1 3-4 4" stroke="var(--dirty-ui-icon-blue)" />
-            <path d="M7 3h10v6c0 3-2 5-5 5s-5-2-5-5V3z" fill="var(--dirty-ui-icon-blue)" />
-            <path d="M12 14v5M8 21h8M10 19h4" />
-          </React.Fragment>
-        )}
-      </svg>
-    </i>
-  );
-}
-
 export function DirtyRankLeaderboardsNavLink(): R.JSX.Element | null {
   return (
     <ui.NavAction
       as={Router.NavLink}
-      className="dirty-rank-nav-link dirty-rank-leaderboards-nav-link dirty-rank-nav-button"
+      className="dirty-rank-nav-link dirty-rank-leaderboards-nav-link"
       exact={true}
-      icon={RankNavGlyph("leaderboard")}
+      icon={<ui.NavIcon name="leaderboards" />}
       label="DirtyRank leaderboards"
       to={LEADERBOARDS_ROUTE_PATH}
     />

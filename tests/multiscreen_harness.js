@@ -134,9 +134,18 @@ function createMultiscreenHarness(options = {}) {
     return React.createElement("native-player", props);
   }
   const controls = Object.fromEntries(
-    ["IconButton", "StateView", "NavAction", "Dialog", "Field", "Button", "Pagination", "ActionMenu", "Glyph"].map(
-      name => [name, props => React.createElement(name, props, props.children)],
-    ),
+    [
+      "IconButton",
+      "StateView",
+      "NavAction",
+      "NavIcon",
+      "Dialog",
+      "Field",
+      "Button",
+      "Pagination",
+      "ActionMenu",
+      "Glyph",
+    ].map(name => [name, props => React.createElement(name, props, props.children)]),
   );
   const saved = [],
     notices = [];

@@ -285,12 +285,6 @@
   font-size: .8rem;
 }
 
-.dirty-stats-nav svg {
-  width: 20px;
-  height: 20px;
-  fill: currentColor;
-}
-
 .dirty-stats-native-filters .pagination-index-container,
 .dirty-stats-native-filters .pagination-footer-container,
 .dirty-stats-native-filters .pagination,

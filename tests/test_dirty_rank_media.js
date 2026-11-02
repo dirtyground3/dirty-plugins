@@ -49,6 +49,7 @@ const runtime = {
     Metric: function SharedMetric() {},
     Pagination: function SharedPagination() {},
     NavAction: function SharedNavAction() {},
+    NavIcon: function SharedNavIcon() {},
     IconButton: function SharedIconButton() {},
     SaveStatus: function SharedSaveStatus() {},
   },

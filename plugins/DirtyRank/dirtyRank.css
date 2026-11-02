@@ -1970,26 +1970,6 @@
   text-decoration: none;
 }
 
-.dirty-rank-nav-button {
-  font-size: 1.15rem;
-}
-
-.dirty-rank-nav-icon {
-  align-items: center;
-  display: inline-flex;
-  font-style: normal;
-  height: 1.25rem;
-  justify-content: center;
-  line-height: 1;
-  width: 1.25rem;
-}
-
-.dirty-rank-nav-icon svg {
-  display: block;
-  height: 1.25rem;
-  width: 1.25rem;
-}
-
 @media (max-width: 68rem) {
   .dirty-rank-shell {
     grid-template-columns: 1fr;

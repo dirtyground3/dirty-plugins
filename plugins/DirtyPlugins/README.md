@@ -102,8 +102,7 @@ categorical palettes remain Stats-specific.
 
 Choose **De Stijl** in **General → Suite theme** for a geometric light theme
 with coral and blue blocks, grey surfaces, charcoal dividers, square controls,
-and solid offset shadows. Navigation icons use the same reference palette in
-every theme.
+and solid offset shadows.
 
 **De Stijl Dark** keeps the same geometry with charcoal surfaces and light
 text. Both variants are available in the shared Suite theme selector.
@@ -111,6 +110,9 @@ text. Both variants are available in the shared Suite theme selector.
 Choose **StockStash** to make the suite look like Stash itself: the same slate
 surfaces, flat blue and red buttons, sunken fields, underlined tabs and
 monochrome navigation icons as Stash's default interface.
+
+Every suite theme has its own navigation icons for DirtyPlugins, DirtyStats,
+DirtyMultiscreen and DirtyRank.
 
 DirtyPlugins also owns `dirty_plugins.sqlite3`, the shared WAL-enabled database
 for high-frequency plugin data that should not trigger Stash entity-update

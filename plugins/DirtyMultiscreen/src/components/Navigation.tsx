@@ -89,15 +89,10 @@ export function ContextualMultiscreenNavLink() {
   const handleClick = React.useCallback(() => {
     contexts.storeLaunchContext(launchContext);
   }, [launchContext]);
-  // Icons use <i> rather than <span> so themes that hide navbar spans keep them.
+  // The count uses <i> rather than <span> so themes that hide navbar spans keep it.
   const icon = (
     <React.Fragment>
-      <i className="ms-nav-icon" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-        <i />
-      </i>
+      <DirtyPlugins.react.NavIcon name="multiscreen" />
       {launchContext && (
         <i
           className={`ms-nav-count${countLoading ? " ms-loading" : ""}`}

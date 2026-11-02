@@ -4,6 +4,7 @@ import type { ActionItem, MenuProps, NavProps, SelectorProps } from "../types";
 import { withClass } from "../shared/values";
 import { Glyph } from "./Controls";
 import type * as R from "react";
+export { NavIcon } from "./NavIcon";
 export function NavAction(props: NavProps) {
   const LinkComponent = props.as || PluginApi.libraries.ReactRouterDOM.Link;
   return (

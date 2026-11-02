@@ -641,7 +641,7 @@ test("the header button follows showInMenu without a reload", async () => {
     },
     DirtyPlugins: {
       getPluginSettings: async pluginId => (pluginId === "dirtyStats" ? { ...stored } : {}),
-      react: { NavAction: "nav-action" },
+      react: { NavAction: "nav-action", NavIcon: "nav-icon" },
       theme: {
         defaultKey: "classic",
         currentKey: "classic",

@@ -15,13 +15,13 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.12 |
-| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.9 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.20 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.13 |
+| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.10 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.21 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.10 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.14 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.15 |
 
 ## Shared look and settings
 
@@ -29,9 +29,8 @@ Every plugin uses the same rounded controls, aligned selects and actions,
 visible focus, and pending/saving/saved/error feedback. Choose one **Suite
 theme** in the DirtyPlugins **General** tab: Midnight (the default), Retro
 Arcade, Candy Pop, Tropical Punch, Paper Picnic, De Stijl, De Stijl Dark, or
-StockStash. It
-styles all suite-owned surfaces; native Stash cards, filters, and players keep
-the host theme. The same tab creates a backup of the shared database.
+StockStash. It styles all suite-owned surfaces and sets the plugins' navigation
+icons; native Stash cards, filters, and players keep the host theme. The same tab creates a backup of the shared database.
 
 A settings button in the Stash header, after every other Dirty plugin button,
 opens this page. Turn off **Show settings in the Stash header** in the
@@ -565,6 +564,15 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyPlugins 1.0.15, DirtyStats 1.0.13, DirtyRank 1.0.10 and DirtyMultiscreen
+  1.0.21:** the new **StockStash** suite theme makes the suite look like Stash
+  itself, with its slate surfaces, flat blue and red buttons, sunken fields and
+  underlined tabs. Every suite theme now has its own navigation icons: De Stijl
+  Dark keeps the previous ones and De Stijl uses light versions of them. A Stash
+  theme that sizes navbar icons itself keeps that size. In DirtyStats, **Age at
+  scene** now counts scenes instead of performers and shows native scene cards.
+
 - **DirtyTasks 1.0.10:** Resize/Reencode preserves continuous MP4/M4V timecode
   tracks and copies MOV timecode tracks. Outputs must retain their timecode;
   other unsupported data tracks remain blocked with their format identified.
@@ -587,7 +595,6 @@ main/
   replacement and original, retains shared or changed files, and uses Stash's
   trash setting. Actions run in the task queue with progress counts and recovery
   for interrupted work.
-
 
 - **DirtyStats 1.0.12, DirtyRank 1.0.9 and DirtyPlugins 1.0.14:** the new **Scenes
   per studio** statistic is a multi-level pie chart with up to four levels of

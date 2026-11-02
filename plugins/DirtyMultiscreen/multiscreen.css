@@ -259,28 +259,6 @@
   opacity: 0.65;
 }
 
-.ms-nav-icon {
-  display: inline-grid;
-  grid-template-columns: repeat(2, 0.42rem);
-  grid-template-rows: repeat(2, 0.42rem);
-  gap: 0.12rem;
-  background: var(--dirty-ui-icon-black);
-  border: 1px solid var(--dirty-ui-icon-white);
-  padding: 0.1rem;
-  font-style: normal;
-}
-
-.ms-nav-icon i {
-  display: block;
-  width: 0.42rem;
-  height: 0.42rem;
-  border-radius: 0;
-  background: var(--dirty-ui-icon-white);
-}
-
-.ms-nav-icon i:first-child { background: var(--dirty-ui-icon-red); }
-.ms-nav-icon i:last-child { background: var(--dirty-ui-icon-blue); }
-
 .ms-native-tile,
 .ms-native-tile .VideoPlayer,
 .ms-native-tile .video-wrapper,

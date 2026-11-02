@@ -51,7 +51,7 @@
   --dirty-ui-emphasis-strong: var(--dirty-theme-accent-text);
   --dirty-ui-warning: #ffd86b;
   --dirty-ui-info: #86cfe0;
-  /* Fixed navigation artwork palette sampled from the De Stijl reference. */
+  /* De Stijl block fills, sampled from its reference palette. */
   --dirty-ui-icon-red: #dc5e5f;
   --dirty-ui-icon-blue: #5b9acf;
   --dirty-ui-icon-white: #dcdcdc;
@@ -450,11 +450,6 @@
   --dirty-ui-on-warning: #ffffff;
   --dirty-ui-warning: #ffb366;
   --dirty-ui-info: #48aff0;
-  /* Stash's navigation icons are monochrome; black is the navbar colour. */
-  --dirty-ui-icon-red: #f5f8fa;
-  --dirty-ui-icon-blue: #f5f8fa;
-  --dirty-ui-icon-white: #f5f8fa;
-  --dirty-ui-icon-black: #394b59;
 }
 
 /* body only lets one selector cover portals; #root raises it over the hub's
@@ -1917,8 +1912,24 @@ body.dirty-ui-modal-open {
   }
 }
 
-.dirty-plugins-nav svg {
+/* A fixed box, so switching theme never shifts the Stash navbar. */
+.dirty-ui-nav-icon {
+  align-items: center;
+  display: inline-flex;
+  font-style: normal;
+  height: 20px;
+  justify-content: center;
+  width: 20px;
+}
+
+.dirty-ui-nav-icon svg {
   display: block;
   height: 20px;
   width: 20px;
+}
+
+/* Sixteen pixels stays a whole-number scale, which keeps sprite edges sharp. */
+.dirty-ui-nav-icon svg.dirty-ui-nav-sprite {
+  height: 16px;
+  width: 16px;
 }

@@ -18,7 +18,7 @@ reusing save/error colours.
 | Settings draft lifecycle | `react.useSettingsDraft` | Serialization, revision/conflict policy, preview/run state |
 | Page state | `StateView`, `SaveStatus`, `ui.notify` | Retry operation and data loading |
 | Data summary | `Metric`, `Badge`, `Pagination`, `.dirty-ui-table` | Page size, columns, and domain meaning |
-| Route action | `NavAction` | Route and icon meaning |
+| Route action | `NavAction` with a `NavIcon` | Route and label |
 | Browser page title | `react.usePageTitle(pluginName, viewTitle)` | Plugin name and current view label |
 | Statistic navigation | `StatisticSelector` with `to` on each option, so the items are links | Available statistics and their routes |
 | Secondary row actions | `ActionMenu` (⋮ overflow menu) | Which actions are rare enough to hide |
@@ -81,9 +81,8 @@ offset shadows, dark construction lines, and small asymmetric colour accents def
 the theme. Page headers omit decorative strips to keep their height compact.
 Main statistic/category selectors use solid blue fills, bold uppercase labels,
 a narrow coral edge, and a modest offset shadow. Small text uses darker blue/red ink variants for contrast; coral
-button labels use near-black. Navigation artwork shares the reference palette
-in every theme except StockStash. Keep those colours in the hub's
-`--dirty-ui-icon-*` tokens; there is no yellow in this palette.
+button labels use near-black. Its block fills use the hub's `--dirty-ui-icon-*`
+tokens; there is no yellow in this palette.
 
 **De Stijl Dark** (`destijl-dark`) shares the same geometry and artwork, with
 charcoal surfaces and grey text. Its lighter blue and coral ink variants keep
@@ -100,6 +99,17 @@ primary text role leaves the stock value: `#4fb2f1` instead of the link colour
 Stash theme does not recolour it. Rank's King of the Hill keeps its gold game-mode
 palette here too. Its rules use `:is(#root, body)` so one selector covers body
 portals and still outranks the hub's `#root` rules.
+
+## Navigation icons
+
+`react.NavIcon` draws the header icons `hub`, `stats`, `multiscreen`, `battles`,
+and `leaderboards`, with one set for each suite theme, and follows a theme
+change. The artwork lives in `components/NavIcon.tsx`, so a plugin only names its
+icon and a new theme adds a complete set there. Colours are literal because
+Stash's navbar keeps the host theme: check them against that navbar, not the suite
+surfaces. Every icon sits in a 20px box. Retro Arcade sprites draw at 16px so their
+pixels stay at a whole-number scale. A Stash theme that sizes navbar icons itself,
+as Refract does at 14px, wins: do not override it.
 
 ## Dialogs and native content
 
