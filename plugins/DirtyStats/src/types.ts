@@ -403,7 +403,7 @@ export interface WidgetOptions extends Record<string, SettingValue> {
   grouping: string;
   showCapacity: boolean;
   showForecast: boolean;
-  showPerformerCount: boolean;
+  showSceneCount: boolean;
   showModeAge: boolean;
   showMedianAge: boolean;
   showAverageAge: boolean;

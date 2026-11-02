@@ -125,7 +125,7 @@ async function main() {
   assert.equal(numberField.kind, "number");
   assert.equal(numberField.min, 1);
   assert.equal(numberField.max, 36);
-  assert.equal(domain.fieldDefinition("dirtyPlugins", { name: "visualTheme", type: "STRING" }).options.length, 7);
+  assert.equal(domain.fieldDefinition("dirtyPlugins", { name: "visualTheme", type: "STRING" }).options.length, 8);
   const orderField = domain.fieldDefinition("multiscreen", { name: "sceneOrder", type: "STRING" });
   assert.equal(orderField.kind, "select");
   assert.deepEqual(

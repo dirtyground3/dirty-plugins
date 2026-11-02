@@ -20,6 +20,28 @@ export const STUDIO_TREE_QUERY =
   "}".repeat(STUDIO_ANCESTORS) +
   "}}}}";
 
+/** Stash fails a whole ID lookup when one ID was deleted after the page loaded; this names that ID. */
+export function deletedCardId(error: { message?: string } | null | undefined, ids: Array<string | number>) {
+  const match = /with id (\d+) not found/.exec((error && error.message) || "");
+  return match && ids.some(id => String(id) === match[1]) ? match[1] : null;
+}
+
+/**
+ * Card lookups drop an ID that was deleted after the page loaded and ask again without it.
+ * Returns the ID being dropped, so the card list keeps loading instead of showing the error.
+ */
+export function useDeletedCard(
+  error: { message?: string } | null | undefined,
+  ids: Array<string | number>,
+  setDeletedIds: (update: (deleted: string[]) => string[]) => void,
+) {
+  const deletedId = deletedCardId(error, ids);
+  React.useEffect(() => {
+    if (deletedId) setDeletedIds(deleted => deleted.concat(deletedId));
+  }, [deletedId]);
+  return deletedId;
+}
+
 /**
  * @template T
  * @param {StatsPageRequest<T>} request

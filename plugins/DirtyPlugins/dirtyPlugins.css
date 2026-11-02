@@ -400,6 +400,297 @@
   }
 }
 
+/* Values read from Stash's served stylesheet: Bootstrap 4 with Blueprint colours. */
+.dirty-ui-theme-stockstash {
+  --dirty-theme-bg: #202b33;
+  --dirty-theme-panel: #30404d;
+  /* Stash's field fill, rgba(16, 22, 26, 0.3), composited over a card. */
+  --dirty-theme-panel-alt: #26333e;
+  /* Stash's link #48aff0 reaches 4.4:1 on a card; this keeps the hue at 4.5:1. */
+  --dirty-theme-primary: #4fb2f1;
+  --dirty-theme-primary-strong: #7cc6f5;
+  --dirty-theme-secondary: #8a9ba8;
+  --dirty-theme-accent: #ffb366;
+  --dirty-theme-highlight: #d9822b;
+  --dirty-theme-text: #f5f8fa;
+  --dirty-theme-muted: #bfccd6;
+  --dirty-theme-grid: #394b59;
+  --dirty-theme-border: #5c7080;
+  --dirty-theme-border-soft: rgba(16, 22, 26, 0.4);
+  --dirty-theme-selection: #ffffff;
+  --dirty-theme-accent-text: #ffb366;
+  --dirty-theme-soft: rgba(72, 175, 240, 0.2);
+  --dirty-theme-softer: rgba(72, 175, 240, 0.08);
+  --dirty-theme-surface: #30404d;
+  --dirty-theme-page-background: #202b33;
+  --dirty-theme-feature-background: #30404d;
+  --dirty-theme-feature-shadow: var(--dirty-ui-shadow);
+  --dirty-theme-secondary-background: #394b59;
+  --dirty-theme-radius: 0.1875rem;
+  --dirty-theme-button-radius: 0.25rem;
+  --dirty-theme-on-accent: #10161a;
+  --dirty-theme-primary-fill: #137cbd;
+  --dirty-theme-primary-fill-hover: #10659a;
+  --dirty-theme-secondary-fill-hover: #2a3742;
+  --dirty-theme-hover: rgba(138, 155, 168, 0.15);
+  --dirty-ui-backdrop: rgba(0, 0, 0, 0.5);
+  --dirty-ui-border: rgba(16, 22, 26, 0.4);
+  --dirty-ui-border-soft: rgba(16, 22, 26, 0.4);
+  --dirty-ui-control-height: 2.375rem;
+  --dirty-ui-danger: #ff7373;
+  --dirty-ui-danger-action: #db3737;
+  --dirty-ui-danger-action-hover: #c82424;
+  --dirty-ui-on-danger-action: #ffffff;
+  --dirty-ui-radius-small: 0.25rem;
+  --dirty-ui-shadow: 0 0 0 1px rgba(16, 22, 26, 0.4);
+  --dirty-ui-success: #3dcc91;
+  --dirty-ui-success-surface: #0d8050;
+  --dirty-ui-error-surface: #db3737;
+  --dirty-ui-warning-surface: #a66321;
+  --dirty-ui-on-warning: #ffffff;
+  --dirty-ui-warning: #ffb366;
+  --dirty-ui-info: #48aff0;
+  /* Stash's navigation icons are monochrome; black is the navbar colour. */
+  --dirty-ui-icon-red: #f5f8fa;
+  --dirty-ui-icon-blue: #f5f8fa;
+  --dirty-ui-icon-white: #f5f8fa;
+  --dirty-ui-icon-black: #394b59;
+}
+
+/* body only lets one selector cover portals; #root raises it over the hub's
+   #root rules, which Stash themes would otherwise win against. */
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-button {
+  box-shadow: none !important;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.5;
+  padding: 0.375rem 0.75rem;
+  transition: none;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-button:hover:not(:disabled),
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-button:active:not(:disabled) {
+  box-shadow: none !important;
+  transform: none;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-button.dirty-ui-control-compact {
+  font-size: 0.875rem;
+  min-height: 0;
+  padding: 0.25rem 0.5rem;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-button.btn-primary {
+  background: var(--dirty-theme-primary-fill) !important;
+  border-color: var(--dirty-theme-primary-fill) !important;
+  color: #fff !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-button.btn-primary:hover:not(:disabled) {
+  background: var(--dirty-theme-primary-fill-hover) !important;
+  border-color: var(--dirty-theme-primary-fill-hover) !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-button.btn-secondary {
+  background: var(--dirty-theme-secondary-background) !important;
+  border-color: var(--dirty-theme-secondary-background) !important;
+  color: #fff !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-button.btn-secondary:hover:not(:disabled) {
+  background: var(--dirty-theme-secondary-fill-hover) !important;
+  border-color: var(--dirty-theme-secondary-fill-hover) !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-button.dirty-ui-control-quiet {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--dirty-theme-text) !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-button.dirty-ui-control-quiet:hover:not(:disabled),
+.dirty-ui-theme-stockstash .dirty-ui-control-quiet:hover:not(:disabled),
+.dirty-ui-theme-stockstash .dirty-ui-nav-action:hover,
+.dirty-ui-theme-stockstash .dirty-ui-nav-action:focus-visible,
+.dirty-ui-theme-stockstash .dirty-ui-nav-action.active {
+  background: var(--dirty-theme-hover) !important;
+  border-color: transparent !important;
+  color: var(--dirty-theme-text) !important;
+}
+
+/* Text fields sit sunken in the card; selects use Stash's raised control fill. */
+.dirty-ui-theme-stockstash :is(#root, body) :is(.dirty-ui-pilot, .dirty-plugins-page, .dirty-stats-page, .dirty-ui-dialog, .dirty-ui-field, .dirty-ui-control-row) .form-control {
+  background-color: rgba(16, 22, 26, 0.3) !important;
+  border-color: transparent !important;
+  border-radius: var(--dirty-theme-button-radius) !important;
+  box-shadow: inset 0 0 0 1px rgba(16, 22, 26, 0.3), inset 0 1px 1px rgba(16, 22, 26, 0.4);
+  color: var(--dirty-theme-text) !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) :is(.dirty-ui-pilot, .dirty-plugins-page, .dirty-stats-page, .dirty-ui-dialog, .dirty-ui-field, .dirty-ui-control-row) select.form-control {
+  background-color: var(--dirty-theme-secondary-background) !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .form-control:focus {
+  box-shadow: 0 0 0 1px #007bff, 0 0 0 3px rgba(19, 124, 189, 0.3), inset 0 0 0 1px rgba(16, 22, 26, 0.3);
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .form-control[aria-invalid="true"] {
+  box-shadow: inset 0 0 0 1px var(--dirty-ui-danger);
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-statistic-selector .dropdown-toggle {
+  background: var(--dirty-theme-secondary-background) !important;
+  border: 1px solid var(--dirty-theme-secondary-background) !important;
+  border-radius: var(--dirty-theme-button-radius) !important;
+  box-shadow: none !important;
+  color: #fff !important;
+  font-weight: 400;
+  letter-spacing: normal;
+  padding: 0.375rem 0.75rem !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-statistic-selector .dropdown-toggle:hover {
+  background: var(--dirty-theme-secondary-fill-hover) !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-statistic-selector .dropdown-toggle::after {
+  color: inherit;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) :is(.dirty-ui-statistic-selector, .dirty-ui-action-menu) .dropdown-menu {
+  background: var(--dirty-theme-secondary-background) !important;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: var(--dirty-theme-button-radius);
+  box-shadow: none;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) :is(.dirty-ui-statistic-selector, .dirty-ui-action-menu) .dropdown-item {
+  background: transparent !important;
+  color: var(--dirty-theme-text) !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) :is(.dirty-ui-statistic-selector, .dirty-ui-action-menu) .dropdown-item:hover:not(.disabled),
+.dirty-ui-theme-stockstash :is(#root, body) :is(.dirty-ui-statistic-selector, .dirty-ui-action-menu) .dropdown-item:focus:not(.disabled) {
+  background: var(--dirty-theme-hover) !important;
+  color: var(--dirty-theme-text) !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-statistic-selector .dropdown-item.active {
+  background: var(--dirty-theme-primary-fill) !important;
+  color: #fff !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-action-menu .dirty-ui-action-menu-toggle:hover,
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-action-menu.show .dirty-ui-action-menu-toggle {
+  background: var(--dirty-theme-hover) !important;
+  border-color: transparent !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-action-menu-labelled .dirty-ui-action-menu-toggle {
+  background: var(--dirty-theme-secondary-background) !important;
+  border-color: var(--dirty-theme-secondary-background) !important;
+  color: #fff !important;
+}
+
+/* Stash's tabs are plain text with a blue underline on the active one. */
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-plugins-tabs {
+  border-bottom: 0 !important;
+  margin-bottom: 1.5rem;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-plugins-tab {
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  color: var(--dirty-theme-text) !important;
+  padding: 8px;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-plugins-tab:hover,
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-plugins-tab:focus-visible {
+  border-bottom-color: #fff !important;
+}
+
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-plugins-tab.active {
+  background: transparent !important;
+  border-bottom-color: var(--dirty-theme-primary) !important;
+  border-radius: 0 !important;
+  color: var(--dirty-theme-primary) !important;
+}
+
+.dirty-ui-theme-stockstash .dirty-plugins-card,
+.dirty-ui-theme-stockstash .dirty-ui-panel,
+.dirty-ui-theme-stockstash .dirty-ui-feature-card,
+.dirty-ui-theme-stockstash .dirty-ui-dialog,
+.dirty-ui-theme-stockstash .dirty-ui-native-filter-dialog {
+  background: var(--dirty-theme-panel);
+  border-color: transparent;
+  border-radius: var(--dirty-theme-radius);
+  box-shadow: var(--dirty-ui-shadow);
+}
+
+/* A setting group is the rows of one Stash card, split by black lines. */
+.dirty-ui-theme-stockstash .dirty-ui-settings-section {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
+.dirty-ui-theme-stockstash .dirty-plugins-setting {
+  border-bottom-color: #000;
+}
+
+.dirty-ui-theme-stockstash .dirty-ui-row-list {
+  background: var(--dirty-theme-panel);
+  border-color: transparent;
+  border-radius: var(--dirty-theme-radius);
+  box-shadow: var(--dirty-ui-shadow);
+}
+
+.dirty-ui-theme-stockstash .dirty-ui-row + .dirty-ui-row {
+  border-top-color: #000;
+}
+
+.dirty-ui-theme-stockstash .dirty-ui-table th,
+.dirty-ui-theme-stockstash .dirty-ui-metric-label,
+.dirty-ui-theme-stockstash :is(#root, body) .dirty-ui-action-menu .dropdown-header {
+  font-size: 0.875rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.dirty-ui-theme-stockstash .dirty-ui-badge {
+  border-color: #000;
+  border-radius: 0.25rem;
+  padding: 0.25em 0.4em;
+}
+
+.dirty-ui-theme-stockstash .dirty-ui-icon-button {
+  background: transparent;
+  border-color: transparent;
+  transition: none;
+}
+
+.dirty-ui-theme-stockstash .dirty-ui-icon-button:not(.dirty-ui-icon-button-danger, .dirty-ui-icon-button-primary) {
+  color: var(--dirty-theme-text);
+}
+
+.dirty-ui-theme-stockstash .dirty-ui-icon-button:hover:not(:disabled) {
+  background: var(--dirty-theme-hover);
+}
+
+.dirty-ui-theme-stockstash .dirty-ui-toast {
+  border-color: transparent;
+  box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.1);
+}
+
+.dirty-ui-theme-stockstash .dirty-ui-tone-error {
+  background: var(--dirty-ui-danger-action);
+}
+
 /* Keep host-theme text and surfaces available to the suite's own controls. */
 .dirty-ui-pilot {
   --dirty-ui-text: var(--dirty-theme-text);

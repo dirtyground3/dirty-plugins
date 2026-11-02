@@ -28,7 +28,8 @@ a shared SQLite database, and is installed automatically as a dependency.
 Every plugin uses the same rounded controls, aligned selects and actions,
 visible focus, and pending/saving/saved/error feedback. Choose one **Suite
 theme** in the DirtyPlugins **General** tab: Midnight (the default), Retro
-Arcade, Candy Pop, Tropical Punch, Paper Picnic, De Stijl, or De Stijl Dark. It
+Arcade, Candy Pop, Tropical Punch, Paper Picnic, De Stijl, De Stijl Dark, or
+StockStash. It
 styles all suite-owned surfaces; native Stash cards, filters, and players keep
 the host theme. The same tab creates a backup of the shared database.
 

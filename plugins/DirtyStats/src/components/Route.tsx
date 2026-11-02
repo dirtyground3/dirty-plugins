@@ -111,8 +111,7 @@ export function DirtyStatsRoute(): R.ReactElement | null {
       } else {
         await hub.native.ensureComponents("Performers", ["FilteredPerformerList", "PerformerCard"]);
       }
-      if (statistic === "ages")
-        await hub.native.ensureComponents("Performers", ["FilteredPerformerList", "PerformerCard"]);
+      if (statistic === "ages") await hub.native.ensureComponents("Performers", ["FilteredPerformerList"]);
       if (active) setReadyStatistic(statistic);
     })().catch(err => {
       if (active) setError(err.message);
@@ -155,7 +154,7 @@ export function DirtyStatsRoute(): R.ReactElement | null {
       {error ? (
         <StatsState detail={error} role="alert" title="Could not load the native filters" />
       ) : ready &&
-        (statistic !== "ages" || api.components.PerformerCard) &&
+        (statistic !== "ages" || api.components.FilteredPerformerList) &&
         (sceneView ? api.components.FilteredSceneList : api.components.FilteredPerformerList) ? (
         React.createElement(sceneView ? api.components.FilteredSceneList : api.components.FilteredPerformerList, {
           key: statistic,

@@ -1014,3 +1014,137 @@ test("Tag DNA offers bar and cluster views on the page and in widgets", async ()
   assert.ok(cards().props.title.startsWith("Scenes tagged "), "links are not tags");
   e.renderer.unmount();
 });
+
+test("age at scene counts and lists scenes, not performers", async () => {
+  const birthdate = "2000-01-01";
+  const scenes = [
+    {
+      id: "1",
+      date: "2024-06-15",
+      performers: [
+        { id: "a", birthdate },
+        { id: "b", birthdate: "2000-02-02" },
+      ],
+    },
+    { id: "2", date: "2024-07-01", performers: [{ id: "a", birthdate }] },
+    {
+      id: "3",
+      date: "2025-07-01",
+      performers: [
+        { id: "a", birthdate },
+        { id: "c", birthdate: "1990-01-01" },
+      ],
+    },
+    { id: "4", date: null, performers: [{ id: "a", birthdate }] },
+  ];
+  const e = environment({ graphql: async () => ({ findScenes: { count: scenes.length, scenes } }) });
+  const { AgePage } = runComponent(
+    "src/components/Ages.tsx",
+    { window: e.window, AbortController },
+    { external: ["./Cards"], modules: { "./Cards": { SceneCards: props => element("scene-cards", props) } } },
+  );
+  const filter = { makeFindFilter: () => ({}), makeFilter: () => ({}) };
+  const render = () => e.renderer.render(element(AgePage, { filter }));
+  render();
+  await e.renderer.flush(render);
+  const chart = e.instances[0];
+  const counts = () => Array.from(chart.option.series[0].data, bar => bar.value);
+  assert.equal(chart.option.xAxis.data[0], "24");
+  assert.deepEqual(counts().slice(0, 2), [2, 1], "two scenes at 24 and one at 25, however many performers they have");
+  assert.equal(chart.option.yAxis.name, "Scenes");
+  assert.match(chart.option.tooltip.formatter([{ name: "24", value: 2 }]), /2 scenes/);
+  const cards = () => findAll(render(), node => node.type === "scene-cards")[0];
+  const ids = () => Array.from(cards().props.scenes, scene => scene.id);
+  assert.equal(cards().props.title, "Scenes");
+  assert.deepEqual(ids(), ["1", "2", "3"], "all ages lists every counted scene once");
+  assert.equal(cards().props.selection, false);
+  const click = async age => {
+    chart.handlers.get("click")({ componentType: "series", name: age });
+    await e.renderer.flush(render);
+  };
+  await click("24");
+  assert.equal(cards().props.title, "Scenes with a performer aged 24");
+  assert.deepEqual(ids(), ["1", "2"]);
+  await click("0");
+  assert.equal(cards().props.selection, true, "age zero is still a selection");
+  cards().props.clearSelection();
+  await e.renderer.flush(render);
+  assert.equal(cards().props.title, "Scenes");
+  e.renderer.unmount();
+});
+
+test("card lists drop an ID deleted after the page loaded and keep the others", async () => {
+  const e = environment({ captureEnabled: () => false });
+  e.window.location = { search: "" };
+  e.window.PluginApi.components = { PerformerCard: "performer-card", SceneCard: "scene-card" };
+  let deleted = [],
+    failure = null;
+  const lookup = (entity, requested) => {
+    const missing = requested.find(id => deleted.includes(id));
+    if (failure) return { error: { message: failure } };
+    if (missing != null) return { error: { message: entity + " with id " + missing + " not found" } };
+    return { rows: requested.map(id => ({ id: String(id) })) };
+  };
+  const requests = [];
+  e.window.PluginApi.GQL = {
+    useFindPerformersQuery: ({ variables }) => {
+      requests.push(variables.performer_ids);
+      const { error, rows } = lookup("performer", variables.performer_ids);
+      return error ? { error } : { data: { findPerformers: { performers: rows } } };
+    },
+    useFindScenesQuery: ({ variables }) => {
+      requests.push(variables.scene_ids);
+      const { error, rows } = lookup("scene", variables.scene_ids);
+      return error ? { error } : { data: { findScenes: { scenes: rows } } };
+    },
+  };
+  const { PerformerCards, SceneCards } = runComponent(
+    "src/components/Cards.tsx",
+    { window: e.window, AbortController },
+    { external: [], modules: {} },
+  );
+  const filter = { makeFindFilter: () => ({}), makeFilter: () => ({}) };
+  const items = [{ id: "1" }, { id: "2" }, { id: "3" }];
+  const lists = [
+    [() => element(PerformerCards, { performers: items }), "performer-card", "Performers (2)"],
+    [() => element(SceneCards, { scenes: items, filter }), "scene-card", "Scenes (2)"],
+  ];
+  for (const [list, card, heading] of lists) {
+    deleted = [2];
+    failure = null;
+    requests.length = 0;
+    const render = () => e.renderer.render(list());
+    render();
+    await e.renderer.flush(render);
+    const tree = render();
+    assert.deepEqual(
+      findAll(tree, node => node.type === card).map(node => node.props.performer?.id ?? node.props.scene?.id),
+      ["1", "3"],
+      "the remaining cards appear",
+    );
+    assert.deepEqual(Array.from(requests[0]), [1, 2, 3]);
+    assert.deepEqual(Array.from(requests.at(-1)), [1, 3], "the next request leaves out the deleted ID");
+    assert.equal(findAll(tree, node => node.props?.role === "alert").length, 0, "no error is shown");
+    assert.equal(
+      findAll(tree, node => node.type === "h2")[0]
+        .children.flat()
+        .join(""),
+      heading,
+    );
+    e.renderer.unmount();
+  }
+
+  for (const [list] of lists) {
+    deleted = [];
+    failure = "Failed to fetch";
+    const render = () => e.renderer.render(list());
+    render();
+    await e.renderer.flush(render);
+    assert.equal(
+      findAll(render(), node => node.props?.detail === "Failed to fetch").length,
+      1,
+      "other failures stay visible",
+    );
+    e.renderer.unmount();
+  }
+});

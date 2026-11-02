@@ -622,7 +622,7 @@ for (const statistic of Object.keys(dashboard.registry)) {
 }
 
 const ageMetricOptions = {
-  showPerformerCount: "performers",
+  showSceneCount: "scenes",
   showModeAge: "mode age",
   showMedianAge: "median age",
   showAverageAge: "average age",
@@ -646,7 +646,7 @@ for (const size of ["small", "medium", "large"]) {
     }
     assert.equal(
       rendered.some(node => node.props.className === "dirty-stats-dashboard-metrics"),
-      mask !== 0 || size === "large",
+      mask !== 0,
       "empty summaries are omitted",
     );
     const chart = rendered.find(node => node.type && node.type.name === "Chart");
@@ -693,7 +693,7 @@ for (const name of Object.keys(ageMetricOptions)) {
   ).find(
     node =>
       node.props.value === true &&
-      node.props.label === "Show " + (name === "showPerformerCount" ? "performer count" : ageMetricOptions[name]),
+      node.props.label === "Show " + (name === "showSceneCount" ? "scene count" : ageMetricOptions[name]),
   );
   assert.ok(control, "each metric has a control");
   control.props.onChange(false);
@@ -795,11 +795,11 @@ const cardResource = { [helpers.resourceKey(cardWidget)]: { loading: false, rows
 const cardRenderer = nodes(
   dashboard.Widget({ ...widgetProps, widget: cardWidget, resources: cardResource, editing: false }),
 ).find(node => node.type && node.type.name === "PerformerCardWidget").type;
-let cardEffect,
+let cardEffects = [],
   nativeLoads = 0,
   querySkipped = false;
 context.window.PluginApi.React.useEffect = effect => {
-  cardEffect = effect;
+  cardEffects.push(effect);
 };
 context.window.PluginApi.components = {};
 context.window.PluginApi.GQL = {
@@ -815,13 +815,13 @@ context.window.DirtyPlugins.native = {
   },
 };
 cardRenderer({ widget: cardWidget, rows: [{ id: "42" }] });
-cardEffect();
+cardEffects.splice(0).forEach(effect => effect());
 assert.equal(nativeLoads, 0, "capture mode does not load native performer cards");
 assert.equal(querySkipped, true, "capture mode does not query native cards");
 context.window.location.search = "";
 context.window.DirtyPlugins.captureEnabled = () => false;
 cardRenderer({ widget: cardWidget, rows: [{ id: "42" }] });
-cardEffect();
+cardEffects.splice(0).forEach(effect => effect());
 assert.equal(nativeLoads, 1, "dashboard cards use the shared Stash component loader");
 
 context.window.PluginApi.components.PerformerCard = "PerformerCard";

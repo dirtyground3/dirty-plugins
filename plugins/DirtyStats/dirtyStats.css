@@ -791,6 +791,12 @@
   outline-offset: 2px;
 }
 
+.dirty-stats-theme-stockstash .dirty-stats-dashboard-widget,
+.dirty-stats-theme-stockstash.dirty-stats-page .dirty-ui-panel {
+  border-color: transparent;
+  box-shadow: var(--dirty-ui-shadow);
+}
+
 .dirty-stats-dashboard-widget-small {
   grid-column: span 3;
 }

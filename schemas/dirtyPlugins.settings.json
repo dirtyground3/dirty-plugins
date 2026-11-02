@@ -33,6 +33,10 @@
         {
           "value": "destijl-dark",
           "label": "De Stijl Dark"
+        },
+        {
+          "value": "stockstash",
+          "label": "StockStash"
         }
       ]
     },

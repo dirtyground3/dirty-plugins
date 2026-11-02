@@ -80,7 +80,13 @@ vm.runInNewContext(require("./load_plugin_scripts").sourceFor("DirtyPlugins"), {
   assert(classes.has("dirty-ui-theme-destijl-dark"));
   assert(!classes.has("dirty-ui-theme-destijl"), "the dark variant replaces the light variant");
   assert.equal(saved.dirtyPlugins.visualTheme, "destijl-dark", "the dark variant is stored for the next load");
+  await hub.configurePlugin("dirtyPlugins", { visualTheme: "stockstash" });
+  assert.equal(hub.theme.currentKey, "stockstash");
+  assert(classes.has("dirty-ui-theme-stockstash"));
+  assert(!classes.has("dirty-ui-theme-destijl-dark"));
+  assert.equal(saved.dirtyPlugins.visualTheme, "stockstash", "StockStash is stored for the next load");
   await hub.configurePlugin("dirtyPlugins", { visualTheme: "classic" });
+  assert(!classes.has("dirty-ui-theme-stockstash"), "switching away removes the StockStash overrides");
   assert(!classes.has("dirty-ui-theme-destijl"), "switching away removes all De Stijl overrides");
   assert(!classes.has("dirty-ui-theme-destijl-dark"));
   unsubscribe();

@@ -1,13 +1,15 @@
 import { State } from "./Chart";
 import { orderedCards } from "../domain/analytics";
+import { useDeletedCard } from "../domain/data";
 import { docsCaptureEnabled } from "../domain/filters";
 import { React, api, hub } from "../runtime";
 import type * as R from "react";
 import type { CardWidgetProps } from "../props";
 import type { EntityResponse, StatsPerformer } from "../types";
 export function PerformerCardWidget(props: CardWidgetProps): R.ReactElement | null {
+  const [deletedIds, setDeletedIds] = React.useState<string[]>([]);
   const rows = props.rows,
-    ids = rows.map(performer => String(performer.id));
+    ids = rows.map(performer => String(performer.id)).filter(id => !deletedIds.includes(id));
   const docsCapture = docsCaptureEnabled(window.location.search);
   const [ready, setReady] = React.useState(Boolean(api.components.PerformerCard));
   const [error, setError] = React.useState("");
@@ -38,11 +40,12 @@ export function PerformerCardWidget(props: CardWidgetProps): R.ReactElement | nu
     },
     skip: docsCapture || !ready || !ids.length,
   });
+  const deletedId = useDeletedCard(query.error, ids, setDeletedIds);
   if (!ids.length) return <State title="No performers" detail="No performers match this widget's filters." />;
   if (docsCapture)
     return <State title="Performer cards hidden" detail="Cards are hidden while capturing documentation." />;
   if (error) return <State title="Could not load performer cards" detail={error} role="alert" />;
-  if (!ready || query.loading) return <State title="Loading performer cards…" />;
+  if (!ready || query.loading || deletedId) return <State title="Loading performer cards…" />;
   if (query.error) return <State title="Could not load performer cards" detail={query.error.message} role="alert" />;
   const cards = orderedCards(query.data && query.data.findPerformers ? query.data.findPerformers.performers : [], ids);
   const deceasedIds = new Set(rows.filter(performer => performer.death_date).map(performer => String(performer.id)));

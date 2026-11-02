@@ -32,8 +32,8 @@ Widget settings share responsive columns: labeled controls and filters align
 together, with checkboxes on separate aligned rows. Small widgets wrap the
 same layout into fewer columns.
 
-The suite has seven visual themes. **Midnight** is the fresh-install default;
-**Retro Arcade**, **Candy Pop**, **Tropical Punch**, light **Paper Picnic**, **De Stijl**, and **De Stijl Dark**
+The suite has eight visual themes. **Midnight** is the fresh-install default;
+**Retro Arcade**, **Candy Pop**, **Tropical Punch**, light **Paper Picnic**, **De Stijl**, **De Stijl Dark**, and **StockStash**
 give DirtyStats pages, dashboard cards, controls, calendars, Tag DNA, and charts
 their own colors and character. Select the theme in the **General** tab of
 DirtyPlugins settings. It applies to all Dirty plugins and saves automatically.
@@ -59,12 +59,12 @@ by default. Widget titles and controls remain available when the summary is
 hidden. **Performer origin** uses a world map at every size; Small shows only
 the map, and Large also offers **Show map numbers**.
 
-**Age at scene** offers separate toggles for **Show performer count**, **Show
-mode age**, **Show median age**, and **Show average age** at every size. Performer
-count and mode are enabled by default; median and average are optional. The
-shared **Show header** switch hides all summary metrics. Age statistics use the
-histogram's counts: each performer counts once per age, regardless of repeated
-scenes at that age. Tied modes use the lowest age; median and average display up
+**Age at scene** offers separate toggles for **Show scene count**, **Show mode
+age**, **Show median age**, and **Show average age** at every size. Scene count
+and mode are enabled by default; median and average are optional. The shared
+**Show header** switch hides all summary metrics. Age statistics use the
+histogram's counts: each scene counts once per age, however many of its
+performers share that age. Tied modes use the lowest age; median and average display up
 to one decimal place. Missing age data displays a dash.
 
 **Default stats** shows the figures of Stash's statistics page in one widget:
@@ -234,14 +234,14 @@ the slice selection.
 
 **Age at scene** is a histogram using native scene filters and their saved
 defaults. The x-axis is the performer's completed age on the scene's `date`,
-calculated from `birthdate`; the y-axis counts distinct performer IDs at each
-age. Multiple scenes at the same age count a performer once, while scenes at
-different ages can place them in multiple bars. Missing, partial, invalid, or
+calculated from `birthdate`; the y-axis counts distinct scenes at each age. A
+scene counts once per age, so one with performers of different ages appears in
+each of their bars. Missing, partial, invalid, or
 chronologically inconsistent dates are excluded and reported. Hover for counts,
 zoom with the mouse wheel to explore ages, and **Export PNG** to save the plot.
-Native performer cards appear below, with 24 per page and at most five per row.
-Click an age bar to highlight it and show its distinct performers. **Show all
-ages** restores everyone counted in the histogram. Scene filters determine
+Native scene cards appear below, with 24 per page.
+Click an age bar to highlight it and show its scenes. **Show all ages** restores
+every scene counted in the histogram. Scene filters determine
 the matching scenes. **Performer filters** opens Stash's native performer filter
 panel; these filters apply to both the histogram and the cards, together with
 the scene filters. Changes apply immediately and remain selected when the panel
@@ -353,7 +353,7 @@ The repository's package builder discovers `dirtyStats.yml` automatically.
 
 DirtyStats uses the suite's rounded action/select controls, shared field and
 metric components, and visible pending/saving/saved/error feedback for display
-settings. Its seven saved visual themes remain available. Charts read their
+settings. Its eight saved visual themes remain available. Charts read their
 semantic colours from the effective page CSS, and reduced-motion mode disables
 chart animation. Native Stash filters and performer/scene cards remain native.
 Both filter dialogs use the shared DirtyPlugins dialog lifecycle; nested Stash

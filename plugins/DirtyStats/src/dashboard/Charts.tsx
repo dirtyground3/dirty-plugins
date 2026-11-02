@@ -239,20 +239,19 @@ export function growthWidget(
 export function ageWidget(scenes: StatsScene[], widget: DashboardWidgetModel): R.ReactElement | null {
   const stats = aggregateAges(scenes);
   const summary = [];
-  if (widget.options.showPerformerCount) summary.push(metric("performers", stats.performers));
+  if (widget.options.showSceneCount) summary.push(metric("scenes", stats.countedScenes));
   if (widget.options.showModeAge)
     summary.push(
       metric(
         "mode age",
         stats.modeAge == null ? "—" : stats.modeAge,
-        stats.modeCount ? stats.modeCount + " performers" : "",
+        stats.modeCount ? stats.modeCount + " scenes" : "",
       ),
     );
   if (widget.options.showMedianAge)
     summary.push(metric("median age", stats.medianAge == null ? "—" : Number(stats.medianAge.toFixed(1))));
   if (widget.options.showAverageAge)
     summary.push(metric("average age", stats.averageAge == null ? "—" : Number(stats.averageAge.toFixed(1))));
-  if (widget.size === "large") summary.push(metric("scenes", stats.scenes));
   const option: ChartOption = {
     backgroundColor: "transparent",
     grid: {
@@ -272,7 +271,7 @@ export function ageWidget(scenes: StatsScene[], widget: DashboardWidgetModel): R
     },
     yAxis: {
       type: "value",
-      name: widget.size === "large" ? "Performers" : "",
+      name: widget.size === "large" ? "Scenes" : "",
       minInterval: 1,
       axisLabel: { show: widget.size !== "small", color: themeColor("muted") },
       splitLine: { show: widget.size !== "small", lineStyle: { color: themeColor("grid") } },
@@ -284,7 +283,7 @@ export function ageWidget(scenes: StatsScene[], widget: DashboardWidgetModel): R
     <React.Fragment>
       {summary.length ? widgetHeader(widget, ...summary) : null}
       {stats.rows.length ? (
-        <Chart option={option} label="Performer ages at scene date" />
+        <Chart option={option} label="Scenes by performer age at scene date" />
       ) : (
         <State title="No age data" detail="Scene dates and full performer birthdates are required." />
       )}

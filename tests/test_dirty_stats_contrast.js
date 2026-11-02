@@ -26,7 +26,7 @@ function contrast(first, second) {
   const values = [luminance(first), luminance(second)].sort((left, right) => right - left);
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
-for (const theme of ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"]) {
+for (const theme of ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark", "stockstash"]) {
   const block = theme === "classic" ? shared : declarations(".dirty-ui-theme-" + theme);
   const value = name => role(block, name, role(shared, name));
   const accentText = role(block, "accent-text", value("accent"));
@@ -58,4 +58,17 @@ for (const theme of ["destijl", "destijl-dark"]) {
     theme + " destructive buttons have readable labels",
   );
 }
+const stock = declarations(".dirty-ui-theme-stockstash");
+assert(
+  contrast("#ffffff", property(stock, "--dirty-theme-primary-fill")) >= 4.5,
+  "StockStash primary buttons have readable labels",
+);
+assert(
+  contrast(property(stock, "--dirty-ui-on-danger-action"), property(stock, "--dirty-ui-danger-action")) >= 4.5,
+  "StockStash destructive buttons have readable labels",
+);
+assert(
+  contrast("#ffffff", property(stock, "--dirty-ui-success-surface")) >= 4.5,
+  "StockStash success toasts have readable text",
+);
 console.log("DirtyStats theme text contrast checks passed");

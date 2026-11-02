@@ -114,7 +114,7 @@ assert.equal(
   1,
   "tiny containers cannot produce negative layouts",
 );
-for (const theme of ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"]) {
+for (const theme of ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark", "stockstash"]) {
   const previousTheme = a.statsSettings.visualTheme;
   a.statsSettings.visualTheme = theme;
   const colors = a
@@ -710,7 +710,7 @@ function treemapContrast(item) {
   return item.label.color === "#fff" ? 1.05 / (luminance + 0.05) : (luminance + 0.05) / 0.05;
 }
 const savedTagTheme = a.statsSettings.visualTheme;
-for (const theme of ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark"]) {
+for (const theme of ["classic", "candy", "tropical", "arcade", "paper", "destijl", "destijl-dark", "stockstash"]) {
   a.statsSettings.visualTheme = theme;
   const samples = {
     rows: [
@@ -781,14 +781,34 @@ assert.deepEqual(JSON.parse(JSON.stringify(ages.rows)), [
   { age: 25, count: 0 },
   { age: 26, count: 1 },
 ]);
-assert.equal(ages.performers, 2);
+assert.equal(ages.countedScenes, 3);
 assert.equal(ages.scenes, 4);
 assert.equal(ages.missingSceneDates, 1);
 assert.equal(ages.missingBirthdates, 1);
 assert.equal(ages.modeAge, 24);
 assert.equal(ages.modeCount, 2);
-assert.equal(ages.medianAge, 24, "median uses performer counts in each age bucket");
-assert.equal(ages.averageAge, 74 / 3, "average uses the histogram's distinct performer-age pairs");
+assert.equal(ages.medianAge, 24, "median uses scene counts in each age bucket");
+assert.equal(ages.averageAge, 74 / 3, "average uses the histogram's distinct scene-age pairs");
+const sharedAges = a.aggregateAges([
+  {
+    id: "shared",
+    date: "2024-06-15",
+    performers: [
+      { id: "a", birthdate: "2000-01-01" },
+      { id: "b", birthdate: "2000-02-02" },
+      { id: "c", birthdate: "1999-01-01" },
+    ],
+  },
+]);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(sharedAges.rows)),
+  [
+    { age: 24, count: 1 },
+    { age: 25, count: 1 },
+  ],
+  "a scene counts once per age and appears in the bar of each performer age",
+);
+assert.equal(sharedAges.countedScenes, 1, "a scene in several bars is one counted scene");
 const evenAges = a.aggregateAges([
   {
     id: "even",
@@ -810,6 +830,7 @@ assert.equal(emptyAges.averageAge, null);
 assert.equal(a.aggregateAges([]).rows.length, 0);
 const ageScenes = [
   {
+    id: "s1",
     date: "2024-06-15",
     performers: [
       { id: "a", birthdate: "2000-06-15" },
@@ -817,28 +838,28 @@ const ageScenes = [
     ],
   },
   {
+    id: "s2",
     date: "2025-06-15",
     performers: [
       { id: "a", birthdate: "2000-06-15" },
       { id: "b", birthdate: "1990-01-01" },
     ],
   },
-  { date: null, performers: [{ id: "c", birthdate: "2000-01-01" }] },
+  { id: "s3", date: null, performers: [{ id: "c", birthdate: "2000-01-01" }] },
 ];
-assert.equal(a.performersAtAge(ageScenes, null).length, 2);
-assert.equal(a.performersAtAge(ageScenes, 24).length, 1);
-assert.equal(a.performersAtAge(ageScenes, 35)[0].id, "b");
-assert.equal(a.performersAtAge(ageScenes, 26).length, 0);
-const eligibleScenes = a.filterAgeScenes(
-  ageScenes.map((scene, i) => ({ ...scene, id: String(i) })),
-  ["b"],
-);
-assert.equal(a.performersAtAge(eligibleScenes, null).length, 1);
-assert.equal(a.performersAtAge(eligibleScenes, 24).length, 0);
-assert.equal(a.aggregateAges(eligibleScenes).performers, 1);
-assert.equal(a.performersAtAge(a.filterAgeScenes(ageScenes, []), null).length, 0);
+assert.equal(a.scenesAtAge(ageScenes, null).length, 2, "all ages lists each counted scene once");
+assert.equal(a.scenesAtAge(ageScenes, 24)[0].id, "s1");
+assert.equal(a.scenesAtAge(ageScenes, 24).length, 1);
+assert.equal(a.scenesAtAge(ageScenes, 35)[0].id, "s2", "a scene appears at each performer's age");
+assert.equal(a.scenesAtAge(ageScenes, 25)[0].id, "s2");
+assert.equal(a.scenesAtAge(ageScenes, 26).length, 0);
+const eligibleScenes = a.filterAgeScenes(ageScenes, ["b"]);
+assert.equal(a.scenesAtAge(eligibleScenes, null).length, 1);
+assert.equal(a.scenesAtAge(eligibleScenes, 25).length, 0, "performer filters exclude other performers' ages");
+assert.equal(a.aggregateAges(eligibleScenes).countedScenes, 1);
+assert.equal(a.scenesAtAge(a.filterAgeScenes(ageScenes, []), null).length, 0);
 assert.equal(a.filterAgeScenes(ageScenes, null), ageScenes);
-assert.equal(a.performersAtAge(ageScenes, null).length, 2);
+assert.equal(a.scenesAtAge(ageScenes, null).length, 2);
 assert.equal(a.birthdayInYear(2025, 2, 29).toISOString().slice(0, 10), "2025-02-28");
 assert.equal(a.birthdayInYear(2024, 2, 29).toISOString().slice(0, 10), "2024-02-29");
 const birthdayNow = new Date(Date.UTC(2026, 0, 15));

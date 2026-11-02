@@ -207,7 +207,7 @@ export function ageOption(stats: { rows: Array<{ age: number; count: number }> }
       trigger: "axis",
       renderMode: "richText",
       axisPointer: { type: "shadow" },
-      formatter: (items: ChartEvent[]) => "Age " + items[0].name + " years\n" + items[0].value + " distinct performers",
+      formatter: (items: ChartEvent[]) => "Age " + items[0].name + " years\n" + items[0].value + " scenes",
     },
     xAxis: {
       type: "category",
@@ -221,7 +221,7 @@ export function ageOption(stats: { rows: Array<{ age: number; count: number }> }
     },
     yAxis: {
       type: "value",
-      name: "Distinct performers",
+      name: "Scenes",
       nameLocation: "middle",
       nameGap: 35,
       min: 0,
@@ -233,7 +233,7 @@ export function ageOption(stats: { rows: Array<{ age: number; count: number }> }
     dataZoom: [{ type: "inside" }],
     series: [
       {
-        name: "Distinct performers",
+        name: "Scenes",
         type: "bar",
         barCategoryGap: "5%",
         itemStyle: { color: themeColor("primary") },

@@ -1,7 +1,7 @@
-import { PerformerCards } from "./Cards";
+import { SceneCards } from "./Cards";
 import { useAgePerformerFilter } from "./Filters";
 import { StatsState, chartImage, exportButton, pageToolbar } from "./Primitives";
-import { aggregateAges, performersAtAge } from "../domain/ages";
+import { aggregateAges, scenesAtAge } from "../domain/ages";
 import { filterAgeScenes, performerVariables, sceneVariables } from "../domain/analytics";
 import { React } from "../runtime";
 import { themeColor, useChartTheme } from "../settings";
@@ -63,10 +63,7 @@ export function AgePage(props: PageProps): R.ReactElement | null {
   React.useEffect(() => {
     setSelectedAge(null);
   }, [queryKey, performerKey]);
-  const selectedPerformers = React.useMemo(
-    () => performersAtAge(matchingScenes, selectedAge),
-    [matchingScenes, selectedAge],
-  );
+  const selectedScenes = React.useMemo(() => scenesAtAge(matchingScenes, selectedAge), [matchingScenes, selectedAge]);
   const stats = React.useMemo(() => aggregateAges(matchingScenes), [matchingScenes]);
   pageData.useLoad(
     {
@@ -113,7 +110,7 @@ export function AgePage(props: PageProps): R.ReactElement | null {
       {pageToolbar(
         loading
           ? "Loading scene ages..."
-          : stats.performers + " distinct performers across " + stats.scenes + " matching scenes",
+          : stats.countedScenes + " of " + stats.scenes + " matching scenes have a performer age",
         loading,
         () => {
           setRefresh(refresh + 1);
@@ -123,7 +120,7 @@ export function AgePage(props: PageProps): R.ReactElement | null {
         <StatsState detail={"Performer filters: " + matchingError} role="alert" title="Performer filter error" />
       ) : null}
       {error ? <StatsState detail={error} role="alert" title="Could not load scene ages" /> : null}
-      <section className="dirty-stats-map-panel dirty-ui-panel" aria-label="Performer age histogram">
+      <section className="dirty-stats-map-panel dirty-ui-panel" aria-label="Scenes by performer age">
         <div className="dirty-stats-map-controls">
           {exportButton(chartRef, "DirtyStats-age-at-scene.png", loading || Boolean(error) || Boolean(chartError))}
         </div>
@@ -131,17 +128,17 @@ export function AgePage(props: PageProps): R.ReactElement | null {
           ? chartImage(
               node,
               "dirty-stats-growth-chart dirty-stats-age-chart",
-              "Histogram of age in completed years at scene date versus distinct performer count.",
+              "Histogram of performer age in completed years at scene date versus distinct scene count.",
             )
           : null}
       </section>
       {chartError ? <StatsState detail={chartError} role="alert" title="Chart unavailable" /> : null}
       {!loading && !error && !stats.rows.length ? (
-        <StatsState title="No performers with valid birthdates and scene dates match these filters." />
+        <StatsState title="No scenes with valid dates and performer birthdates match these filters." />
       ) : null}
       <p>
-        Click an age bar to show its performers below. Each bar counts distinct performers at that age on matching scene
-        dates. Repeated scenes at the same age count once; a performer may appear in several age bars.
+        Click an age bar to show its scenes below. Each bar counts the matching scenes with a performer of that age on
+        the scene date. A scene with performers of different ages appears in each of their bars.
       </p>
       {!loading && !error && (stats.missingSceneDates || stats.missingBirthdates) ? (
         <p role="status">
@@ -152,10 +149,11 @@ export function AgePage(props: PageProps): R.ReactElement | null {
         </p>
       ) : null}
       {!loading && !error ? (
-        <PerformerCards
-          performers={selectedPerformers}
-          title={selectedAge == null ? "Performers" : "Performers aged " + selectedAge}
-          selection={selectedAge}
+        <SceneCards
+          scenes={selectedScenes}
+          filter={props.filter}
+          title={selectedAge == null ? "Scenes" : "Scenes with a performer aged " + selectedAge}
+          selection={selectedAge != null}
           clearSelection={() => {
             setSelectedAge(null);
           }}

@@ -145,8 +145,8 @@ export function AgePerformerControls(): R.ReactElement | null {
           </button>
         </div>
         <p>
-          Choose which performers contribute to the age histogram and cards. Scene filters remain active. Changes apply
-          immediately.
+          Choose which performers contribute to the age histogram and scene cards. Scene filters remain active. Changes
+          apply immediately.
         </p>
         {open ? (
           <api.libraries.ReactRouterDOM.MemoryRouter

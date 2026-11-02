@@ -108,6 +108,10 @@ every theme.
 **De Stijl Dark** keeps the same geometry with charcoal surfaces and light
 text. Both variants are available in the shared Suite theme selector.
 
+Choose **StockStash** to make the suite look like Stash itself: the same slate
+surfaces, flat blue and red buttons, sunken fields, underlined tabs and
+monochrome navigation icons as Stash's default interface.
+
 DirtyPlugins also owns `dirty_plugins.sqlite3`, the shared WAL-enabled database
 for high-frequency plugin data that should not trigger Stash entity-update
 hooks. Runtime database and WAL files are excluded from plugin packages and

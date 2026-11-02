@@ -3,7 +3,7 @@
 The default suite style uses graphite surfaces, teal for primary actions and
 selection, and warm amber for destructive actions. The shape is rounded and
 slightly playful; labels, focus, control height, and status meaning remain
-consistent in all seven suite themes. Inherit Stash's font by default. Keep Rank
+consistent in all eight suite themes. Inherit Stash's font by default. Keep Rank
 medals, rating precision, and Stats data series as domain colours rather than
 reusing save/error colours.
 
@@ -68,7 +68,7 @@ Paper Picnic remains readable and expressive theme shapes remain consistent;
 they do not target native cards or players.
 
 The authored Stats base, panel, and alternate-panel surfaces keep body, muted,
-primary, and accent-text roles at or above 4.5:1 contrast in all seven themes;
+primary, and accent-text roles at or above 4.5:1 contrast in all eight themes;
 `tests/test_dirty_stats_contrast.js` measures those pairs. Paper Picnic uses a
 darker amber only for calendar count text, leaving its decorative amber intact.
 Other chart colours and translucent overlays still need rendered review.
@@ -82,14 +82,24 @@ the theme. Page headers omit decorative strips to keep their height compact.
 Main statistic/category selectors use solid blue fills, bold uppercase labels,
 a narrow coral edge, and a modest offset shadow. Small text uses darker blue/red ink variants for contrast; coral
 button labels use near-black. Navigation artwork shares the reference palette
-in every theme. Keep those colours in the hub's `--dirty-ui-icon-*` tokens;
-there is no yellow in this palette.
+in every theme except StockStash. Keep those colours in the hub's
+`--dirty-ui-icon-*` tokens; there is no yellow in this palette.
 
 **De Stijl Dark** (`destijl-dark`) shares the same geometry and artwork, with
 charcoal surfaces and grey text. Its lighter blue and coral ink variants keep
 text readable; filled blue controls retain charcoal labels in both variants.
 Keep shared geometry in the combined De Stijl selectors and differences in
 the palette tokens, including the select arrow and solid shadow.
+
+**StockStash** (`stockstash`) copies Stash's own stylesheet: slate surfaces
+`#202b33`/`#30404d`/`#394b59`, flat `#137cbd` primary and `#db3737` danger
+buttons at regular weight, sunken text fields, underlined tabs, black setting
+dividers, one-pixel card rings, and monochrome navigation icons. Only the
+primary text role leaves the stock value: `#4fb2f1` instead of the link colour
+`#48aff0`, which measures 4.4:1 on a card. The values are fixed, so a third-party
+Stash theme does not recolour it. Rank's King of the Hill keeps its gold game-mode
+palette here too. Its rules use `:is(#root, body)` so one selector covers body
+portals and still outranks the hub's `#root` rules.
 
 ## Dialogs and native content
 

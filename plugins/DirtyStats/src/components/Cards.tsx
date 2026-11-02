@@ -1,5 +1,6 @@
 import { StatsState } from "./Primitives";
 import { orderedCards } from "../domain/analytics";
+import { useDeletedCard } from "../domain/data";
 import { docsCaptureEnabled } from "../domain/filters";
 import { React, api, hub } from "../runtime";
 import type * as R from "react";
@@ -8,8 +9,10 @@ import type { EntityResponse, StatsPerformer, StatsScene } from "../types";
 export function PerformerCards(props: PerformerCardsProps): R.ReactElement | null {
   const [page, setPage] = React.useState(1);
   const docsCapture = docsCaptureEnabled(window.location.search);
-  const ids = props.performers.map(p => Number(p.id));
-  const key = JSON.stringify(ids);
+  const [deletedIds, setDeletedIds] = React.useState<string[]>([]);
+  const allIds = props.performers.map(p => Number(p.id));
+  const ids = allIds.filter(id => !deletedIds.includes(String(id)));
+  const key = JSON.stringify(allIds);
   React.useEffect(() => {
     setPage(1);
   }, [key]);
@@ -32,6 +35,7 @@ export function PerformerCards(props: PerformerCardsProps): R.ReactElement | nul
     },
     skip: docsCapture || !ids.length,
   });
+  const deletedId = useDeletedCard(query.error, pageIds, setDeletedIds);
   const cards = orderedCards(
     query.data && query.data.findPerformers ? query.data.findPerformers.performers : [],
     pageIds,
@@ -56,7 +60,7 @@ export function PerformerCards(props: PerformerCardsProps): R.ReactElement | nul
         <StatsState title="Performer cards hidden" detail="Cards are hidden while capturing documentation." />
       ) : !ids.length ? (
         <StatsState detail="No performers match this selection and the current filters." title="No performers" />
-      ) : query.loading ? (
+      ) : query.loading || deletedId ? (
         <StatsState detail="Loading performer cards…" title="Loading" />
       ) : query.error ? (
         <StatsState detail={query.error.message} role="alert" title="Could not load performer cards" />
@@ -88,8 +92,10 @@ export function PerformerCards(props: PerformerCardsProps): R.ReactElement | nul
 export function SceneCards(props: SceneCardsProps): R.ReactElement | null {
   const [page, setPage] = React.useState(1);
   const docsCapture = docsCaptureEnabled(window.location.search);
-  const ids = props.scenes.map(scene => Number(scene.id));
-  const key = JSON.stringify(ids);
+  const [deletedIds, setDeletedIds] = React.useState<string[]>([]);
+  const allIds = props.scenes.map(scene => Number(scene.id));
+  const ids = allIds.filter(id => !deletedIds.includes(String(id)));
+  const key = JSON.stringify(allIds);
   React.useEffect(() => {
     setPage(1);
   }, [key]);
@@ -104,6 +110,7 @@ export function SceneCards(props: SceneCardsProps): R.ReactElement | null {
     },
     skip: docsCapture || !ids.length,
   });
+  const deletedId = useDeletedCard(query.error, pageIds, setDeletedIds);
   const cards = orderedCards(query.data && query.data.findScenes ? query.data.findScenes.scenes : [], pageIds);
   return (
     <section className="dirty-stats-scenes" aria-label="Matching scenes">
@@ -119,7 +126,7 @@ export function SceneCards(props: SceneCardsProps): R.ReactElement | null {
         <StatsState title="Scene cards hidden" detail="Cards are hidden while capturing documentation." />
       ) : !ids.length ? (
         <StatsState detail="No scenes match these filters." title="No scenes" />
-      ) : query.loading ? (
+      ) : query.loading || deletedId ? (
         <StatsState detail="Loading scene cards…" title="Loading" />
       ) : query.error ? (
         <StatsState detail={query.error.message} role="alert" title="Could not load scene cards" />

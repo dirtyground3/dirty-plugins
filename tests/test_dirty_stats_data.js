@@ -15,7 +15,12 @@ function createLoader({ React, graphql }) {
     },
   );
 }
-const { fetchAllPages } = createLoader({ React: {}, graphql() {} });
+const { deletedCardId, fetchAllPages } = createLoader({ React: {}, graphql() {} });
+assert.equal(deletedCardId({ message: "performer with id 3949 not found" }, [1, 3949]), "3949");
+assert.equal(deletedCardId({ message: "scene with id 7 not found" }, ["7"]), "7");
+assert.equal(deletedCardId({ message: "scene with id 7 not found" }, [8]), null, "only a requested ID is dropped");
+assert.equal(deletedCardId({ message: "Failed to fetch" }, [8]), null, "other failures stay visible");
+assert.equal(deletedCardId(undefined, [8]), null);
 const tick = () => new Promise(setImmediate);
 async function main() {
   const controller = new AbortController(),

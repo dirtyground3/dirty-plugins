@@ -42,9 +42,9 @@ const statistics: Record<string, Required<StatsDefinition>> = {
     entity: "scenes",
     group: "cast",
     size: "medium",
-    options: { showPerformerCount: true, showModeAge: true, showMedianAge: false, showAverageAge: false },
+    options: { showSceneCount: true, showModeAge: true, showMedianAge: false, showAverageAge: false },
     choices: {
-      showPerformerCount: [false, true],
+      showSceneCount: [false, true],
       showModeAge: [false, true],
       showMedianAge: [false, true],
       showAverageAge: [false, true],

@@ -111,7 +111,7 @@ export function birthdayMonthCounts(entries: BirthdayEntry[]) {
 
 export function aggregateAges(scenes: StatsScene[]) {
   let buckets = new Map<number, Set<string>>(),
-    performers = new Set(),
+    counted = new Set<string>(),
     seen = new Set(),
     missingSceneDates = 0,
     missingBirthdates = 0;
@@ -132,8 +132,8 @@ export function aggregateAges(scenes: StatsScene[]) {
         return;
       }
       if (!buckets.has(age)) buckets.set(age, new Set());
-      buckets.get(age)!.add(performer.id);
-      performers.add(performer.id);
+      buckets.get(age)!.add(scene.id);
+      counted.add(scene.id);
     });
   });
   const ages = Array.from(buckets.keys()).sort((a, b) => a - b),
@@ -169,7 +169,7 @@ export function aggregateAges(scenes: StatsScene[]) {
   }
   return {
     rows,
-    performers: performers.size,
+    countedScenes: counted.size,
     scenes: seen.size,
     modeAge: (mode as { age: number; count: number } | null)?.age ?? null,
     modeCount: (mode as { age: number; count: number } | null)?.count ?? 0,
@@ -180,12 +180,12 @@ export function aggregateAges(scenes: StatsScene[]) {
   };
 }
 
-export function performersAtAge(scenes: StatsScene[], selectedAge?: number | null) {
-  const found = new Map();
+export function scenesAtAge(scenes: StatsScene[], selectedAge?: number | null) {
+  const found = new Map<string, StatsScene>();
   scenes.forEach(scene => {
     (scene.performers || []).forEach(performer => {
       const age = ageAtScene(performer.birthdate, scene.date);
-      if (age != null && (selectedAge == null || age === selectedAge)) found.set(performer.id, { id: performer.id });
+      if (age != null && (selectedAge == null || age === selectedAge)) found.set(scene.id, scene);
     });
   });
   return Array.from(found.values());

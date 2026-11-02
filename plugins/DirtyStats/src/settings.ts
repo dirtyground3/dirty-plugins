@@ -186,6 +186,27 @@ const STATS_THEMES: Record<string, StatsTheme> = {
     tagHigh: [220, 94, 95],
     palette: ["#5b9acf", "#dc5e5f", "#dcdcdc", "#87b5da", "#ee9293", "#8a8a8a", "#a4c8e4", "#b8b8b8"],
   },
+  stockstash: {
+    key: "stockstash",
+    label: "StockStash",
+    background: "#202b33",
+    panel: "#30404d",
+    panelAlt: "#26333e",
+    primary: "#4fb2f1",
+    secondary: "#8a9ba8",
+    accent: "#ffb366",
+    highlight: "#d9822b",
+    text: "#f5f8fa",
+    muted: "#bfccd6",
+    grid: "#394b59",
+    border: "#5c7080",
+    selection: "#ffffff",
+    soft: "rgba(72, 175, 240, .20)",
+    softer: "rgba(72, 175, 240, .08)",
+    tagLow: [57, 75, 89],
+    tagHigh: [72, 175, 240],
+    palette: ["#48aff0", "#ffb366", "#3dcc91", "#ff7373", "#ad99ff", "#2ee6d6", "#ffc940", "#a7b6c2"],
+  },
 };
 export function statsTheme(value?: string) {
   return STATS_THEMES[value || statsSettings.visualTheme] || STATS_THEMES[DEFAULT_THEME] || STATS_THEMES.classic;

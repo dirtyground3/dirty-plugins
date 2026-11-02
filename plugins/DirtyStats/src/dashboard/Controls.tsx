@@ -198,10 +198,10 @@ export function StatisticWidgetOptions(props: WidgetOptionsProps): R.ReactElemen
     return (
       <React.Fragment>
         {check({
-          label: "Show performer count",
-          value: options.showPerformerCount,
+          label: "Show scene count",
+          value: options.showSceneCount,
           onChange: value => {
-            set("showPerformerCount", value);
+            set("showSceneCount", value);
           },
         })}
         {check({
