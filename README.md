@@ -20,7 +20,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.21 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.10 |
-| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.7 |
+| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.8 |
 | [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.15 |
 
 ## Shared look and settings
@@ -564,6 +564,9 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyCaptions 1.0.8:** edits to the **Production date** field added in Stash
+  0.32 count as metadata saves and no longer queue caption-index work.
 
 - **DirtyPlugins 1.0.15, DirtyStats 1.0.13, DirtyRank 1.0.10 and DirtyMultiscreen
   1.0.21:** the new **StockStash** suite theme makes the suite look like Stash

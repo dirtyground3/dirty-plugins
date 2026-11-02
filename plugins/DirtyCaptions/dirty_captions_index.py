@@ -312,7 +312,7 @@ def hook(client, context):
     # Stash waits for post hooks, and Advanced Rating may save rating100 again:
     # avoid a pending write and worker launch for each metadata-only mutation.
     metadata_fields = {
-        "id", "clientMutationId", "title", "code", "details", "director", "url", "urls", "date",
+        "id", "clientMutationId", "title", "code", "details", "director", "url", "urls", "date", "production_date",
         "rating100", "organized", "studio_id", "gallery_ids", "performer_ids", "groups", "movies",
         "tag_ids", "cover_image", "stash_ids", "resume_time", "play_count", "play_duration", "o_counter",
     }

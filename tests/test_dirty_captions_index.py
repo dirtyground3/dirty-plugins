@@ -552,7 +552,8 @@ class CaptionIndexTests(unittest.TestCase):
              mock.patch.object(client, "call", side_effect=AssertionError("Unnecessary GraphQL")):
             for fields in (["id", "tag_ids"], ["id", "rating100"], ["id", "tag_ids", "rating100"],
                            ["id", "title", "performer_ids", "studio_id", "stash_ids"],
-                           ["id", "rating100", "resume_time", "o_counter"]):
+                           ["id", "rating100", "resume_time", "o_counter"],
+                           ["id", "date", "production_date"]):
                 with self.subTest(fields=fields):
                     index.hook(client, {"id": "1", "type": "Scene.Update.Post",
                                         "input": {"id": "1"}, "inputFields": fields})
