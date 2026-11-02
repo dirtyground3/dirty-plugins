@@ -81,6 +81,7 @@ function createMultiscreenHarness(options = {}) {
           video.currentTime = value;
         },
         duration: () => video.duration,
+        play: () => video.play(),
         readyState: () => options.readyState ?? 4,
         isDisposed() {
           return this.disposed;

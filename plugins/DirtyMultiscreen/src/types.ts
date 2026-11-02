@@ -88,6 +88,7 @@ export interface Player {
   currentTime(): number;
   currentTime(value: number): void;
   duration(): number;
+  play(): Promise<unknown> | undefined;
   readyState(): number;
   volume(): number;
   volume(value: number): void;

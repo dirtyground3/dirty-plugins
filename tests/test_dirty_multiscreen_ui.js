@@ -188,6 +188,18 @@ async function markersAndLoops() {
   pair.video.currentTime = 6;
   player.props.onComplete();
   assert.equal(pair.video.currentTime, 2, "native completion loops to marker start");
+  // A finished video is paused, and native setTimestamp only seeks a paused player.
+  pair.video.currentTime = 6;
+  pair.video.paused = true;
+  let playedFrom = null;
+  const play = pair.player.play;
+  pair.player.play = function () {
+    playedFrom = pair.video.currentTime;
+    return play.call(this);
+  };
+  player.props.onComplete();
+  assert.equal(pair.video.paused, false, "a looping pane plays again after its scene ends");
+  assert.equal(playedFrom, 2, "the pane seeks before playing, so no stale frame shows");
   await h.unmount();
   assert.equal(pair.player.handlers.get("timeupdate").size, 0);
   assert.equal(pair.player.disposed, true);

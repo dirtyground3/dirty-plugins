@@ -59,6 +59,9 @@ export function LoadedNativePlayer({
   const handleComplete = React.useCallback(() => {
     if (playback.loop) {
       setTimestampRef.current?.(item.playbackRange?.start ?? 0);
+      // A finished video is paused, and native setTimestamp only seeks a paused player.
+      const player = tileRef.current?.querySelector<VideoPlayerElement>("video-js")?.player;
+      if (usable(player)) void player.play()?.catch(() => undefined);
       return;
     }
     advance();
