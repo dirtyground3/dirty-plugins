@@ -28,7 +28,7 @@ function PerformerNextButton({
     <DirtyPlugins.react.Button
       className="ms-button ms-performer-next"
       ariaLabel={`Next scene featuring ${name} for screen ${screenIndex + 1}`}
-      title={`Next scene featuring ${name} in this screen's session queue. Wraps at the end; other screens keep playing.`}
+      title={`Next scene featuring ${name} in this session. Wraps at the end; other screens keep playing.`}
       disabled={busy}
       onClick={() => onNext(performer.id)}
     >

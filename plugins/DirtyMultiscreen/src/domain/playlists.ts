@@ -39,6 +39,16 @@ export function nextFreeIndex<T extends { id: string }>(items: T[], from: number
   return -1;
 }
 
+/** The item after the playing one in a list that may not hold it, wrapping and skipping the playing scene. */
+export function nextItemAfter(items: Item[], playing?: Item) {
+  const position = items.findIndex(item => item.id === playing?.id);
+  for (let step = 1; step <= items.length; step++) {
+    const candidate = items[(position + step) % items.length];
+    if (candidate.scene.id !== playing?.scene.id) return candidate;
+  }
+  return null;
+}
+
 export function createMultiscreenPlaylists<T extends { id: string; scene?: Scene }>(
   items: T[],
   totalScreens: number,

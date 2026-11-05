@@ -15,6 +15,7 @@ export interface Settings {
   loopScenes: boolean;
   markerDuration: number;
   pauseWhenHidden: boolean;
+  showPerformerNavigation: boolean;
 }
 export interface PlaybackSettings {
   startMuted: boolean;
@@ -55,12 +56,15 @@ export interface Item {
   title: string;
   scene: Scene;
   playbackRange?: { start: number; end: number };
+  /** Added to a pane from outside its page, so the saved session keeps it. */
+  outsidePage?: boolean;
 }
 export interface SessionSearchResult {
   count: number;
   items: Item[];
 }
 export type SessionSearch = (text: string, page: number, signal: AbortSignal) => Promise<SessionSearchResult>;
+export type FindPerformerItems = (performerId: string, signal: AbortSignal) => Promise<Item[]>;
 type SelectionSource = "selection" | "marker-selection" | "performer-selection" | "studio-selection";
 export type LaunchContext =
   | { source: SelectionSource; selectedIds: string[] }
@@ -116,6 +120,8 @@ export interface AudioState {
 export interface SavedPane {
   page: number;
   itemId: string;
+  /** The scene itself when no page of the session holds it for this pane. */
+  item?: Item;
   time?: number;
   audio?: AudioState;
 }
@@ -172,6 +178,7 @@ export interface TileProps {
 export interface GridProps {
   avoidDuplicates: boolean;
   continuation?: { initialPage: number; pageCount: number; loadPage(page: number): Promise<Item[][]> };
+  findPerformerItems: FindPerformerItems;
   columns: number;
   rows: number;
   totalScreens: number;
@@ -183,6 +190,7 @@ export interface GridProps {
   /** Pane positions of a resumed session, read when the grid mounts. */
   savedPanes?: Array<SavedPane | null>;
   searchSession: SessionSearch;
+  showPerformerNavigation: boolean;
   useFindScene: UseFindScene;
 }
 export interface CounterAction {

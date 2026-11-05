@@ -65,7 +65,7 @@ def exercise(fixture, transcode=False):
     script = r'''
 const assert = require('node:assert/strict');
 const { requireSource } = require('./tests/plugin_paths');
-const url = process.argv[1];
+const [url, performer, coPerformer] = process.argv.slice(1);
 const graphql = async (query, variables) => {
   const response = await fetch(url + '/graphql', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query, variables }) });
   const result = await response.json();
@@ -126,11 +126,20 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
   assert.equal(markerSearch.scene_markers[0].seconds, 1);
   assert.equal((await queries.searchSession(markerScope, true, 'Beta', 1, new AbortController().signal)).findSceneMarkers.count, 0);
   assert.equal((await queries.searchSession(markerScope, true, 'Alpha Beta', 1, new AbortController().signal)).findSceneMarkers.count, 0, 'marker sessions match the full video-title phrase');
+  const titles = data => data.findScenes.scenes.map(scene => scene.title);
+  const signal = new AbortController().signal;
+  const sorted = { filter: { sort: 'title', direction: 'ASC' } };
+  assert.deepEqual(titles(await queries.findPerformerItems(sorted, false, performer, signal)), ['Alpha', 'Beta'], 'a performer query keeps the session sort');
+  assert.deepEqual(titles(await queries.findPerformerItems({ ...sorted, filter: { sort: 'title', direction: 'DESC' } }, false, coPerformer, signal)), ['Gamma', 'Alpha'], 'any cast position matches');
+  assert.deepEqual(titles(await queries.findPerformerItems({ ...sorted, scene_filter: scope.scene_filter }, false, performer, signal)), ['Alpha'], 'a performer query stays inside the session filter');
+  const markersWithPerformer = await queries.findPerformerItems(markerScope, true, performer, signal);
+  assert.equal(markersWithPerformer.findSceneMarkers.scene_markers[0].title, 'Explicit');
+  assert.equal(markersWithPerformer.findSceneMarkers.scene_markers[0].seconds, 1);
   process.stdout.write('PASS: compiled bounded contextual query and stable seeded random continuation\n');
   process.stdout.write('PASS: session search preserves selections, filters, original text, performer/studio membership and marker ranges\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 '''
-    subprocess.run([shutil.which("node"), "-e", script, fixture.url], check=True)
+    subprocess.run([shutil.which("node"), "-e", script, fixture.url, performer, co_performer], check=True)
     for key, value in (("performers", performer), ("studios", studio)):
         result = fixture.gql('query($filter:SceneFilterType){findScenes(scene_filter:$filter,filter:{per_page:0}){count}}', {"filter": {key: {"value": [value], "modifier": "INCLUDES", **({"depth": 0} if key == "studios" else {})}}})
         assert result["findScenes"]["count"] == 2

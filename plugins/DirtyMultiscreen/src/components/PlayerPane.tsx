@@ -1,11 +1,20 @@
 import { React } from "../runtime";
-import { locatePlaylistItem, nextFreeIndex } from "../domain/playlists";
+import { locatePlaylistItem, nextFreeIndex, nextItemAfter } from "../domain/playlists";
 import type { AudioState, GridProps, Item, SavedPane } from "../types";
 import { NativePlayerTile } from "./NativePlayerTile";
 import { PaneHeader } from "./SceneSearch";
 
 interface PaneProps
-  extends Pick<GridProps, "nativePlayer" | "playback" | "useFindScene" | "continuation" | "searchSession"> {
+  extends Pick<
+    GridProps,
+    | "nativePlayer"
+    | "playback"
+    | "useFindScene"
+    | "continuation"
+    | "searchSession"
+    | "findPerformerItems"
+    | "showPerformerNavigation"
+  > {
   playlist: Item[];
   screenIndex: number;
   onAudioChange(index: number, audio: AudioState): void;
@@ -16,20 +25,20 @@ interface PaneProps
   /** Where this pane was in a resumed session. */
   saved?: SavedPane | null;
 }
-interface QueueStep {
-  direction: 1 | -1;
-  performerId?: string;
-}
+type QueueStep = { direction: 1 | -1 } | { performerId: string };
+const NOTICE_MS = 1000;
 export function NativePlayerPane({
   playlist,
   screenIndex,
   continuation,
+  findPerformerItems,
   onAudioChange,
   onPositionChange,
   onSceneChange,
   playingElsewhere,
   saved,
   searchSession,
+  showPerformerNavigation,
   ...player
 }: PaneProps) {
   // A restoring pane shows no scene until its page is back, so the queue's first scene never starts.
@@ -46,9 +55,15 @@ export function NativePlayerPane({
   const current = React.useRef(state),
     request = React.useRef(0),
     inserted = React.useRef<{ page: number; item: Item } | null>(null),
-    retry = React.useRef<QueueStep | Item>({ direction: 1 });
+    retry = React.useRef<QueueStep | Item>({ direction: 1 }),
+    performerLookup = React.useRef<AbortController | null>(null);
   const [notice, setNotice] = React.useState("");
   current.current = state;
+  React.useEffect(() => {
+    if (!notice) return undefined;
+    const timer = window.setTimeout(() => setNotice(""), NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   React.useEffect(() => {
     request.current++;
     inserted.current = null;
@@ -66,6 +81,7 @@ export function NativePlayerPane({
     }
     return () => {
       request.current++;
+      performerLookup.current?.abort();
     };
   }, [playlist, continuation]);
   const item = state.items[state.cursor];
@@ -73,69 +89,29 @@ export function NativePlayerPane({
     if (item && item.id !== resumeAt.current?.itemId) resumeAt.current = null;
     onSceneChange(screenIndex, item || null, state.page);
   }, [onSceneChange, screenIndex, item, state.page]);
-  const navigate = async (step: QueueStep) => {
-    const { direction, performerId } = step;
+  const navigate = async (direction: 1 | -1) => {
     const previous = current.current;
-    if (
-      previous.busy &&
-      "direction" in retry.current &&
-      direction === retry.current.direction &&
-      performerId === retry.current.performerId
-    )
-      return;
+    if (previous.busy && "direction" in retry.current && direction === retry.current.direction) return;
     const revision = ++request.current;
-    retry.current = step;
+    retry.current = { direction };
     setNotice("");
     const publish = (next: typeof state) => {
       if (revision !== request.current) return;
       current.current = next;
       setState(next);
     };
-    // Explicit performer navigation, like search, may choose a scene playing elsewhere.
-    const playing = !performerId && direction === 1 ? playingElsewhere?.(screenIndex) : undefined;
-    const firstFree = (items: Item[], from: number) => {
-      if (!performerId)
-        return playing ? nextFreeIndex(items, from, playing) : from >= 0 && from < items.length ? from : -1;
-      const sceneId = previous.items[previous.cursor]?.scene.id;
-      for (let cursor = from; cursor >= 0 && cursor < items.length; cursor += direction) {
-        const candidate = items[cursor];
-        if (
-          candidate.scene.id !== sceneId &&
-          candidate.scene.performers?.some(performer => performer.id === performerId)
-        )
-          return cursor;
-      }
-      return -1;
-    };
-    const startOf = (items: Item[]) => {
-      const cursor = firstFree(items, direction === 1 ? 0 : items.length - 1);
-      return !performerId && direction === 1 ? Math.max(0, cursor) : cursor;
-    };
-    const noMatch = () => {
-      publish({ ...previous, busy: false, error: "" });
-      if (performerId && revision === request.current) {
-        const performer = previous.items[previous.cursor]?.scene.performers?.find(
-          performer => performer.id === performerId,
-        );
-        const name = performer?.name?.trim() || `Performer ${performerId}`;
-        setNotice(`No other scenes featuring ${name} in this screen's session queue.`);
-      }
-    };
+    // Going forward skips items another pane is playing; going back never skips.
+    const playing = direction === 1 ? playingElsewhere?.(screenIndex) : undefined;
+    const firstFree = (items: Item[], from: number) =>
+      playing ? nextFreeIndex(items, from, playing) : from >= 0 && from < items.length ? from : -1;
+    const startOf = (items: Item[]) => (direction === 1 ? Math.max(0, firstFree(items, 0)) : items.length - 1);
     const cursor = firstFree(previous.items, previous.cursor + direction);
     if (cursor >= 0 && cursor < previous.items.length) {
       publish({ ...previous, cursor, busy: false, error: "" });
       return;
     }
     if (!continuation || continuation.pageCount <= 1) {
-      const cursor = startOf(previous.items);
-      if (cursor >= 0 && cursor < previous.items.length)
-        publish({
-          ...previous,
-          cursor,
-          busy: false,
-          error: "",
-        });
-      else noMatch();
+      if (previous.items.length) publish({ ...previous, cursor: startOf(previous.items), busy: false, error: "" });
       return;
     }
     publish({ ...previous, busy: true, error: "" });
@@ -143,30 +119,63 @@ export function NativePlayerPane({
       let page = previous.page;
       for (let attempts = 0; attempts < continuation.pageCount; attempts++) {
         page = ((page - 1 + direction + continuation.pageCount) % continuation.pageCount) + 1;
-        const playlists = performerId && page === previous.page ? null : await continuation.loadPage(page);
+        const playlists = await continuation.loadPage(page);
         if (revision !== request.current) return;
         const anchor = inserted.current;
         const items =
-          (playlists === null
-            ? previous.items
-            : anchor?.page === page
-              ? locatePlaylistItem(playlists, screenIndex, anchor.item)?.items
-              : null) ||
-          playlists?.[screenIndex] ||
+          (anchor?.page === page ? locatePlaylistItem(playlists, screenIndex, anchor.item)?.items : null) ||
+          playlists[screenIndex] ||
           [];
-        const cursor = startOf(items);
-        if (cursor >= 0 && cursor < items.length) {
-          publish({
-            items,
-            page,
-            cursor,
-            busy: false,
-            error: "",
-          });
+        if (items.length) {
+          publish({ items, page, cursor: startOf(items), busy: false, error: "" });
           return;
         }
       }
-      noMatch();
+      publish({ ...previous, busy: false, error: "" });
+    } catch (error) {
+      publish({ ...previous, busy: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  };
+  /** One query finds the performer's next scene, so no page is scanned. Like search, it may be playing elsewhere. */
+  const nextFeaturing = async (performerId: string) => {
+    const previous = current.current;
+    const revision = ++request.current;
+    retry.current = { performerId };
+    setNotice("");
+    const publish = (next: typeof state) => {
+      if (revision !== request.current) return;
+      current.current = next;
+      setState(next);
+    };
+    performerLookup.current?.abort();
+    const lookup = (performerLookup.current = new AbortController());
+    publish({ ...previous, busy: true, error: "" });
+    try {
+      const playing = previous.items[previous.cursor];
+      const matches = await findPerformerItems(performerId, lookup.signal);
+      if (revision !== request.current) return;
+      const next = nextItemAfter(matches, playing);
+      if (!next) {
+        publish({ ...previous, busy: false, error: "" });
+        const performer = playing?.scene.performers?.find(performer => performer.id === performerId);
+        const name = performer?.name?.trim() || `Performer ${performerId}`;
+        setNotice(`No other scenes featuring ${name} in this session.`);
+        return;
+      }
+      const cursor = previous.items.findIndex(item => item.id === next.id);
+      if (cursor >= 0) {
+        publish({ ...previous, cursor, busy: false, error: "" });
+        return;
+      }
+      // Next and Previous keep following this page around the chosen scene.
+      const at = previous.cursor + 1;
+      publish({
+        ...previous,
+        items: [...previous.items.slice(0, at), { ...next, outsidePage: true }, ...previous.items.slice(at)],
+        cursor: at,
+        busy: false,
+        error: "",
+      });
     } catch (error) {
       publish({ ...previous, busy: false, error: error instanceof Error ? error.message : String(error) });
     }
@@ -177,7 +186,7 @@ export function NativePlayerPane({
       restoring.current = null;
       current.current = next;
       setState(next);
-      if (!next.items.length) void navigate({ direction: 1 });
+      if (!next.items.length) void navigate(1);
     };
     const start = { items: playlist, cursor: 0, page: pages.initialPage, busy: false, error: "" };
     try {
@@ -190,7 +199,9 @@ export function NativePlayerPane({
       if (found && position) {
         inserted.current = { page, item: found };
         finish({ ...position, page, busy: false, error: "" });
-      } else if (playlists[screenIndex]?.length)
+      } else if (pane.item)
+        finish({ items: [pane.item, ...(playlists[screenIndex] ?? [])], cursor: 0, page, busy: false, error: "" });
+      else if (playlists[screenIndex]?.length)
         finish({ items: playlists[screenIndex], cursor: 0, page, busy: false, error: "" });
       else finish(start);
     } catch {
@@ -234,7 +245,7 @@ export function NativePlayerPane({
   };
   React.useEffect(() => {
     if (restoring.current && continuation) void restore(restoring.current, continuation);
-    else if (!playlist.length) void navigate({ direction: 1 });
+    else if (!playlist.length) void navigate(1);
   }, [playlist, continuation]);
   return (
     <div className="ms-cell">
@@ -244,13 +255,14 @@ export function NativePlayerPane({
         searchSession={searchSession}
         onSelect={selected => void select(selected)}
         busy={state.busy}
+        showPerformerNavigation={showPerformerNavigation}
         onNavigatePerformer={performerId => {
           const active = current.current;
           if (
             !active.busy &&
             active.items[active.cursor]?.scene.performers?.some(performer => performer.id === performerId)
           )
-            void navigate({ direction: 1, performerId });
+            void nextFeaturing(performerId);
         }}
       />
       {item && (
@@ -259,12 +271,12 @@ export function NativePlayerPane({
           audio={saved?.audio}
           item={item}
           nextItem={() => {
-            void navigate({ direction: 1 });
+            void navigate(1);
           }}
           onAudioChange={audio => onAudioChange(screenIndex, audio)}
           onPositionChange={seconds => onPositionChange(screenIndex, seconds)}
           previousItem={() => {
-            void navigate({ direction: -1 });
+            void navigate(-1);
           }}
           resumeTime={resumeAt.current?.itemId === item.id ? resumeAt.current.time : undefined}
         />
@@ -273,11 +285,11 @@ export function NativePlayerPane({
         <div className="ms-queue-status" role="status">
           {restoring.current
             ? "Restoring session…"
-            : "direction" in retry.current
-              ? retry.current.performerId
-                ? "Finding next scene featuring this performer…"
-                : "Loading next page…"
-              : "Finding scene in session…"}
+            : "performerId" in retry.current
+              ? "Finding next scene featuring this performer…"
+              : "direction" in retry.current
+                ? "Loading next page…"
+                : "Finding scene in session…"}
         </div>
       )}
       {notice && (
@@ -291,8 +303,10 @@ export function NativePlayerPane({
           <button
             className="btn btn-secondary dirty-ui-button"
             onClick={() => {
-              if ("direction" in retry.current) void navigate(retry.current);
-              else void select(retry.current);
+              const step = retry.current;
+              if ("performerId" in step) void nextFeaturing(step.performerId);
+              else if ("direction" in step) void navigate(step.direction);
+              else void select(step);
             }}
           >
             Retry

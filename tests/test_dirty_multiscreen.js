@@ -47,7 +47,9 @@ async function main() {
     loopScenes: true,
     markerDuration: 30,
     pauseWhenHidden: true,
+    showPerformerNavigation: true,
   });
+  assert.equal(a.normalizeSettings({ showPerformerNavigation: false }).showPerformerNavigation, false);
   assert.equal(
     a.normalizeSettings({ totalScreens: 6, rows: 2, columns: 2 }).totalScreens,
     4,
@@ -91,6 +93,21 @@ async function main() {
   );
   assert.equal(a.nextFreeIndex(items, 1, new Set(["b", "c"])), 3);
   assert.equal(a.nextFreeIndex(items, 4, new Set(["e"])), -1);
+  const featured = [
+    ["m1", "s1"],
+    ["m2", "s1"],
+    ["m3", "s2"],
+    ["m4", "s3"],
+  ].map(([id, scene]) => ({ id, scene: { id: scene } }));
+  assert.equal(a.nextItemAfter(featured, featured[0]).id, "m3", "the playing scene's other markers are skipped");
+  assert.equal(a.nextItemAfter(featured, featured[3]).id, "m1", "the list wraps");
+  assert.equal(
+    a.nextItemAfter(featured, { id: "other", scene: { id: "s9" } }).id,
+    "m1",
+    "an absent item starts the list",
+  );
+  assert.equal(a.nextItemAfter(featured.slice(0, 2), featured[0]), null, "only the playing scene matches");
+  assert.equal(a.nextItemAfter([], featured[0]), null);
   const split = a.createMultiscreenPlaylists(items, 2, listOrder, true);
   assert.deepEqual(plain(split.map(playlist => playlist.map(item => item.id))), [
     ["a", "c", "e"],
@@ -390,6 +407,29 @@ async function main() {
   const literalSearch = new RegExp(searchRequests[2].variables.scene_filter.title.value.slice(4), "i");
   assert(literalSearch.test("A TITLE.*(PART)[1]+?^$|\\ suffix"));
   assert(!literalSearch.test("A title something else"), "search punctuation cannot become regex operators");
+
+  const performerRequests = searchRequests.length;
+  await sessionQueries.findPerformerItems(sceneScope, false, "p1", signal);
+  assert.match(searchRequests[performerRequests].query, /MultiscreenPerformerScenes/);
+  assert.deepEqual(plain(searchRequests[performerRequests].variables), {
+    filter: { q: "original search", page: 1, per_page: -1, sort: "random_123" },
+    scene_filter: { performers: { value: ["p1"], modifier: "INCLUDES" }, AND: sceneScope.scene_filter },
+  });
+  assert.strictEqual(searchRequests[performerRequests].options.signal, signal);
+  await sessionQueries.findPerformerItems(markerScope, true, "p1", signal);
+  assert.match(searchRequests[performerRequests + 1].query, /MultiscreenPerformerMarkers/);
+  assert.deepEqual(plain(searchRequests[performerRequests + 1].variables.scene_marker_filter), {
+    tags: markerScope.scene_marker_filter.tags,
+    scene_filter: { performers: { value: ["p1"], modifier: "INCLUDES" }, AND: { organized: true } },
+  });
+  await sessionQueries.findPerformerItems({ filter: {} }, false, "p1", signal);
+  assert.deepEqual(plain(searchRequests[performerRequests + 2].variables.scene_filter), {
+    performers: { value: ["p1"], modifier: "INCLUDES" },
+  });
+  assert.throws(
+    () => sessionQueries.findPerformerItems({ filter: {}, ids: ["3"] }, false, "p1", signal),
+    /searched locally/,
+  );
 
   const performerVariables = await a.getSceneQueryVariables(nonRandom, {
     source: "performer-detail",

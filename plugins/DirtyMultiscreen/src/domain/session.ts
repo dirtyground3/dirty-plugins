@@ -8,6 +8,8 @@ const isAudio = (value: unknown): value is AudioState =>
 const isPane = (value: unknown): value is SavedPane =>
   isRecord(value) &&
   typeof value.itemId === "string" &&
+  (value.item === undefined ||
+    (isRecord(value.item) && value.item.id === value.itemId && isRecord(value.item.scene))) &&
   isFiniteNumber(value.page) &&
   value.page >= 1 &&
   (value.time === undefined || (isFiniteNumber(value.time) && value.time >= 0)) &&

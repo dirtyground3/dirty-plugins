@@ -1031,7 +1031,7 @@ async function performerNavigation() {
   assert.equal(images().length, 4, "both performers have portraits in each screen");
   assert.equal(images()[0].props.src, "/performer/p1/image");
   assert.equal(images()[1].props.src, "/performer/p2/image");
-  assert.match(button("Blair").props.title, /Blair.*session queue.*Wraps at the end.*other screens keep playing/);
+  assert.match(button("Blair").props.title, /Blair.*this session.*Wraps at the end.*other screens keep playing/);
   assert.equal(h.nodes(node => /Previous scene with|same first performer/.test(node.props?.ariaLabel || "")).length, 0);
   images()[0].props.onError();
   await h.flush();
@@ -1059,6 +1059,10 @@ async function performerNavigation() {
   assert.equal(players()[0].props.scene.id, "d");
   assert.equal(await step("Casey"), "d");
   assert.match(h.text(), /No other scenes featuring Casey/);
+  await h.tick(1000);
+  assert.doesNotMatch(h.text(), /No other scenes featuring/, "the message clears itself after a second");
+  assert.equal(await step("Casey"), "d");
+  assert.match(h.text(), /No other scenes featuring Casey/, "another click shows it again");
   players()[0].props.onNext();
   await h.flush();
   assert.doesNotMatch(h.text(), /No other scenes featuring/);
@@ -1122,6 +1126,20 @@ async function performerNavigation() {
   await marker.unmount();
 }
 
+async function performerNavigationSetting() {
+  const scenes = [{ id: "a", title: "A", paths: { stream: "/a" }, performers: [{ id: "p1", name: "Alex" }] }];
+  const portraits = h =>
+    h.nodes(node => node.type === "Button" && /^Next scene featuring/.test(node.props.ariaLabel ?? "")).length;
+  const settings = { rows: 1, columns: 1, totalScreens: 1 };
+  const shown = await start({ scenes, settings });
+  assert.equal(portraits(shown), 1, "portraits show by default");
+  await shown.unmount();
+  const hidden = await start({ scenes, settings: { ...settings, showPerformerNavigation: false } });
+  assert.equal(portraits(hidden), 0, "the setting removes the portraits");
+  assert(hidden.button("Search scenes for screen 1"), "the rest of the header stays");
+  await hidden.unmount();
+}
+
 async function pagedPerformerNavigation() {
   const scenes = Array.from({ length: 75 }, (_, index) => ({
     id: String(index),
@@ -1135,15 +1153,18 @@ async function pagedPerformerNavigation() {
   const h = await start({
     scenes,
     launch: { source: "filter", filter: { sort: "title", q: "session" }, sceneFilter: { organized: true } },
-    graphql: async (_query, variables, options) => {
-      const { page, per_page: size } = variables.filter;
-      if (page === 3) {
+    graphql: async (query, variables, options) => {
+      if (query.includes("MultiscreenPerformerScenes")) {
         if (hold) {
           signals.push(options.signal);
           await hold.promise;
         }
         if (fail) throw Error("Performer queue unavailable");
+        const [performer] = variables.scene_filter.performers.value;
+        const matches = scenes.filter(scene => scene.performers.some(({ id }) => id === performer));
+        return { findScenes: { count: matches.length, scenes: matches } };
       }
+      const { page, per_page: size } = variables.filter;
       return { findScenes: { count: scenes.length, scenes: scenes.slice((page - 1) * size, page * size) } };
     },
   });
@@ -1157,16 +1178,27 @@ async function pagedPerformerNavigation() {
     await h.flush();
     return players()[0].props.scene.id;
   };
+  const loaded = h.calls.length;
   assert.equal(await step(), "3");
+  assert.equal(h.calls.length, loaded + 1, "one query finds the next scene");
+  assert.equal(h.calls.at(-1).variables.filter.per_page, -1);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls.at(-1).variables.scene_filter.performers)), {
+    value: ["p1"],
+    modifier: "INCLUDES",
+  });
   fail = true;
-  assert.equal(await step(), "3", "a failed page keeps the playing scene and queue position");
+  assert.equal(await step(), "3", "a failed lookup keeps the playing scene and queue position");
   assert.match(h.text(), /Performer queue unavailable/);
   fail = false;
   h.nodes(node => node.type === "button" && node.props.className?.includes("dirty-ui-button"))[0].props.onClick();
   await h.flush();
   assert.equal(players()[0].props.scene.id, "50", "retry retains the chosen performer navigation request");
   assert.equal(await step(), "74");
-  assert.equal(await step(), "0", "performer navigation wraps across queue pages");
+  assert.equal(await step(), "0", "performer navigation wraps across the whole session");
+  assert(
+    h.calls.slice(loaded).every(call => call.query.includes("MultiscreenPerformerScenes")),
+    "performer navigation never loads a queue page",
+  );
   assert.equal(await step(), "3");
   assert.equal(players()[1].props.scene.id, "0");
   hold = deferred();
@@ -1189,8 +1221,10 @@ async function pagedPerformerNavigation() {
   assert.match(h.text(), /No other scenes featuring Performer unique/);
   for (const call of h.calls) {
     assert(call.variables.filter.per_page <= 240);
-    assert.equal(call.variables.filter.q, "session", "paging preserves the session's text search");
-    assert.equal(call.variables.scene_filter.organized, true, "paging preserves all session filters");
+    assert.equal(call.variables.filter.q, "session", "every query preserves the session's text search");
+    assert.equal(call.variables.filter.sort, "title", "every query preserves the session's sort");
+    const scope = call.variables.scene_filter.AND ?? call.variables.scene_filter;
+    assert.equal(scope.organized, true, "every query preserves all session filters");
   }
   players()[0].props.onNext();
   await h.flush();
@@ -1201,6 +1235,85 @@ async function pagedPerformerNavigation() {
   hold.resolve();
   await h.flush();
   assert.equal(players().length, 0);
+}
+
+async function performerNavigationAcrossPagesAndReopen() {
+  const SESSION = "multiscreen.session";
+  const scenes = Array.from({ length: 75 }, (_, index) => ({
+    id: String(index),
+    title: `Scene ${index}`,
+    paths: { stream: "/" + index },
+    performers: [{ id: [0, 50].includes(index) ? "p1" : "p2" }],
+  }));
+  const options = {
+    scenes,
+    settings: {
+      rows: 1,
+      columns: 1,
+      totalScreens: 1,
+      sceneOrder: "list",
+      randomStart: false,
+      loopScenes: false,
+    },
+    graphql: async (query, variables) => {
+      if (query.includes("MultiscreenPerformerScenes")) {
+        const [performer] = variables.scene_filter.performers.value;
+        const matches = scenes.filter(scene => scene.performers.some(({ id }) => id === performer));
+        return { findScenes: { count: matches.length, scenes: matches } };
+      }
+      const { page, per_page: size } = variables.filter;
+      return { findScenes: { count: scenes.length, scenes: scenes.slice((page - 1) * size, page * size) } };
+    },
+  };
+  const playing = h => h.nodes(node => node.type === "native-player")[0].props.scene.id;
+  const first = await start({ ...options, launch: { source: "filter", filter: { sort: "title" }, sceneFilter: {} } });
+  first
+    .nodes(
+      node => node.type === "Button" && node.props.ariaLabel === "Next scene featuring Performer p1 for screen 1",
+    )[0]
+    .props.onClick();
+  await first.flush();
+  assert.equal(playing(first), "50");
+  await first.tick(5000);
+  assert.equal(JSON.parse(first.localStorage.get(SESSION)).panes[0].page, 1, "the queue stays on its page");
+  await first.unmount();
+
+  const reopened = await start({ ...options, localStorage: new Map(first.localStorage) });
+  assert.equal(playing(reopened), "50", "reopening returns to a scene chosen from outside the saved page");
+  const calls = reopened.calls.length;
+  reopened.nodes(node => node.type === "native-player")[0].props.onNext();
+  await reopened.flush();
+  assert.equal(playing(reopened), "0", "Next continues the saved page's queue");
+  assert.equal(reopened.calls.length, calls);
+  await reopened.unmount();
+
+  const moved = JSON.parse(first.localStorage.get(SESSION));
+  const onPage = await start({
+    ...options,
+    localStorage: new Map([
+      [SESSION, JSON.stringify({ ...moved, panes: [{ ...moved.panes[0], page: 7, itemId: "74", item: undefined }] })],
+    ]),
+  });
+  assert.equal(playing(onPage), "74", "a scene on its saved page needs no stored copy");
+  await onPage.unmount();
+}
+
+async function searchFocusAfterClosing() {
+  const h = await start({ scenes: [{ id: "a", title: "A", paths: { stream: "/a" } }] });
+  const blurred = [];
+  const openAndClose = async focusRing => {
+    const opener = h.button("Search scenes for screen 1");
+    opener.props.buttonRef.current = { matches: () => focusRing, blur: () => blurred.push(focusRing) };
+    opener.props.onClick();
+    await h.flush();
+    h.nodes(node => node.type === "Dialog")[0].props.onClose();
+    await h.flush();
+  };
+  await openAndClose(true);
+  assert.deepEqual(blurred, [], "keyboard users keep their place on the opener");
+  await openAndClose(false);
+  assert.deepEqual(blurred, [false], "a mouse user's returned focus cannot keep the header showing");
+  await h.unmount();
 }
 
 async function unscopedLibraryPaging() {
@@ -1824,7 +1937,10 @@ async function sessionRestore() {
   await searchDuringMarkersAndPaging();
   await searchedQueueNavigation();
   await performerNavigation();
+  await performerNavigationSetting();
   await pagedPerformerNavigation();
+  await searchFocusAfterClosing();
+  await performerNavigationAcrossPagesAndReopen();
   await pagedPlayback();
   await avoidsDuplicateScenes();
   await reshuffleMenu();

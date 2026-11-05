@@ -40,6 +40,10 @@ export function normalizeSettings(rawSettings: Record<string, unknown>): Setting
       LIMITS.markerDuration.max,
     ),
     pauseWhenHidden: coerceBoolean(rawSettings.pauseWhenHidden, DEFAULT_SETTINGS.pauseWhenHidden),
+    showPerformerNavigation: coerceBoolean(
+      rawSettings.showPerformerNavigation,
+      DEFAULT_SETTINGS.showPerformerNavigation,
+    ),
   };
 }
 export function getPlaybackSettings(settings: Settings): PlaybackSettings {

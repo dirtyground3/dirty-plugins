@@ -44,16 +44,21 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   session, in local storage, so two open grids overwrite each other's save and it
   does not follow you to another device.
 - Scene titles and search buttons use translucent backgrounds over the video.
+  The title, search and performer portraits show and hide with the player's
+  control bar, so they fade out on a playing screen you are not hovering.
 - Each performer has a portrait button with a Next icon beside the screen's
   title and search. Click a portrait to move to another scene featuring that
   performer anywhere in its cast. Tooltips name the performer and explain the
   session scope and wraparound; missing or broken photos use initials.
-  Navigation keeps the screen's queue order, continues across pages and wraps
-  at the end without changing other screens. Other markers from the current
-  scene are skipped, and marker choices retain their original ranges. These
+  Repeated clicks step through that performer's scenes in the session's sort
+  and wrap at the end without changing other screens, and Next then continues
+  the screen's own queue. Other markers from the current scene are skipped,
+  and marker choices retain their original ranges. These
   explicit choices can play a scene already on another screen, like search
   results. Scenes without performers show no portrait buttons; no-match results
-  preserve playback with a message. Documentation capture loads no portraits.
+  preserve playback with a message that clears after a second. Documentation capture loads no portraits.
+  Turn these buttons off with **Show performer next-scene buttons** in the
+  Navigation settings.
 - The O-counter button fades away after one click per playback session. Failed saves can be retried without incrementing scenes that already succeeded.
 - Runs inside Stash and uses its existing scene and marker data.
 
@@ -102,7 +107,8 @@ The DirtyMultiscreen tab of the Dirty Plugins settings has four groups:
   between panes** and **Avoid the same scene on several screens**.
 - **Playback:** **Start muted**, **Random start**, **Loop scenes**, **Pause when
   hidden** and the length of markers without an end time.
-- **Navigation:** whether the grid button appears in the Stash header.
+- **Navigation:** whether screens show performer next-scene buttons, and whether
+  the grid button appears in the Stash header.
 
 Spreading, avoiding duplicates, muting, random starts, looping and pausing are
 enabled by default.

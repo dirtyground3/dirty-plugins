@@ -189,6 +189,11 @@ function createMultiscreenHarness(options = {}) {
         const selected = scenes.filter(scene => !variables.ids || variables.ids.includes(scene.id));
         return { findScenes: { count: selected.length, scenes: selected } };
       }
+      if (query.includes("MultiscreenPerformerScenes")) {
+        const [performer] = variables.scene_filter.performers.value;
+        const selected = scenes.filter(scene => scene.performers?.some(({ id }) => id === performer));
+        return { findScenes: { count: selected.length, scenes: selected } };
+      }
       if (query.includes("MultiscreenSceneSearch")) return { findScenes: { count: scenes.length, scenes } };
       if (query.includes("MultiscreenSceneCount")) return { findScenes: { count: scenes.length } };
       if (query.includes("MultiscreenMarkerCount"))

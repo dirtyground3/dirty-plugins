@@ -10,7 +10,7 @@ import { VisibleOCounterButton } from "./Counter";
 import { NativeMultiscreenGrid } from "./Grid";
 import { ShuffleMenu } from "./ShuffleMenu";
 import { SEARCH_PAGE_SIZE } from "../queries";
-import type { SavedPane, SavedSession, SceneOrder, SessionSearch } from "../types";
+import type { FindPerformerItems, SavedPane, SavedSession, SceneOrder, SessionSearch } from "../types";
 const PLUGIN_ID = "multiscreen";
 const closeRoute = () => {
   if (window.history.length > 1) window.history.back();
@@ -104,6 +104,28 @@ export function MultiscreenRoute() {
       return { count: data.count, items: data.scenes.map(getSceneItem).filter(item => item !== null) };
     },
     [explicitSelection, items, markerMode, markersQuery.search, scenesQuery.search, settings.markerDuration],
+  );
+  const findPerformerItems = React.useCallback<FindPerformerItems>(
+    async (performerId, signal) => {
+      if (explicitSelection)
+        return items.filter(item => item.scene.performers?.some(performer => performer.id === performerId));
+      if (markerMode) {
+        const data = await markersQuery.findPerformerItems(performerId, signal);
+        return data.scene_markers
+          .map(marker => getMarkerItem(marker, settings.markerDuration))
+          .filter(item => item !== null);
+      }
+      const data = await scenesQuery.findPerformerItems(performerId, signal);
+      return data.scenes.map(getSceneItem).filter(item => item !== null);
+    },
+    [
+      explicitSelection,
+      items,
+      markerMode,
+      markersQuery.findPerformerItems,
+      scenesQuery.findPerformerItems,
+      settings.markerDuration,
+    ],
   );
   const pageSize = getSceneLimit(settings);
   const [seed, now] = React.useMemo(
@@ -226,6 +248,8 @@ export function MultiscreenRoute() {
           totalScreens={settings.totalScreens}
           playlists={playlists}
           searchSession={searchSession}
+          findPerformerItems={findPerformerItems}
+          showPerformerNavigation={settings.showPerformerNavigation}
           continuation={continuation}
           playback={playbackSettings}
           nativePlayer={nativePlayerQuery.component}

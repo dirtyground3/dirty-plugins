@@ -175,9 +175,10 @@ Rebuild after changing plugin source, schemas or scripts: tests read
   compiled on demand in `test_dirty_multiscreen.js`.
   `test_dirty_multiscreen_ui.js` executes its sole browser bundle through
   `multiscreen_harness.js`: context order/counts, pane limits, markers, audio,
-  per-performer portrait navigation (any cast position, session scope, page
-  boundaries, wrapping, marker ranges, no-match feedback, retries, stale requests,
-  missing/broken photos and documentation-capture privacy),
+  per-performer portrait navigation (any cast position, session scope, one query
+  per click, wrapping, marker ranges, no-match feedback, retries, stale requests,
+  reopening on a scene outside the saved page, missing/broken photos and
+  documentation-capture privacy),
   hidden-tab pause/resume, counters, searched queue positions across pages,
   split and shuffled neighbors, lookup retry/stale responses, independent native
   player/streaming identities and player/listener/observer

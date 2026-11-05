@@ -133,6 +133,7 @@ export function PaneHeader({
   screenIndex,
   onSelect,
   searchSession,
+  showPerformerNavigation,
   onNavigatePerformer,
 }: {
   busy: boolean;
@@ -140,10 +141,16 @@ export function PaneHeader({
   screenIndex: number;
   onSelect(item: Item): void;
   searchSession: SessionSearch;
+  showPerformerNavigation: boolean;
   onNavigatePerformer(performerId: string): void;
 }) {
   const [open, setOpen] = React.useState(false);
   const openerRef = React.useRef<HTMLButtonElement>(null);
+  const openedWithoutFocusRing = React.useRef(false);
+  // The dialog returns focus to its opener, which would keep the header showing after a mouse user is done.
+  React.useEffect(() => {
+    if (!open && openedWithoutFocusRing.current) openerRef.current?.blur();
+  }, [open]);
   return (
     <>
       <div className="ms-pane-header">
@@ -166,14 +173,19 @@ export function PaneHeader({
           fallback="⌕"
           icon={icon("search")}
           buttonRef={openerRef}
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            openedWithoutFocusRing.current = !openerRef.current?.matches(":focus-visible");
+            setOpen(true);
+          }}
         />
-        <PerformerNavigation
-          performers={item?.scene.performers ?? []}
-          screenIndex={screenIndex}
-          busy={busy}
-          onNext={onNavigatePerformer}
-        />
+        {showPerformerNavigation && (
+          <PerformerNavigation
+            performers={item?.scene.performers ?? []}
+            screenIndex={screenIndex}
+            busy={busy}
+            onNext={onNavigatePerformer}
+          />
+        )}
       </div>
       {open && (
         <SceneSearchDialog

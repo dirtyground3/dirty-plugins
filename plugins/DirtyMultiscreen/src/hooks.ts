@@ -85,6 +85,16 @@ function useItems<T>(
     },
     [key],
   );
+  const findPerformerItems = React.useCallback(
+    async (performerId: string, signal: AbortSignal): Promise<T> => {
+      const current = pager.current;
+      if (!current || current.revision !== request.current) throw new Error("Playback queue was replaced.");
+      const data = await queries.findPerformerItems(current.variables, marker, performerId, signal);
+      if (current.revision !== request.current) throw new Error("Playback queue was replaced.");
+      return rows(data);
+    },
+    [key],
+  );
   const refresh = React.useCallback(async () => {
     if (!enabled || (marker && !isMarkerLaunchContext(context))) return;
     for (const entry of pending.current.values()) entry.controller.abort();
@@ -144,7 +154,7 @@ function useItems<T>(
       pending.current.clear();
     };
   }, [refresh]);
-  return { loading, error, result, refresh, page, sort, loadPage, search };
+  return { loading, error, result, refresh, page, sort, loadPage, search, findPerformerItems };
 }
 export function useSceneQuery(settings: Settings, context: LaunchContext | null, enabled: boolean, resume: ResumeRef) {
   return useItems(settings, context, enabled, false, { count: 0, scenes: [] as Scene[] }, resume);

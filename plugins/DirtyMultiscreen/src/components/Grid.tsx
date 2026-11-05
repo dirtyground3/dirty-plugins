@@ -6,6 +6,7 @@ export function NativeMultiscreenGrid({
   avoidDuplicates,
   columns,
   continuation,
+  findPerformerItems,
   nativePlayer,
   onSessionChange,
   onVisibleSceneIdsChange,
@@ -13,6 +14,7 @@ export function NativeMultiscreenGrid({
   playlists,
   savedPanes,
   searchSession,
+  showPerformerNavigation,
   rows,
   totalScreens,
   useFindScene,
@@ -34,6 +36,7 @@ export function NativeMultiscreenGrid({
           ...previous,
           page,
           itemId: item.id,
+          item: item.outsidePage ? item : undefined,
           time: previous?.itemId === item.id ? previous.time : undefined,
         };
         scheduleSave();
@@ -134,6 +137,7 @@ export function NativeMultiscreenGrid({
           screenIndex={screenIndex}
           playlist={playlists[screenIndex] ?? []}
           continuation={continuation}
+          findPerformerItems={findPerformerItems}
           nativePlayer={nativePlayer}
           playback={playback}
           useFindScene={useFindScene}
@@ -143,6 +147,7 @@ export function NativeMultiscreenGrid({
           playingElsewhere={playingElsewhere}
           saved={savedPanes?.[screenIndex]}
           searchSession={searchSession}
+          showPerformerNavigation={showPerformerNavigation}
         />
       ))}
     </div>

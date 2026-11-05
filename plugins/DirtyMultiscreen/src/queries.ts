@@ -22,6 +22,8 @@ const MARKERS =
 const MARKER_COUNT =
   "query MultiscreenMarkerCount($filter:FindFilterType,$scene_marker_filter:SceneMarkerFilterType,$ids:[ID!]){findSceneMarkers(filter:$filter,scene_marker_filter:$scene_marker_filter,ids:$ids){count}}";
 const MARKER_SEARCH = MARKERS.replace("MultiscreenMarkers", "MultiscreenMarkerSearch");
+const SCENES_WITH_PERFORMER = SCENES.replace("MultiscreenScenes", "MultiscreenPerformerScenes");
+const MARKERS_WITH_PERFORMER = MARKERS.replace("MultiscreenMarkers", "MultiscreenPerformerMarkers");
 export const SEARCH_PAGE_SIZE = 20;
 const PERFORMER_IDS =
   "query MultiscreenPerformers($filter:FindFilterType,$performer_filter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performer_filter){performers{id}}}";
@@ -107,6 +109,14 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
     });
     return marker ? data.findSceneMarkers.count : data.findScenes.count;
   }
+  /** The session's own query narrowed by one more scene condition, so its scope and sort still apply. */
+  const narrowed = (scope: QueryVariables, marker: boolean, condition: Record<string, unknown>) => {
+    const existing = marker ? scope.scene_marker_filter?.scene_filter : scope.scene_filter;
+    const sceneFilter = { ...condition, ...(existing ? { AND: existing } : {}) };
+    return marker
+      ? { scene_marker_filter: { ...scope.scene_marker_filter, scene_filter: sceneFilter } }
+      : { scene_filter: sceneFilter };
+  };
   return {
     getSceneQueryVariables,
     getMarkerQueryVariables,
@@ -116,22 +126,28 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
       // Stash's ids argument bypasses filters; explicit selections are searched
       // from their already loaded session items instead.
       if (scope.ids) throw new Error("Selected session items must be searched locally.");
-      const existing = marker ? scope.scene_marker_filter?.scene_filter : scope.scene_filter;
       // INCLUDES splits a phrase into alternative words. Escape a case-insensitive
       // literal regex so filtered sessions match the same substring as local pools.
       const literal = text.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const sceneFilter = {
-        title: { value: "(?i)" + literal, modifier: "MATCHES_REGEX" },
-        ...(existing ? { AND: existing } : {}),
-      };
       return graphqlRequest<QueryResult>(
         marker ? MARKER_SEARCH : SCENE_SEARCH,
         {
           ...scope,
           filter: { ...scope.filter, page, per_page: SEARCH_PAGE_SIZE, sort: "title", direction: "ASC" },
-          ...(marker
-            ? { scene_marker_filter: { ...scope.scene_marker_filter, scene_filter: sceneFilter } }
-            : { scene_filter: sceneFilter }),
+          ...narrowed(scope, marker, { title: { value: "(?i)" + literal, modifier: "MATCHES_REGEX" } }),
+        },
+        { signal },
+      );
+    },
+    /** Every session item featuring the performer, in the session's sort. One performer's rows stay small. */
+    findPerformerItems: (scope: QueryVariables, marker: boolean, performerId: string, signal: AbortSignal) => {
+      if (scope.ids) throw new Error("Selected session items must be searched locally.");
+      return graphqlRequest<QueryResult>(
+        marker ? MARKERS_WITH_PERFORMER : SCENES_WITH_PERFORMER,
+        {
+          ...scope,
+          filter: { ...scope.filter, page: 1, per_page: -1 },
+          ...narrowed(scope, marker, { performers: { value: [performerId], modifier: "INCLUDES" } }),
         },
         { signal },
       );

@@ -126,6 +126,12 @@
       "max": 600,
       "step": 1
     },
+    "showPerformerNavigation": {
+      "type": "BOOLEAN",
+      "displayName": "Show performer next-scene buttons",
+      "description": "Show a portrait button for each performer on every screen, which moves that screen to the performer's next scene. Enabled by default.",
+      "default": true
+    },
     "showInMenu": {
       "type": "BOOLEAN",
       "displayName": "Show in the Stash header",
@@ -166,6 +172,7 @@
     {
       "title": "Navigation",
       "settings": [
+        "showPerformerNavigation",
         "showInMenu"
       ]
     }
