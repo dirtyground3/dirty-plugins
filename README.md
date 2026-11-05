@@ -162,8 +162,8 @@ the public repository.
 
 Settings are grouped into Grid, Scenes, Playback and Navigation: set the grid
 geometry, choose the scene order and how scenes are shared between panes, how
-they start, loop, mute and pause, and whether the grid button appears in the
-Stash header.
+they start, loop, mute and pause, and whether screens show performer
+next-scene buttons and the grid button appears in the Stash header.
 
 ### DirtyFileExtractor
 

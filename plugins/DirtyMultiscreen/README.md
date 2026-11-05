@@ -75,9 +75,10 @@ scene titles are blurred for the public repository.
 
 ![DirtyMultiscreen playback and grid settings](../../docs/images/dirty-multiscreen-settings.png)
 
-Configure the grid geometry, scene distribution, starting behavior, looping,
-muting, marker duration, hidden-tab handling, and the Stash header button in
-one panel.
+Settings are grouped into Grid, Scenes, Playback and Navigation: grid
+geometry, scene order and sharing between panes, starting, looping, muting,
+marker length and hidden-tab pausing, performer next-scene buttons and the Stash
+header button.
 
 ## Installation
 
