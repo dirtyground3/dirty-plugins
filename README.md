@@ -17,11 +17,11 @@ a shared SQLite database, and is installed automatically as a dependency.
 | --- | --- | ---: |
 | [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.13 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.10 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.22 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.23 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.10 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.8 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.15 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.16 |
 
 ## Shared look and settings
 
@@ -151,10 +151,11 @@ Every change saves automatically.
 
 #### DirtyMultiscreen playback
 
-![DirtyMultiscreen four-pane playback grid with video frames blurred](docs/images/dirty-multiscreen-grid-censored.png)
+![DirtyMultiscreen four-pane playback grid with video frames blurred and controls visible](docs/images/dirty-multiscreen-grid-censored.png)
 
-A real edge-to-edge four-pane session. Video frames and titles are blurred for
-the public repository.
+A real edge-to-edge four-pane session with the players paused. Video frames and
+titles are blurred for the public repository; the controls, search buttons and
+performer buttons stay sharp.
 
 #### DirtyMultiscreen settings
 
@@ -433,7 +434,9 @@ is committed**. Cropping alone is not sufficient when another visible region
 may contain adult media.
 
 Append `?docsCapture=1` to a suite page to replace native cards, media, and
-private paths with placeholders, and inspect every image anyway. Store images
+private paths with placeholders, and inspect every image anyway.
+DirtyMultiscreen blurs video frames and scene titles and shows a placeholder
+for performer portraits, keeping its controls sharp. Store images
 under `docs/images/`, use descriptive filenames and alt text, and keep
 uncensored captures outside the repository and its Git history.
 On native scene pages, DirtyCaptions capture mode hides the player media,
@@ -564,6 +567,15 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyMultiscreen 1.0.23 and DirtyPlugins 1.0.16:** a performer button loads
+  that performer's scenes in the session's sort and moves to the next one, which
+  is much faster on large libraries, and "No other scenes" clears after a
+  second. Each button is a dark pill with the portrait and a Next icon beside it.
+  The title, search and performer buttons show and hide with the player's
+  control bar. **Show performer next-scene buttons** in the Navigation settings
+  turns the portraits off. Documentation capture blurs video frames instead of
+  covering whole screens, so the player controls stay visible.
 
 - **DirtyMultiscreen 1.0.22:** each performer has a portrait button with a Next
   icon beside the screen's title and search. Click a portrait to move to another

@@ -66,10 +66,13 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 
 ### Playback grid
 
-![DirtyMultiscreen four-pane playback grid with video frames blurred](../../docs/images/dirty-multiscreen-grid-censored.png)
+![DirtyMultiscreen four-pane playback grid with video frames blurred and controls visible](../../docs/images/dirty-multiscreen-grid-censored.png)
 
-The capture shows a real edge-to-edge four-pane session. The video frames and
-scene titles are blurred for the public repository.
+![DirtyMultiscreen nine-pane playback grid with video frames blurred and controls visible](../../docs/images/dirty-multiscreen-grid-3x3-censored.png)
+
+Real edge-to-edge 2x2 and 3x3 sessions with the players paused. The video frames
+and scene titles are blurred for the public repository; the controls, search
+buttons and performer buttons stay sharp.
 
 ### Settings
 
@@ -187,8 +190,9 @@ icon/state components, and visual tokens so its controls remain consistent with
 the other plugins in this repository.
 The navigation action is one focusable link, and overlay controls become fully
 visible on keyboard focus. Native ScenePlayer remains the playback component.
-With `?docsCapture=1`, playback frames and titles are covered by an opaque
-documentation placeholder.
+With `?docsCapture=1`, video frames, posters and scene titles are blurred,
+captions are hidden and performer portraits show a placeholder, while the player
+controls stay sharp.
 
 ## License
 
