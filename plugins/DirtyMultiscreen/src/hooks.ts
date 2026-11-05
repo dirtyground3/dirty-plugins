@@ -1,11 +1,30 @@
 import { isMarkerLaunchContext } from "./domain/context";
 import { getSceneStreamUrl, orderSelected } from "./domain/items";
 import { DirtyPlugins, PluginApi, queries, React } from "./runtime";
-import type { LaunchContext, Marker, NativePlayer, QueryResult, QueryVariables, Scene, Settings } from "./types";
-function useItems<T>(settings: Settings, context: LaunchContext | null, enabled: boolean, marker: boolean, empty: T) {
+import type {
+  LaunchContext,
+  Marker,
+  NativePlayer,
+  QueryResult,
+  QueryVariables,
+  SavedSession,
+  Scene,
+  Settings,
+} from "./types";
+const SESSION_SAVE_MS = 5000;
+type ResumeRef = { current: SavedSession | null };
+function useItems<T>(
+  settings: Settings,
+  context: LaunchContext | null,
+  enabled: boolean,
+  marker: boolean,
+  empty: T,
+  resume: ResumeRef,
+) {
   const [loading, setLoading] = React.useState(false),
     [error, setError] = React.useState<Error | null>(null),
-    [result, setResult] = React.useState(empty);
+    [result, setResult] = React.useState(empty),
+    [sort, setSort] = React.useState<string | undefined>();
   const pager = React.useRef<{ variables: QueryVariables; revision: number } | null>(null);
   const pending = React.useRef(new Map<number, { controller: AbortController; promise: Promise<T> }>());
   const [page, setPage] = React.useState(1);
@@ -76,15 +95,19 @@ function useItems<T>(settings: Settings, context: LaunchContext | null, enabled:
     setLoading(true);
     setError(null);
     try {
-      const variables =
+      const dealt =
         marker && isMarkerLaunchContext(context)
           ? queries.getMarkerQueryVariables(settings, context)
           : await queries.getSceneQueryVariables(settings, context);
       if (!current()) return;
-      if (!variables) {
+      if (!dealt) {
         setResult(empty);
         return;
       }
+      // A resumed session asks Stash for the sort it was first dealt, including its random seed.
+      const savedSort = resume.current?.sort;
+      const variables =
+        savedSort && dealt.filter.sort ? { ...dealt, filter: { ...dealt.filter, sort: savedSort } } : dealt;
       pager.current = { variables, revision };
       let loadedPage = 1;
       let next = await loadPage(loadedPage);
@@ -101,6 +124,7 @@ function useItems<T>(settings: Settings, context: LaunchContext | null, enabled:
       if (current()) {
         setResult(next);
         setPage(loadedPage);
+        setSort(typeof variables.filter.sort === "string" ? variables.filter.sort : undefined);
       }
     } catch (cause) {
       if (current()) {
@@ -120,13 +144,35 @@ function useItems<T>(settings: Settings, context: LaunchContext | null, enabled:
       pending.current.clear();
     };
   }, [refresh]);
-  return { loading, error, result, refresh, page, loadPage, search };
+  return { loading, error, result, refresh, page, sort, loadPage, search };
 }
-export function useSceneQuery(settings: Settings, context: LaunchContext | null, enabled: boolean) {
-  return useItems(settings, context, enabled, false, { count: 0, scenes: [] as Scene[] });
+export function useSceneQuery(settings: Settings, context: LaunchContext | null, enabled: boolean, resume: ResumeRef) {
+  return useItems(settings, context, enabled, false, { count: 0, scenes: [] as Scene[] }, resume);
 }
-export function useMarkerQuery(settings: Settings, context: LaunchContext | null, enabled: boolean) {
-  return useItems(settings, context, enabled, true, { count: 0, scene_markers: [] as Marker[] });
+export function useMarkerQuery(settings: Settings, context: LaunchContext | null, enabled: boolean, resume: ResumeRef) {
+  return useItems(settings, context, enabled, true, { count: 0, scene_markers: [] as Marker[] }, resume);
+}
+/** Saves at most once per interval, and before the page goes away, when a timer would never fire. */
+export function useSessionSaver(save: () => void) {
+  const latest = React.useRef(save);
+  latest.current = save;
+  const timer = React.useRef<number | null>(null);
+  const flush = React.useCallback(() => {
+    if (timer.current === null) return;
+    window.clearTimeout(timer.current);
+    timer.current = null;
+    latest.current();
+  }, []);
+  React.useEffect(() => {
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, [flush]);
+  return React.useCallback(() => {
+    if (timer.current === null) timer.current = window.setTimeout(flush, SESSION_SAVE_MS);
+  }, [flush]);
 }
 export function useNativePlayerComponent() {
   const [loading, setLoading] = React.useState(false),

@@ -199,6 +199,8 @@ function createMultiscreenHarness(options = {}) {
     },
   };
   const storage = new Map(options.launch ? [["multiscreen.launchContext", JSON.stringify(options.launch)]] : []);
+  // Survives a closed tab: pass one harness's map to the next to reopen it.
+  const localStorage = options.localStorage || new Map();
   const document = events({ hidden: false }),
     grid = events({
       querySelectorAll: () => [...media.values()].map(pair => pair.video).filter(video => video.isConnected),
@@ -226,6 +228,10 @@ function createMultiscreenHarness(options = {}) {
       getItem: key => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value),
       removeItem: key => storage.delete(key),
+    },
+    localStorage: {
+      getItem: key => localStorage.get(key) ?? null,
+      setItem: (key, value) => localStorage.set(key, value),
     },
     PluginApi: {
       React,
@@ -314,6 +320,7 @@ function createMultiscreenHarness(options = {}) {
     media,
     nativeCalls,
     storage,
+    localStorage,
     load,
     flush,
     get tree() {

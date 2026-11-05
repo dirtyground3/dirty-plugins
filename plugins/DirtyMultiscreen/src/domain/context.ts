@@ -1,5 +1,5 @@
 import type { LaunchContext, MarkerContext } from "../types";
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 const SELECTION_SOURCES = new Set(["selection", "performer-selection", "studio-selection", "marker-selection"]);
 const FILTER_KEYS = new Map([

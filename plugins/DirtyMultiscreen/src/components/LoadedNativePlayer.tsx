@@ -28,8 +28,10 @@ export function LoadedNativePlayer({
   nativePlayer: NativePlayer,
   nextItem,
   onAudioStateChange,
+  onPositionChange,
   playback,
   previousItem,
+  resumeTime,
   scene,
 }: LoadedPlayerProps) {
   const [playerId] = React.useState(() => `ms-player-${++nextPlayerId}`);
@@ -44,7 +46,10 @@ export function LoadedNativePlayer({
   const goBack = React.useCallback(() => navigationRef.current.previousItem(), []);
   audioStateRef.current = audioState;
   onAudioStateChangeRef.current = onAudioStateChange;
+  const onPositionChangeRef = React.useRef(onPositionChange);
+  onPositionChangeRef.current = onPositionChange;
   const [initialTimestamp] = React.useState(() => {
+    if (resumeTime !== undefined) return resumeTime;
     if (item.playbackRange) return item.playbackRange.start;
     if (!playback.randomStart) return 0;
     const duration = Number(scene?.files?.[0]?.duration);
@@ -93,16 +98,12 @@ export function LoadedNativePlayer({
       });
     };
     const handleTimeUpdate = () => {
-      if (
-        !usable(player) ||
-        !initialSeekApplied ||
-        !playbackRange ||
-        rangeEnd === undefined ||
-        !Number.isFinite(rangeEnd)
-      )
-        return;
+      if (!usable(player) || !initialSeekApplied) return;
       // The raw video clock starts at zero for each transcoded segment.
-      if (player.currentTime() < rangeEnd) {
+      const time = player.currentTime();
+      onPositionChangeRef.current(time);
+      if (!playbackRange || rangeEnd === undefined || !Number.isFinite(rangeEnd)) return;
+      if (time < rangeEnd) {
         rangeEndHandledRef.current = false;
         return;
       }

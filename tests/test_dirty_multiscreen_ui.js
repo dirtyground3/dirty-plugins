@@ -712,7 +712,11 @@ async function sceneSearch() {
   await h.flush();
   h.nodes(node => node.type === "Dialog")[0].props.onClose();
   await h.flush();
-  assert.equal(h.timers.size, 0, "closing cancels the debounce timer");
+  assert.equal(
+    [...h.timers.values()].filter(timer => timer.delay !== 5000).length,
+    0,
+    "closing cancels the debounce timer",
+  );
   h.button("Search scenes for screen 1").props.onClick();
   await h.flush();
   await search("cancel request");
@@ -1482,6 +1486,327 @@ async function navigationSetting() {
   await h.unmount();
   assert.equal(h.window.handlers.get("dirty-plugins:configuration-changed")?.size || 0, 0);
 }
+async function sessionRestore() {
+  const SESSION = "multiscreen.session";
+  const scenes = Array.from({ length: 60 }, (_, index) => ({
+    id: String(index),
+    title: "Scene " + index,
+    paths: { stream: "/" + index },
+    files: [{ duration: 100 }],
+  }));
+  const settings = {
+    rows: 1,
+    columns: 2,
+    totalScreens: 2,
+    sceneOrder: "random",
+    splitScenes: true,
+    startMuted: true,
+    randomStart: false,
+    loopScenes: false,
+  };
+  const launch = { source: "filter", filter: { sort: "title" }, sceneFilter: { organized: true } };
+  const graphql = async (query, variables) => {
+    const { page, per_page: size } = variables.filter;
+    return { findScenes: { count: scenes.length, scenes: scenes.slice((page - 1) * size, page * size) } };
+  };
+  const options = { scenes, settings, graphql };
+  const saved = h => JSON.parse(h.localStorage.get(SESSION));
+  const players = h => h.nodes(node => node.type === "native-player");
+  const playing = h => players(h).map(node => node.props.scene.id);
+  const sort = h => h.calls.find(call => call.query.includes("MultiscreenScenes")).variables.filter.sort;
+  const pane = (h, index) =>
+    [...h.media].find(([address, media]) => address.includes("ms-native-" + index) && media.video.isConnected)[1];
+  const reopen = (from, extra) => start({ ...options, localStorage: new Map(from.localStorage), ...extra });
+
+  // Nothing is written while a launch starts; its first save ends the launch.
+  const first = await start({ ...options, launch });
+  assert.equal(first.localStorage.has(SESSION), false);
+  assert.equal(first.storage.has("multiscreen.launchContext"), true);
+  await first.tick(5000);
+  assert.deepEqual(saved(first).context, launch);
+  assert.equal(saved(first).sort, sort(first));
+  assert.match(sort(first), /^random_\d+$/);
+  assert.deepEqual(
+    saved(first).panes.map(entry => entry.itemId),
+    playing(first),
+  );
+  assert.equal(first.storage.has("multiscreen.launchContext"), false, "a reload resumes instead of launching again");
+
+  // Later changes wait for the interval, but never outlive the page.
+  const openedOn = playing(first)[0];
+  players(first)[0].props.onNext();
+  await first.flush();
+  assert.notEqual(playing(first)[0], openedOn);
+  await first.tick(5000);
+  assert.equal(saved(first).panes[0].itemId, playing(first)[0]);
+  pane(first, 0).video.currentTime = 7;
+  pane(first, 0).player.emit("timeupdate");
+  pane(first, 1).player.volume(0.25);
+  pane(first, 1).player.muted(false);
+  assert.equal(saved(first).panes[0].time, undefined, "playback does not write on every timeupdate");
+  assert.equal(first.timers.size, 1, "one save is pending however many panes changed");
+  first.window.emit("pagehide");
+  assert.equal(first.timers.size, 0);
+  assert.equal(saved(first).panes[0].time, 7);
+  assert.deepEqual(saved(first).panes[1].audio, { muted: false, volume: 0.25 });
+
+  // A reopened tab deals the same queue and returns each pane to its scene, time and audio.
+  const second = await reopen(first);
+  const secondQuery = second.calls.find(call => call.query.includes("MultiscreenScenes")).variables;
+  assert.equal(secondQuery.filter.sort, sort(first), "Stash is asked for the original random order");
+  assert.equal(secondQuery.scene_filter.organized, true, "the scope comes back without a launch context");
+  assert.deepEqual(playing(second), playing(first));
+  assert.deepEqual(
+    new Set(second.nativeCalls.map(call => call.scene.id)),
+    new Set(playing(second)),
+    "the queue's first scene never starts on the way back",
+  );
+  assert.equal(pane(second, 0).video.currentTime, 7);
+  assert.equal(pane(second, 1).player.volume(), 0.25);
+  assert.equal(pane(second, 1).player.muted(), false, "the pane's own audio beats the start-muted setting");
+  assert.equal(pane(second, 0).player.muted(), true, "a pane nobody unmuted follows the setting");
+  second.window.emit("pagehide");
+  assert.equal(saved(second).seed, saved(first).seed);
+  assert.equal(saved(second).now, saved(first).now);
+
+  // The saved time belongs to one visit of that scene.
+  const restored = playing(second)[0];
+  players(second)[0].props.onNext();
+  await second.flush();
+  assert.notEqual(playing(second)[0], restored);
+  players(second)[0].props.onPrevious();
+  await second.flush();
+  assert.equal(playing(second)[0], restored);
+  assert.equal(pane(second, 0).video.currentTime, 0, "coming back later is an ordinary start");
+  assert.equal(pane(second, 1).player.volume(), 0.25, "the pane keeps its audio across scenes");
+
+  // Leaving the route saves too, so the header button can return to it.
+  pane(second, 0).video.currentTime = 9;
+  pane(second, 0).player.emit("timeupdate");
+  await second.unmount();
+  assert.equal(saved(second).panes[0].time, 9);
+
+  // Moving to another scene forgets the time until the new one reports.
+  const third = await reopen(second);
+  assert.equal(pane(third, 0).video.currentTime, 9);
+  players(third)[0].props.onNext();
+  await third.flush();
+  await third.tick(5000);
+  assert.equal(saved(third).panes[0].time, undefined);
+  await third.unmount();
+
+  // The header button replaces the saved session; its scope wins over the saved one.
+  const otherScope = { source: "filter", filter: { sort: "date" }, sceneFilter: { favorite: true } };
+  const launched = await reopen(first, { launch: otherScope });
+  assert.notEqual(sort(launched), sort(first));
+  await launched.unmount();
+  assert.deepEqual(saved(launched).context, otherScope);
+
+  // Another queue setting keeps the scope and deals a new queue.
+  for (const change of [
+    { sceneOrder: "fresh" },
+    { splitScenes: false },
+    { spreadScenes: false },
+    { avoidDuplicates: false },
+    { columns: 1, totalScreens: 1 },
+  ]) {
+    const changed = await reopen(first, { settings: { ...settings, ...change } });
+    await changed.unmount();
+    assert.notEqual(saved(changed).seed, saved(first).seed, JSON.stringify(change));
+    assert.notEqual(sort(changed), sort(first), JSON.stringify(change));
+    assert.deepEqual(saved(changed).context, launch);
+  }
+  // Another layout with the same screens is still the same queue.
+  const samePanes = await reopen(first, { settings: { ...settings, rows: 2, columns: 2 } });
+  assert.equal(sort(samePanes), sort(first));
+  assert.deepEqual(playing(samePanes), playing(first));
+  await samePanes.unmount();
+
+  // Shuffle starts over and becomes what a reopened tab returns to.
+  const shuffling = await reopen(first);
+  shuffling
+    .nodes(node => node.type === "ActionMenu")[0]
+    .props.items.find(item => item.key === "random")
+    .onSelect();
+  await shuffling.flush();
+  shuffling.window.emit("pagehide");
+  const shuffledQuery = shuffling.calls.filter(call => call.query.includes("MultiscreenScenes")).at(-1);
+  assert.equal(saved(shuffling).sort, shuffledQuery.variables.filter.sort);
+  assert.notEqual(saved(shuffling).sort, sort(first));
+  assert.notEqual(saved(shuffling).seed, saved(first).seed);
+  assert.deepEqual(
+    saved(shuffling).panes.map(entry => entry.itemId),
+    playing(shuffling),
+  );
+  assert.equal(pane(shuffling, 0).video.currentTime, 0, "a shuffled pane starts its new scene normally");
+  await shuffling.unmount();
+
+  // A saved page is loaded before anything plays, and its scene may sit in another lane.
+  const record = saved(first);
+  const atPage = (page, itemId, extra) => ({
+    localStorage: new Map([[SESSION, JSON.stringify({ ...record, panes: [{ page, itemId, ...extra }, null] })]]),
+  });
+  const hold = deferred();
+  const later = await start({
+    ...options,
+    ...atPage(2, "30", { time: 4 }),
+    graphql: async (query, variables) => {
+      if (variables.filter.page === 2) await hold.promise;
+      return graphql(query, variables);
+    },
+  });
+  assert.equal(players(later).length, 1, "only the pane without a saved page has started");
+  assert.match(later.text(), /Restoring session/);
+  hold.resolve();
+  await later.flush();
+  assert.equal(playing(later)[0], "30");
+  assert.doesNotMatch(later.text(), /Restoring session/);
+  assert.equal(pane(later, 0).video.currentTime, 4);
+  await later.unmount();
+  assert.equal(saved(later).panes[0].page, 2);
+
+  // A scene the library no longer has leaves the pane at the top of its saved page.
+  const missing = await start({ ...options, ...atPage(2, "deleted", { time: 4 }) });
+  assert(
+    scenes
+      .slice(16, 32)
+      .map(scene => scene.id)
+      .includes(playing(missing)[0]),
+  );
+  assert.equal(pane(missing, 0).video.currentTime, 0, "the saved time belonged to the missing scene");
+  await missing.unmount();
+
+  // A page beyond a smaller library is clamped to the last one.
+  const beyond = await start({ ...options, ...atPage(99, "50") });
+  assert.equal(playing(beyond)[0], "50");
+  await beyond.unmount();
+  assert.equal(saved(beyond).panes[0].page, 4);
+
+  // A page that cannot load falls back to the session's first page without an error.
+  const broken = await start({
+    ...options,
+    ...atPage(2, "30"),
+    graphql: async (query, variables) => {
+      if (variables.filter.page === 2) throw new Error("offline");
+      return graphql(query, variables);
+    },
+  });
+  assert.equal(players(broken).length, 2);
+  assert.doesNotMatch(broken.text(), /offline/);
+  await broken.unmount();
+
+  // Search can take over from a restore still in flight.
+  const waiting = deferred();
+  const searching = await start({
+    ...options,
+    ...atPage(2, "30"),
+    graphql: async (query, variables) => {
+      if (query.includes("MultiscreenSceneSearch")) return { findScenes: { count: 1, scenes: [scenes[1]] } };
+      if (variables.filter.page === 2) await waiting.promise;
+      return graphql(query, variables);
+    },
+  });
+  searching.button("Search scenes for screen 1").props.onClick();
+  await searching.flush();
+  searching
+    .nodes(node => node.type === "input" && node.props.type === "search")[0]
+    .props.onChange({ target: { value: "Scene 1" } });
+  await searching.flush();
+  await searching.tick(300);
+  searching
+    .nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result")[0]
+    .props.onClick();
+  waiting.resolve();
+  await searching.flush();
+  assert.equal(playing(searching)[0], "1", "the late restore does not replace the search choice");
+  await searching.unmount();
+
+  // Selections and unscoped launches come back too.
+  const listSettings = { ...settings, sceneOrder: "list", splitScenes: false };
+  const byIds = async (_query, variables) => {
+    const rows = scenes.filter(scene => !variables.ids || variables.ids.includes(scene.id));
+    return { findScenes: { count: rows.length, scenes: rows } };
+  };
+  const selection = { scenes, settings: listSettings, graphql: byIds };
+  const selected = await start({ ...selection, launch: { source: "selection", selectedIds: ["5", "6", "7", "8"] } });
+  players(selected)[1].props.onNext();
+  await selected.flush();
+  await selected.unmount();
+  assert.equal(saved(selected).sort, undefined);
+  const reselected = await start({ ...selection, localStorage: selected.localStorage });
+  assert.deepEqual(
+    [...reselected.calls.find(call => call.query.includes("MultiscreenScenes")).variables.ids],
+    ["5", "6", "7", "8"],
+  );
+  assert.deepEqual(playing(reselected), ["5", "7"]);
+  await reselected.unmount();
+
+  const library = await start(options);
+  const libraryPlaying = playing(library);
+  await library.unmount();
+  assert.equal(saved(library).context, null);
+  const reopenedLibrary = await reopen(library);
+  assert.deepEqual(playing(reopenedLibrary), libraryPlaying);
+  assert.equal(sort(reopenedLibrary), sort(library));
+  await reopenedLibrary.unmount();
+
+  // Markers resume inside their range, not at its start.
+  const marker = {
+    id: "m",
+    title: "Range",
+    seconds: 2,
+    end_seconds: 40,
+    primary_tag: { name: "Test" },
+    scene: scenes[0],
+  };
+  const markerOptions = {
+    scenes,
+    markers: [marker],
+    settings: { ...listSettings, columns: 1, totalScreens: 1 },
+  };
+  const markers = await start({ ...markerOptions, launch: { source: "marker-selection", selectedIds: ["m"] } });
+  assert.equal(pane(markers, 0).video.currentTime, 2);
+  pane(markers, 0).video.currentTime = 11;
+  pane(markers, 0).player.emit("timeupdate");
+  await markers.unmount();
+  assert.equal(saved(markers).panes[0].itemId, "marker-m");
+  const reopenedMarkers = await start({ ...markerOptions, localStorage: markers.localStorage });
+  assert.equal(pane(reopenedMarkers, 0).video.currentTime, 11);
+  await reopenedMarkers.unmount();
+
+  // Anything unusable is the same as no saved session.
+  for (const value of [
+    "{not json",
+    "null",
+    "[]",
+    JSON.stringify({ ...record, context: { source: "nope" } }),
+    JSON.stringify({ ...record, seed: "1" }),
+    JSON.stringify({ ...record, panes: [{ page: 0, itemId: "1" }] }),
+    JSON.stringify({ ...record, panes: [{ page: 1, itemId: "1", time: -1 }] }),
+    JSON.stringify({ ...record, panes: [{ page: 1, itemId: "1", audio: { muted: "no", volume: 1 } }] }),
+  ]) {
+    const unusable = await start({ ...options, localStorage: new Map([[SESSION, value]]) });
+    assert.equal(players(unusable).length, 2, value);
+    await unusable.unmount();
+    assert.equal(saved(unusable).context, null, value);
+  }
+
+  // Storage that refuses reads or writes never stops playback.
+  const refusing = createMultiscreenHarness({ ...options, launch });
+  refusing.window.localStorage = {
+    getItem() {
+      throw new Error("denied");
+    },
+    setItem() {
+      throw new Error("denied");
+    },
+  };
+  refusing.load();
+  await refusing.flush();
+  assert.equal(players(refusing).length, 2);
+  await refusing.unmount();
+  assert.equal(refusing.storage.has("multiscreen.launchContext"), true, "a reload can still launch the same scope");
+}
 (async () => {
   await registration();
   await contextsAndCounts();
@@ -1504,6 +1829,7 @@ async function navigationSetting() {
   await avoidsDuplicateScenes();
   await reshuffleMenu();
   await unscopedLibraryPaging();
+  await sessionRestore();
   console.log("DirtyMultiscreen compiled registration, navigation, players, grid, counters and cleanup passed");
 })().catch(error => {
   console.error(error);

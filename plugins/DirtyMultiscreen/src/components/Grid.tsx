@@ -1,14 +1,17 @@
+import { useSessionSaver } from "../hooks";
 import { React } from "../runtime";
-import type { GridProps, Item } from "../types";
+import type { AudioState, GridProps, Item, SavedPane } from "../types";
 import { NativePlayerPane } from "./PlayerPane";
 export function NativeMultiscreenGrid({
   avoidDuplicates,
   columns,
   continuation,
   nativePlayer,
+  onSessionChange,
   onVisibleSceneIdsChange,
   playback,
   playlists,
+  savedPanes,
   searchSession,
   rows,
   totalScreens,
@@ -19,16 +22,49 @@ export function NativeMultiscreenGrid({
   const [visibleByPane, setVisibleByPane] = React.useState<Array<string | null>>([]);
   // Read when a pane advances, so it never waits for a render to see the others.
   const playingByPane = React.useRef<Array<string | null>>([]);
-  const onSceneChange = React.useCallback((index: number, item: Item | null) => {
-    playingByPane.current[index] = item?.id ?? null;
-    const id = item?.scene.id ?? null;
-    setVisibleByPane(current => {
-      if (current[index] === id) return current;
-      const next = current.slice();
-      next[index] = id;
-      return next;
-    });
-  }, []);
+  // A pane still restoring keeps its saved entry until it reports its scene.
+  const panes = React.useRef<Array<SavedPane | null>>(savedPanes?.slice() ?? []);
+  const scheduleSave = useSessionSaver(() => onSessionChange(panes.current.slice(0, totalScreens)));
+  const onSceneChange = React.useCallback(
+    (index: number, item: Item | null, page: number) => {
+      playingByPane.current[index] = item?.id ?? null;
+      if (item) {
+        const previous = panes.current[index];
+        panes.current[index] = {
+          ...previous,
+          page,
+          itemId: item.id,
+          time: previous?.itemId === item.id ? previous.time : undefined,
+        };
+        scheduleSave();
+      }
+      const id = item?.scene.id ?? null;
+      setVisibleByPane(current => {
+        if (current[index] === id) return current;
+        const next = current.slice();
+        next[index] = id;
+        return next;
+      });
+    },
+    [scheduleSave],
+  );
+  const updatePane = React.useCallback(
+    (index: number, change: Partial<SavedPane>) => {
+      const pane = panes.current[index];
+      if (!pane) return;
+      panes.current[index] = { ...pane, ...change };
+      scheduleSave();
+    },
+    [scheduleSave],
+  );
+  const onPositionChange = React.useCallback(
+    (index: number, time: number) => updatePane(index, { time }),
+    [updatePane],
+  );
+  const onAudioChange = React.useCallback(
+    (index: number, audio: AudioState) => updatePane(index, { audio }),
+    [updatePane],
+  );
   const playingElsewhere = React.useMemo(
     () =>
       avoidDuplicates
@@ -101,8 +137,11 @@ export function NativeMultiscreenGrid({
           nativePlayer={nativePlayer}
           playback={playback}
           useFindScene={useFindScene}
+          onAudioChange={onAudioChange}
+          onPositionChange={onPositionChange}
           onSceneChange={onSceneChange}
           playingElsewhere={playingElsewhere}
+          saved={savedPanes?.[screenIndex]}
           searchSession={searchSession}
         />
       ))}

@@ -2,14 +2,31 @@ import { React } from "../runtime";
 import type { TileProps } from "../types";
 import { icon, PluginIconButton } from "./Controls";
 import { LoadedNativePlayer } from "./LoadedNativePlayer";
-export function NativePlayerTile({ item, nativePlayer, nextItem, playback, previousItem, useFindScene }: TileProps) {
+export function NativePlayerTile({
+  audio,
+  item,
+  nativePlayer,
+  nextItem,
+  onAudioChange,
+  onPositionChange,
+  playback,
+  previousItem,
+  resumeTime,
+  useFindScene,
+}: TileProps) {
   const sceneId = item.scene?.id ?? item.id;
   const sceneQuery = useFindScene(sceneId);
-  const [audioState, setAudioState] = React.useState(() => ({
-    muted: playback.startMuted,
-    volume: 1,
-  }));
+  const [audioState, setAudioState] = React.useState(
+    () =>
+      audio ?? {
+        muted: playback.startMuted,
+        volume: 1,
+      },
+  );
+  const startMuted = React.useRef(playback.startMuted);
   React.useEffect(() => {
+    if (startMuted.current === playback.startMuted) return;
+    startMuted.current = playback.startMuted;
     setAudioState({
       muted: playback.startMuted,
       volume: 1,
@@ -45,9 +62,14 @@ export function NativePlayerTile({ item, nativePlayer, nextItem, playback, previ
       item={item}
       nativePlayer={nativePlayer}
       nextItem={nextItem}
-      onAudioStateChange={setAudioState}
+      onAudioStateChange={value => {
+        setAudioState(value);
+        onAudioChange(value);
+      }}
+      onPositionChange={onPositionChange}
       playback={playback}
       previousItem={previousItem}
+      resumeTime={resumeTime}
       scene={sceneQuery.data.findScene}
     />
   );

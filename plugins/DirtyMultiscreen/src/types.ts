@@ -112,6 +112,22 @@ export interface AudioState {
   muted: boolean;
   volume: number;
 }
+/** Where one pane was; absent time and audio fall back to the pane's normal start. */
+export interface SavedPane {
+  page: number;
+  itemId: string;
+  time?: number;
+  audio?: AudioState;
+}
+/** Enough to deal the same queue again: playlists are rebuilt from these seeds, never stored. */
+export interface SavedSession {
+  context: LaunchContext | null;
+  queue: string;
+  sort?: string;
+  seed: number;
+  now: number;
+  panes: Array<SavedPane | null>;
+}
 export interface NativePlayerProps {
   scene: Scene;
   autoplay: boolean;
@@ -134,15 +150,23 @@ export interface LoadedPlayerProps {
   nextItem(): void;
   previousItem(): void;
   onAudioStateChange(value: AudioState): void;
+  onPositionChange(seconds: number): void;
   playback: PlaybackSettings;
+  /** Takes precedence over every other start of this item. */
+  resumeTime?: number;
   scene: Scene;
 }
 export interface TileProps {
+  /** The audio this tile starts with instead of the start-muted setting. */
+  audio?: AudioState;
   item: Item;
   nativePlayer: NativePlayer;
   nextItem(): void;
+  onAudioChange(value: AudioState): void;
+  onPositionChange(seconds: number): void;
   previousItem(): void;
   playback: PlaybackSettings;
+  resumeTime?: number;
   useFindScene: UseFindScene;
 }
 export interface GridProps {
@@ -152,9 +176,12 @@ export interface GridProps {
   rows: number;
   totalScreens: number;
   nativePlayer: NativePlayer;
+  onSessionChange(panes: Array<SavedPane | null>): void;
   onVisibleSceneIdsChange(ids: string[]): void;
   playback: PlaybackSettings;
   playlists: Item[][];
+  /** Pane positions of a resumed session, read when the grid mounts. */
+  savedPanes?: Array<SavedPane | null>;
   searchSession: SessionSearch;
   useFindScene: UseFindScene;
 }

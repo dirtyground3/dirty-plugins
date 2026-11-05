@@ -31,6 +31,18 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   lists the scene orders with the current one checked: choosing it loads a new
   random sample, and choosing another order reshuffles with that order and saves
   it as the **Scene order** setting.
+- Closing the tab keeps the session. Reloading, reopening the plugin page or
+  clicking the header button on a page without a list returns every screen to
+  its scene, position and audio. The header button on a scene, marker, performer
+  or studio list, or on a performer or studio page, starts a new session, and so
+  does the shuffle button; either replaces the saved one. Changing the scene
+  order, spreading, duplicate avoidance, splitting or the number of screens keeps
+  the launch scope but deals a new queue. If the library changed, a screen whose
+  scene left its page starts at the top of that page. A browser that blocks sound
+  in a newly opened tab leaves screens with sound paused until you press play;
+  they then continue from their saved position. The browser keeps one saved
+  session, in local storage, so two open grids overwrite each other's save and it
+  does not follow you to another device.
 - Scene titles and search buttons use translucent backgrounds over the video.
 - Each performer has a portrait button with a Next icon beside the screen's
   title and search. Click a portrait to move to another scene featuring that

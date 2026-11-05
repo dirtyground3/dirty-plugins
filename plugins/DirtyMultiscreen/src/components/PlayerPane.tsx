@@ -1,6 +1,6 @@
 import { React } from "../runtime";
 import { locatePlaylistItem, nextFreeIndex } from "../domain/playlists";
-import type { GridProps, Item } from "../types";
+import type { AudioState, GridProps, Item, SavedPane } from "../types";
 import { NativePlayerTile } from "./NativePlayerTile";
 import { PaneHeader } from "./SceneSearch";
 
@@ -8,9 +8,13 @@ interface PaneProps
   extends Pick<GridProps, "nativePlayer" | "playback" | "useFindScene" | "continuation" | "searchSession"> {
   playlist: Item[];
   screenIndex: number;
-  onSceneChange(index: number, item: Item | null): void;
+  onAudioChange(index: number, audio: AudioState): void;
+  onPositionChange(index: number, seconds: number): void;
+  onSceneChange(index: number, item: Item | null, page: number): void;
   /** Items the other panes are playing; absent when duplicates are allowed. */
   playingElsewhere?(screen: number): Set<string>;
+  /** Where this pane was in a resumed session. */
+  saved?: SavedPane | null;
 }
 interface QueueStep {
   direction: 1 | -1;
@@ -20,16 +24,23 @@ export function NativePlayerPane({
   playlist,
   screenIndex,
   continuation,
+  onAudioChange,
+  onPositionChange,
   onSceneChange,
   playingElsewhere,
+  saved,
   searchSession,
   ...player
 }: PaneProps) {
+  // A restoring pane shows no scene until its page is back, so the queue's first scene never starts.
+  const restoring = React.useRef(saved && continuation ? saved : null);
+  // The saved time applies until the pane leaves the restored item.
+  const resumeAt = React.useRef(restoring.current);
   const [state, setState] = React.useState(() => ({
-    items: playlist,
+    items: restoring.current ? [] : playlist,
     cursor: 0,
     page: continuation?.initialPage || 1,
-    busy: false,
+    busy: !!restoring.current,
     error: "",
   }));
   const current = React.useRef(state),
@@ -42,23 +53,26 @@ export function NativePlayerPane({
     request.current++;
     inserted.current = null;
     setNotice("");
-    const next = {
-      items: playlist,
-      cursor: 0,
-      page: continuation?.initialPage || 1,
-      busy: false,
-      error: "",
-    };
-    current.current = next;
-    setState(next);
+    if (!restoring.current) {
+      const next = {
+        items: playlist,
+        cursor: 0,
+        page: continuation?.initialPage || 1,
+        busy: false,
+        error: "",
+      };
+      current.current = next;
+      setState(next);
+    }
     return () => {
       request.current++;
     };
   }, [playlist, continuation]);
   const item = state.items[state.cursor];
   React.useEffect(() => {
-    onSceneChange(screenIndex, item || null);
-  }, [onSceneChange, screenIndex, item]);
+    if (item && item.id !== resumeAt.current?.itemId) resumeAt.current = null;
+    onSceneChange(screenIndex, item || null, state.page);
+  }, [onSceneChange, screenIndex, item, state.page]);
   const navigate = async (step: QueueStep) => {
     const { direction, performerId } = step;
     const previous = current.current;
@@ -157,7 +171,34 @@ export function NativePlayerPane({
       publish({ ...previous, busy: false, error: error instanceof Error ? error.message : String(error) });
     }
   };
+  const restore = async (pane: SavedPane, pages: NonNullable<typeof continuation>) => {
+    const revision = ++request.current;
+    const finish = (next: typeof state) => {
+      restoring.current = null;
+      current.current = next;
+      setState(next);
+      if (!next.items.length) void navigate({ direction: 1 });
+    };
+    const start = { items: playlist, cursor: 0, page: pages.initialPage, busy: false, error: "" };
+    try {
+      // A smaller library may no longer reach the saved page.
+      const page = Math.min(pane.page, pages.pageCount);
+      const playlists = await pages.loadPage(page);
+      if (revision !== request.current) return;
+      const found = playlists.flat().find(candidate => candidate.id === pane.itemId);
+      const position = found && locatePlaylistItem(playlists, screenIndex, found);
+      if (found && position) {
+        inserted.current = { page, item: found };
+        finish({ ...position, page, busy: false, error: "" });
+      } else if (playlists[screenIndex]?.length)
+        finish({ items: playlists[screenIndex], cursor: 0, page, busy: false, error: "" });
+      else finish(start);
+    } catch {
+      if (revision === request.current) finish(start);
+    }
+  };
   const select = async (selected: Item) => {
+    restoring.current = null;
     const previous = current.current;
     const revision = ++request.current;
     retry.current = selected;
@@ -192,7 +233,8 @@ export function NativePlayerPane({
     }
   };
   React.useEffect(() => {
-    if (!playlist.length) void navigate({ direction: 1 });
+    if (restoring.current && continuation) void restore(restoring.current, continuation);
+    else if (!playlist.length) void navigate({ direction: 1 });
   }, [playlist, continuation]);
   return (
     <div className="ms-cell">
@@ -214,22 +256,28 @@ export function NativePlayerPane({
       {item && (
         <NativePlayerTile
           {...player}
+          audio={saved?.audio}
           item={item}
           nextItem={() => {
             void navigate({ direction: 1 });
           }}
+          onAudioChange={audio => onAudioChange(screenIndex, audio)}
+          onPositionChange={seconds => onPositionChange(screenIndex, seconds)}
           previousItem={() => {
             void navigate({ direction: -1 });
           }}
+          resumeTime={resumeAt.current?.itemId === item.id ? resumeAt.current.time : undefined}
         />
       )}
       {state.busy && (
         <div className="ms-queue-status" role="status">
-          {"direction" in retry.current
-            ? retry.current.performerId
-              ? "Finding next scene featuring this performer…"
-              : "Loading next page…"
-            : "Finding scene in session…"}
+          {restoring.current
+            ? "Restoring session…"
+            : "direction" in retry.current
+              ? retry.current.performerId
+                ? "Finding next scene featuring this performer…"
+                : "Loading next page…"
+              : "Finding scene in session…"}
         </div>
       )}
       {notice && (

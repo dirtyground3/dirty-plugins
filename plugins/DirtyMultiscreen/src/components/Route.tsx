@@ -2,6 +2,7 @@ import { isMarkerLaunchContext } from "../domain/context";
 import { getMarkerItem, getSceneItem, getSceneTitle } from "../domain/items";
 import { pagePlaylists } from "../domain/playlists";
 import { useMarkerQuery, useNativePlayerComponent, useSceneQuery } from "../hooks";
+import { queueKey, readSession, writeSession } from "../domain/session";
 import { getPlaybackSettings, getSceneLimit, normalizeSettings } from "../domain/settings";
 import { contexts, DirtyPlugins, PluginApi, React } from "../runtime";
 import { icon, PluginIconButton, StateView } from "./Controls";
@@ -9,7 +10,7 @@ import { VisibleOCounterButton } from "./Counter";
 import { NativeMultiscreenGrid } from "./Grid";
 import { ShuffleMenu } from "./ShuffleMenu";
 import { SEARCH_PAGE_SIZE } from "../queries";
-import type { SceneOrder, SessionSearch } from "../types";
+import type { SavedPane, SavedSession, SceneOrder, SessionSearch } from "../types";
 const PLUGIN_ID = "multiscreen";
 const closeRoute = () => {
   if (window.history.length > 1) window.history.back();
@@ -18,7 +19,14 @@ const closeRoute = () => {
 export function MultiscreenRoute() {
   DirtyPlugins.react.usePageTitle("DirtyMultiscreen");
   const [visibleNativeSceneIds, setVisibleNativeSceneIds] = React.useState<string[]>([]);
-  const launchContext = React.useMemo(() => contexts.readLaunchContext(), []);
+  // A launch context means the header button just chose a scope; without one the saved session continues.
+  const [launch] = React.useState(() => {
+    const context = contexts.readLaunchContext();
+    const saved = context ? null : readSession();
+    return { context: context ?? saved?.context ?? null, saved };
+  });
+  const launchContext = launch.context;
+  const resume = React.useRef<SavedSession | null>(launch.saved);
   const markerMode = isMarkerLaunchContext(launchContext);
   const [settingsQuery, setSettingsQuery] = React.useState<{
     loading: boolean;
@@ -37,7 +45,10 @@ export function MultiscreenRoute() {
     setSettingsQuery(current => ({ ...current, loading: true, error: null }));
     return DirtyPlugins.getPluginSettings(PLUGIN_ID)
       .then(data => {
-        if (request.current === revision) setSettingsQuery({ loading: false, error: null, data });
+        if (request.current !== revision) return;
+        // The scope stays, but seeds and pages only name the same scenes under the same queue settings.
+        if (resume.current?.queue !== queueKey(normalizeSettings(data))) resume.current = null;
+        setSettingsQuery({ loading: false, error: null, data });
       })
       .catch(error => {
         if (request.current === revision)
@@ -55,8 +66,8 @@ export function MultiscreenRoute() {
   const settings = React.useMemo(() => normalizeSettings(rawSettings), [rawSettings]);
   const playbackSettings = React.useMemo(() => getPlaybackSettings(settings), [settings]);
   const nativePlayerQuery = useNativePlayerComponent();
-  const scenesQuery = useSceneQuery(settings, launchContext, !settingsQuery.loading && !markerMode);
-  const markersQuery = useMarkerQuery(settings, launchContext, !settingsQuery.loading && markerMode);
+  const scenesQuery = useSceneQuery(settings, launchContext, !settingsQuery.loading && !markerMode, resume);
+  const markersQuery = useMarkerQuery(settings, launchContext, !settingsQuery.loading && markerMode, resume);
   const sceneItems = React.useMemo(
     () => scenesQuery.result.scenes.map(getSceneItem).filter(item => item !== null),
     [scenesQuery.result.scenes],
@@ -95,7 +106,11 @@ export function MultiscreenRoute() {
     [explicitSelection, items, markerMode, markersQuery.search, scenesQuery.search, settings.markerDuration],
   );
   const pageSize = getSceneLimit(settings);
-  const [seed, now] = React.useMemo(() => [Math.floor(Math.random() * 4294967296), Date.now()], [items]);
+  const [seed, now] = React.useMemo(
+    () =>
+      resume.current ? [resume.current.seed, resume.current.now] : [Math.floor(Math.random() * 4294967296), Date.now()],
+    [items],
+  );
   // Split lanes never share a scene, so only unsplit panes avoid duplicates.
   const avoidDuplicates = settings.avoidDuplicates && !settings.splitScenes;
   const ordering = React.useMemo(
@@ -156,6 +171,7 @@ export function MultiscreenRoute() {
   const error = settingsQuery.error ?? activeQuery.error ?? nativePlayerQuery.error;
   /** The same order loads a fresh random sample; another order also becomes the saved Scene order. */
   const reshuffle = (order: SceneOrder) => {
+    resume.current = null;
     if (order === settings.sceneOrder) {
       void activeQuery.refresh();
       return;
@@ -165,6 +181,18 @@ export function MultiscreenRoute() {
     DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
       DirtyPlugins.ui.notify("Could not save the scene order. It applies to this session only.", "error"),
     );
+  };
+  const saveSession = (panes: Array<SavedPane | null>) => {
+    const saved = writeSession({
+      context: launchContext,
+      queue: queueKey(settings),
+      sort: activeQuery.sort,
+      seed,
+      now,
+      panes,
+    });
+    // The launch has become this session, so a reload resumes it instead of dealing a new one.
+    if (saved) contexts.storeLaunchContext(null);
   };
   const itemType = markerMode ? "markers" : "scenes";
   const docsCapture = DirtyPlugins.captureEnabled(window.location.search);
@@ -201,7 +229,9 @@ export function MultiscreenRoute() {
           continuation={continuation}
           playback={playbackSettings}
           nativePlayer={nativePlayerQuery.component}
+          onSessionChange={saveSession}
           onVisibleSceneIdsChange={setVisibleNativeSceneIds}
+          savedPanes={resume.current?.panes}
           useFindScene={PluginApi.utils!.StashService!.useFindScene}
         />
       )}
