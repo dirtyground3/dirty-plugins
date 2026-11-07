@@ -6,6 +6,7 @@ import copy
 import json
 import math
 import re
+import sqlite3
 import sys
 import unicodedata
 import uuid
@@ -25,6 +26,7 @@ STATE_VERSION = 2
 GLICKO_SCALE = 173.7178
 GLICKO_ORIGIN = 1500.0
 MAX_RECENT_BATTLE_IDS = 24
+UNDO_SNAPSHOT_LIMIT = 100
 VALID_COHORTS = {
     "FEMALE",
     "MALE",
@@ -327,10 +329,6 @@ def pool_key(category_id: str, cohort: str) -> str:
     return f"{_slug(category_id)}|{cohort.upper()}"
 
 
-def serialize_state(state: dict[str, Any]) -> str:
-    return json.dumps(state, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-
-
 def _recent_ids(pool: Any) -> list[str]:
     if not isinstance(pool, dict) or not isinstance(pool.get("recentBattleIds"), list):
         return []
@@ -338,7 +336,7 @@ def _recent_ids(pool: Any) -> list[str]:
 
 
 class RatingRepository:
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(
         self,
@@ -362,22 +360,37 @@ class RatingRepository:
             if self._connection is None:
                 connection.close()
 
+    @staticmethod
+    def _schema_version(connection: Any) -> int:
+        row = connection.execute(
+            "SELECT version FROM dirty_schema_versions WHERE plugin_id=?", (PLUGIN_ID,),
+        ).fetchone()
+        return int(row[0]) if row else 0
+
     def ensure_schema(self) -> None:
         with self.connect() as connection:
-            installed = connection.execute(
-                "SELECT version FROM dirty_schema_versions WHERE plugin_id=?",
-                (PLUGIN_ID,),
-            ).fetchone()
-            installed_version = int(installed[0]) if installed else 0
+            if self._schema_version(connection) == self.SCHEMA_VERSION:
+                return
+
+            # Recheck under the write lock in case another invocation already migrated.
+            connection.execute("BEGIN IMMEDIATE")
+            installed_version = self._schema_version(connection)
+            if installed_version == self.SCHEMA_VERSION:
+                return
             if installed_version > self.SCHEMA_VERSION:
                 raise PluginError(
                     f"DirtyRank database schema {installed_version} is newer than this plugin supports"
                 )
-            if installed_version and installed_version < self.SCHEMA_VERSION:
+            # Version 1 could create its tables before recording the schema version.
+            if not installed_version and connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='dirty_rank_battles'"
+            ).fetchone():
+                installed_version = 1
+            if installed_version == 1:
                 shared_storage.backup_database(path=self.path)
-            if installed_version != self.SCHEMA_VERSION:
-                connection.executescript(
-                    """
+                connection.execute("ALTER TABLE dirty_rank_battles RENAME TO dirty_rank_battles_v1")
+
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS dirty_rank_pools (
                   performer_id TEXT NOT NULL,
                   category_id TEXT NOT NULL,
@@ -392,8 +405,10 @@ class RatingRepository:
                   last_rated_at TEXT,
                   recent_battle_ids TEXT NOT NULL DEFAULT '[]',
                   PRIMARY KEY (performer_id, category_id, cohort)
-                );
-                CREATE TABLE IF NOT EXISTS dirty_rank_battles (
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE dirty_rank_battles (
                   sequence INTEGER PRIMARY KEY AUTOINCREMENT,
                   battle_id TEXT NOT NULL UNIQUE,
                   category_id TEXT NOT NULL,
@@ -401,32 +416,72 @@ class RatingRepository:
                   left_id TEXT NOT NULL,
                   right_id TEXT NOT NULL,
                   outcome TEXT NOT NULL,
-                  left_before TEXT,
-                  right_before TEXT,
-                  left_after TEXT NOT NULL,
-                  right_after TEXT NOT NULL,
+                  undo_snapshot TEXT,
                   status TEXT NOT NULL DEFAULT 'active',
                   created_at TEXT NOT NULL,
                   undone_at TEXT
-                );
-                CREATE INDEX IF NOT EXISTS dirty_rank_battles_left_latest
-                  ON dirty_rank_battles(left_id, category_id, cohort, status, sequence DESC);
-                CREATE INDEX IF NOT EXISTS dirty_rank_battles_right_latest
-                  ON dirty_rank_battles(right_id, category_id, cohort, status, sequence DESC);
-                    """
                 )
-                connection.execute(
-                    """INSERT INTO dirty_schema_versions(plugin_id, version, applied_at)
-                       VALUES (?, ?, ?)
-                       ON CONFLICT(plugin_id) DO UPDATE SET
-                         version=excluded.version, applied_at=excluded.applied_at""",
-                    (PLUGIN_ID, self.SCHEMA_VERSION, iso_time(utc_now())),
-                )
-                connection.execute(
-                    """INSERT OR IGNORE INTO dirty_metadata(namespace, key, value)
-                       VALUES (?, 'revision', '0')""",
-                    (PLUGIN_ID,),
-                )
+            """)
+            if installed_version == 1:
+                self._migrate_battles(connection)
+
+            connection.execute("""CREATE INDEX dirty_rank_battles_left_latest
+                ON dirty_rank_battles(left_id, category_id, cohort, status, sequence DESC)""")
+            connection.execute("""CREATE INDEX dirty_rank_battles_right_latest
+                ON dirty_rank_battles(right_id, category_id, cohort, status, sequence DESC)""")
+            connection.execute("""CREATE INDEX dirty_rank_battles_undo_window
+                ON dirty_rank_battles(category_id, cohort, sequence DESC) WHERE undo_snapshot IS NOT NULL""")
+            connection.execute(
+                """INSERT INTO dirty_schema_versions(plugin_id, version, applied_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(plugin_id) DO UPDATE SET
+                     version=excluded.version, applied_at=excluded.applied_at""",
+                (PLUGIN_ID, self.SCHEMA_VERSION, iso_time(utc_now())),
+            )
+            connection.execute(
+                """INSERT OR IGNORE INTO dirty_metadata(namespace, key, value)
+                   VALUES (?, 'revision', '0')""",
+                (PLUGIN_ID,),
+            )
+            connection.commit()
+            if installed_version == 1:
+                try:
+                    connection.execute("VACUUM")
+                except sqlite3.OperationalError:
+                    # Compaction can fail while the shared database is busy.
+                    # The migration is committed and SQLite can reuse the freed pages.
+                    pass
+
+    @staticmethod
+    def _migrate_battles(connection: Any) -> None:
+        connection.execute("""
+            INSERT INTO dirty_rank_battles (
+              sequence, battle_id, category_id, cohort, left_id, right_id, outcome,
+              undo_snapshot, status, created_at, undone_at
+            )
+            SELECT sequence, battle_id, category_id, cohort, left_id, right_id, outcome,
+              CASE WHEN status = 'active' AND ROW_NUMBER() OVER (
+                PARTITION BY category_id, cohort, status ORDER BY sequence DESC
+              ) <= ? THEN '[' || COALESCE(left_before, 'null') || ',' || COALESCE(right_before, 'null') || ']'
+              END,
+              status, created_at, undone_at
+            FROM dirty_rank_battles_v1
+        """, (UNDO_SNAPSHOT_LIMIT,))
+        # Preserve the sequence high-water mark even if a reset deleted newer battles.
+        connection.execute("DELETE FROM sqlite_sequence WHERE name='dirty_rank_battles'")
+        connection.execute("UPDATE sqlite_sequence SET name='dirty_rank_battles' WHERE name='dirty_rank_battles_v1'")
+        connection.execute("DROP TABLE dirty_rank_battles_v1")
+
+    @staticmethod
+    def prune_undo_snapshots(connection: Any, category_id: str, cohort: str) -> None:
+        connection.execute("""
+            UPDATE dirty_rank_battles SET undo_snapshot=NULL
+            WHERE category_id=? AND cohort=? AND undo_snapshot IS NOT NULL AND sequence <= (
+              SELECT sequence FROM dirty_rank_battles
+              WHERE category_id=? AND cohort=? AND undo_snapshot IS NOT NULL
+              ORDER BY sequence DESC LIMIT 1 OFFSET ?
+            )
+        """, (category_id, cohort, category_id, cohort, UNDO_SNAPSHOT_LIMIT))
 
     @staticmethod
     def _row_pool(row: Any) -> dict[str, Any] | None:
@@ -705,15 +760,14 @@ def record_battle(
         connection.execute(
             """INSERT INTO dirty_rank_battles(
                  battle_id, category_id, cohort, left_id, right_id, outcome,
-                 left_before, right_before, left_after, right_after, created_at
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 undo_snapshot, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 battle_id, category_id, cohort, left_id, right_id, outcome,
-                serialize_state(left_pool) if left_pool is not None else None,
-                serialize_state(right_pool) if right_pool is not None else None,
-                serialize_state(next_left), serialize_state(next_right), timestamp,
+                json.dumps([left_pool, right_pool], ensure_ascii=False, separators=(",", ":")), timestamp,
             ),
         )
+        repository.prune_undo_snapshots(connection, category_id, cohort)
         result = repository.pair_result(connection, left_id, right_id, key, repository.increment_revision(connection))
         connection.commit()
     return {"duplicate": False, "battleId": battle_id, "categoryId": category_id, "cohort": cohort, **result}
@@ -737,7 +791,7 @@ def undo_battle(
             "SELECT * FROM dirty_rank_battles WHERE battle_id=? AND status='active'",
             (battle_id,),
         ).fetchone()
-        if battle is None:
+        if battle is None or battle["undo_snapshot"] is None:
             raise PluginError(f"Battle {battle_id} is not available to undo")
         if str(battle["left_id"]) != left_id or str(battle["right_id"]) != right_id:
             raise PluginError("The stored undo performers do not match this battle")
@@ -752,12 +806,11 @@ def undo_battle(
             ).fetchone()[0]
             if latest != battle["sequence"]:
                 raise PluginError(f"Battle {battle_id} is not the latest battle for performer {performer_id}")
-        left_before = json.loads(battle["left_before"]) if battle["left_before"] else None
-        right_before = json.loads(battle["right_before"]) if battle["right_before"] else None
+        left_before, right_before = json.loads(battle["undo_snapshot"])
         repository.restore_pool(connection, left_id, category_id, cohort, left_before)
         repository.restore_pool(connection, right_id, category_id, cohort, right_before)
         connection.execute(
-            "UPDATE dirty_rank_battles SET status='undone', undone_at=? WHERE sequence=?",
+            "UPDATE dirty_rank_battles SET status='undone', undone_at=?, undo_snapshot=NULL WHERE sequence=?",
             (iso_time(utc_now()), battle["sequence"]),
         )
         result = repository.pair_result(connection, left_id, right_id, pool_key(category_id, cohort), repository.increment_revision(connection))

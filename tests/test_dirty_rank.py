@@ -248,6 +248,97 @@ class DirtyRankOperationTests(unittest.TestCase):
         )
         self.assertEqual(self.state("1")["pools"][key]["matches"], 4)
 
+    def test_journal_caps_undo_per_pool_and_keeps_ordered_outcomes(self):
+        other_pool = dict(self.battle_args("other-pool"), categoryId="performance")
+        dirty_rank.record_battle(self.repository, other_pool, self.settings, self.now)
+        battles = [self.battle_args(f"battle-{index}") for index in range(101)]
+        battles[0]["outcome"] = "draw"
+        for battle in battles:
+            dirty_rank.record_battle(self.repository, battle, self.settings, self.now)
+
+        with self.repository.connect() as connection:
+            journal = connection.execute("""
+                SELECT battle_id, outcome, undo_snapshot IS NOT NULL
+                FROM dirty_rank_battles ORDER BY sequence
+            """).fetchall()
+        self.assertEqual([row[0] for row in journal], [other_pool["battleId"], *[b["battleId"] for b in battles]])
+        self.assertEqual(tuple(journal[1]), ("battle-0", "draw", 0))
+        self.assertTrue(journal[0][2])
+        self.assertTrue(all(row[2] for row in journal[2:]))
+
+        before_retry = self.state("1")
+        retry = dirty_rank.record_battle(self.repository, battles[0], self.settings, self.now)
+        self.assertTrue(retry["duplicate"])
+        self.assertEqual(self.state("1"), before_retry)
+        with self.assertRaisesRegex(dirty_rank.PluginError, "not available to undo"):
+            dirty_rank.undo_battle(self.repository, battles[0], self.settings)
+
+        dirty_rank.undo_battle(self.repository, battles[-1], self.settings)
+        with self.repository.connect() as connection:
+            row = connection.execute("""
+                SELECT status, outcome, undone_at, undo_snapshot FROM dirty_rank_battles
+                WHERE battle_id='battle-100'
+            """).fetchone()
+        self.assertEqual(tuple(row)[:2], ("undone", "left"))
+        self.assertIsNotNone(row["undone_at"])
+        self.assertIsNone(row["undo_snapshot"])
+
+    def test_upgrade_keeps_pools_and_migrates_legacy_journal_once(self):
+        dirty_rank.record_battle(self.repository, self.battle_args(), self.settings, self.now)
+        before_upgrade = self.repository.all_states()
+        old_pool = before_upgrade["states"]["1"]["pools"]["appearance|FEMALE"]
+        with self.repository.connect() as connection:
+            connection.executescript("""
+                DROP TABLE dirty_rank_battles;
+                CREATE TABLE dirty_rank_battles (
+                  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                  battle_id TEXT NOT NULL UNIQUE,
+                  category_id TEXT NOT NULL,
+                  cohort TEXT NOT NULL,
+                  left_id TEXT NOT NULL,
+                  right_id TEXT NOT NULL,
+                  outcome TEXT NOT NULL,
+                  left_before TEXT,
+                  right_before TEXT,
+                  left_after TEXT NOT NULL,
+                  right_after TEXT NOT NULL,
+                  status TEXT NOT NULL DEFAULT 'active',
+                  created_at TEXT NOT NULL,
+                  undone_at TEXT
+                );
+                UPDATE dirty_schema_versions SET version=1 WHERE plugin_id='dirtyRank';
+            """)
+            connection.executemany("""
+                INSERT INTO dirty_rank_battles VALUES (
+                  ?, ?, 'appearance', 'FEMALE', '1', '2', 'right', ?, NULL, '{}', '{}', ?, ?, ?
+                )
+            """, [
+                (index, f"legacy-{index}", json.dumps(old_pool), "undone" if index == 102 else "active",
+                 self.now.isoformat(), self.now.isoformat() if index == 102 else None)
+                for index in range(1, 103)
+            ])
+            connection.execute("UPDATE sqlite_sequence SET seq=120 WHERE name='dirty_rank_battles'")
+
+        self.repository = dirty_rank.RatingRepository(self.repository.path)
+        self.assertEqual(self.repository.all_states(), before_upgrade)
+        with self.repository.connect() as connection:
+            journal = connection.execute("""
+                SELECT sequence, battle_id, outcome, status, undo_snapshot FROM dirty_rank_battles ORDER BY sequence
+            """).fetchall()
+        self.assertEqual([tuple(row)[:3] for row in journal], [
+            (index, f"legacy-{index}", "right") for index in range(1, 103)
+        ])
+        self.assertIsNone(journal[0]["undo_snapshot"])
+        self.assertTrue(all(json.loads(row["undo_snapshot"]) == [old_pool, None] for row in journal[1:-1]))
+        self.assertEqual(tuple(journal[-1])[3:], ("undone", None))
+
+        dirty_rank.RatingRepository(self.repository.path)
+        self.assertEqual(len(list(self.repository.path.parent.glob("dirty_plugins-backup-*.sqlite3"))), 1)
+        dirty_rank.record_battle(self.repository, self.battle_args("post-upgrade"), self.settings, self.now)
+        with self.repository.connect() as connection:
+            sequence = connection.execute("SELECT MAX(sequence) FROM dirty_rank_battles").fetchone()[0]
+        self.assertEqual(sequence, 121)
+
     def test_load_all_returns_sqlite_rating_index(self):
         dirty_rank.record_battle(self.repository, self.battle_args(), self.settings, self.now)
         payload = self.repository.all_states()

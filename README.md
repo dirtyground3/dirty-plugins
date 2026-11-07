@@ -16,7 +16,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 | Plugin | What it does | Version |
 | --- | --- | ---: |
 | [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.13 |
-| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.0.10 |
+| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.1.0 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.23 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.10 |
@@ -567,6 +567,10 @@ main/
 ```
 
 ## Release notes
+
+- **DirtyRank 1.1.0:** keeps an ordered journal of battle outcomes and up to
+  100 recent undo snapshots per category and gender box. Existing databases
+  upgrade automatically with ratings and outcomes preserved.
 
 - **DirtyMultiscreen 1.0.23 and DirtyPlugins 1.0.16:** a performer button loads
   that performer's scenes in the session's sort and moves to the next one, which

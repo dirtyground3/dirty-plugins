@@ -298,9 +298,16 @@ performer custom fields or Stash's native `rating100`, so saving a battle does
 not trigger performer-update hooks and it can run alongside Advanced Rating.
 
 Each pool stores its unrounded rating, deviation, volatility, result counts,
-and recent idempotency IDs. Every battle writes both performer pools and its
-undo snapshots in one independent SQLite transaction. The database uses WAL
-mode, and the Options backup action safely snapshots all Dirty-plugin tables.
+and recent battle IDs. Each vote updates both performer pools and adds an
+ordered outcome to the battle journal in one SQLite transaction. The journal
+keeps battle IDs for duplicate protection and retains undo snapshots for up to
+100 recent active battles per category and gender box. Resetting a pool also
+clears its journal. The database uses WAL mode, and the Options backup action
+safely snapshots all Dirty-plugin tables.
+
+DirtyRank 1.1 upgrades existing databases on first use. It backs up the shared
+database, keeps the rating pools and ordered outcomes, and attempts to reclaim
+disk space after trimming the snapshots.
 
 ## Installation
 
