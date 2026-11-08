@@ -5,6 +5,7 @@ import {
   FIELD_LIMITS,
   FIELD_INTEGERS,
   FIELD_OPTIONS,
+  FIELD_PLACEHOLDERS,
   MANAGED_PLUGIN_IDS,
   MANAGED_PLUGIN_ID_SET,
   PLUGIN_DEFAULTS,
@@ -59,6 +60,7 @@ export interface FieldDefinition {
   min?: number;
   max?: number;
   step?: number;
+  placeholder?: string;
 }
 /** Ordinary controls share authored metadata; domain editors keep their policies. */
 export function fieldDefinition(pluginId: string, setting: Setting): FieldDefinition {
@@ -70,6 +72,7 @@ export function fieldDefinition(pluginId: string, setting: Setting): FieldDefini
     help: setting.description,
     kind: setting.type === "BOOLEAN" ? "checkbox" : options ? "select" : setting.type === "NUMBER" ? "number" : "text",
     options,
+    placeholder: FIELD_PLACEHOLDERS[pluginId]?.[setting.name],
     ...FIELD_LIMITS[pluginId]?.[setting.name],
   };
 }
@@ -116,11 +119,16 @@ export function loadPluginConfiguration(pluginId: string) {
   });
 }
 
-export function initialFieldValue(pluginId: string, setting: Setting, rawSettings: Record<string, unknown>) {
-  if (Object.prototype.hasOwnProperty.call(rawSettings, setting.name)) return rawSettings[setting.name];
+/** The schema default; a setting without one starts empty (or unchecked). */
+export function defaultFieldValue(pluginId: string, setting: Setting) {
   const defaults = PLUGIN_DEFAULTS[pluginId] || {};
   if (Object.prototype.hasOwnProperty.call(defaults, setting.name)) return defaults[setting.name];
   return setting.type === "BOOLEAN" ? false : "";
+}
+
+export function initialFieldValue(pluginId: string, setting: Setting, rawSettings: Record<string, unknown>) {
+  if (Object.prototype.hasOwnProperty.call(rawSettings, setting.name)) return rawSettings[setting.name];
+  return defaultFieldValue(pluginId, setting);
 }
 
 export function createDrafts(snapshot: Snapshot) {
@@ -135,9 +143,11 @@ export function createDrafts(snapshot: Snapshot) {
   return drafts;
 }
 
+/** Null clears a number that may stay empty, so the plugin applies its own fallback. */
 export function serializeFieldValue(pluginId: string, setting: Setting, value: FieldValue) {
   if (setting.type === "BOOLEAN") return Boolean(value);
   if (setting.type === "NUMBER") {
+    if (FIELD_PLACEHOLDERS[pluginId]?.[setting.name] && !String(value ?? "").trim()) return null;
     const label = setting.display_name || setting.name;
     const numberValue = typeof value === "number" || (typeof value === "string" && value.trim()) ? Number(value) : NaN;
     if (!Number.isFinite(numberValue)) throw new Error(label + " must be a number.");

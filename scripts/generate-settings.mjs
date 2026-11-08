@@ -20,6 +20,7 @@ const SETTING_KEYS = [
   "step",
   "options",
   "disabledWhen",
+  "placeholder",
 ];
 const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
 
@@ -87,6 +88,12 @@ export function validateSchema(pluginId, schema) {
       )
         where("disabledWhen must name another setting and one of its option values or a boolean");
     }
+    if (setting.placeholder !== undefined) {
+      // A number with a placeholder may stay empty; the placeholder says what empty means.
+      if (typeof setting.placeholder !== "string" || !setting.placeholder.trim()) where("placeholder must be text");
+      if (setting.type === "BOOLEAN" || setting.options) where("placeholder needs a number or text field");
+      if (setting.type === "NUMBER" && setting.default !== undefined) where("placeholder replaces a number's default");
+    }
     if (setting.default === undefined) continue;
     const value = setting.default;
     if (setting.type === "BOOLEAN" && typeof value !== "boolean") where("default must be a boolean");
@@ -145,6 +152,7 @@ export function settingsTables(schema) {
     real: [],
     sections: schema.sections || [],
     disabledWhen: {},
+    placeholders: {},
     constants: schema.constants || {},
   };
   for (const [name, setting] of Object.entries(schema.settings)) {
@@ -156,6 +164,7 @@ export function settingsTables(schema) {
     if (setting.options) tables.options[name] = setting.options;
     if (setting.integer) tables.integers.push(name);
     if (setting.disabledWhen) tables.disabledWhen[name] = setting.disabledWhen;
+    if (setting.placeholder) tables.placeholders[name] = setting.placeholder;
     if (setting.type === "NUMBER" && !setting.integer) tables.real.push(name);
   }
   return tables;
@@ -181,7 +190,7 @@ export function typescriptModule(pluginId, schema) {
   const tables = settingsTables(schema);
   return (
     header(pluginId, "//") +
-    ["order", "defaults", "limits", "options", "integers", "sections", "disabledWhen", "constants"]
+    ["order", "defaults", "limits", "options", "integers", "sections", "disabledWhen", "placeholders", "constants"]
       .map(name => "export const " + name + " = " + JSON.stringify(tables[name], null, 2) + ";\n")
       .join("")
   );

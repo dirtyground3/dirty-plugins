@@ -18,12 +18,12 @@ async function start(options) {
 async function registration() {
   const h = await start();
   assert.equal(h.routes.length, 1);
-  assert.equal(h.patchNames.length, 7);
+  assert.equal(h.patchNames.length, 9);
   assert.equal(h.window.__dirtyMultiscreenSettings, undefined);
   assert.equal(h.window.__dirtyMultiscreenPlaylists, undefined);
   h.load();
   assert.equal(h.routes.length, 1, "a reloaded bundle never registers twice");
-  assert.equal(h.patchNames.length, 7);
+  assert.equal(h.patchNames.length, 9);
   // A failed registration is logged once and never retried.
   const partial = await start({
     patch: name => {
@@ -48,6 +48,7 @@ async function contextsAndCounts() {
     ["SceneMarkerList", "/scenes/markers", "marker-selection"],
     ["PerformerList", "/performers", "performer-selection"],
     ["StudioList", "/studios", "studio-selection"],
+    ["TagList", "/tags", "tag-selection"],
   ]) {
     await h.path(path);
     h.patches.get(name)({ filter, selectedIds: new Set(["off-page", "2"]) });
@@ -63,9 +64,10 @@ async function contextsAndCounts() {
   for (const [name, path, key] of [
     ["PerformerPage", "/performers/5", "performer"],
     ["StudioPage", "/studios/6", "studio"],
+    ["TagPage", "/tags/7/scenes", "tag"],
   ]) {
     await h.path(path);
-    h.patches.get(name)({ [key]: { id: path.split("/").pop() } });
+    h.patches.get(name)({ [key]: { id: path.split("/")[2] } });
     await h.tick();
     h.nodes(node => node.type === "NavAction")[0].props.onClick();
     assert.equal(JSON.parse(h.storage.get("multiscreen.launchContext")).source, key + "-detail");
@@ -170,7 +172,7 @@ async function markersAndLoops() {
     scenes,
     markers: [marker],
     launch: { source: "marker-selection", selectedIds: ["m"] },
-    settings: { rows: 1, columns: 1, totalScreens: 1, sceneOrder: "list", randomStart: true, loopScenes: true },
+    settings: { rows: 1, columns: 1, sceneOrder: "list", randomStart: true, loopScenes: true },
   });
   const player = h.nodes(node => node.type === "native-player")[0];
   assert.equal(player.props.initialTimestamp, 0, "native startup must not seek before a playable source exists");
@@ -211,7 +213,6 @@ async function markersAndLoops() {
     settings: {
       rows: 1,
       columns: 1,
-      totalScreens: 1,
       sceneOrder: "list",
       randomStart: true,
       loopScenes: false,
@@ -303,7 +304,7 @@ async function counters() {
   await retry.flush();
   const partialPending = [],
     partial = await start({
-      settings: { rows: 1, columns: 2, totalScreens: 2, splitScenes: true, sceneOrder: "list", randomStart: false },
+      settings: { rows: 1, columns: 2, splitScenes: true, sceneOrder: "list", randomStart: false },
       graphql: (query, variables) => {
         if (query.includes("MultiscreenScenes"))
           return {
@@ -368,7 +369,6 @@ async function stablePaneSubscriptions() {
     settings: {
       rows: 1,
       columns: 2,
-      totalScreens: 2,
       sceneOrder: "list",
       splitScenes: false,
       avoidDuplicates: false,
@@ -408,11 +408,20 @@ async function stablePaneSubscriptions() {
   assert.ok(h.observers.every(observer => !observer.connected));
 }
 async function gridsAndAsync() {
+  // An empty screen count fills every cell; a smaller number leaves the rest empty.
+  for (const [screens, players] of [
+    [undefined, 4],
+    [3, 3],
+  ]) {
+    const grid = await start({ settings: { rows: 2, columns: 2, screens, sceneOrder: "list" } });
+    assert.equal(grid.nodes(node => node.type === "native-player").length, players, String(screens));
+    await grid.unmount();
+  }
   const h = await start({
     settings: {
       rows: 1,
       columns: 2,
-      totalScreens: 99,
+      screens: 99,
       splitScenes: true,
       sceneOrder: "list",
       pauseWhenHidden: false,
@@ -449,7 +458,7 @@ async function gridsAndAsync() {
   await loader.flush();
   assert.equal(loader.nativeCalls.length, 0);
   const random = createMultiscreenHarness({
-    settings: { rows: 1, columns: 1, totalScreens: 1, sceneOrder: "list", randomStart: true },
+    settings: { rows: 1, columns: 1, sceneOrder: "list", randomStart: true },
   });
   require("node:vm").runInContext("Math.random=()=>.25", random.context);
   random.load();
@@ -469,7 +478,7 @@ async function playableStartupAndTranscodeClock() {
   const h = createMultiscreenHarness({
     readyState: 0,
     scenes: [scene],
-    settings: { rows: 1, columns: 1, totalScreens: 1, randomStart: true },
+    settings: { rows: 1, columns: 1, randomStart: true },
   });
   require("node:vm").runInContext("Math.random=()=>.5", h.context);
   h.load();
@@ -518,7 +527,7 @@ async function playableStartupAndTranscodeClock() {
 
   const leaving = await start({
     readyState: 0,
-    settings: { rows: 1, columns: 1, totalScreens: 1, randomStart: true },
+    settings: { rows: 1, columns: 1, randomStart: true },
   });
   const pending = [...leaving.media.values()].find(value => value.video.isConnected);
   pending.player.readyState = () => 4;
@@ -532,7 +541,7 @@ async function playableStartupAndTranscodeClock() {
     scenes: [scene],
     markers: [marker],
     launch: { source: "marker-selection", selectedIds: ["m"] },
-    settings: { rows: 1, columns: 1, totalScreens: 1, randomStart: false, loopScenes: true },
+    settings: { rows: 1, columns: 1, randomStart: false, loopScenes: true },
   });
   const transcoded = [...m.media.values()].find(value => value.video.isConnected);
   let offset = 0;
@@ -568,7 +577,7 @@ async function independentNativePlayerIdentities() {
   }));
   const h = await start({
     scenes,
-    settings: { rows: 2, columns: 2, totalScreens: 4, splitScenes: true, sceneOrder: "list", randomStart: false },
+    settings: { rows: 2, columns: 2, splitScenes: true, sceneOrder: "list", randomStart: false },
   });
   const pairs = [...h.media.values()].filter(pair => pair.video.isConnected);
   const ids = pairs.map(pair => pair.player.id());
@@ -737,7 +746,7 @@ async function fixedSessionSearch() {
   const h = await start({
     scenes,
     launch: { source: "selection", selectedIds: scenes.slice(1).map(scene => scene.id) },
-    settings: { rows: 1, columns: 2, totalScreens: 2, splitScenes: true, sceneOrder: "list" },
+    settings: { rows: 1, columns: 2, splitScenes: true, sceneOrder: "list" },
   });
   const results = () => h.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result");
   const search = async value => {
@@ -829,7 +838,7 @@ async function searchDuringMarkersAndPaging() {
     scenes,
     markers: [marker, { ...marker, id: "n", title: "Second range", seconds: 5, end_seconds: 7 }],
     launch: { source: "marker-selection", selectedIds: ["m", "n"] },
-    settings: { rows: 1, columns: 3, totalScreens: 3, splitScenes: true, sceneOrder: "list", randomStart: false },
+    settings: { rows: 1, columns: 3, splitScenes: true, sceneOrder: "list", randomStart: false },
   });
   const choose = async (label, index) => {
     h.button(label).props.onClick();
@@ -1080,7 +1089,7 @@ async function performerNavigation() {
 
   const duplicate = await start({
     scenes: [scenes[0], scenes[3]],
-    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "list", avoidDuplicates: true },
+    settings: { rows: 1, columns: 2, sceneOrder: "list", avoidDuplicates: true },
   });
   duplicate
     .nodes(node => node.type === "Button" && node.props.ariaLabel === "Next scene featuring Alex for screen 1")[0]
@@ -1109,7 +1118,7 @@ async function performerNavigation() {
     scenes,
     markers,
     launch: { source: "marker-selection", selectedIds: markers.map(marker => marker.id) },
-    settings: { rows: 1, columns: 1, totalScreens: 1, sceneOrder: "list", randomStart: false },
+    settings: { rows: 1, columns: 1, sceneOrder: "list", randomStart: false },
   });
   const clock = () => [...marker.media.values()].find(pair => pair.video.isConnected).video.currentTime;
   const nextMarker = () =>
@@ -1130,7 +1139,7 @@ async function performerNavigationSetting() {
   const scenes = [{ id: "a", title: "A", paths: { stream: "/a" }, performers: [{ id: "p1", name: "Alex" }] }];
   const portraits = h =>
     h.nodes(node => node.type === "Button" && /^Next scene featuring/.test(node.props.ariaLabel ?? "")).length;
-  const settings = { rows: 1, columns: 1, totalScreens: 1 };
+  const settings = { rows: 1, columns: 1 };
   const shown = await start({ scenes, settings });
   assert.equal(portraits(shown), 1, "portraits show by default");
   await shown.unmount();
@@ -1250,7 +1259,6 @@ async function performerNavigationAcrossPagesAndReopen() {
     settings: {
       rows: 1,
       columns: 1,
-      totalScreens: 1,
       sceneOrder: "list",
       randomStart: false,
       loopScenes: false,
@@ -1325,7 +1333,7 @@ async function unscopedLibraryPaging() {
   const requests = [];
   const h = await start({
     scenes,
-    settings: { rows: 1, columns: 1, totalScreens: 1, sceneOrder: "newest" },
+    settings: { rows: 1, columns: 1, sceneOrder: "newest" },
     graphql: async (_query, variables) => {
       requests.push(variables.filter);
       const { page, per_page: size } = variables.filter;
@@ -1351,7 +1359,7 @@ async function avoidsDuplicateScenes() {
   const scenes = ["a", "b", "c", "d"].map(id => ({ id, title: id, paths: { stream: "/" + id } }));
   const h = await start({
     scenes,
-    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "list", randomStart: false },
+    settings: { rows: 1, columns: 2, sceneOrder: "list", randomStart: false },
   });
   const playing = () => h.nodes(node => node.type === "native-player").map(node => node.props.scene.id);
   const pane = index => h.nodes(node => node.type === "native-player")[index].props;
@@ -1373,7 +1381,7 @@ async function avoidsDuplicateScenes() {
   await h.unmount();
   const tiny = await start({
     scenes: scenes.slice(0, 1),
-    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "list" },
+    settings: { rows: 1, columns: 2, sceneOrder: "list" },
   });
   assert.deepEqual(
     tiny.nodes(node => node.type === "native-player").map(node => node.props.scene.id),
@@ -1387,7 +1395,7 @@ async function reshuffleMenu() {
   const scenes = ["a", "b", "c", "d"].map(id => ({ id, title: id, paths: { stream: "/" + id } }));
   const h = await start({
     scenes,
-    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "random", startMuted: true },
+    settings: { rows: 1, columns: 2, sceneOrder: "random", startMuted: true },
   });
   const menu = () => h.nodes(node => node.type === "ActionMenu")[0].props;
   const choose = key =>
@@ -1421,7 +1429,7 @@ async function reshuffleMenu() {
   assert.equal(sceneQueries().at(-1).variables.filter.sort, "created_at", "another order reloads with its sort");
   assert.deepEqual(JSON.parse(JSON.stringify(h.saved.at(-1))), {
     id: "multiscreen",
-    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "newest", startMuted: true },
+    settings: { rows: 1, columns: 2, sceneOrder: "newest", startMuted: true },
   });
   assert.equal(checked(), "newest");
   await h.unmount();
@@ -1518,7 +1526,7 @@ async function pagedPlayback() {
 
   const selection = await start({
     scenes,
-    settings: { rows: 1, columns: 2, totalScreens: 2, sceneOrder: "random", avoidDuplicates: false },
+    settings: { rows: 1, columns: 2, sceneOrder: "random", avoidDuplicates: false },
     launch: { source: "selection", selectedIds: scenes.map(scene => scene.id) },
   });
   assert.equal(
@@ -1610,7 +1618,6 @@ async function sessionRestore() {
   const settings = {
     rows: 1,
     columns: 2,
-    totalScreens: 2,
     sceneOrder: "random",
     splitScenes: true,
     startMuted: true,
@@ -1721,7 +1728,7 @@ async function sessionRestore() {
     { splitScenes: false },
     { spreadScenes: false },
     { avoidDuplicates: false },
-    { columns: 1, totalScreens: 1 },
+    { columns: 1 },
   ]) {
     const changed = await reopen(first, { settings: { ...settings, ...change } });
     await changed.unmount();
@@ -1730,7 +1737,7 @@ async function sessionRestore() {
     assert.deepEqual(saved(changed).context, launch);
   }
   // Another layout with the same screens is still the same queue.
-  const samePanes = await reopen(first, { settings: { ...settings, rows: 2, columns: 2 } });
+  const samePanes = await reopen(first, { settings: { ...settings, rows: 2, columns: 2, screens: 2 } });
   assert.equal(sort(samePanes), sort(first));
   assert.deepEqual(playing(samePanes), playing(first));
   await samePanes.unmount();
@@ -1875,7 +1882,7 @@ async function sessionRestore() {
   const markerOptions = {
     scenes,
     markers: [marker],
-    settings: { ...listSettings, columns: 1, totalScreens: 1 },
+    settings: { ...listSettings, columns: 1 },
   };
   const markers = await start({ ...markerOptions, launch: { source: "marker-selection", selectedIds: ["m"] } });
   assert.equal(pane(markers, 0).video.currentTime, 2);

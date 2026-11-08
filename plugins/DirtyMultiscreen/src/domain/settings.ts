@@ -10,18 +10,14 @@ export { DEFAULT_SETTINGS };
 export function normalizeSettings(rawSettings: Record<string, unknown>): Settings {
   const rows = clampInteger(rawSettings.rows, DEFAULT_SETTINGS.rows, LIMITS.rows.min, LIMITS.rows.max);
   const columns = clampInteger(rawSettings.columns, DEFAULT_SETTINGS.columns, LIMITS.columns.min, LIMITS.columns.max);
+  // An empty setting fills the grid. A number can leave cells empty but never
+  // adds tiles beyond the grid, which would play off-screen.
+  const cells = Math.min(rows * columns, LIMITS.screens.max);
+  const screens = String(rawSettings.screens ?? "").trim()
+    ? clampInteger(rawSettings.screens, cells, LIMITS.screens.min, LIMITS.screens.max)
+    : cells;
   return {
-    // The CSS grid only has rows x columns cells; extra tiles would play
-    // off-screen while being clipped by the viewport.
-    totalScreens: Math.min(
-      clampInteger(
-        rawSettings.totalScreens,
-        DEFAULT_SETTINGS.totalScreens,
-        LIMITS.totalScreens.min,
-        LIMITS.totalScreens.max,
-      ),
-      rows * columns,
-    ),
+    totalScreens: Math.min(screens, cells),
     rows,
     columns,
     sceneOrder: (typeof rawSettings.sceneOrder === "string" && SCENE_ORDERS.has(rawSettings.sceneOrder)

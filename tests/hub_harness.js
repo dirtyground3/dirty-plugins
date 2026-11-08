@@ -16,7 +16,7 @@ function createHubHarness(options = {}) {
   const settings = copy(
     options.settings || {
       dirtyPlugins: { visualTheme: "classic" },
-      multiscreen: { totalScreens: 4, rows: 2, columns: 2 },
+      multiscreen: { screens: 4, rows: 2, columns: 2 },
     },
   );
   const revisions = Object.fromEntries(Object.keys(settings).map(id => [id, 1]));
@@ -28,7 +28,7 @@ function createHubHarness(options = {}) {
       settings: [
         { name: "columns", type: "NUMBER" },
         { name: "rows", type: "NUMBER" },
-        { name: "totalScreens", type: "NUMBER" },
+        { name: "screens", type: "NUMBER" },
       ],
     },
     { id: "dirtyPlugins", name: "DirtyPlugins", enabled: true, settings: [{ name: "visualTheme", type: "STRING" }] },

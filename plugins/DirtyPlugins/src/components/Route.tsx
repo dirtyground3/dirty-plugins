@@ -10,6 +10,7 @@ import { React } from "../runtime";
 import { createSaveController, type SaveController } from "../save";
 import {
   createDrafts,
+  defaultFieldValue,
   loadPluginConfiguration,
   loadSettingsSnapshot,
   mergePluginDraft,
@@ -39,8 +40,11 @@ const SAVE_MESSAGES: Record<string, string> = {
 function pluginInput(plugin: Plugin, draft: Record<string, FieldValue>, snapshot: Snapshot, fields?: string[]) {
   const input = Object.assign({}, asObject(snapshot.configuration[plugin.id]));
   (plugin.settings || []).forEach(setting => {
-    if (!fields || fields.includes(setting.name))
-      input[setting.name] = serializeFieldValue(plugin.id, setting, draft[setting.name]);
+    if (!fields || fields.includes(setting.name)) {
+      const value = serializeFieldValue(plugin.id, setting, draft[setting.name]);
+      if (value === null) delete input[setting.name];
+      else input[setting.name] = value;
+    }
   });
   return input;
 }
@@ -293,19 +297,33 @@ export function DirtyPluginsRoute() {
     return saveControllersRef.current[plugin.id];
   }
 
-  function updateField(pluginId: string, settingName: string, value: FieldValue) {
+  function updateFields(pluginId: string, values: Record<string, FieldValue>) {
     const plugin = snapshot && snapshot.plugins.find(item => item.id === pluginId);
-    const nextPluginDraft = { ...draftsRef.current[pluginId], [settingName]: value };
+    const nextPluginDraft = { ...draftsRef.current[pluginId], ...values };
     const nextDrafts = { ...draftsRef.current, [pluginId]: nextPluginDraft };
     draftsRef.current = nextDrafts;
     setDrafts(nextDrafts);
     const fields = editedFieldsRef.current[pluginId] || (editedFieldsRef.current[pluginId] = new Set());
-    fields.add(settingName);
+    Object.keys(values).forEach(name => fields.add(name));
     if (plugin)
       saveController(plugin).schedule({
         draft: nextPluginDraft,
         fields: [...fields],
       });
+  }
+
+  function updateField(pluginId: string, settingName: string, value: FieldValue) {
+    updateFields(pluginId, { [settingName]: value });
+  }
+
+  /** Every setting the tab shows returns to its schema default and saves like an edit. */
+  function resetPlugin(pluginId: string) {
+    const plugin = snapshot && snapshot.plugins.find(item => item.id === pluginId);
+    if (!plugin || !window.confirm("Reset every " + plugin.name + " setting to its default value?")) return;
+    updateFields(
+      pluginId,
+      Object.fromEntries((plugin.settings || []).map(setting => [setting.name, defaultFieldValue(pluginId, setting)])),
+    );
   }
 
   function selectPlugin(pluginId: string) {
@@ -416,6 +434,7 @@ export function DirtyPluginsRoute() {
                   plugin={activePlugin}
                   status={statuses[activePlugin.id]}
                   onFieldChange={updateField}
+                  onReset={resetPlugin}
                 />
               )}
             </div>

@@ -1,13 +1,16 @@
 import { FIELD_DISABLED_WHEN, PLUGIN_SECTIONS } from "../constants";
 import { React } from "../runtime";
-import { settingsAddons } from "../settings";
+import { defaultFieldValue, fieldValuesEqual, settingsAddons } from "../settings";
 import type { PluginCardProps } from "../types";
 import { DatabaseBackupControl } from "./DatabaseBackup";
 import { SettingInput } from "./SettingInput";
 import { SettingsCard, SettingsSection } from "./Settings";
-export function PluginCard({ plugin, draft = {}, status, actionRevision, onFieldChange }: PluginCardProps) {
+export function PluginCard({ plugin, draft = {}, status, actionRevision, onFieldChange, onReset }: PluginCardProps) {
   const settings = plugin.settings || [],
     Addon = settingsAddons[plugin.id];
+  const atDefaults = settings.every(setting =>
+    fieldValuesEqual(plugin.id, setting, draft[setting.name], defaultFieldValue(plugin.id, setting)),
+  );
   const footer = settings.length > 0 && (
     <div className="card-footer dirty-plugins-card-footer">
       <div
@@ -16,6 +19,15 @@ export function PluginCard({ plugin, draft = {}, status, actionRevision, onField
       >
         {status && status.message}
       </div>
+      <button
+        type="button"
+        className="btn btn-secondary dirty-ui-button"
+        disabled={atDefaults}
+        title={atDefaults ? "Every setting already has its default value." : undefined}
+        onClick={() => onReset(plugin.id)}
+      >
+        Reset to defaults
+      </button>
     </div>
   );
   const rules = FIELD_DISABLED_WHEN[plugin.id] || {};

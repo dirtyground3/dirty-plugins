@@ -118,13 +118,15 @@ async function main() {
   assert.deepEqual(Object.keys(hub.ui).sort(), ["manageDialog", "notify"]);
   assert.equal(hub.theme.load, undefined);
   const numberField = domain.fieldDefinition("multiscreen", {
-    name: "totalScreens",
+    name: "screens",
     display_name: "Screens",
     type: "NUMBER",
   });
   assert.equal(numberField.kind, "number");
   assert.equal(numberField.min, 1);
   assert.equal(numberField.max, 36);
+  assert.equal(numberField.placeholder, "Rows x columns");
+  assert.equal(domain.fieldDefinition("multiscreen", { name: "rows", type: "NUMBER" }).placeholder, undefined);
   assert.equal(domain.fieldDefinition("dirtyPlugins", { name: "visualTheme", type: "STRING" }).options.length, 8);
   const orderField = domain.fieldDefinition("multiscreen", { name: "sceneOrder", type: "STRING" });
   assert.equal(orderField.kind, "select");
@@ -164,7 +166,7 @@ async function main() {
   const inputs = h.nodes(node => node.type === "input");
   assert.deepEqual(
     inputs.map(node => node.props.id),
-    ["dirty-plugin-multiscreen-rows", "dirty-plugin-multiscreen-columns", "dirty-plugin-multiscreen-totalScreens"],
+    ["dirty-plugin-multiscreen-rows", "dirty-plugin-multiscreen-columns", "dirty-plugin-multiscreen-screens"],
     "settings follow their schema sections",
   );
   assert.deepEqual(
@@ -172,14 +174,14 @@ async function main() {
     ["Grid"],
     "only sections with reported settings render",
   );
-  const screens = () => h.nodes(node => node.props.id === "dirty-plugin-multiscreen-totalScreens")[0];
+  const screens = () => h.nodes(node => node.props.id === "dirty-plugin-multiscreen-screens")[0];
   screens().props.onChange({ target: { value: "8" } });
   await h.settle();
   assert.match(h.text(), /Unsaved changes/);
   assert.equal(h.window.handlers.get("beforeunload").size, 1);
   assert.equal(h.requests.filter(request => request.variables?.args?.mode === "setSettings").length, 0);
   await h.tick();
-  assert.equal(h.settings.multiscreen.totalScreens, 8);
+  assert.equal(h.settings.multiscreen.screens, 8);
   assert.match(h.text(), /Saved automatically/);
   assert.equal(h.window.handlers.get("beforeunload").size, 0);
   const write = h.requests.find(request => request.variables?.args?.mode === "setSettings").variables.args;
@@ -190,12 +192,12 @@ async function main() {
   await h.tick();
   assert.match(h.text(), /must be a number/);
   assert.equal(screens().props.value, "invalid", "invalid drafts keep the raw input");
-  assert.equal(h.settings.multiscreen.totalScreens, 8);
+  assert.equal(h.settings.multiscreen.screens, 8);
   screens().props.onChange({ target: { value: "9" } });
   await h.settle();
   h.unmount();
   await h.tick();
-  assert.equal(h.settings.multiscreen.totalScreens, 8, "unmount cancels pending saves");
+  assert.equal(h.settings.multiscreen.screens, 8, "unmount cancels pending saves");
   for (const name of [
     "beforeunload",
     "dirty-plugins:configuration-changed",

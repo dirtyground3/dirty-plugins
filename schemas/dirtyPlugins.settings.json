@@ -43,7 +43,7 @@
     "showSettingsInMenu": {
       "type": "BOOLEAN",
       "displayName": "Show settings in the Stash header",
-      "description": "Add a Dirty Plugins settings button after the other Dirty plugin buttons in Stash's utility navigation. Enabled by default.",
+      "description": "Add a Dirty Plugins settings button after the other Dirty plugin buttons in Stash's utility navigation.",
       "default": true
     }
   },

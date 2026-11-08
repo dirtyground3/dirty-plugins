@@ -51,12 +51,23 @@ async function main() {
   });
   assert.equal(a.normalizeSettings({ showPerformerNavigation: false }).showPerformerNavigation, false);
   assert.equal(
-    a.normalizeSettings({ totalScreens: 6, rows: 2, columns: 2 }).totalScreens,
+    a.normalizeSettings({ screens: 6, rows: 2, columns: 2 }).totalScreens,
     4,
     "tiles must not exceed rows x columns",
   );
-  assert.equal(a.normalizeSettings({ totalScreens: 99, rows: 3, columns: 3 }).totalScreens, 9);
-  assert.equal(a.normalizeSettings({ totalScreens: 0, rows: 0, columns: 40 }).totalScreens, 1);
+  assert.equal(a.normalizeSettings({ screens: 99, rows: 3, columns: 3 }).totalScreens, 9);
+  assert.equal(a.normalizeSettings({ screens: 0, rows: 0, columns: 40 }).totalScreens, 1);
+  // An empty screen count fills the grid; a number leaves the remaining cells empty.
+  for (const screens of [undefined, null, "", " "])
+    assert.equal(a.normalizeSettings({ screens, rows: 3, columns: 4 }).totalScreens, 12, String(screens));
+  assert.equal(a.normalizeSettings({ screens: 3, rows: 2, columns: 2 }).totalScreens, 3);
+  assert.equal(a.normalizeSettings({ screens: "5", rows: 3, columns: 3 }).totalScreens, 5);
+  assert.equal(a.normalizeSettings({ rows: 12, columns: 12 }).totalScreens, 36, "a full grid stops at 36 panes");
+  assert.equal(
+    a.normalizeSettings({ totalScreens: 4, rows: 3, columns: 3 }).totalScreens,
+    9,
+    "the former stored count no longer limits a larger grid",
+  );
   assert.equal(a.normalizeSettings({ rows: 40 }).rows, 12);
   assert.equal(a.normalizeSettings({ markerDuration: 10000 }).markerDuration, 600);
   assert.equal(a.normalizeSettings({ sceneOrder: "fresh" }).sceneOrder, "fresh");
@@ -240,7 +251,7 @@ async function main() {
     performerPool,
   );
 
-  const settings = a.normalizeSettings({ totalScreens: 4 });
+  const settings = a.normalizeSettings({});
   assert.equal(a.getSceneLimit(settings), 48);
   assert.equal(a.getSceneLimit(Object.assign({}, settings, { splitScenes: true })), 32);
   assert.equal(a.getSceneLimit(Object.assign({}, settings, { totalScreens: 30 })), 240);
@@ -444,12 +455,42 @@ async function main() {
   assert.deepEqual(plain(studioVariables.scene_filter), {
     studios: { value: ["9"], modifier: "INCLUDES", depth: 0 },
   });
+  const tagVariables = await a.getSceneQueryVariables(nonRandom, { source: "tag-detail", tagId: "11" });
+  assert.equal(tagVariables.filter.sort, "title");
+  assert.deepEqual(plain(tagVariables.scene_filter), {
+    tags: { value: ["11"], modifier: "INCLUDES", depth: 0 },
+  });
+  const tagSelectionVariables = await a.getSceneQueryVariables(nonRandom, {
+    source: "tag-selection",
+    selectedIds: ["11", "12"],
+  });
+  assert.deepEqual(plain(tagSelectionVariables.scene_filter.tags.value), ["11", "12"]);
   const performerFilterVariables = await a.getSceneQueryVariables(nonRandom, {
     source: "performer-filter",
     filter: { sort: "title" },
     performerFilter: {},
   });
   assert.deepEqual(plain(performerFilterVariables.scene_filter.performers.value), ["p1"]);
+  const tagRequests = [];
+  const tagQueries = feature("queries").createQueries({
+    graphql: async (query, variables) => {
+      tagRequests.push({ query, variables });
+      return { findTags: { tags: [{ id: "t1" }, { id: "t2" }] } };
+    },
+  });
+  const tagFilterVariables = await tagQueries.getSceneQueryVariables(nonRandom, {
+    source: "tag-filter",
+    filter: { q: "outdoor", sort: "name" },
+    tagFilter: { favorite: true },
+  });
+  assert.match(tagRequests[0].query, /MultiscreenTags/);
+  assert.deepEqual(plain(tagRequests[0].variables), {
+    filter: { q: "outdoor", sort: "name", page: 1, per_page: -1 },
+    tag_filter: { favorite: true },
+  });
+  assert.deepEqual(plain(tagFilterVariables.scene_filter), {
+    tags: { value: ["t1", "t2"], modifier: "INCLUDES", depth: 0 },
+  });
 
   const launchContext = { source: "selection", selectedIds: ["1", "2"] };
   contexts.storeLaunchContext(launchContext);
@@ -466,6 +507,7 @@ async function main() {
     ["marker-list", "/scenes/markers", "marker-selection"],
     ["performer-list", "/performers", "performer-selection"],
     ["studio-list", "/studios", "studio-selection"],
+    ["tag-list", "/tags", "tag-selection"],
   ]) {
     contexts.captureList(key, {
       filter: {
@@ -496,16 +538,27 @@ async function main() {
     source: "studio-detail",
     studioId: "456",
   });
+  assert.equal(contexts.getLaunchContextForPath("/tags/789"), null);
+  contexts.captureDetail("tag-detail", "789");
+  assert.deepEqual(plain(contexts.getLaunchContextForPath("/tags/789/markers")), {
+    source: "tag-detail",
+    tagId: "789",
+  });
+  assert.equal(contexts.getLaunchContextForPath("/tags/new"), null);
   const ordered = a.orderSelected([{ id: "b" }, { id: "a" }, { id: "c" }], ["c", "missing", "a"]);
   assert.deepEqual(
     ordered.map(item => item.id),
     ["c", "a"],
   );
   const emptyQueries = feature("queries").createQueries({
-    graphql: async () => ({ findPerformers: { performers: [] }, findStudios: { studios: [] } }),
+    graphql: async () => ({ findPerformers: { performers: [] }, findStudios: { studios: [] }, findTags: { tags: [] } }),
   });
-  for (const source of ["performer-filter", "studio-filter"]) {
-    const context = { source, filter: {}, [source === "performer-filter" ? "performerFilter" : "studioFilter"]: {} };
+  for (const [source, key] of [
+    ["performer-filter", "performerFilter"],
+    ["studio-filter", "studioFilter"],
+    ["tag-filter", "tagFilter"],
+  ]) {
+    const context = { source, filter: {}, [key]: {} };
     assert.equal(await emptyQueries.getSceneQueryVariables(defaults, context), null);
     assert.equal(await emptyQueries.getLiveSceneCount(context), 0);
   }

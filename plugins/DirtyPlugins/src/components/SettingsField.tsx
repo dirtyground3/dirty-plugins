@@ -42,6 +42,7 @@ export function SettingsField({ definition: field, value, onChange, ...props }: 
         min={field.min}
         max={field.max}
         step={field.step}
+        placeholder={field.placeholder}
         value={value == null ? "" : (value as string | number | readonly string[])}
         onChange={event => onChange(event.target.value)}
       />

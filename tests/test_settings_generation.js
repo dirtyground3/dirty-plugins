@@ -80,6 +80,15 @@ async function main() {
     ["count"],
     "authored integer requirements reach TypeScript validation",
   );
+  const { default: _default, ...optionalCount } = valid.settings.count;
+  const optional = { settings: { count: { ...optionalCount, placeholder: "Automatic" } } };
+  assert.equal(generator.validateSchema("example", optional), optional);
+  assert.deepEqual(generator.settingsTables(optional).placeholders, { count: "Automatic" });
+  assert.deepEqual(generator.settingsTables(optional).defaults, {}, "an empty number has no default");
+  assert.match(
+    generator.typescriptModule("example", optional),
+    /export const placeholders = \{\n {2}"count": "Automatic"/,
+  );
   const grouped = {
     settings: {
       mode: {
@@ -149,6 +158,12 @@ async function main() {
       /or a boolean/,
     ],
     [{ settings: { count: { ...valid.settings.count, default: 5 } } }, /outside min\/max/],
+    [{ settings: { count: { ...valid.settings.count, placeholder: "Automatic" } } }, /replaces a number's default/],
+    [{ settings: { count: { ...valid.settings.count, placeholder: " " } } }, /placeholder must be text/],
+    [
+      { settings: { flag: { type: "BOOLEAN", displayName: "Flag", description: "Flag.", placeholder: "Off" } } },
+      /placeholder needs a number or text field/,
+    ],
     [{ settings: { count: { ...valid.settings.count, default: 1.5 } } }, /whole number/],
     [{ settings: { count: { ...valid.settings.count, min: 5 } } }, /min exceeds max/],
     [

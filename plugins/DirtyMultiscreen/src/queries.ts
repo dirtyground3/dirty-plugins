@@ -29,6 +29,30 @@ const PERFORMER_IDS =
   "query MultiscreenPerformers($filter:FindFilterType,$performer_filter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performer_filter){performers{id}}}";
 const STUDIO_IDS =
   "query MultiscreenStudios($filter:FindFilterType,$studio_filter:StudioFilterType){findStudios(filter:$filter,studio_filter:$studio_filter){studios{id}}}";
+const TAG_IDS =
+  "query MultiscreenTags($filter:FindFilterType,$tag_filter:TagFilterType){findTags(filter:$filter,tag_filter:$tag_filter){tags{id}}}";
+type Entity = "performer" | "studio" | "tag";
+/** How a list of each entity resolves to IDs, and the scene criterion those IDs become. Studios and tags match only themselves. */
+const RELATED: Record<
+  Entity,
+  { query: string; rows(data: QueryResult): { id: string }[]; criterion(ids: string[]): Record<string, unknown> }
+> = {
+  performer: {
+    query: PERFORMER_IDS,
+    rows: data => data.findPerformers.performers,
+    criterion: ids => ({ performers: { value: ids, modifier: "INCLUDES" } }),
+  },
+  studio: {
+    query: STUDIO_IDS,
+    rows: data => data.findStudios.studios,
+    criterion: ids => ({ studios: { value: ids, modifier: "INCLUDES", depth: 0 } }),
+  },
+  tag: {
+    query: TAG_IDS,
+    rows: data => data.findTags.tags,
+    criterion: ids => ({ tags: { value: ids, modifier: "INCLUDES", depth: 0 } }),
+  },
+};
 const INCREMENT_O = "mutation MultiscreenIncrementSceneO($id:ID!){sceneIncrementO(id:$id)}";
 /** One seed per query keeps every continuation page of a random order disjoint. */
 const sortFor = (settings: Settings, contextualSort: string) =>
@@ -53,29 +77,35 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
   async function relatedSceneVariables(
     settings: Settings,
     context: LaunchContext,
-    entity: "performer" | "studio",
+    entity: Entity,
   ): Promise<QueryVariables | null> {
+    const related = RELATED[entity];
     let ids: string[];
     if ("selectedIds" in context) ids = context.selectedIds;
     else if (context.source === "performer-detail") ids = [context.performerId];
     else if (context.source === "studio-detail") ids = [context.studioId];
-    else if (context.source === "performer-filter" || context.source === "studio-filter") {
-      const variables: Record<string, unknown> = { filter: { ...context.filter, page: 1, per_page: -1 } };
-      if (context.source === "performer-filter") variables.performer_filter = context.performerFilter;
-      else variables.studio_filter = context.studioFilter;
-      const data = await graphqlRequest<QueryResult>(entity === "studio" ? STUDIO_IDS : PERFORMER_IDS, variables);
-      ids = (entity === "studio" ? data.findStudios.studios : data.findPerformers.performers).map(item => item.id);
+    else if (context.source === "tag-detail") ids = [context.tagId];
+    else if (
+      context.source === "performer-filter" ||
+      context.source === "studio-filter" ||
+      context.source === "tag-filter"
+    ) {
+      const objectFilter =
+        context.source === "performer-filter"
+          ? context.performerFilter
+          : context.source === "studio-filter"
+            ? context.studioFilter
+            : context.tagFilter;
+      const data = await graphqlRequest<QueryResult>(related.query, {
+        filter: { ...context.filter, page: 1, per_page: -1 },
+        [entity + "_filter"]: objectFilter,
+      });
+      ids = related.rows(data).map(item => item.id);
     } else return null;
     if (!ids.length) return null;
     return {
       filter: { page: 1, per_page: getSceneLimit(settings), ...sortFor(settings, NON_RANDOM_SCENE_SORT) },
-      scene_filter: {
-        [entity === "studio" ? "studios" : "performers"]: {
-          value: ids,
-          modifier: "INCLUDES",
-          ...(entity === "studio" ? { depth: 0 } : {}),
-        },
-      },
+      scene_filter: related.criterion(ids),
     };
   }
   async function getSceneQueryVariables(
@@ -88,6 +118,7 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
       return filtered(settings, launchContext.filter, launchContext.sceneFilter, "scene_filter");
     if (source.startsWith("performer-")) return relatedSceneVariables(settings, launchContext!, "performer");
     if (source.startsWith("studio-")) return relatedSceneVariables(settings, launchContext!, "studio");
+    if (source.startsWith("tag-")) return relatedSceneVariables(settings, launchContext!, "tag");
     return { filter: { page: 1, per_page: getSceneLimit(settings), ...sortFor(settings, NON_RANDOM_SCENE_SORT) } };
   }
   function getMarkerQueryVariables(settings: Settings, launchContext: MarkerContext): QueryVariables {

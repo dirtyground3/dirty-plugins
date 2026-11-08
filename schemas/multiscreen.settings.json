@@ -20,11 +20,11 @@
       "max": 12,
       "step": 1
     },
-    "totalScreens": {
+    "screens": {
       "type": "NUMBER",
       "displayName": "Total screens",
-      "description": "Video panes to fill, up to rows x columns. Defaults to 4.",
-      "default": 4,
+      "description": "Leave empty to fill every grid cell (rows x columns, at most 36). Enter a smaller number to leave the remaining cells empty.",
+      "placeholder": "Rows x columns",
       "integer": true,
       "min": 1,
       "max": 36,
@@ -69,7 +69,7 @@
     "spreadScenes": {
       "type": "BOOLEAN",
       "displayName": "Spread performers and studios",
-      "description": "Avoid playing scenes with the same performer or studio back to back or side by side. Enabled by default.",
+      "description": "Avoid playing scenes with the same performer or studio back to back or side by side.",
       "default": true,
       "disabledWhen": {
         "setting": "sceneOrder",
@@ -85,7 +85,7 @@
     "avoidDuplicates": {
       "type": "BOOLEAN",
       "displayName": "Avoid the same scene on several screens",
-      "description": "Start every screen on a different scene, and skip scenes already playing on another screen when moving to the next one. Going back or choosing a search result can still repeat a scene. Enabled by default.",
+      "description": "Start every screen on a different scene, and skip scenes already playing on another screen when moving to the next one. Going back or choosing a search result can still repeat a scene.",
       "default": true,
       "disabledWhen": {
         "setting": "splitScenes",
@@ -95,25 +95,25 @@
     "startMuted": {
       "type": "BOOLEAN",
       "displayName": "Start muted",
-      "description": "Start every video muted. Enabled by default.",
+      "description": "Start every video muted.",
       "default": true
     },
     "randomStart": {
       "type": "BOOLEAN",
       "displayName": "Random start",
-      "description": "Jump to a random point when a scene starts. Enabled by default.",
+      "description": "Jump to a random point when a scene starts.",
       "default": true
     },
     "loopScenes": {
       "type": "BOOLEAN",
       "displayName": "Loop scenes",
-      "description": "Repeat a scene instead of advancing to the next one. Enabled by default.",
+      "description": "Repeat a scene instead of advancing to the next one.",
       "default": true
     },
     "pauseWhenHidden": {
       "type": "BOOLEAN",
       "displayName": "Pause when hidden",
-      "description": "Pause every pane while the browser tab is hidden. Enabled by default.",
+      "description": "Pause every pane while the browser tab is hidden.",
       "default": true
     },
     "markerDuration": {
@@ -129,13 +129,13 @@
     "showPerformerNavigation": {
       "type": "BOOLEAN",
       "displayName": "Show performer next-scene buttons",
-      "description": "Show a portrait button for each performer on every screen, which moves that screen to the performer's next scene. Enabled by default.",
+      "description": "Show a portrait button for each performer on every screen, which moves that screen to the performer's next scene.",
       "default": true
     },
     "showInMenu": {
       "type": "BOOLEAN",
       "displayName": "Show in the Stash header",
-      "description": "Show the DirtyMultiscreen button in Stash's top bar. When hidden, the player stays reachable by URL. Enabled by default.",
+      "description": "Show the DirtyMultiscreen button in Stash's top bar. When hidden, the player stays reachable by URL.",
       "default": true
     }
   },
@@ -146,7 +146,7 @@
       "settings": [
         "rows",
         "columns",
-        "totalScreens"
+        "screens"
       ]
     },
     {

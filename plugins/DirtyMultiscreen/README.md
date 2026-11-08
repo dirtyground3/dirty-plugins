@@ -1,10 +1,10 @@
 # DirtyMultiscreen
 
-DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can launch from Stash scene, marker, performer, and studio contexts while preserving the active list order when appropriate.
+DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can launch from Stash scene, marker, performer, studio, and tag contexts while preserving the active list order when appropriate.
 
 ## Features
 
-- Configurable number of screens, rows, and columns.
+- Configurable rows and columns. Every cell plays unless you set fewer screens.
 - Random or ordered scene playback.
 - Optional scene splitting across panes.
 - Contextual playback continues through independently loaded pages of at most 240 items per pane.
@@ -33,9 +33,10 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   it as the **Scene order** setting.
 - Closing the tab keeps the session. Reloading, reopening the plugin page or
   clicking the header button on a page without a list returns every screen to
-  its scene, position and audio. The header button on a scene, marker, performer
-  or studio list, or on a performer or studio page, starts a new session, and so
-  does the shuffle button; either replaces the saved one. Changing the scene
+  its scene, position and audio. The header button on a scene, marker, performer,
+  studio or tag list, or on a performer, studio or tag page, starts a new session,
+  and so does the shuffle button; either replaces the saved one. A tag list or
+  page plays the scenes tagged with those tags themselves, not their sub-tags. Changing the scene
   order, spreading, duplicate avoidance, splitting or the number of screens keeps
   the launch scope but deals a new queue. If the library changed, a screen whose
   scene left its page starts at the top of that page. A browser that blocks sound
@@ -106,7 +107,9 @@ runtime files and Stash's package-provenance `manifest` during a local update.
 
 The DirtyMultiscreen tab of the Dirty Plugins settings has four groups:
 
-- **Grid:** rows, columns and the number of panes to fill (up to rows x columns).
+- **Grid:** rows, columns and **Total screens**. Leave **Total screens** empty
+  to fill every cell (rows x columns, at most 36), or enter a smaller number to
+  leave the remaining cells empty.
 - **Scenes:** scene order, **Spread performers and studios**, **Split scenes
   between panes** and **Avoid the same scene on several screens**.
 - **Playback:** **Start muted**, **Random start**, **Loop scenes**, **Pause when

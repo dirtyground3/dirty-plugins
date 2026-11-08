@@ -65,15 +65,17 @@ export interface SessionSearchResult {
 }
 export type SessionSearch = (text: string, page: number, signal: AbortSignal) => Promise<SessionSearchResult>;
 export type FindPerformerItems = (performerId: string, signal: AbortSignal) => Promise<Item[]>;
-type SelectionSource = "selection" | "marker-selection" | "performer-selection" | "studio-selection";
+type SelectionSource = "selection" | "marker-selection" | "performer-selection" | "studio-selection" | "tag-selection";
 export type LaunchContext =
   | { source: SelectionSource; selectedIds: string[] }
   | { source: "filter"; filter: Record<string, unknown>; sceneFilter: Record<string, unknown> }
   | { source: "marker-filter"; filter: Record<string, unknown>; markerFilter: Record<string, unknown> }
   | { source: "performer-filter"; filter: Record<string, unknown>; performerFilter: Record<string, unknown> }
   | { source: "studio-filter"; filter: Record<string, unknown>; studioFilter: Record<string, unknown> }
+  | { source: "tag-filter"; filter: Record<string, unknown>; tagFilter: Record<string, unknown> }
   | { source: "performer-detail"; performerId: string }
-  | { source: "studio-detail"; studioId: string };
+  | { source: "studio-detail"; studioId: string }
+  | { source: "tag-detail"; tagId: string };
 export type MarkerContext =
   | Extract<LaunchContext, { source: "marker-filter" }>
   | { source: "marker-selection"; selectedIds: string[] };
@@ -92,6 +94,7 @@ export interface QueryResult {
   findSceneMarkers: { count: number; scene_markers: Marker[] };
   findPerformers: { performers: { id: string }[] };
   findStudios: { studios: { id: string }[] };
+  findTags: { tags: { id: string }[] };
 }
 export interface Player {
   currentTime(): number;

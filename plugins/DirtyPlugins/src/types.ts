@@ -103,6 +103,7 @@ export interface PluginCardProps {
   status?: { error: boolean; message: string };
   actionRevision: number;
   onFieldChange(id: string, name: string, value: FieldValue): void;
+  onReset(id: string): void;
 }
 
 /** Shared controls accept documented presentation props, independent of Stash. */

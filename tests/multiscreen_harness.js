@@ -167,7 +167,6 @@ function createMultiscreenHarness(options = {}) {
         : options.settings || {
             rows: 1,
             columns: 2,
-            totalScreens: 2,
             sceneOrder: "list",
             avoidDuplicates: false,
             randomStart: false,
@@ -200,6 +199,7 @@ function createMultiscreenHarness(options = {}) {
         return { findSceneMarkers: { count: options.markers?.length || 0 } };
       if (query.includes("MultiscreenPerformers")) return { findPerformers: { performers: [{ id: "p1" }] } };
       if (query.includes("MultiscreenStudios")) return { findStudios: { studios: [{ id: "s1" }] } };
+      if (query.includes("MultiscreenTags")) return { findTags: { tags: [{ id: "t1" }] } };
       return {};
     },
   };

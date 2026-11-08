@@ -21,6 +21,7 @@ const LISTS = new Map([
     "/studios",
     { key: "studio-list", selection: "studio-selection", filter: "studio-filter", filterKey: "studioFilter" },
   ],
+  ["/tags", { key: "tag-list", selection: "tag-selection", filter: "tag-filter", filterKey: "tagFilter" }],
 ]);
 const DETAILS = [
   {
@@ -32,6 +33,11 @@ const DETAILS = [
     pattern: /^\/studios\/([^/]+)/,
     key: "studio-detail",
     context: (studioId: string): LaunchContext => ({ source: "studio-detail", studioId }),
+  },
+  {
+    pattern: /^\/tags\/([^/]+)/,
+    key: "tag-detail",
+    context: (tagId: string): LaunchContext => ({ source: "tag-detail", tagId }),
   },
 ];
 

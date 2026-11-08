@@ -27,13 +27,13 @@
     "showBattlesInMenu": {
       "type": "BOOLEAN",
       "displayName": "Show Battles in the Stash header",
-      "description": "Add a Battles button to Stash's utility navigation. Enabled by default.",
+      "description": "Add a Battles button to Stash's utility navigation.",
       "default": true
     },
     "showLeaderboardsInMenu": {
       "type": "BOOLEAN",
       "displayName": "Show Leaderboards in the Stash header",
-      "description": "Add a Leaderboards button to Stash's utility navigation. Enabled by default.",
+      "description": "Add a Leaderboards button to Stash's utility navigation.",
       "default": true
     },
     "leaderboardTopCount": {

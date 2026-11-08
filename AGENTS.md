@@ -128,7 +128,8 @@ ui:
   demand and replace an import where a fake is required
   (`tests/plugin_paths.js`).
 - Selected settings metadata (keys, labels, descriptions, defaults, bounds,
-  options, headed `sections` and `disabledWhen` rules) and constants shared by
+  options, headed `sections`, `disabledWhen` rules and placeholders for numbers
+  that may stay empty) and constants shared by
   TS and Python live only in
   `schemas/<pluginId>.settings.json`. The build generates `@generated/<id>.settings`
   TS modules in `.build/generated/`, the staged manifest's `settings:` section,

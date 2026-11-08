@@ -136,9 +136,10 @@ Every change saves automatically.
 
 ### DirtyMultiscreen
 
-- Launches from scene and marker lists, selections, performer and studio pages,
-  and other supported Stash contexts, preserving the active list order.
-- Configures the number of screens and grid rows/columns.
+- Launches from scene and marker lists, selections, performer, studio and tag
+  lists and pages, preserving the active list order.
+- Configures grid rows and columns; every cell plays unless you set fewer
+  screens.
 - Orders scenes at random, with fewer repeats, favouring unwatched, highly
   rated or recently added scenes, as a mix of favourites and unwatched scenes,
   or in the list's own order. Scenes that share a performer or studio are kept
@@ -497,7 +498,9 @@ backend needs them, Python constants such as `dirty_rank_metadata.py`.
 A schema may also group its settings under headed `sections` (listing every
 setting once, in schema order) and give a setting a `disabledWhen` rule naming
 another setting's option or boolean value; the hub renders both for ordinary
-settings tabs.
+settings tabs. A number with a `placeholder` instead of a default may stay empty:
+the hub shows the placeholder and removes the stored value, and the plugin
+applies its own fallback.
 
 Always use `.build/plugins/<Directory>/` for local installs and packages. Raw
 source directories are not installable: they contain no compiled bundle.

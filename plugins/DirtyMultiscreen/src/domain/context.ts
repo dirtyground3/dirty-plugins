@@ -1,16 +1,24 @@
 import type { LaunchContext, MarkerContext } from "../types";
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
-const SELECTION_SOURCES = new Set(["selection", "performer-selection", "studio-selection", "marker-selection"]);
+const SELECTION_SOURCES = new Set([
+  "selection",
+  "performer-selection",
+  "studio-selection",
+  "tag-selection",
+  "marker-selection",
+]);
 const FILTER_KEYS = new Map([
   ["filter", "sceneFilter"],
   ["performer-filter", "performerFilter"],
   ["studio-filter", "studioFilter"],
+  ["tag-filter", "tagFilter"],
   ["marker-filter", "markerFilter"],
 ]);
 const DETAIL_KEYS = new Map([
   ["performer-detail", "performerId"],
   ["studio-detail", "studioId"],
+  ["tag-detail", "tagId"],
 ]);
 export const isMultiscreenLaunchContext = (value: unknown): value is LaunchContext => {
   if (!isRecord(value) || typeof value.source !== "string") return false;

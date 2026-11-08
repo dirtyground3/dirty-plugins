@@ -47,13 +47,13 @@ def exercise(fixture, transcode=False):
         ids[title] = scene["id"]
     performer = fixture.gql('mutation{performerCreate(input:{name:"Synthetic Multiscreen performer"}){id}}')["performerCreate"]["id"]
     studio = fixture.gql('mutation{studioCreate(input:{name:"Synthetic Multiscreen studio"}){id}}')["studioCreate"]["id"]
+    tag = fixture.gql('mutation{tagCreate(input:{name:"Synthetic interval"}){id}}')["tagCreate"]["id"]
     for name in ("Alpha", "Beta"):
-        fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}', {"input": {"id": ids[name], "performer_ids": [performer], "studio_id": studio}})
+        fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}', {"input": {"id": ids[name], "performer_ids": [performer], "studio_id": studio, "tag_ids": [tag]}})
     co_performer = fixture.gql('mutation{performerCreate(input:{name:"Co-performer fixture"}){id}}')["performerCreate"]["id"]
     for name in ("Alpha", "Gamma"):
         performer_ids = [performer, co_performer] if name == "Alpha" else [co_performer]
         fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}', {"input": {"id": ids[name], "performer_ids": performer_ids}})
-    tag = fixture.gql('mutation{tagCreate(input:{name:"Synthetic interval"}){id}}')["tagCreate"]["id"]
     markers = []
     for title, seconds, end in (("Explicit", 1, 3), ("Fallback", 4, None)):
         markers.append(fixture.gql('mutation($input:SceneMarkerCreateInput!){sceneMarkerCreate(input:$input){id}}', {"input": {"title": title, "seconds": seconds, "end_seconds": end, "primary_tag_id": tag, "scene_id": ids["Alpha"]}})["sceneMarkerCreate"]["id"])
@@ -114,10 +114,12 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
   } finally {
     await rename('Alpha');
   }
-  for (const entity of ['performer', 'studio']) {
+  for (const entity of ['performer', 'studio', 'tag']) {
     const related = await queries.getSceneQueryVariables(settings, { source: entity + '-detail', [entity + 'Id']: '1' });
     assert.equal((await queries.searchSession(related, false, 'Delta', 1, new AbortController().signal)).findScenes.count, 0);
     assert.equal((await queries.searchSession(related, false, 'Beta', 1, new AbortController().signal)).findScenes.count, 1);
+    const listed = await queries.getSceneQueryVariables(settings, { source: entity + '-filter', filter: { q: 'Synthetic' }, [entity + 'Filter']: {} });
+    assert.equal((await graphql(queries.findScenesQuery, listed)).findScenes.count, 2, entity + ' list filters resolve to their scenes');
   }
   const markerScope = queries.getMarkerQueryVariables(settings, { source: 'marker-filter', filter: { q: 'Explicit' }, markerFilter: { scene_filter: scope.scene_filter } });
   const markerSearch = (await queries.searchSession(markerScope, true, 'Alpha', 1, new AbortController().signal)).findSceneMarkers;
@@ -136,12 +138,12 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
   assert.equal(markersWithPerformer.findSceneMarkers.scene_markers[0].title, 'Explicit');
   assert.equal(markersWithPerformer.findSceneMarkers.scene_markers[0].seconds, 1);
   process.stdout.write('PASS: compiled bounded contextual query and stable seeded random continuation\n');
-  process.stdout.write('PASS: session search preserves selections, filters, original text, performer/studio membership and marker ranges\n');
+  process.stdout.write('PASS: session search preserves selections, filters, original text, performer/studio/tag membership and marker ranges\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 '''
     subprocess.run([shutil.which("node"), "-e", script, fixture.url, performer, co_performer], check=True)
-    for key, value in (("performers", performer), ("studios", studio)):
-        result = fixture.gql('query($filter:SceneFilterType){findScenes(scene_filter:$filter,filter:{per_page:0}){count}}', {"filter": {key: {"value": [value], "modifier": "INCLUDES", **({"depth": 0} if key == "studios" else {})}}})
+    for key, value in (("performers", performer), ("studios", studio), ("tags", tag)):
+        result = fixture.gql('query($filter:SceneFilterType){findScenes(scene_filter:$filter,filter:{per_page:0}){count}}', {"filter": {key: {"value": [value], "modifier": "INCLUDES", **({"depth": 0} if key != "performers" else {})}}})
         assert result["findScenes"]["count"] == 2
     for scene in scenes["scenes"]:
         url = scene["paths"]["stream"]
@@ -150,11 +152,11 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
         with urllib.request.urlopen(urllib.request.Request(url, headers={"Range": "bytes=0-31"})) as response:
             assert response.status == 206
             assert len(response.read()) == 32
-    set_settings(fixture, totalScreens=4, rows=2, columns=2, sceneOrder='list', splitScenes=True, startMuted=True,
+    set_settings(fixture, rows=2, columns=2, sceneOrder='list', splitScenes=True, startMuted=True,
                  randomStart=False, loopScenes=False, markerDuration=2, pauseWhenHidden=True)
     snapshot = fixture.gql('{findScenes(filter:{per_page:-1}){scenes{id title details files{id path} performers{id} studio{id}}}}')["findScenes"]["scenes"]
     (fixture.root / "acceptance.json").write_text(json.dumps({"hashes": hashes, "scenes": snapshot}), encoding="utf-8")
-    print("PASS: synthetic scene/marker/performer/studio contexts, title order, selected IDs, exact counts, HTTP seeking and fixture settings", flush=True)
+    print("PASS: synthetic scene/marker/performer/studio/tag contexts, title order, selected IDs, exact counts, HTTP seeking and fixture settings", flush=True)
     return {"scenes": ids, "markers": markers, "performer": performer, "coPerformer": co_performer, "studio": studio}
 
 
