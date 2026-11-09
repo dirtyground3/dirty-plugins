@@ -115,8 +115,9 @@ def main():
         if disabled:
             fixture.gql("mutation{setPluginsEnabled(enabledMap:{" + ",".join(plugin_id + ":true" for plugin_id in disabled) + "})}")
         for plugin in registry:
-            version = available[plugin["id"]]["version"].split("-", 1)[0]
-            assert loaded[plugin["id"]]["version"] == version, (plugin["id"], loaded[plugin["id"]]["version"], version)
+            # The source labels each manifest version, release candidates included, with its build identity.
+            version = available[plugin["id"]]["version"]
+            assert version.startswith(loaded[plugin["id"]]["version"] + "-"), (plugin["id"], loaded[plugin["id"]]["version"], version)
             with urllib.request.urlopen(fixture.url + "/plugin/" + plugin["id"] + "/javascript") as response:
                 served = response.read()
             assert served == runtime_path(plugin["directory"], plugin["entry"]).read_bytes() + b"\n", plugin["id"]

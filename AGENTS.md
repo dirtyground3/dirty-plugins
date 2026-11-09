@@ -26,6 +26,7 @@ schemas/                 # authored settings metadata, one <pluginId>.settings.j
 types/                   # the only global TypeScript declarations
 .build/plugins/          # ignored installable output, never authored source
 build_site.sh            # packages staged plugins for GitHub Pages
+.github/workflows/       # deploy.yml publishes main and prerelease; release.yml releases prerelease
 docs/images/             # censored screenshots used by the README
 ```
 
@@ -235,17 +236,57 @@ the hub's capture mode and its typed API.
 
 ## Build and release
 
+Two branches publish Stash package sources on GitHub Pages:
+
+| Branch | Package source | Versions |
+| --- | --- | --- |
+| `main` | `https://dirtyground3.github.io/dirty-plugins/main/index.yml` | Releases only: `X.Y.Z` |
+| `prerelease` | `https://dirtyground3.github.io/dirty-plugins/prerelease/index.yml` | The next release candidate: `X.Y.Z-rc` for changed plugins |
+
+Work reaches `main` only through `prerelease`. Never push work to `main`
+directly:
+
+1. Commit on a branch started from `main`, or from `prerelease` to continue an
+   unreleased candidate.
+2. Give each plugin whose runtime files change (bundle, manifest content,
+   styles, backends) its next version with `-rc`, once per release: `1.0.23`
+   becomes `1.0.24-rc`. Write the README version table and release notes with
+   the final version, `1.0.24`. README-only and staging-only changes keep
+   versions. Every plugin's first TS/TSX release was `1.0.0`.
+3. Optionally install the staged build locally (see Local install below).
+4. Run `node scripts/release.mjs check prerelease`, then
+   `git push origin HEAD:prerelease`. Add `--force` only to replace an
+   unreleased candidate. `.github/workflows/deploy.yml` runs `npm test` and
+   publishes `prerelease/index.yml`.
+5. `.github/workflows/release.yml` then waits for approval in the `release`
+   environment. Approval belongs to the user, after trying the candidate; never
+   approve it yourself. Approving commits "Release …" without `-rc`,
+   fast-forwards `main` and `prerelease` to that commit and publishes both
+   sources. A newer push to `prerelease` replaces a release that is still
+   waiting.
+6. After every push, check the runs with
+   `gh run list --repo dirtyground3/dirty-plugins --limit 4`. A failed deploy
+   leaves the previous packages published.
+
+Rules behind the flow:
+
+- `scripts/release.mjs` enforces the versions: `main` refuses `-rc`, each `-rc`
+  must be newer than the version on `main`, and `prerelease` must contain every
+  commit on `main`, so a release only moves `main` forward. If `main` ever gets
+  a commit of its own, merge `main` into your branch before the next push to
+  `prerelease`.
+- Stash offers an update when a package's date is newer, not its version. The
+  date is that of the last commit touching the plugin or shared build inputs,
+  so the release commit is what moves candidate installs to the final version.
+- The workflow token may not push `.github/workflows` changes. Release such a
+  candidate by hand with the three commands in README, Releases.
+- GitHub Pages replaces the whole site on every deploy, so each deploy builds
+  its own branch's source and copies the other one as published
+  (`scripts/fetch-channel.mjs`). Deploys run only for `main` and `prerelease`.
 - Local package build (needs Node dependencies, Bash and `zip`):
-  `./build_site.sh _site/main`
-- The package script builds staging and limits output cleanup to `_site/`.
-  Package update identities include plugin source and shared build inputs.
-- Pushes to `main` touching plugins or shared build/test inputs publish the package
-  source to GitHub Pages via `.github/workflows/deploy.yml`. Do not commit
-  generated `_site/` output.
-- Every plugin's first TS/TSX release was `1.0.0`. Bump the patch version of
-  each plugin whose runtime files (bundle, manifest content, styles, backends)
-  change, once per release, and update the README version table and release
-  notes. README-only and staging-only changes keep versions.
+  `./build_site.sh _site/main`. The package script builds staging and limits
+  output cleanup to `_site/`. Package update identities include plugin source
+  and shared build inputs. Do not commit generated `_site/` output.
 
 ## Local install (this machine)
 

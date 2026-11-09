@@ -287,6 +287,9 @@ After `./build_site.sh _site/main`, run `npm run test:packages` to verify all
 eight ZIPs, their root manifests, staged bytes, dependencies, source/build
 identities, and checksums. This check reads existing package output and does
 not rebuild it. CI runs it before uploading the Pages artifact.
+`test_release_channels.js` covers the version rules of the `main` and
+`prerelease` channels and the copy of the other channel's published packages
+from a local HTTP server.
 It also rejects any source, test, tooling or runtime-data file in a ZIP.
 `python -B tests/test_package_install_stash_integration.py --binary /path/to/stash`
 then installs those packages into an empty plugin directory of an isolated Stash

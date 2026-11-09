@@ -267,6 +267,17 @@ declares it as a dependency—there is normally no need to install the hub
 separately. On its own it adds only a link to the settings page: if that link is
 all you see, install one of the plugins above too.
 
+To try changes before they are released, add the release-candidate source
+instead and install from it:
+
+```text
+https://dirtyground3.github.io/dirty-plugins/prerelease/index.yml
+```
+
+Stash updates each plugin from the source it was installed from. Every release
+also reaches the release-candidate source, so a candidate moves on to the final
+version.
+
 ### Initial configuration
 
 Open **Settings → Plugins**, expand an installed Dirty plugin, and select its
@@ -459,6 +470,7 @@ scripts/                 # staged build, settings generator and plugin registry
 schemas/                 # authored settings metadata shared by manifests, TS and Python
 .build/plugins/          # generated installable output (ignored)
 build_site.sh            # packages staged plugins for GitHub Pages
+.github/workflows/       # deploy.yml publishes main and prerelease; release.yml releases prerelease
 docs/images/             # censored screenshots used by the documentation
 ```
 
@@ -554,8 +566,67 @@ archive root. Output cleanup is confined to the repository's `_site/` directory.
 Package update identities include both plugin source and shared build inputs.
 Generated `.build/` and `_site/` files are ignored and must remain uncommitted.
 
-Pushes to `main` that affect plugins, build configuration, or checks publish the following GitHub
-Pages layout through GitHub Actions:
+### Releases
+
+Two branches publish package sources through GitHub Actions:
+
+| Branch | Package source | Versions |
+| --- | --- | --- |
+| `main` | `https://dirtyground3.github.io/dirty-plugins/main/index.yml` | Releases, `X.Y.Z` |
+| `prerelease` | `https://dirtyground3.github.io/dirty-plugins/prerelease/index.yml` | Release candidates: a plugin with unreleased changes is `X.Y.Z-rc` |
+
+Every change reaches `main` through `prerelease`; nobody pushes work to `main`
+directly:
+
+1. **Develop** on a branch started from `main`, or from `prerelease` to continue
+   an unreleased candidate.
+2. **Version** each plugin whose runtime files change with its next version and
+   `-rc`: `1.0.23` becomes `1.0.24-rc`. Write the README version table and
+   release notes with the final version, `1.0.24`.
+3. **Try it locally** if you like, by installing the staged build as described
+   above.
+4. **Publish the candidate:**
+
+   ```bash
+   node scripts/release.mjs check prerelease
+   git push origin HEAD:prerelease
+   ```
+
+   Add `--force` to the push only to replace a candidate you no longer want.
+   GitHub Actions runs the full checks and publishes the prerelease source;
+   add that source in Stash to try the candidate.
+5. **Approve the release.** The **Release prerelease to main** workflow waits
+   for approval in the `release` environment, and GitHub notifies the
+   reviewer. Open the waiting run under **Actions** and select **Review
+   deployments**. Approving removes `-rc` in a "Release …" commit, moves `main`
+   and `prerelease` to it and publishes both sources. Rejecting leaves `main`
+   unchanged. A newer push to `prerelease` replaces a release that is still
+   waiting.
+
+`scripts/release.mjs` stops `main` from publishing a `-rc` version, requires
+each `-rc` version to be newer than the one on `main`, and requires
+`prerelease` to contain every commit on `main`, so a release only moves `main`
+forward. If `main` ever gets a commit of its own, merge `main` into your branch
+before the next push to `prerelease`.
+
+Stash offers an update when a package's date is newer, not its version number,
+and the date is that of the last commit touching the plugin. The release commit
+therefore also moves release-candidate installs on to the final version.
+
+The workflow token may not push changes to `.github/workflows`, so the workflow
+skips such a candidate with a warning. Release it by hand once it is published:
+
+```bash
+git fetch origin
+git switch --detach origin/prerelease
+git commit --all --message "$(node scripts/release.mjs finalize)"
+git push --atomic origin HEAD:main HEAD:prerelease
+```
+
+Skip the commit when `finalize` prints nothing.
+
+Each deploy builds its own channel and copies the other one as published,
+because GitHub Pages replaces the whole site. The published layout is:
 
 ```text
 main/
@@ -567,6 +638,8 @@ main/
 ├── dirtyRank.zip
 ├── dirtyStats.zip
 └── dirtyTasks.zip
+prerelease/
+└── (the same files)
 ```
 
 ## Release notes
