@@ -1389,6 +1389,21 @@ async function avoidsDuplicateScenes() {
     "a pool smaller than the grid still fills every screen",
   );
   await tiny.unmount();
+  // With every other scene on a screen, Next still moves on and repeats one.
+  const crowded = await start({
+    scenes: scenes.slice(0, 3),
+    settings: { rows: 2, columns: 2, sceneOrder: "list", randomStart: false },
+  });
+  const crowdedPlayers = () => crowded.nodes(node => node.type === "native-player");
+  const crowdedPlaying = () => crowdedPlayers().map(node => node.props.scene.id);
+  assert.deepEqual(crowdedPlaying(), ["a", "b", "c", "a"]);
+  crowdedPlayers()[0].props.onNext();
+  await crowded.flush();
+  assert.deepEqual(crowdedPlaying(), ["b", "b", "c", "a"], "Next repeats a scene when none is free");
+  crowdedPlayers()[2].props.onNext();
+  await crowded.flush();
+  assert.equal(crowdedPlaying()[2], "a", "even when the screen's own scene is the only free one");
+  await crowded.unmount();
 }
 
 async function reshuffleMenu() {
@@ -1927,9 +1942,169 @@ async function sessionRestore() {
   await refusing.unmount();
   assert.equal(refusing.storage.has("multiscreen.launchContext"), true, "a reload can still launch the same scope");
 }
+async function pluginLists() {
+  const scenes = Array.from({ length: 300 }, (_, index) => ({
+    id: String(index + 1),
+    title: "Scene " + (index + 1),
+    paths: { stream: "/" + index },
+    performers: (index + 1) % 100 === 0 ? [{ id: "p", name: "Alex" }] : [],
+  }));
+  const settings = { rows: 1, columns: 2, sceneOrder: "random", avoidDuplicates: true, randomStart: false };
+  const announcement = {
+    version: 1,
+    source: "cherrypick",
+    path: "/plugins/cherrypick",
+    kind: "scenes",
+    keepOrder: true,
+    label: "For you",
+  };
+  const ids = scenes.map(scene => scene.id).reverse();
+  const announce = (h, detail) => h.document.dispatchEvent({ type: "stash-scenes:context", detail });
+  const settle = async h => {
+    for (let round = 0; round < 3; round++) await h.tick();
+  };
+  const link = h => h.nodes(node => node.type === "NavAction")[0];
+
+  // The badge counts exactly what a click launches, without a query.
+  const nav = await start({ mode: "nav", path: "/plugins/cherrypick", scenes, settings });
+  announce(nav, { ...announcement, ids });
+  await settle(nav);
+  assert.equal(link(nav).props.label, "DirtyMultiscreen (300 scenes)");
+  assert.equal(nav.calls.length, 0, "an announced list is counted without a query");
+  link(nav).props.onClick();
+  assert.deepEqual(JSON.parse(nav.storage.get("multiscreen.launchContext")), {
+    source: "plugin-list",
+    kind: "scenes",
+    ids,
+    keepOrder: true,
+    label: "For you",
+  });
+  announce(nav, { ...announcement, ids: null });
+  await settle(nav);
+  assert.equal(link(nav).props.label, "DirtyMultiscreen", "after a withdrawal the button behaves as before");
+  link(nav).props.onClick();
+  assert.equal(nav.storage.has("multiscreen.launchContext"), false);
+  await nav.unmount();
+
+  // A list announced before the settings load waits for them, and a changed setting applies to it.
+  let stored = { otherPluginLists: "off" };
+  const gate = deferred();
+  const early = await start({
+    mode: "nav",
+    path: "/plugins/cherrypick",
+    scenes,
+    loadSettings: () => gate.promise.then(() => stored),
+  });
+  announce(early, { ...announcement, ids: ["1", "2"] });
+  await settle(early);
+  assert.equal(early.nodes(node => node.type === "NavAction").length, 0, "the button waits for the settings");
+  gate.resolve();
+  await settle(early);
+  assert.equal(link(early).props.label, "DirtyMultiscreen", "Off shows no other plugin's list");
+  stored = { otherPluginLists: "known" };
+  early.window.emit("dirty-plugins:configuration-changed", { detail: { pluginId: "multiscreen" } });
+  await settle(early);
+  assert.equal(link(early).props.label, "DirtyMultiscreen (2 scenes)");
+  await early.unmount();
+
+  // A launch loads one page of IDs at a time, in the list's order whatever the Scene order says.
+  const launchIds = ["9999", ...ids];
+  const graphql = async (query, variables) => {
+    if (query.includes("MultiscreenSceneIds")) {
+      const [performer] = variables.scene_filter.performers.value;
+      const rows = scenes.filter(scene => scene.performers.some(({ id }) => id === performer));
+      return { findScenes: { scenes: rows.map(({ id }) => ({ id })) } };
+    }
+    if (variables.ids.includes("9999")) throw new Error("scene with id 9999 not found");
+    const rows = variables.ids.map(id => scenes.find(scene => scene.id === id));
+    return { findScenes: { count: rows.length, scenes: rows } };
+  };
+  const launch = { source: "plugin-list", kind: "scenes", ids: launchIds, keepOrder: true, label: "For you" };
+  const playing = h => h.nodes(node => node.type === "native-player").map(node => node.props.scene.id);
+  const route = await start({ scenes, settings, graphql, launch });
+  assert.deepEqual(playing(route), ["300", "299"], "the list order wins and a deleted item is skipped");
+  const size = route.calls[0].variables.ids.length;
+  assert.equal(size, 24, "IDs load one page at a time");
+  assert.deepEqual([...route.calls[1].variables.ids], launchIds.slice(1, size));
+  const checked = h =>
+    h
+      .nodes(node => node.type === "ActionMenu")[0]
+      .props.items.filter(item => item.key && JSON.stringify(item.label).includes("(current)"))
+      .map(item => item.key)
+      .join();
+  assert.equal(checked(route), "list");
+  await route.tick(5000);
+  const launched = new Map(route.localStorage);
+  const session = JSON.parse(launched.get("multiscreen.session"));
+  assert.deepEqual(session.context, launch);
+  assert.equal(JSON.parse(session.queue)[0], "list", "the saved session records the order it plays");
+  assert.equal(route.storage.has("multiscreen.launchContext"), false);
+
+  // A later announcement leaves the running session alone.
+  const calls = route.calls.length;
+  announce(route, { ...announcement, ids: ["1"] });
+  await route.flush();
+  assert.equal(route.calls.length, calls);
+  assert.deepEqual(playing(route), ["300", "299"]);
+
+  // Performer buttons and Next reach items beyond the first page.
+  route
+    .nodes(node => node.type === "Button" && node.props.ariaLabel === "Next scene featuring Alex for screen 1")[0]
+    .props.onClick();
+  await route.flush();
+  assert.deepEqual(playing(route), ["200", "299"], "the performer's next scene in list order");
+  assert.deepEqual([...route.calls.at(-1).variables.ids], ["200"], "only the next match loads");
+  for (let press = 0; press < size; press++) {
+    route.nodes(node => node.type === "native-player")[1].props.onNext();
+    await route.flush();
+  }
+  assert(launchIds.slice(size, 2 * size).includes(playing(route)[1]), "Next continues into the next page of IDs");
+
+  // Another order ends the list's own order and becomes the Scene order setting.
+  route
+    .nodes(node => node.type === "ActionMenu")[0]
+    .props.items.find(item => item.key === "random")
+    .onSelect();
+  await route.flush();
+  assert.equal(route.saved.at(-1).settings.sceneOrder, "random");
+  assert.equal(checked(route), "random");
+  await route.tick(5000);
+  assert.equal(JSON.parse(route.localStorage.get("multiscreen.session")).context.keepOrder, false);
+  await route.unmount();
+
+  // A reload resumes in the list's order.
+  const resumed = await start({ scenes, settings, graphql, localStorage: new Map(launched) });
+  assert.deepEqual(playing(resumed), ["300", "299"]);
+  assert.equal(checked(resumed), "list");
+  await resumed.unmount();
+
+  // An empty list is shown once, and the saved session stays for the next launch.
+  const kept = new Map(launched);
+  for (const [kind, label, title] of [
+    ["scenes", "For you", "No scenes in For you"],
+    ["markers", "", "No markers"],
+  ]) {
+    const empty = await start({
+      scenes,
+      settings,
+      graphql,
+      localStorage: kept,
+      launch: { source: "plugin-list", kind, ids: [], keepOrder: false, label },
+    });
+    assert.equal(empty.nodes(node => node.type === "StateView")[0].props.title, title);
+    assert.equal(empty.calls.length, 0);
+    assert.equal(empty.storage.has("multiscreen.launchContext"), false, "an empty launch is used once");
+    await empty.unmount();
+  }
+  assert.equal(kept.get("multiscreen.session"), launched.get("multiscreen.session"));
+  const later = await start({ scenes, settings, graphql, localStorage: kept });
+  assert.deepEqual(playing(later), ["300", "299"], "a later launch resumes the previous session");
+  await later.unmount();
+}
 (async () => {
   await registration();
   await contextsAndCounts();
+  await pluginLists();
   await navigationSetting();
   await playbackAndCleanup();
   await markersAndLoops();

@@ -1,19 +1,26 @@
 import { coerceBoolean } from "../../../DirtyPlugins/src/shared/values";
 import { isMarkerLaunchContext } from "../domain/context";
-import { DEFAULT_SETTINGS } from "../domain/settings";
+import { DEFAULT_SETTINGS, normalizeListSettings } from "../domain/settings";
 import { contexts, counts, DirtyPlugins, PLUGIN_ID, PluginApi, queries, React } from "../runtime";
+import type { ListSettings } from "../types";
 const ROUTE_PATH = "/plugins/multiscreen",
   SCENE_COUNT_DEBOUNCE_MS = 300;
 
-/** Header button; hidden until settings load and while `showInMenu` is off, so hidden buttons count nothing. */
+/**
+ * Header button; hidden until settings load and while `showInMenu` is off, so hidden buttons count nothing.
+ * Lists other plugins announced before the settings loaded wait until then.
+ */
 export function MultiscreenNavLink() {
-  const [visible, setVisible] = React.useState(false);
+  const [lists, setLists] = React.useState<ListSettings | null>(null);
   React.useEffect(() => {
     let active = true;
     function refresh() {
       DirtyPlugins.getPluginSettings(PLUGIN_ID)
         .then(stored => {
-          if (active) setVisible(coerceBoolean(stored.showInMenu, DEFAULT_SETTINGS.showInMenu));
+          if (active)
+            setLists(
+              coerceBoolean(stored.showInMenu, DEFAULT_SETTINGS.showInMenu) ? normalizeListSettings(stored) : null,
+            );
         })
         .catch(error => console.error("DirtyMultiscreen could not refresh navigation settings", error));
     }
@@ -28,17 +35,18 @@ export function MultiscreenNavLink() {
       window.removeEventListener("dirty-plugins:configuration-changed", configurationChanged);
     };
   }, []);
-  return visible ? <ContextualMultiscreenNavLink /> : null;
+  return lists ? <ContextualMultiscreenNavLink lists={lists} /> : null;
 }
 
-export function ContextualMultiscreenNavLink() {
+/** The badge counts exactly what a click launches. */
+export function ContextualMultiscreenNavLink({ lists }: { lists: ListSettings }) {
   const location = PluginApi.libraries.ReactRouterDOM.useLocation();
   const [contextRevision, setContextRevision] = React.useState(0);
   const [sceneCount, setSceneCount] = React.useState<number | null>(null);
   const [countLoading, setCountLoading] = React.useState(false);
   const launchContext = React.useMemo(
-    () => contexts.getLaunchContextForPath(location.pathname),
-    [contextRevision, location.pathname],
+    () => contexts.getLaunchContextForPath(location.pathname, lists),
+    [contextRevision, location.pathname, lists],
   );
   const launchContextKey = React.useMemo(() => (launchContext ? JSON.stringify(launchContext) : ""), [launchContext]);
   React.useEffect(() => {
@@ -60,8 +68,9 @@ export function ContextualMultiscreenNavLink() {
       return;
     }
     setCountLoading(true);
-    const debounceMs =
-      launchContext.source === "selection" || launchContext.source === "marker-selection" ? 0 : SCENE_COUNT_DEBOUNCE_MS;
+    const debounceMs = ["selection", "marker-selection", "plugin-list"].includes(launchContext.source)
+      ? 0
+      : SCENE_COUNT_DEBOUNCE_MS;
     const timeoutId = window.setTimeout(() => {
       void queries
         .getLiveSceneCount(launchContext)

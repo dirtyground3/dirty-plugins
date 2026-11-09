@@ -545,6 +545,249 @@ async function main() {
     tagId: "789",
   });
   assert.equal(contexts.getLaunchContextForPath("/tags/new"), null);
+
+  // Lists announced by other plugins.
+  assert.deepEqual(plain(a.normalizeListSettings({})), { allow: "known", limit: 10000 });
+  assert.deepEqual(plain(a.normalizeListSettings({ otherPluginLists: "any", listSizeLimit: 5 })), {
+    allow: "any",
+    limit: 1000,
+  });
+  assert.deepEqual(plain(a.normalizeListSettings({ otherPluginLists: "all", listSizeLimit: 1e9 })), {
+    allow: "known",
+    limit: 100000,
+  });
+  const announcement = {
+    version: 1,
+    source: "CherryPick",
+    path: "/plugins/cherrypick",
+    kind: "scenes",
+    ids: ["3", "1", "3", "2"],
+    keepOrder: true,
+    label: "  For you  ",
+    unknownField: { ignored: true },
+  };
+  const parsed = {
+    source: "CherryPick",
+    path: "/plugins/cherrypick",
+    kind: "scenes",
+    ids: ["3", "1", "2"],
+    keepOrder: true,
+    label: "For you",
+  };
+  assert.deepEqual(plain(a.parseAnnouncement(announcement)), parsed, "a duplicate ID keeps its first position");
+  assert.deepEqual(plain(a.parseAnnouncement({ ...announcement, ids: null, keepOrder: undefined, label: undefined })), {
+    ...parsed,
+    ids: null,
+    keepOrder: false,
+    label: "",
+  });
+  for (const malformed of [
+    null,
+    [],
+    { ...announcement, version: 2 },
+    { ...announcement, version: "1" },
+    { ...announcement, source: " " },
+    { ...announcement, path: "plugins/cherrypick" },
+    { ...announcement, kind: "images" },
+    { ...announcement, ids: undefined },
+    { ...announcement, ids: "3" },
+    { ...announcement, ids: [3] },
+    { ...announcement, ids: ["3", "x"] },
+    { ...announcement, keepOrder: "yes" },
+    { ...announcement, label: 5 },
+  ])
+    assert.equal(a.parseAnnouncement(malformed), null, JSON.stringify(malformed));
+  const longList = Array.from({ length: 100001 }, (_, index) => String(index));
+  assert.equal(a.parseAnnouncement({ ...announcement, ids: longList }).ids.length, 100000);
+  assert.equal(a.parseAnnouncement({ ...announcement, label: "x".repeat(90) }).label.length, 80);
+  const pluginList = { source: "plugin-list", kind: "markers", ids: [], keepOrder: false, label: "" };
+  assert.equal(a.isMultiscreenLaunchContext(pluginList), true, "an empty list is a launch");
+  assert.equal(a.isMultiscreenLaunchContext({ ...pluginList, kind: "images" }), false);
+  assert.equal(a.isMultiscreenLaunchContext({ ...pluginList, ids: [1] }), false);
+  assert.equal(a.isMultiscreenLaunchContext({ ...pluginList, keepOrder: undefined }), false);
+  assert.equal(a.isMarkerLaunchContext(pluginList), true);
+  assert.equal(a.isMarkerLaunchContext({ ...pluginList, kind: "scenes" }), false);
+
+  const runTimers = () => {
+    for (const [id, timer] of [...h.timers]) {
+      h.timers.delete(id);
+      timer.fn();
+    }
+  };
+  runTimers();
+  let notified = 0;
+  const unsubscribe = contexts.subscribeToContextChanges(() => notified++);
+  const announce = detail => {
+    contexts.announce(detail);
+    runTimers();
+  };
+  const listPath = "/plugins/cherrypick",
+    known = { allow: "known", limit: 10000 },
+    any = { allow: "any", limit: 10000 };
+  const ids = (path, settings) => contexts.getLaunchContextForPath(path, settings)?.ids;
+  announce(announcement);
+  assert.equal(notified, 1);
+  assert.deepEqual(plain(contexts.getLaunchContextForPath(listPath, known)), {
+    source: "plugin-list",
+    kind: "scenes",
+    ids: ["3", "1", "2"],
+    keepOrder: true,
+    label: "For you",
+  });
+  assert.equal(contexts.getLaunchContextForPath(listPath), null, "lists wait until the settings are known");
+  assert.equal(ids("/plugins/other", known), undefined, "a list applies only to its own path");
+  assert.equal(ids(listPath, { allow: "off", limit: 10000 }), undefined);
+  assert.deepEqual(plain(ids(listPath, { allow: "known", limit: 2 })), ["3", "1"]);
+  announce({ ...announcement, label: "For you" });
+  assert.equal(notified, 1, "an identical announcement changes nothing");
+  announce({ ...announcement, source: "Other", ids: ["9"] });
+  assert.equal(notified, 2);
+  assert.deepEqual(plain(ids(listPath, known)), ["3", "1", "2"], "an unknown plugin's list is kept but not shown");
+  assert.deepEqual(plain(ids(listPath, any)), ["9"], "the most recent list wins");
+  announce({ ...announcement, source: "Other", ids: null });
+  assert.deepEqual(plain(ids(listPath, any)), ["3", "1", "2"], "a withdrawal restores the previous list");
+  announce({ ...announcement, source: "Other", ids: null });
+  assert.equal(notified, 3, "withdrawing again changes nothing");
+  announce({ ...announcement, ids: [] });
+  assert.deepEqual(plain(ids(listPath, known)), [], "an empty list is still a list");
+  announce({ ...announcement, ids: null });
+  assert.equal(contexts.getLaunchContextForPath(listPath, any), null, "the last withdrawal leaves the page as before");
+  for (const path of ["/scenes", "/scenes/markers", "/performers", "/studios/4", "/tags/5/markers"])
+    announce({ ...announcement, path });
+  assert.equal(notified, 5, "pages Multiscreen reads itself ignore announcements");
+  announce({ ...announcement, version: 2 });
+  assert.equal(notified, 5, "malformed announcements are dropped");
+  unsubscribe();
+
+  const listContext = { source: "plugin-list", kind: "scenes", ids: ["5", "4"], keepOrder: true, label: "" };
+  assert.deepEqual(plain(await a.getSceneQueryVariables(defaults, listContext)), {
+    filter: { page: 1, per_page: a.getSceneLimit(defaults) },
+    list: ["5", "4"],
+  });
+  assert.equal(await a.getSceneQueryVariables(defaults, { ...listContext, ids: [] }), null);
+  assert.deepEqual(plain(a.getMarkerQueryVariables(defaults, { ...listContext, kind: "markers" }).list), ["5", "4"]);
+  const callsBeforeCount = h.calls.length;
+  assert.equal(await queries.getLiveSceneCount(listContext), 2);
+  assert.equal(h.calls.length, callsBeforeCount, "a list is counted without a query");
+
+  // Deleted items are dropped; search and performer buttons scan the library's matching IDs.
+  const library = Array.from({ length: 2500 }, (_, index) => ({
+    id: String(index + 1),
+    title: (index % 2 ? "Odd " : "Even ") + index,
+    performers: index % 500 === 0 ? [{ id: "p" }] : [],
+  }));
+  const byId = new Map(library.map(scene => [scene.id, scene]));
+  const listRequests = [];
+  const listQueries = feature("queries").createQueries({
+    graphql: async (query, variables, options) => {
+      listRequests.push({ query, variables, options });
+      if (options?.signal?.aborted) throw new Error("aborted");
+      if (variables.ids) {
+        const missing = variables.ids.find(id => !byId.has(id));
+        if (missing) throw new Error(`scene with id ${missing} not found`);
+        return { findScenes: { count: variables.ids.length, scenes: variables.ids.map(id => byId.get(id)) } };
+      }
+      const { title, performers } = variables.scene_filter;
+      const matching = library.filter(scene =>
+        title
+          ? new RegExp(title.value.slice(4), "i").test(scene.title)
+          : scene.performers.some(({ id }) => id === performers.value[0]),
+      );
+      const { page, per_page: size } = variables.filter;
+      return { findScenes: { scenes: matching.slice((page - 1) * size, page * size).map(({ id }) => ({ id })) } };
+    },
+  });
+  const found = await listQueries.findListed(false, ["3", "9999", "1", "8888"]);
+  assert.deepEqual(
+    found.findScenes.scenes.map(scene => scene.id),
+    ["3", "1"],
+  );
+  assert.equal(listRequests.length, 3, "each deleted item costs one retry");
+  assert.deepEqual(plain((await listQueries.findListed(false, ["9999"])).findScenes), { count: 0, scenes: [] });
+  const failing = feature("queries").createQueries({
+    graphql: async () => {
+      throw new Error("scene with id 1 not found; database is locked");
+    },
+  });
+  await assert.rejects(failing.findListed(false, ["2"]), /database is locked/, "other errors are not retried");
+
+  const scope = await listQueries.getSceneQueryVariables(defaults, {
+    ...listContext,
+    ids: library.map(scene => scene.id).reverse(),
+  });
+  listRequests.length = 0;
+  const searched = await listQueries.searchSession(scope, false, "odd", 2, signal);
+  assert.equal(searched.findScenes.count, 1250);
+  assert.deepEqual(
+    searched.findScenes.scenes.map(scene => scene.id),
+    Array.from({ length: 20 }, (_, index) => String(2460 - 2 * index)),
+    "results follow the list's order",
+  );
+  assert.deepEqual(plain(listRequests[0].variables), {
+    filter: { page: 1, per_page: feature("queries").ID_PAGE_SIZE, sort: "id", direction: "ASC" },
+    scene_filter: { title: { value: "(?i)odd", modifier: "MATCHES_REGEX" } },
+  });
+  assert.strictEqual(listRequests[0].options.signal, signal);
+  assert.equal(listRequests.length, 3, "two pages of matching IDs, then one page of details");
+  await listQueries.searchSession(scope, false, "odd", 3, signal);
+  assert.equal(listRequests.length, 4, "another page of the same search reuses the scan");
+  const cancelled = new AbortController();
+  cancelled.abort();
+  await assert.rejects(listQueries.searchSession(scope, false, "even", 1, cancelled.signal), /aborted/);
+  const beforeEven = listRequests.length;
+  await listQueries.searchSession(scope, false, "even", 1, signal);
+  assert.equal(listRequests.length, beforeEven + 3, "a cancelled scan is not reused");
+  const late = await listQueries.searchSession({ ...scope, list: ["2500", "1"] }, false, "odd", 1, signal);
+  assert.deepEqual(
+    late.findScenes.scenes.map(scene => scene.id),
+    ["2500"],
+  );
+  assert.equal(late.findScenes.count, 1, "matches outside the list never count or hide one inside it");
+
+  listRequests.length = 0;
+  const playingScene = id => ({ id, scene: { id } });
+  const nextFeaturing = async id =>
+    (await listQueries.findPerformerItems(scope, false, "p", signal, playingScene(id))).findScenes.scenes.map(
+      scene => scene.id,
+    );
+  assert.deepEqual(await nextFeaturing("1001"), ["501"], "the performer's next scene in list order");
+  assert.deepEqual(await nextFeaturing("1"), ["2001"], "and it wraps");
+  assert.deepEqual(
+    listRequests.map(request => request.variables.ids?.join() ?? "scan"),
+    ["scan", "501", "2001"],
+    "one scan, then only the next match loads",
+  );
+  const markerRequests = [];
+  const markerQueries = feature("queries").createQueries({
+    graphql: async (query, variables) => {
+      markerRequests.push({ query, variables });
+      const rows = (variables.ids ?? ["7", "8", "9"]).map(id => ({ id, scene: { id: id === "9" ? "s2" : "s1" } }));
+      return { findSceneMarkers: { count: rows.length, scene_markers: rows } };
+    },
+  });
+  const markerList = { filter: { page: 1, per_page: 48 }, list: ["9", "8", "7"] };
+  const markerSearch = await markerQueries.searchSession(markerList, true, "scene", 1, signal);
+  assert.match(markerRequests[0].query, /MultiscreenMarkerIds/);
+  assert.deepEqual(plain(markerRequests[0].variables.scene_marker_filter), {
+    scene_filter: { title: { value: "(?i)scene", modifier: "MATCHES_REGEX" } },
+  });
+  assert.deepEqual(
+    markerSearch.findSceneMarkers.scene_markers.map(marker => marker.id),
+    ["9", "8", "7"],
+  );
+  const nextMarker = await markerQueries.findPerformerItems(markerList, true, "p", signal, {
+    id: "marker-8",
+    scene: { id: "s1" },
+  });
+  assert.deepEqual(
+    nextMarker.findSceneMarkers.scene_markers.map(marker => marker.id),
+    ["9"],
+    "other markers of the playing scene are skipped",
+  );
+  assert.deepEqual(plain(markerRequests.at(-2).variables.scene_marker_filter), {
+    scene_filter: { performers: { value: ["p"], modifier: "INCLUDES" } },
+  });
+
   const ordered = a.orderSelected([{ id: "b" }, { id: "a" }, { id: "c" }], ["c", "missing", "a"]);
   assert.deepEqual(
     ordered.map(item => item.id),

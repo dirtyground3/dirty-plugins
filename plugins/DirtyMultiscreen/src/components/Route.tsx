@@ -10,22 +10,30 @@ import { VisibleOCounterButton } from "./Counter";
 import { NativeMultiscreenGrid } from "./Grid";
 import { ShuffleMenu } from "./ShuffleMenu";
 import { SEARCH_PAGE_SIZE } from "../queries";
-import type { FindPerformerItems, SavedPane, SavedSession, SceneOrder, SessionSearch } from "../types";
+import type { FindPerformerItems, LaunchContext, SavedPane, SavedSession, SceneOrder, SessionSearch } from "../types";
 const PLUGIN_ID = "multiscreen";
 const closeRoute = () => {
   if (window.history.length > 1) window.history.back();
   else window.location.assign("/scenes");
 };
+const keepsOrder = (context: LaunchContext | null) => context?.source === "plugin-list" && context.keepOrder;
+/** A list launched with keepOrder plays in its own order whatever the Scene order setting says. */
+const playSettings = (data: Record<string, unknown>, keepOrder: boolean) =>
+  normalizeSettings(keepOrder ? { ...data, sceneOrder: "list" } : data);
 export function MultiscreenRoute() {
   DirtyPlugins.react.usePageTitle("DirtyMultiscreen");
   const [visibleNativeSceneIds, setVisibleNativeSceneIds] = React.useState<string[]>([]);
   // A launch context means the header button just chose a scope; without one the saved session continues.
   const [launch] = React.useState(() => {
     const context = contexts.readLaunchContext();
+    // An empty list never mounts the grid, so it is used once and the saved session stays for the next launch.
+    if (context?.source === "plugin-list" && !context.ids.length) contexts.storeLaunchContext(null);
     const saved = context ? null : readSession();
     return { context: context ?? saved?.context ?? null, saved };
   });
-  const launchContext = launch.context;
+  // Choosing another order in the shuffle menu ends a list's own order.
+  const [launchContext, setLaunchContext] = React.useState(launch.context);
+  const keepOrder = keepsOrder(launchContext);
   const resume = React.useRef<SavedSession | null>(launch.saved);
   const markerMode = isMarkerLaunchContext(launchContext);
   const [settingsQuery, setSettingsQuery] = React.useState<{
@@ -47,7 +55,7 @@ export function MultiscreenRoute() {
       .then(data => {
         if (request.current !== revision) return;
         // The scope stays, but seeds and pages only name the same scenes under the same queue settings.
-        if (resume.current?.queue !== queueKey(normalizeSettings(data))) resume.current = null;
+        if (resume.current?.queue !== queueKey(playSettings(data, keepsOrder(launch.context)))) resume.current = null;
         setSettingsQuery({ loading: false, error: null, data });
       })
       .catch(error => {
@@ -63,7 +71,7 @@ export function MultiscreenRoute() {
     void reloadSettings();
   }, [reloadSettings]);
   const rawSettings = settingsQuery.data;
-  const settings = React.useMemo(() => normalizeSettings(rawSettings), [rawSettings]);
+  const settings = React.useMemo(() => playSettings(rawSettings, keepOrder), [rawSettings, keepOrder]);
   const playbackSettings = React.useMemo(() => getPlaybackSettings(settings), [settings]);
   const nativePlayerQuery = useNativePlayerComponent();
   const scenesQuery = useSceneQuery(settings, launchContext, !settingsQuery.loading && !markerMode, resume);
@@ -106,16 +114,16 @@ export function MultiscreenRoute() {
     [explicitSelection, items, markerMode, markersQuery.search, scenesQuery.search, settings.markerDuration],
   );
   const findPerformerItems = React.useCallback<FindPerformerItems>(
-    async (performerId, signal) => {
+    async (performerId, playing, signal) => {
       if (explicitSelection)
         return items.filter(item => item.scene.performers?.some(performer => performer.id === performerId));
       if (markerMode) {
-        const data = await markersQuery.findPerformerItems(performerId, signal);
+        const data = await markersQuery.findPerformerItems(performerId, playing, signal);
         return data.scene_markers
           .map(marker => getMarkerItem(marker, settings.markerDuration))
           .filter(item => item !== null);
       }
-      const data = await scenesQuery.findPerformerItems(performerId, signal);
+      const data = await scenesQuery.findPerformerItems(performerId, playing, signal);
       return data.scenes.map(getSceneItem).filter(item => item !== null);
     },
     [
@@ -198,6 +206,8 @@ export function MultiscreenRoute() {
       void activeQuery.refresh();
       return;
     }
+    if (launchContext?.source === "plugin-list" && launchContext.keepOrder)
+      setLaunchContext({ ...launchContext, keepOrder: false });
     const data = { ...rawSettings, sceneOrder: order };
     setSettingsQuery(current => ({ ...current, data }));
     DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
@@ -217,6 +227,10 @@ export function MultiscreenRoute() {
     if (saved) contexts.storeLaunchContext(null);
   };
   const itemType = markerMode ? "markers" : "scenes";
+  const emptyList =
+    launchContext?.source === "plugin-list" && !launchContext.ids.length
+      ? `No ${itemType}${launchContext.label ? " in " + launchContext.label : ""}`
+      : "";
   const docsCapture = DirtyPlugins.captureEnabled(window.location.search);
   const retryAll = () => {
     void reloadSettings();
@@ -229,7 +243,8 @@ export function MultiscreenRoute() {
       {!loading && error && (
         <StateView title="Could not load DirtyMultiscreen" detail={error.message} onRetry={retryAll} />
       )}
-      {!loading && !error && items.length === 0 && (
+      {!loading && !error && emptyList && <StateView title={emptyList} />}
+      {!loading && !error && !emptyList && items.length === 0 && (
         <StateView
           title={`No playable ${itemType} found`}
           detail={

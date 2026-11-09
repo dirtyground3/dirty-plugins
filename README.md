@@ -15,13 +15,13 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.13 |
-| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.1.0 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.23 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.14 |
+| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.1.1 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.24 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.10 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.8 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.16 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.17 |
 
 ## Shared look and settings
 
@@ -138,6 +138,8 @@ Every change saves automatically.
 
 - Launches from scene and marker lists, selections, performer, studio and tag
   lists and pages, preserving the active list order.
+- Plays the list another plugin's page shows, such as Cherry Pick's For you,
+  when that plugin announces it (see [For plugin authors](#for-plugin-authors)).
 - Configures grid rows and columns; every cell plays unless you set fewer
   screens.
 - Orders scenes at random, with fewer repeats, favouring unwatched, highly
@@ -162,10 +164,11 @@ performer buttons stay sharp.
 
 ![DirtyMultiscreen playback and grid settings](docs/images/dirty-multiscreen-settings.png)
 
-Settings are grouped into Grid, Scenes, Playback and Navigation: set the grid
-geometry, choose the scene order and how scenes are shared between panes, how
-they start, loop, mute and pause, and whether screens show performer
-next-scene buttons and the grid button appears in the Stash header.
+Settings are grouped into Grid, Scenes, Playback, Navigation and Advanced: set
+the grid geometry, choose the scene order and how scenes are shared between
+panes, how they start, loop, mute and pause, whether screens show performer
+next-scene buttons and the grid button appears in the Stash header, and which
+other plugins' lists the button plays.
 
 ### DirtyFileExtractor
 
@@ -454,6 +457,47 @@ uncensored captures outside the repository and its Git history.
 On native scene pages, DirtyCaptions capture mode hides the player media,
 scrubber thumbnails, and captions; other scene-page images still need review.
 
+## For plugin authors
+
+Another Stash plugin can tell DirtyMultiscreen which scenes or markers its page
+shows, so the Multiscreen header button plays that list. Dispatch a
+`stash-scenes:context` event on `document` with plain JSON data. Neither plugin
+needs the other's code or DirtyPlugins.
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `version` | Yes | `1`. Other versions are ignored. |
+| `source` | Yes | Your plugin's ID, for example `cherrypick`. |
+| `path` | Yes | The pathname the list belongs to, without the query string. |
+| `kind` | Yes | `scenes` or `markers`. |
+| `ids` | Yes | Scene or marker IDs in play order. `[]` is an empty list; `null` withdraws yours. |
+| `keepOrder` | No | `true` plays the IDs in this order whatever the Scene order setting says. |
+| `label` | No | Up to 80 characters, for example `For you`. An empty list says "No scenes in For you". |
+
+```js
+const announce = ids =>
+  document.dispatchEvent(new CustomEvent("stash-scenes:context", { detail: {
+    version: 1, source: "myplugin", path: "/plugins/myplugin",
+    kind: "scenes", label: "My list", keepOrder: true, ids,
+  } }));
+announce(scenes.map(scene => scene.id)); // when the page shows its list, and whenever it changes
+announce(null);                          // when the page or its tab goes away
+```
+
+- Send the whole list. DirtyMultiscreen keeps the first 10,000 IDs by default
+  (its **List size limit** goes from 1,000 to 100,000). A duplicate ID keeps its
+  first position. Malformed announcements are dropped and unknown fields are
+  ignored.
+- Events are not stored. DirtyMultiscreen listens from its plugin setup, before
+  Stash shows any page, so announce once your list is ready and again whenever
+  it changes.
+- **Lists from other plugins** accepts Off, Known plugins only (Cherry Pick, the
+  default) or Any plugin. Lists for Stash's own scene, marker, performer, studio
+  and tag pages are ignored.
+- When two plugins announce a list for one page, the most recent one plays;
+  withdrawing it restores the other. A running session keeps the list it
+  started with.
+
 ## Repository layout
 
 ```text
@@ -643,6 +687,20 @@ prerelease/
 ```
 
 ## Release notes
+
+- **DirtyMultiscreen 1.0.24 and DirtyPlugins 1.0.17:** the header button plays
+  the list another plugin's page announces through a `stash-scenes:context`
+  event, such as Cherry Pick's For you, in that plugin's own order when it asks
+  for one (see [For plugin authors](#for-plugin-authors)). Search and the
+  performer buttons stay inside the list. The new Advanced settings choose
+  whose lists play and how many items one list may hold. The button also
+  launches from tag lists, tag selections and tag pages. **Total screens** is
+  empty by default and fills every grid cell. When every other scene is already
+  on a screen, Next moves on and repeats one. Every settings tab has a **Reset
+  to defaults** button.
+
+- **DirtyRank 1.1.1 and DirtyStats 1.0.14:** setting descriptions no longer end
+  with "Enabled by default."
 
 - **DirtyRank 1.1.0:** keeps an ordered journal of battle outcomes and up to
   100 recent undo snapshots per category and gender box. Existing databases

@@ -137,6 +137,19 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
   const markersWithPerformer = await queries.findPerformerItems(markerScope, true, performer, signal);
   assert.equal(markersWithPerformer.findSceneMarkers.scene_markers[0].title, 'Explicit');
   assert.equal(markersWithPerformer.findSceneMarkers.scene_markers[0].seconds, 1);
+  // Another plugin's list: Stash rejects a request over a missing ID, and search stays inside the list.
+  const all = (await graphql('{findScenes(filter:{sort:"title",direction:ASC,per_page:-1}){scenes{id title}}}')).findScenes.scenes;
+  assert.deepEqual(titles(await queries.findListed(false, [all[3].id, '999999', all[0].id])), ['Gamma', 'Alpha']);
+  const markerId = markerSearch.scene_markers[0].id;
+  const listedMarkers = await queries.findListed(true, ['999999', markerId]);
+  assert.deepEqual(listedMarkers.findSceneMarkers.scene_markers.map(marker => marker.id), [markerId]);
+  const pluginList = { source: 'plugin-list', kind: 'scenes', ids: [all[2].id, all[1].id, all[0].id], keepOrder: true, label: '' };
+  const pluginScope = await queries.getSceneQueryVariables(settings, pluginList);
+  const listSearch = await queries.searchSession(pluginScope, false, 'a', 1, signal);
+  assert.deepEqual(titles(listSearch), ['Delta', 'Beta', 'Alpha'], 'list search keeps the list order and leaves out the rest');
+  assert.equal(listSearch.findScenes.count, 3);
+  const playingBeta = { id: all[1].id, scene: { id: all[1].id } };
+  assert.deepEqual(titles(await queries.findPerformerItems(pluginScope, false, performer, signal, playingBeta)), ['Alpha']);
   process.stdout.write('PASS: compiled bounded contextual query and stable seeded random continuation\n');
   process.stdout.write('PASS: session search preserves selections, filters, original text, performer/studio/tag membership and marker ranges\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });

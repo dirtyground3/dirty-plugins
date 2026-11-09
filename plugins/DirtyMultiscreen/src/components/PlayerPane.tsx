@@ -111,7 +111,12 @@ export function NativePlayerPane({
       return;
     }
     if (!continuation || continuation.pageCount <= 1) {
-      if (previous.items.length) publish({ ...previous, cursor: startOf(previous.items), busy: false, error: "" });
+      const count = previous.items.length;
+      if (!count) return;
+      // When every other item is on another screen, Next still moves on and repeats one.
+      const free = direction === 1 ? firstFree(previous.items, 0) : -1;
+      const next = free >= 0 && free !== previous.cursor ? free : (previous.cursor + direction + count) % count;
+      publish({ ...previous, cursor: next, busy: false, error: "" });
       return;
     }
     publish({ ...previous, busy: true, error: "" });
@@ -152,7 +157,7 @@ export function NativePlayerPane({
     publish({ ...previous, busy: true, error: "" });
     try {
       const playing = previous.items[previous.cursor];
-      const matches = await findPerformerItems(performerId, lookup.signal);
+      const matches = await findPerformerItems(performerId, playing, lookup.signal);
       if (revision !== request.current) return;
       const next = nextItemAfter(matches, playing);
       if (!next) {

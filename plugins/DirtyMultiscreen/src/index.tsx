@@ -18,6 +18,8 @@ function captureDetail(component: string, prefix: string, entity: "performer" | 
 }
 
 DirtyPlugins?.registerPlugin(PLUGIN_ID, () => {
+  // Stash shows no page until every plugin script has run, so this hears every page's first announcement.
+  document.addEventListener("stash-scenes:context", event => contexts.announce((event as CustomEvent).detail));
   PluginApi.register.route("/plugins/multiscreen", MultiscreenRoute);
   captureList("SceneMarkerList", "/scenes/markers", "marker-list");
   captureList("SceneList", "/scenes", "scene-list");

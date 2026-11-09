@@ -64,9 +64,38 @@ export interface SessionSearchResult {
   items: Item[];
 }
 export type SessionSearch = (text: string, page: number, signal: AbortSignal) => Promise<SessionSearchResult>;
-export type FindPerformerItems = (performerId: string, signal: AbortSignal) => Promise<Item[]>;
+/** The session's items featuring a performer; an ID list returns only the one after `playing`. */
+export type FindPerformerItems = (
+  performerId: string,
+  playing: Item | undefined,
+  signal: AbortSignal,
+) => Promise<Item[]>;
+export type ListKind = "scenes" | "markers";
+export type OtherPluginLists = "off" | "known" | "any";
+export interface ListSettings {
+  allow: OtherPluginLists;
+  limit: number;
+}
+/** One `stash-scenes:context` event after validation; `ids: null` withdraws the plugin's list for the path. */
+export interface Announcement {
+  source: string;
+  path: string;
+  kind: ListKind;
+  ids: string[] | null;
+  keepOrder: boolean;
+  label: string;
+}
+/** A list another plugin announced, launched as IDs in its own order. */
+export interface PluginList {
+  source: "plugin-list";
+  kind: ListKind;
+  ids: string[];
+  keepOrder: boolean;
+  label: string;
+}
 type SelectionSource = "selection" | "marker-selection" | "performer-selection" | "studio-selection" | "tag-selection";
 export type LaunchContext =
+  | PluginList
   | { source: SelectionSource; selectedIds: string[] }
   | { source: "filter"; filter: Record<string, unknown>; sceneFilter: Record<string, unknown> }
   | { source: "marker-filter"; filter: Record<string, unknown>; markerFilter: Record<string, unknown> }
@@ -78,7 +107,8 @@ export type LaunchContext =
   | { source: "tag-detail"; tagId: string };
 export type MarkerContext =
   | Extract<LaunchContext, { source: "marker-filter" }>
-  | { source: "marker-selection"; selectedIds: string[] };
+  | { source: "marker-selection"; selectedIds: string[] }
+  | (PluginList & { kind: "markers" });
 export interface ListContext {
   filter: { makeFindFilter(): Record<string, unknown>; makeFilter(): Record<string, unknown> };
   selectedIds: Set<string>;
@@ -86,6 +116,8 @@ export interface ListContext {
 export interface QueryVariables extends Record<string, unknown> {
   filter: Record<string, unknown>;
   ids?: string[];
+  /** A whole ID list, loaded `filter.per_page` IDs at a time. Never sent to Stash. */
+  list?: string[];
   scene_filter?: Record<string, unknown>;
   scene_marker_filter?: Record<string, unknown>;
 }

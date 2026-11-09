@@ -1,11 +1,28 @@
 import { defaults as DEFAULT_SETTINGS, limits as LIMITS, options as OPTIONS } from "@generated/multiscreen.settings";
 import { clampInteger, coerceBoolean } from "../../../DirtyPlugins/src/shared/values";
-import type { Settings, PlaybackSettings, SceneOrder } from "../types";
+import type { ListSettings, OtherPluginLists, Settings, PlaybackSettings, SceneOrder } from "../types";
 
 const MAX_SCENE_PAGE_SIZE = 240;
 export const NON_RANDOM_SCENE_SORT = "title";
 const SCENE_ORDERS = new Set<string>(OPTIONS.sceneOrder.map(option => option.value));
+const LIST_PERMISSIONS = new Set<string>(OPTIONS.otherPluginLists.map(option => option.value));
 export { DEFAULT_SETTINGS };
+
+/** Which other plugins' lists the header button uses, and how many items it takes from one. */
+export function normalizeListSettings(rawSettings: Record<string, unknown>): ListSettings {
+  const allow = rawSettings.otherPluginLists;
+  return {
+    allow: (typeof allow === "string" && LIST_PERMISSIONS.has(allow)
+      ? allow
+      : DEFAULT_SETTINGS.otherPluginLists) as OtherPluginLists,
+    limit: clampInteger(
+      rawSettings.listSizeLimit,
+      DEFAULT_SETTINGS.listSizeLimit,
+      LIMITS.listSizeLimit.min,
+      LIMITS.listSizeLimit.max,
+    ),
+  };
+}
 
 export function normalizeSettings(rawSettings: Record<string, unknown>): Settings {
   const rows = clampInteger(rawSettings.rows, DEFAULT_SETTINGS.rows, LIMITS.rows.min, LIMITS.rows.max);

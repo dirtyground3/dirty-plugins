@@ -137,6 +137,40 @@
       "displayName": "Show in the Stash header",
       "description": "Show the DirtyMultiscreen button in Stash's top bar. When hidden, the player stays reachable by URL.",
       "default": true
+    },
+    "otherPluginLists": {
+      "type": "STRING",
+      "displayName": "Lists from other plugins",
+      "description": "Let another plugin's page tell the header button which scenes or markers it shows, such as Cherry Pick's For you. Defaults to known plugins only.",
+      "default": "known",
+      "options": [
+        {
+          "value": "off",
+          "label": "Off"
+        },
+        {
+          "value": "known",
+          "label": "Known plugins only (Cherry Pick)"
+        },
+        {
+          "value": "any",
+          "label": "Any plugin"
+        }
+      ]
+    },
+    "listSizeLimit": {
+      "type": "NUMBER",
+      "displayName": "List size limit",
+      "description": "The most scenes or markers taken from another plugin's list. Defaults to 10000.",
+      "default": 10000,
+      "integer": true,
+      "min": 1000,
+      "max": 100000,
+      "step": 1000,
+      "disabledWhen": {
+        "setting": "otherPluginLists",
+        "value": "off"
+      }
     }
   },
   "sections": [
@@ -174,6 +208,13 @@
       "settings": [
         "showPerformerNavigation",
         "showInMenu"
+      ]
+    },
+    {
+      "title": "Advanced",
+      "settings": [
+        "otherPluginLists",
+        "listSizeLimit"
       ]
     }
   ]

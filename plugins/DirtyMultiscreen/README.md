@@ -1,6 +1,6 @@
 # DirtyMultiscreen
 
-DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can launch from Stash scene, marker, performer, studio, and tag contexts while preserving the active list order when appropriate.
+DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can launch from Stash scene, marker, performer, studio, and tag contexts while preserving the active list order when appropriate, and from lists other plugins announce, such as Cherry Pick's For you.
 
 ## Features
 
@@ -11,6 +11,12 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   A pending page is shared between panes, and the current video remains visible if loading fails.
   Explicit selections include items selected on other native pages. Random playback permutes
   each bounded page independently per pane; split assignments remain stable between page requests.
+- Another plugin's page can announce the scenes or markers it shows through a
+  `stash-scenes:context` event (see [For plugin authors](../../README.md#for-plugin-authors)).
+  The header button then counts that list and plays it, in the plugin's own
+  order when it asks for one; scenes load 240 at a time, and search and the
+  performer buttons stay inside the list. **Lists from other plugins** accepts
+  known plugins only (Cherry Pick) by default.
 - Random starting positions, looping, and start-muted behavior.
   Each native player has its own identity, keeping durations and streaming
   controls independent between screens.
@@ -30,12 +36,15 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - The shuffle button beside the close button reshuffles every screen. Its menu
   lists the scene orders with the current one checked: choosing it loads a new
   random sample, and choosing another order reshuffles with that order and saves
-  it as the **Scene order** setting.
+  it as the **Scene order** setting. A list launched in its plugin's own order
+  shows **Keep the list order** checked until you choose another.
 - Closing the tab keeps the session. Reloading, reopening the plugin page or
   clicking the header button on a page without a list returns every screen to
   its scene, position and audio. The header button on a scene, marker, performer,
-  studio or tag list, or on a performer, studio or tag page, starts a new session,
-  and so does the shuffle button; either replaces the saved one. A tag list or
+  studio or tag list, on a performer, studio or tag page, or on a page another
+  plugin announced a list for, starts a new session, and so does the shuffle
+  button; either replaces the saved one. An announced empty list shows its
+  message, such as "No scenes in For you", and keeps the saved session. A tag list or
   page plays the scenes tagged with those tags themselves, not their sub-tags. Changing the scene
   order, spreading, duplicate avoidance, splitting or the number of screens keeps
   the launch scope but deals a new queue. If the library changed, a screen whose
@@ -79,10 +88,10 @@ buttons and performer buttons stay sharp.
 
 ![DirtyMultiscreen playback and grid settings](../../docs/images/dirty-multiscreen-settings.png)
 
-Settings are grouped into Grid, Scenes, Playback and Navigation: grid
+Settings are grouped into Grid, Scenes, Playback, Navigation and Advanced: grid
 geometry, scene order and sharing between panes, starting, looping, muting,
 marker length and hidden-tab pausing, performer next-scene buttons and the Stash
-header button.
+header button, and lists from other plugins.
 
 ## Installation
 
@@ -105,7 +114,7 @@ runtime files and Stash's package-provenance `manifest` during a local update.
 
 ## Configuration
 
-The DirtyMultiscreen tab of the Dirty Plugins settings has four groups:
+The DirtyMultiscreen tab of the Dirty Plugins settings has five groups:
 
 - **Grid:** rows, columns and **Total screens**. Leave **Total screens** empty
   to fill every cell (rows x columns, at most 36), or enter a smaller number to
@@ -116,6 +125,9 @@ The DirtyMultiscreen tab of the Dirty Plugins settings has four groups:
   hidden** and the length of markers without an end time.
 - **Navigation:** whether screens show performer next-scene buttons, and whether
   the grid button appears in the Stash header.
+- **Advanced:** **Lists from other plugins** (Off, Known plugins only, the
+  default, or Any plugin) and **List size limit**, the most items taken from one
+  plugin's list (10,000 by default, from 1,000 to 100,000).
 
 Spreading, avoiding duplicates, muting, random starts, looping and pausing are
 enabled by default.
@@ -126,7 +138,8 @@ different scene, and a screen moving to its next scene skips scenes that another
 screen is playing. Going back with Previous never skips, and a search result
 always plays, so you can still put the same scene on several screens. With
 fewer playable scenes than screens, screens repeat a scene rather than stay
-empty.
+empty, and when every other scene is already on a screen, Next moves to the
+next scene in the list anyway.
 
 ### Scene order
 
@@ -168,8 +181,8 @@ builds carry no source map; `npm run build:dev` adds an inline map that travels
 with `/plugin/multiscreen/javascript`. No React or hub
 implementation is bundled into this plugin.
 
-The entry registers its route and patches once through the hub's
-`registerPlugin`. A reloaded bundle is ignored, including after a partial
+The entry registers its route, patches and `stash-scenes:context` listener once
+through the hub's `registerPlugin`. A reloaded bundle is ignored, including after a partial
 native registration failure, which is logged once. Unmounting components clear
 their timers, listeners and observers, ignore late responses and release the
 native players.

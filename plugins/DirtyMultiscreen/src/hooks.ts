@@ -2,6 +2,7 @@ import { isMarkerLaunchContext } from "./domain/context";
 import { getSceneStreamUrl, orderSelected } from "./domain/items";
 import { DirtyPlugins, PluginApi, queries, React } from "./runtime";
 import type {
+  Item,
   LaunchContext,
   Marker,
   NativePlayer,
@@ -28,20 +29,22 @@ function useItems<T>(
   const pager = React.useRef<{ variables: QueryVariables; revision: number } | null>(null);
   const pending = React.useRef(new Map<number, { controller: AbortController; promise: Promise<T> }>());
   const [page, setPage] = React.useState(1);
-  const request = React.useRef(0),
-    key = JSON.stringify({ settings, context, enabled });
-  function rows(data: QueryResult, ids?: string[]): T {
+  const request = React.useRef(0);
+  // An announced list can hold 100,000 IDs, so this is not serialized on every render.
+  const key = React.useMemo(() => JSON.stringify({ settings, context, enabled }), [settings, context, enabled]);
+  /** Playable rows in the order of `ids`; `count` replaces the response's for a page of an ID list. */
+  function rows(data: QueryResult, ids?: string[], count?: number): T {
     return (
       marker
         ? {
-            count: data.findSceneMarkers.count,
+            count: count ?? data.findSceneMarkers.count,
             scene_markers: orderSelected(
               data.findSceneMarkers.scene_markers.filter(item => !!getSceneStreamUrl(item.scene)),
               ids,
             ),
           }
         : {
-            count: data.findScenes.count,
+            count: count ?? data.findScenes.count,
             scenes: orderSelected(
               data.findScenes.scenes.filter(item => !!getSceneStreamUrl(item)),
               ids,
@@ -58,14 +61,21 @@ function useItems<T>(
       if (existing) return existing.promise;
       const controller = new AbortController();
       const entry = { controller, promise: null as unknown as Promise<T> };
-      entry.promise = DirtyPlugins.graphql<QueryResult>(
-        marker ? queries.findSceneMarkersQuery : queries.findScenesQuery,
-        { ...current.variables, filter: { ...current.variables.filter, page } },
-        { signal: controller.signal },
+      const { list } = current.variables,
+        size = Number(current.variables.filter.per_page);
+      const batch = list?.slice((page - 1) * size, page * size);
+      entry.promise = (
+        batch
+          ? queries.findListed(marker, batch, controller.signal)
+          : DirtyPlugins.graphql<QueryResult>(
+              marker ? queries.findSceneMarkersQuery : queries.findScenesQuery,
+              { ...current.variables, filter: { ...current.variables.filter, page } },
+              { signal: controller.signal },
+            )
       )
         .then(data => {
           if (current.revision !== request.current) throw new Error("Playback queue was replaced.");
-          return rows(data, current.variables.ids);
+          return rows(data, batch ?? current.variables.ids, list?.length);
         })
         .finally(() => {
           if (pending.current.get(page) === entry) pending.current.delete(page);
@@ -86,10 +96,10 @@ function useItems<T>(
     [key],
   );
   const findPerformerItems = React.useCallback(
-    async (performerId: string, signal: AbortSignal): Promise<T> => {
+    async (performerId: string, playing: Item | undefined, signal: AbortSignal): Promise<T> => {
       const current = pager.current;
       if (!current || current.revision !== request.current) throw new Error("Playback queue was replaced.");
-      const data = await queries.findPerformerItems(current.variables, marker, performerId, signal);
+      const data = await queries.findPerformerItems(current.variables, marker, performerId, signal, playing);
       if (current.revision !== request.current) throw new Error("Playback queue was replaced.");
       return rows(data);
     },

@@ -1,6 +1,6 @@
 import { playbackSort } from "./domain/order";
 import { getSceneLimit, NON_RANDOM_SCENE_SORT, normalizeSettings } from "./domain/settings";
-import type { Hub, LaunchContext, MarkerContext, QueryResult, QueryVariables, Settings } from "./types";
+import type { Hub, Item, LaunchContext, MarkerContext, QueryResult, QueryVariables, Settings } from "./types";
 
 // Play history, ratings, dates, performers and studios feed the scene orders.
 const SCENE_FIELDS =
@@ -24,6 +24,17 @@ const MARKER_COUNT =
 const MARKER_SEARCH = MARKERS.replace("MultiscreenMarkers", "MultiscreenMarkerSearch");
 const SCENES_WITH_PERFORMER = SCENES.replace("MultiscreenScenes", "MultiscreenPerformerScenes");
 const MARKERS_WITH_PERFORMER = MARKERS.replace("MultiscreenMarkers", "MultiscreenPerformerMarkers");
+const SCENE_IDS =
+  "query MultiscreenSceneIds($filter:FindFilterType,$scene_filter:SceneFilterType){findScenes(filter:$filter,scene_filter:$scene_filter){scenes{id}}}";
+const MARKER_IDS =
+  "query MultiscreenMarkerIds($filter:FindFilterType,$scene_marker_filter:SceneMarkerFilterType){findSceneMarkers(filter:$filter,scene_marker_filter:$scene_marker_filter){scene_markers{id scene{id}}}}";
+/** Library IDs per request when an ID list is matched against a condition. */
+export const ID_PAGE_SIZE = 1000;
+const MISSING_ID = /with id (\d+) not found/;
+const EMPTY = {
+  findScenes: { count: 0, scenes: [] },
+  findSceneMarkers: { count: 0, scene_markers: [] },
+} as unknown as QueryResult;
 export const SEARCH_PAGE_SIZE = 20;
 const PERFORMER_IDS =
   "query MultiscreenPerformers($filter:FindFilterType,$performer_filter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performer_filter){performers{id}}}";
@@ -57,10 +68,94 @@ const INCREMENT_O = "mutation MultiscreenIncrementSceneO($id:ID!){sceneIncrement
 /** One seed per query keeps every continuation page of a random order disjoint. */
 const sortFor = (settings: Settings, contextualSort: string) =>
   playbackSort(settings.sceneOrder, contextualSort, Math.floor(Math.random() * 2147483647));
+// INCLUDES splits a phrase into alternative words. Escape a case-insensitive
+// literal regex so filtered sessions match the same substring as local pools.
+const titleMatching = (text: string) => ({
+  title: { value: "(?i)" + text.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), modifier: "MATCHES_REGEX" },
+});
+const withCount = (data: QueryResult, marker: boolean, count: number): QueryResult =>
+  marker
+    ? { ...data, findSceneMarkers: { ...data.findSceneMarkers, count } }
+    : { ...data, findScenes: { ...data.findScenes, count } };
+type Listed = { id: string; sceneId: string };
 
 export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
   const graphqlRequest: Hub["graphql"] = (query, variables, options) => DirtyPlugins.graphql(query, variables, options);
   const selection = (ids: string[]): QueryVariables => ({ ids, filter: { page: 1, per_page: -1 } });
+  /** Another plugin's list keeps its own order and loads one page of IDs at a time. */
+  const listed = (settings: Settings, ids: string[]): QueryVariables | null =>
+    ids.length ? { filter: { page: 1, per_page: getSceneLimit(settings) }, list: ids } : null;
+  /** Items in the order of `ids`. Stash fails a whole request over one deleted item, so each missing ID is dropped. */
+  async function findListed(marker: boolean, ids: string[], signal?: AbortSignal): Promise<QueryResult> {
+    let remaining = ids;
+    while (remaining.length) {
+      try {
+        return await graphqlRequest<QueryResult>(marker ? MARKERS : SCENES, selection(remaining), { signal });
+      } catch (error) {
+        const missing = MISSING_ID.exec(String(error))?.[1];
+        if (!missing || !remaining.includes(missing)) throw error;
+        remaining = remaining.filter(id => id !== missing);
+      }
+    }
+    return EMPTY;
+  }
+  // Paging a search or stepping through a performer reuses the last scan.
+  let scanned: { list: string[]; key: string; matches: Listed[] } | null = null;
+  /**
+   * The list's items that match a scene condition, in list order. Stash's ids argument ignores
+   * filters, so the library's matching IDs are read 1,000 at a time and checked against the list.
+   */
+  async function matchListed(list: string[], marker: boolean, condition: Record<string, unknown>, signal: AbortSignal) {
+    const key = JSON.stringify([marker, condition]);
+    if (scanned?.list === list && scanned.key === key) return scanned.matches;
+    const position = new Map(list.map((id, index) => [id, index]));
+    const matches: Listed[] = [];
+    for (let page = 1, found = ID_PAGE_SIZE; found === ID_PAGE_SIZE; page++) {
+      const data = await graphqlRequest<QueryResult>(
+        marker ? MARKER_IDS : SCENE_IDS,
+        {
+          filter: { page, per_page: ID_PAGE_SIZE, sort: "id", direction: "ASC" },
+          ...(marker ? { scene_marker_filter: { scene_filter: condition } } : { scene_filter: condition }),
+        },
+        { signal },
+      );
+      const rows = marker
+        ? data.findSceneMarkers.scene_markers.map(row => ({ id: row.id, sceneId: row.scene.id }))
+        : data.findScenes.scenes.map(row => ({ id: row.id, sceneId: row.id }));
+      found = rows.length;
+      for (const row of rows) if (position.has(row.id)) matches.push(row);
+    }
+    matches.sort((left, right) => position.get(left.id)! - position.get(right.id)!);
+    scanned = { list, key, matches };
+    return matches;
+  }
+  async function searchList(list: string[], marker: boolean, text: string, page: number, signal: AbortSignal) {
+    const matches = await matchListed(list, marker, titleMatching(text), signal);
+    const shown = matches.slice((page - 1) * SEARCH_PAGE_SIZE, page * SEARCH_PAGE_SIZE).map(row => row.id);
+    return withCount(await findListed(marker, shown, signal), marker, matches.length);
+  }
+  /** Only the performer's next item after `playing` in list order, skipping the playing scene's other markers. */
+  async function nextListed(
+    list: string[],
+    marker: boolean,
+    performerId: string,
+    playing: Item | undefined,
+    signal: AbortSignal,
+  ) {
+    const matches = await matchListed(
+      list,
+      marker,
+      { performers: { value: [performerId], modifier: "INCLUDES" } },
+      signal,
+    );
+    const playingId = marker ? playing?.id.replace(/^marker-/, "") : playing?.id;
+    const at = matches.findIndex(row => row.id === playingId);
+    for (let step = 1; step <= matches.length; step++) {
+      const row = matches[(at + step) % matches.length];
+      if (row.sceneId !== playing?.scene.id) return findListed(marker, [row.id], signal);
+    }
+    return EMPTY;
+  }
   /** Keep the list's own sort and direction only for the list order. */
   function filtered(
     settings: Settings,
@@ -113,6 +208,7 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
     launchContext: LaunchContext | null,
   ): Promise<QueryVariables | null> {
     const source = launchContext?.source ?? "";
+    if (launchContext?.source === "plugin-list") return listed(settings, launchContext.ids);
     if (launchContext?.source === "selection") return selection(launchContext.selectedIds);
     if (launchContext?.source === "filter")
       return filtered(settings, launchContext.filter, launchContext.sceneFilter, "scene_filter");
@@ -121,12 +217,14 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
     if (source.startsWith("tag-")) return relatedSceneVariables(settings, launchContext!, "tag");
     return { filter: { page: 1, per_page: getSceneLimit(settings), ...sortFor(settings, NON_RANDOM_SCENE_SORT) } };
   }
-  function getMarkerQueryVariables(settings: Settings, launchContext: MarkerContext): QueryVariables {
+  function getMarkerQueryVariables(settings: Settings, launchContext: MarkerContext): QueryVariables | null {
+    if (launchContext.source === "plugin-list") return listed(settings, launchContext.ids);
     if (launchContext.source === "marker-selection") return selection(launchContext.selectedIds);
     return filtered(settings, launchContext.filter, launchContext.markerFilter, "scene_marker_filter");
   }
-  /** Count without loading items: selections are known, filters request no rows. */
+  /** Count without loading items: selections and announced lists are known, filters request no rows. */
   async function getLiveSceneCount(launchContext: LaunchContext) {
+    if (launchContext.source === "plugin-list") return launchContext.ids.length;
     if (launchContext.source === "selection" || launchContext.source === "marker-selection")
       return launchContext.selectedIds.length;
     const marker = launchContext.source === "marker-filter";
@@ -152,27 +250,33 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
     getSceneQueryVariables,
     getMarkerQueryVariables,
     getLiveSceneCount,
+    findListed,
     findScenesQuery: SCENES,
     searchSession: (scope: QueryVariables, marker: boolean, text: string, page: number, signal: AbortSignal) => {
       // Stash's ids argument bypasses filters; explicit selections are searched
       // from their already loaded session items instead.
       if (scope.ids) throw new Error("Selected session items must be searched locally.");
-      // INCLUDES splits a phrase into alternative words. Escape a case-insensitive
-      // literal regex so filtered sessions match the same substring as local pools.
-      const literal = text.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (scope.list) return searchList(scope.list, marker, text, page, signal);
       return graphqlRequest<QueryResult>(
         marker ? MARKER_SEARCH : SCENE_SEARCH,
         {
           ...scope,
           filter: { ...scope.filter, page, per_page: SEARCH_PAGE_SIZE, sort: "title", direction: "ASC" },
-          ...narrowed(scope, marker, { title: { value: "(?i)" + literal, modifier: "MATCHES_REGEX" } }),
+          ...narrowed(scope, marker, titleMatching(text)),
         },
         { signal },
       );
     },
     /** Every session item featuring the performer, in the session's sort. One performer's rows stay small. */
-    findPerformerItems: (scope: QueryVariables, marker: boolean, performerId: string, signal: AbortSignal) => {
+    findPerformerItems: (
+      scope: QueryVariables,
+      marker: boolean,
+      performerId: string,
+      signal: AbortSignal,
+      playing?: Item,
+    ) => {
       if (scope.ids) throw new Error("Selected session items must be searched locally.");
+      if (scope.list) return nextListed(scope.list, marker, performerId, playing, signal);
       return graphqlRequest<QueryResult>(
         marker ? MARKERS_WITH_PERFORMER : SCENES_WITH_PERFORMER,
         {
