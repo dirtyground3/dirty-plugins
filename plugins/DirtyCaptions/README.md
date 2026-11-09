@@ -61,8 +61,8 @@ stored size, modification time and hashes decide whether the saved result
 still applies. Files with subtitle streams, files not indexed yet and failed
 checks are probed as before.
 
-Scene rating, tag and other metadata edits do not queue caption-index jobs.
-Scene creation, media changes, custom-field edits and updates without field
+Scene rating, tag and other metadata edits do not queue caption-index jobs,
+including bulk edits of selected scenes. Scene creation, media changes, custom-field edits and updates without field
 information still maintain the index. This avoids redundant work when Advanced
 Rating saves criterion tags and then updates the overall scene rating.
 

@@ -95,6 +95,12 @@ output is published, attachment finishes before cancellation. An interrupted
 publication or failed attachment keeps the output and offers Retry recovery;
 recovery never replaces or deletes the original. File organization and encoding
 reserve file work through shared SQLite so they cannot run concurrently.
+A run that no Stash task is running any more, for example after Stash
+restarted, does not hold the files: organization pauses it and goes ahead, and
+Pause or Cancel on it takes effect at once. Resume it later from Encoding. Only
+a run with an encoded file still waiting to be attached keeps the files until
+its recovery. When organization has to wait, the Stash log says so, and it runs
+once the other task finishes.
 Internal refresh scans do not trigger another automation cycle.
 
 ## Upgrade from DirtyTidy / DirtyCompactor

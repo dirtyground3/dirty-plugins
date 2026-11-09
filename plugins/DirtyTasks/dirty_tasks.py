@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+import time
 import uuid
 
 for folder in ("dirtyPlugins", "DirtyPlugins"):
@@ -17,6 +18,30 @@ import dirty_tasks_settings as settings
 import dirty_tasks_lock as reservation
 import dirty_tidy as organization
 import dirty_compactor as encoding
+
+
+def acquire_organization(client, owner, reporter):
+    """Take the file lock; an encoding run that no Stash task is running is paused rather than blocking."""
+    try:
+        reservation.acquire("organization", owner)
+        return True
+    except RuntimeError:
+        pass
+    try:
+        parked = encoding.release_stranded(client)
+    except RuntimeError:
+        # Without a reliable answer from Stash, or if the run changed meanwhile, it keeps its lock.
+        return False
+    if not parked:
+        return False
+    started = time.strftime("%Y-%m-%d %H:%M", time.localtime(parked.get("created", 0)))
+    reporter.info(f"DirtyTasks paused the encoding run started {started}, which no Stash task was running, "
+                  "so organization can use the files. Resume or cancel it under Encoding.")
+    try:
+        reservation.acquire("organization", owner)
+        return True
+    except RuntimeError:
+        return False
 
 
 def run(payload, reporter=None):
@@ -65,13 +90,14 @@ def run(payload, reporter=None):
     if task == "organization":
         if mode in ("execute", "automation"):
             owner = args.get("reservation") or uuid.uuid4().hex
-            try:
-                reservation.acquire("organization", owner)
-            except RuntimeError:
+            log = reporter or protocol.Reporter()
+            if not acquire_organization(client, owner, log):
                 if mode == "automation":
                     reservation.defer_organization(args)
+                    log.info("DirtyTasks organization is waiting: another file task is using the files. "
+                             "It runs when that task finishes; recover an interrupted task in DirtyTasks.")
                     return {"coalesced": True}
-                raise
+                raise RuntimeError("Another file task is active. Finish, cancel, or recover it before starting this task.")
             try:
                 return organization.run(payload, reporter)
             finally:

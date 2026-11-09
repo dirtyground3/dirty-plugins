@@ -925,6 +925,38 @@ def tasks_active(client):
                and "DirtyTasks: encoding:" in str(j.get("description", "")) for j in jobs or [])
 
 
+def park_stranded(client, run):
+    """Pause a queued or running run that no Stash task is running, for example after a restart.
+
+    It then stops holding the file lock and can be resumed or cancelled. A run with an encoded
+    file still waiting to be attached keeps the lock until it is recovered.
+    """
+    if run["status"] not in ("queued", "running"):
+        return False
+    if any(op["status"] in ("publishing", "reconciling", "attaching") for op in run["operations"]):
+        return False
+    if tasks_active(client):
+        return False
+    for op in run["operations"]:
+        if op["status"] in ("encoding", "validated"):
+            discard_outputs(op)
+            op["status"] = "ready"
+    transition_run(run, "paused", save)
+    records.put("pause", run["id"], {"requested": False})
+    reservation.release("encoding", run["id"])
+    return True
+
+
+def release_stranded(client):
+    """Free the file lock from an encoding run that no Stash task is running; return that run."""
+    raw = storage.get_metadata(reservation.NAMESPACE, "active")
+    current = json.loads(raw) if raw else {}
+    owner = current.get("owner", "") if current.get("kind") == "encoding" else ""
+    # File actions ("run:action") change files and keep their own explicit recovery.
+    run = records.get("run", owner) if owner and ":" not in owner else None
+    return run if run and park_stranded(client, run) else None
+
+
 def recover(client, run):
     if run["status"] in TERMINAL:
         raise PluginError("This run does not need recovery")
@@ -1105,6 +1137,8 @@ def cancel_run(client, args):
     if run["status"] in TERMINAL:
         return {"requested": False}
     records.put("cancel", run["id"], {"requested": True})
+    # Without a Stash task nothing would see the request, so a stranded run is paused first.
+    park_stranded(client, run)
     if run["status"] == "paused":
         for item in run["operations"]:
             if item["status"] == "ready":
@@ -1132,6 +1166,10 @@ def pause_run(client, args):
         raise PluginError("Retry recovery or cancel the run before pausing it")
     # The encoder stops at its next check; a published file finishes attaching first.
     records.put("pause", run["id"], {"requested": True})
+    # Without a Stash task nothing would see the request, so a stranded run pauses now
+    # and organization that waited for the files starts.
+    if park_stranded(client, run):
+        reservation.queue_pending(client)
     return {"requested": True}
 
 

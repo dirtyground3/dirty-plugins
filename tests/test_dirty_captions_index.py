@@ -560,6 +560,12 @@ class CaptionIndexTests(unittest.TestCase):
             # scenesUpdate supplies an array rather than a single input object.
             index.hook(client, {"id": "1", "type": "Scene.Update.Post", "input": [{"id": "1"}],
                                 "inputFields": ["id", "tag_ids"]})
+            # bulkSceneUpdate runs the hook for every edited scene with the bulk input.
+            for fields in (["clientMutationId", "ids", "tag_ids"], ["ids", "rating100", "organized"],
+                           ["ids", "performer_ids", "group_ids", "movie_ids", "studio_id"]):
+                with self.subTest(bulk=fields):
+                    index.hook(client, {"id": "1", "type": "Scene.Update.Post",
+                                        "input": {"ids": ["1", "2"]}, "inputFields": fields})
         self.assertEqual(client.queued, [])
         self.assertEqual(client.writes, [])
         self.assertFalse(storage.list_metadata(index.PENDING))
@@ -567,7 +573,8 @@ class CaptionIndexTests(unittest.TestCase):
 
     def test_media_custom_fields_and_unknown_updates_still_queue_work(self):
         client = Client([self.scene(1)])
-        for fields in (["id", "primary_file_id"], ["id", "custom_fields"], ["id", "new_media_field"], []):
+        for fields in (["id", "primary_file_id"], ["id", "custom_fields"], ["ids", "custom_fields"],
+                       ["id", "new_media_field"], []):
             with self.subTest(fields=fields):
                 index.hook(client, {"id": "1", "type": "Scene.Update.Post", "input": [{"id": "1"}],
                                     "inputFields": fields})

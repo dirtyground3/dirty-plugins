@@ -20,7 +20,8 @@ class Run(TypedDict):
     operations: list[OperationJournal]
 
 RUN_TRANSITIONS = {
-    "queued": {"running", "failed", "queued", "reconciling"},
+    # A queued run whose Stash task is gone is paused so it stops holding the file lock.
+    "queued": {"running", "failed", "queued", "reconciling", "paused"},
     "running": {"reconciling", "recovery", "completed", "cancelled", "queued", "paused"},
     "paused": {"queued", "cancelled"},
     "reconciling": {"finalizing", "recovery", "reconciling", "queued"},

@@ -331,6 +331,94 @@ class TaskSettingsTests(unittest.TestCase):
                 tasks.run({"args": {"mode": "queueAutomation", "automationTrigger": "scan", "sourceJobId": "7", "sourceStartTime": "start"}})
         self.assertEqual(dispatch.call_args.args[1]["jobId"], "7")
 
+    def stranded_run(self, run_id="stranded", status="queued", operations=("completed", "ready")):
+        run = {"id": run_id, "status": status, "created": 1793565577.0, "automatic": False,
+               "operations": [{"id": f"{run_id}-{index}", "status": value, "sceneId": str(index)}
+                              for index, value in enumerate(operations)]}
+        encoding.save("run", run)
+        tasks.reservation.acquire("encoding", run_id)
+        return run
+
+    def organize(self, client):
+        messages = []
+        reporter = unittest.mock.Mock()
+        reporter.info.side_effect = messages.append
+        with patch.object(encoding, "Client", return_value=client), \
+                patch.object(tasks.organization, "run", return_value={"completed": 0}) as organize, \
+                patch.object(tasks.reservation, "queue_pending"), patch.object(encoding, "queue_pending"):
+            result = tasks.run({"args": {"task": "organization", "mode": "automation", "automationTrigger": "scan",
+                                         "sourceJobId": "20", "sourceStartTime": "start"}}, reporter)
+        return result, organize, messages
+
+    def test_an_encoding_run_without_a_stash_task_is_paused_instead_of_blocking_organization(self):
+        tasks.settings.migrate()
+        run = self.stranded_run(status="running", operations=("completed", "encoding", "ready"))
+        partial = self.folder / ".dirty-tasks-stranded-1.tmp"
+        partial.write_bytes(b"partial encode")
+        run["operations"][1]["output"] = str(partial)
+        encoding.save("run", run)
+        client = unittest.mock.Mock()
+        client.call.return_value = {"jobQueue": None}
+        result, organize, messages = self.organize(client)
+        self.assertEqual(result, {"completed": 0})
+        organize.assert_called_once()
+        stored = encoding.get("run", "stranded")
+        self.assertEqual([stored["status"]] + [op["status"] for op in stored["operations"]],
+                         ["paused", "completed", "ready", "ready"], "finished files stay; the rest can resume")
+        self.assertFalse(partial.exists())
+        self.assertIsNone(storage.get_metadata(tasks.reservation.NAMESPACE, "active"))
+        self.assertRegex(messages[0], r"paused the encoding run started \d{4}-\d\d-\d\d \d\d:\d\d")
+
+    def test_live_or_unattached_encoding_work_keeps_the_files_and_organization_says_it_waits(self):
+        tasks.settings.migrate()
+        busy = {"jobQueue": [{"id": "9", "status": "RUNNING", "description": "Running plugin task: DirtyTasks: encoding: apply rules"}]}
+        cases = (("a task is encoding", "busy", "running", ("encoding",), busy),
+                 ("a file is being published", "publishing", "running", ("publishing",), {"jobQueue": None}),
+                 ("a file waits to be attached", "attaching", "reconciling", ("reconciling",), {"jobQueue": None}),
+                 ("Stash cannot be asked", "unknown", "queued", ("ready",), {}))
+        for name, run_id, status, operations, queue in cases:
+            with self.subTest(name):
+                self.stranded_run(run_id, status, operations)
+                client = unittest.mock.Mock()
+                client.call.return_value = queue
+                result, organize, messages = self.organize(client)
+                self.assertEqual(result, {"coalesced": True})
+                organize.assert_not_called()
+                self.assertEqual(encoding.get("run", run_id)["status"], status)
+                self.assertEqual(json.loads(storage.get_metadata(tasks.reservation.NAMESPACE, "active"))["owner"], run_id)
+                self.assertIn("organization is waiting", messages[-1])
+                self.assertTrue(storage.get_metadata(tasks.reservation.NAMESPACE, "pendingOrganization:scan"))
+                tasks.reservation.release("encoding", run_id)
+        # A file action ("run:action") keeps its own explicit recovery.
+        tasks.reservation.acquire("encoding", "done:action")
+        client = unittest.mock.Mock()
+        client.call.return_value = {"jobQueue": None}
+        self.assertEqual(self.organize(client)[0], {"coalesced": True})
+
+    def test_cancel_and_pause_act_at_once_on_a_run_without_a_stash_task(self):
+        tasks.settings.migrate()
+        client = unittest.mock.Mock()
+        client.call.return_value = {"jobQueue": None}
+        self.stranded_run("pause-me")
+        waiting = {"task": "organization", "mode": "automation", "automationTrigger": "scan"}
+        tasks.reservation.defer_organization(waiting)
+        self.assertEqual(encoding.pause_run(client, {"id": "pause-me"}), {"requested": True})
+        self.assertEqual(encoding.get("run", "pause-me")["status"], "paused")
+        self.assertFalse(encoding.records.get("pause", "pause-me")["requested"])
+        self.assertIsNone(storage.get_metadata(tasks.reservation.NAMESPACE, "active"))
+        self.assertEqual(client.queue.call_args.args[1], waiting, "organization that waited starts now")
+        self.stranded_run("cancel-me")
+        encoding.cancel_run(client, {"id": "cancel-me"})
+        stored = encoding.get("run", "cancel-me")
+        self.assertEqual([stored["status"]] + [op["status"] for op in stored["operations"]], ["cancelled", "completed", "cancelled"])
+        self.assertIsNone(storage.get_metadata(tasks.reservation.NAMESPACE, "active"))
+        # With its Stash task still queued, a request is left for the worker as before.
+        self.stranded_run("queued-task")
+        client.call.return_value = {"jobQueue": [{"id": "3", "status": "READY", "description": "DirtyTasks: encoding: apply rules"}]}
+        encoding.pause_run(client, {"id": "queued-task"})
+        self.assertEqual(encoding.get("run", "queued-task")["status"], "queued")
+        self.assertTrue(encoding.records.get("pause", "queued-task")["requested"])
+
 
 class EncodingFileActionTests(unittest.TestCase):
     def setUp(self):

@@ -19,8 +19,8 @@ a shared SQLite database, and is installed automatically as a dependency.
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.1.1 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.24 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
-| [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.10 |
-| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.8 |
+| [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.11 |
+| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.9 |
 | [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.17 |
 
 ## Shared look and settings
@@ -687,6 +687,13 @@ prerelease/
 ```
 
 ## Release notes
+
+- **DirtyTasks 1.0.11 and DirtyCaptions 1.0.9:** an encoding run that no Stash
+  task is running any more, for example after Stash restarted, no longer blocks
+  file organization. Organization pauses it and goes ahead, **Pause** and
+  **Cancel** act on it at once, and the Stash log says when organization has to
+  wait. Bulk edits of selected scenes no longer start one caption-index job per
+  scene.
 
 - **DirtyMultiscreen 1.0.24 and DirtyPlugins 1.0.17:** the header button plays
   the list another plugin's page announces through a `stash-scenes:context`

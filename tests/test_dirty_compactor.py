@@ -494,7 +494,9 @@ class CompactorPipelineTests(unittest.TestCase):
         run_id = compactor.start_run(self.client, self.preview(), {})["id"]
         def pause_midway(command, current, *args):
             Path(command[-1]).write_bytes(b"partial encode")
-            compactor.pause_run(self.client, {"id": current})
+            # Stash lists the running worker, so the pause is a request the encoder sees.
+            with patch.object(compactor, "tasks_active", return_value=True):
+                compactor.pause_run(self.client, {"id": current})
             self.assertTrue(compactor.public_record(compactor.get("run", current))["pauseRequested"])
             compactor.check_stop(current)
         with patch.object(compactor, "run_process", side_effect=pause_midway):
@@ -520,7 +522,10 @@ class CompactorPipelineTests(unittest.TestCase):
             compactor.pause_run(self.client, {"id": run_id})
         run["status"] = "queued"
         compactor.save("run", run)
-        compactor.pause_run(self.client, {"id": run_id})
+        # The worker's task is still queued in Stash, so the request waits for it.
+        with patch.object(compactor, "tasks_active", return_value=True):
+            compactor.pause_run(self.client, {"id": run_id})
+        self.assertEqual(compactor.get("run", run_id)["status"], "queued")
         with patch.object(compactor, "encode", side_effect=AssertionError("a pause before the file must not encode")):
             self.assertEqual(compactor.worker(self.client, run_id)["status"], "paused")
         compactor.cancel_run(self.client, {"id": run_id})
