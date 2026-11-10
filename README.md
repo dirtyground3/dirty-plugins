@@ -703,8 +703,8 @@ prerelease/
   whose lists play and how many items one list may hold. The button also
   launches from tag lists, tag selections and tag pages. **Total screens** is
   empty by default and fills every grid cell. When every other scene is already
-  on a screen, Next moves on and repeats one. Every settings tab has a **Reset
-  to defaults** button.
+  on a screen, Next moves on and repeats one. Every settings tab except
+  DirtyRank's and DirtyTasks' has a **Reset to defaults** button.
 
 - **DirtyRank 1.1.1 and DirtyStats 1.0.14:** setting descriptions no longer end
   with "Enabled by default."
