@@ -34,7 +34,7 @@ export interface Scene {
   resume_time?: number | null;
   paths?: { stream?: string | null; vtt?: string | null };
   sceneStreams?: { url: string; mime_type?: string; label?: string }[];
-  files?: { duration?: number }[];
+  files?: { duration?: number; width?: number | null; height?: number | null }[];
   play_count?: number | null;
   last_played_at?: string | null;
   o_counter?: number | null;
@@ -151,6 +151,14 @@ export interface AudioState {
   muted: boolean;
   volume: number;
 }
+/** Fill and loop stay with the screen; flips and rotation belong to the item they name. */
+export interface PaneView {
+  fill?: boolean;
+  /** Absent follows the Loop scenes setting. */
+  loop?: boolean;
+  flip?: { itemId: string; x: boolean; y: boolean };
+  rotation?: { itemId: string; turns: 1 | 2 | 3 };
+}
 /** Where one pane was; absent time and audio fall back to the pane's normal start. */
 export interface SavedPane {
   page: number;
@@ -159,6 +167,7 @@ export interface SavedPane {
   item?: Item;
   time?: number;
   audio?: AudioState;
+  view?: PaneView;
 }
 /** Enough to deal the same queue again: playlists are rebuilt from these seeds, never stored. */
 export interface SavedSession {
@@ -168,6 +177,45 @@ export interface SavedSession {
   seed: number;
   now: number;
   panes: Array<SavedPane | null>;
+  /** The grid place of each pane; absent is the dealt order. */
+  order?: number[];
+  /** The autosave this session keeps up to date, once it has one. */
+  recent?: number;
+}
+/** What a grid's pane holds at one moment, with every pane's item so a saved grid can return to it. */
+export interface GridSnapshot {
+  panes: Array<SavedPane | null>;
+  order: number[];
+}
+/** The settings that deal a saved grid's queue; opening the grid makes them the current settings. */
+export type SavedGridSettings = Pick<
+  Settings,
+  "rows" | "columns" | "sceneOrder" | "spreadScenes" | "avoidDuplicates" | "splitScenes"
+> & { fitVideos?: boolean };
+/** A grid kept in the shared database: its screens as a session, and the settings that session was dealt under. */
+export interface SavedGrid {
+  settings: SavedGridSettings;
+  session: SavedSession;
+}
+export interface SavedGridSummary {
+  id: number;
+  name: string;
+  rows: number;
+  columns: number;
+  /** Seconds since the epoch. */
+  updatedAt: number;
+  /** Saved automatically while it played; only the newest few stay. */
+  recent: boolean;
+}
+/** Moves screens in the grid. A screen keeps its index, queue and player; only its place changes. */
+export interface SwapControls {
+  /** A click picks the screen up, or swaps it with the one picked up before. */
+  toggle(index: number): void;
+  dragStart(index: number): void;
+  /** Called once a drag has lifted its screen: the other screen under the pointer, if any. */
+  dragOver(index: number | null): void;
+  dragEnd(): void;
+  cancel(): void;
 }
 export interface NativePlayerProps {
   scene: Scene;
@@ -213,17 +261,24 @@ export interface TileProps {
 export interface GridProps {
   avoidDuplicates: boolean;
   continuation?: { initialPage: number; pageCount: number; loadPage(page: number): Promise<Item[][]> };
+  /** Edit mode shows every screen's own picture controls. */
+  editing: boolean;
+  fitVideos: boolean;
   findPerformerItems: FindPerformerItems;
   columns: number;
   rows: number;
   totalScreens: number;
   nativePlayer: NativePlayer;
-  onSessionChange(panes: Array<SavedPane | null>): void;
+  onSessionChange(panes: Array<SavedPane | null>, order: number[]): void;
   onVisibleSceneIdsChange(ids: string[]): void;
   playback: PlaybackSettings;
   playlists: Item[][];
   /** Pane positions of a resumed session, read when the grid mounts. */
   savedPanes?: Array<SavedPane | null>;
+  /** Grid places of a resumed session, read when the grid mounts. */
+  savedOrder?: number[];
+  /** Filled by the grid while it is mounted: the screens as they are now. */
+  snapshotRef: R.MutableRefObject<(() => GridSnapshot) | null>;
   searchSession: SessionSearch;
   showPerformerNavigation: boolean;
   useFindScene: UseFindScene;

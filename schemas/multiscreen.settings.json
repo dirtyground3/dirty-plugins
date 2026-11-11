@@ -3,32 +3,30 @@
     "rows": {
       "type": "NUMBER",
       "displayName": "Rows",
-      "description": "Grid rows. Defaults to 2.",
+      "description": "Grid rows, chosen with the grid picker in edit mode. Defaults to 2.",
       "default": 2,
       "integer": true,
       "min": 1,
-      "max": 12,
-      "step": 1
+      "max": 6,
+      "step": 1,
+      "hidden": true
     },
     "columns": {
       "type": "NUMBER",
       "displayName": "Columns",
-      "description": "Grid columns. Defaults to 2.",
+      "description": "Grid columns, chosen with the grid picker in edit mode. Defaults to 2.",
       "default": 2,
       "integer": true,
       "min": 1,
-      "max": 12,
-      "step": 1
+      "max": 6,
+      "step": 1,
+      "hidden": true
     },
-    "screens": {
-      "type": "NUMBER",
-      "displayName": "Total screens",
-      "description": "Leave empty to fill every grid cell (rows x columns, at most 36). Enter a smaller number to leave the remaining cells empty.",
-      "placeholder": "Rows x columns",
-      "integer": true,
-      "min": 1,
-      "max": 36,
-      "step": 1
+    "fitVideos": {
+      "type": "BOOLEAN",
+      "displayName": "Fit screens to videos",
+      "description": "Fit each screen to its video and pack the screens into the window. The Fit videos button in edit mode switches it too. Enabled by default.",
+      "default": true
     },
     "sceneOrder": {
       "type": "STRING",
@@ -138,6 +136,16 @@
       "description": "Show the DirtyMultiscreen button in Stash's top bar. When hidden, the player stays reachable by URL.",
       "default": true
     },
+    "recentGrids": {
+      "type": "NUMBER",
+      "displayName": "Autosaves to keep",
+      "description": "Autosave the last grids you played in Saved grids as Autosave 1, 2 and so on, newest first, updated while they play. Name one to keep it for good. 0 turns autosave off. Defaults to 5.",
+      "default": 5,
+      "integer": true,
+      "min": 0,
+      "max": 10,
+      "step": 1
+    },
     "otherPluginLists": {
       "type": "STRING",
       "displayName": "Lists from other plugins",
@@ -176,11 +184,11 @@
   "sections": [
     {
       "title": "Grid",
-      "description": "How many panes play at once.",
+      "description": "Rows and columns are chosen in the player's edit mode.",
       "settings": [
         "rows",
         "columns",
-        "screens"
+        "fitVideos"
       ]
     },
     {
@@ -208,6 +216,12 @@
       "settings": [
         "showPerformerNavigation",
         "showInMenu"
+      ]
+    },
+    {
+      "title": "Saved grids",
+      "settings": [
+        "recentGrids"
       ]
     },
     {

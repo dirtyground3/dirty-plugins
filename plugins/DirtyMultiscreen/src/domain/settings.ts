@@ -1,12 +1,21 @@
 import { defaults as DEFAULT_SETTINGS, limits as LIMITS, options as OPTIONS } from "@generated/multiscreen.settings";
 import { clampInteger, coerceBoolean } from "../../../DirtyPlugins/src/shared/values";
-import type { ListSettings, OtherPluginLists, Settings, PlaybackSettings, SceneOrder } from "../types";
+import type {
+  ListSettings,
+  OtherPluginLists,
+  Settings,
+  PlaybackSettings,
+  SavedGridSettings,
+  SceneOrder,
+} from "../types";
 
 const MAX_SCENE_PAGE_SIZE = 240;
 export const NON_RANDOM_SCENE_SORT = "title";
 const SCENE_ORDERS = new Set<string>(OPTIONS.sceneOrder.map(option => option.value));
 const LIST_PERMISSIONS = new Set<string>(OPTIONS.otherPluginLists.map(option => option.value));
 export { DEFAULT_SETTINGS };
+/** The largest grid the edit-mode picker offers. */
+export const GRID_LIMITS = { rows: LIMITS.rows.max, columns: LIMITS.columns.max };
 
 /** Which other plugins' lists the header button uses, and how many items it takes from one. */
 export function normalizeListSettings(rawSettings: Record<string, unknown>): ListSettings {
@@ -24,17 +33,20 @@ export function normalizeListSettings(rawSettings: Record<string, unknown>): Lis
   };
 }
 
+/** How many recent grids Saved grids keeps; 0 saves none. */
+export const normalizeRecentGrids = (rawSettings: Record<string, unknown>) =>
+  clampInteger(rawSettings.recentGrids, DEFAULT_SETTINGS.recentGrids, LIMITS.recentGrids.min, LIMITS.recentGrids.max);
+
+/** Layout is independent of query settings: toggling it must never reload the playing queues. */
+export const normalizeFitVideos = (rawSettings: Record<string, unknown>) =>
+  coerceBoolean(rawSettings.fitVideos, DEFAULT_SETTINGS.fitVideos);
+
 export function normalizeSettings(rawSettings: Record<string, unknown>): Settings {
   const rows = clampInteger(rawSettings.rows, DEFAULT_SETTINGS.rows, LIMITS.rows.min, LIMITS.rows.max);
   const columns = clampInteger(rawSettings.columns, DEFAULT_SETTINGS.columns, LIMITS.columns.min, LIMITS.columns.max);
-  // An empty setting fills the grid. A number can leave cells empty but never
-  // adds tiles beyond the grid, which would play off-screen.
-  const cells = Math.min(rows * columns, LIMITS.screens.max);
-  const screens = String(rawSettings.screens ?? "").trim()
-    ? clampInteger(rawSettings.screens, cells, LIMITS.screens.min, LIMITS.screens.max)
-    : cells;
   return {
-    totalScreens: Math.min(screens, cells),
+    // Every cell of the grid plays.
+    totalScreens: rows * columns,
     rows,
     columns,
     sceneOrder: (typeof rawSettings.sceneOrder === "string" && SCENE_ORDERS.has(rawSettings.sceneOrder)
@@ -57,6 +69,18 @@ export function normalizeSettings(rawSettings: Record<string, unknown>): Setting
       rawSettings.showPerformerNavigation,
       DEFAULT_SETTINGS.showPerformerNavigation,
     ),
+  };
+}
+/** The settings a saved grid keeps: the grid itself and what deals its queue. */
+export function savedGridSettings(settings: Settings, fitVideos: boolean): SavedGridSettings {
+  return {
+    fitVideos,
+    rows: settings.rows,
+    columns: settings.columns,
+    sceneOrder: settings.sceneOrder,
+    spreadScenes: settings.spreadScenes,
+    avoidDuplicates: settings.avoidDuplicates,
+    splitScenes: settings.splitScenes,
   };
 }
 export function getPlaybackSettings(settings: Settings): PlaybackSettings {

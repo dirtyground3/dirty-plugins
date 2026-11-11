@@ -45,6 +45,12 @@
       "displayName": "Show settings in the Stash header",
       "description": "Add a Dirty Plugins settings button after the other Dirty plugin buttons in Stash's utility navigation.",
       "default": true
+    },
+    "useNavHub": {
+      "type": "BOOLEAN",
+      "displayName": "Group Dirty Plugins in Nav Hub",
+      "description": "Move visible Dirty Plugins navigation buttons into Nav Hub's Plugins menu. Use Nav Hub's Manage controls to choose which buttons it groups.",
+      "default": false
     }
   },
   "constants": {

@@ -21,6 +21,7 @@ class StagedBackendTests(unittest.TestCase):
             "DirtyCaptions": "dirty_captions", "DirtyTasks": "dirty_tasks",
             "DirtyFileExtractor": "extract_scenes", "DirtyPlugins": "dirty_plugins",
             "DirtyRank": "dirty_rank", "DirtyStats": "dirty_stats",
+            "DirtyMultiscreen": "dirty_multiscreen",
         }
         code = """
 import importlib, pathlib, sys

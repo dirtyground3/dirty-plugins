@@ -48,6 +48,9 @@ export function LoadedNativePlayer({
   onAudioStateChangeRef.current = onAudioStateChange;
   const onPositionChangeRef = React.useRef(onPositionChange);
   onPositionChangeRef.current = onPositionChange;
+  // Read when the video ends, so switching a screen's loop never reattaches the player or seeks it.
+  const loopRef = React.useRef(playback.loop);
+  loopRef.current = playback.loop;
   const [initialTimestamp] = React.useState(() => {
     if (resumeTime !== undefined) return resumeTime;
     if (item.playbackRange) return item.playbackRange.start;
@@ -62,7 +65,7 @@ export function LoadedNativePlayer({
     [scene],
   );
   const handleComplete = React.useCallback(() => {
-    if (playback.loop) {
+    if (loopRef.current) {
       setTimestampRef.current?.(item.playbackRange?.start ?? 0);
       // A finished video is paused, and native setTimestamp only seeks a paused player.
       const player = tileRef.current?.querySelector<VideoPlayerElement>("video-js")?.player;
@@ -70,7 +73,7 @@ export function LoadedNativePlayer({
       return;
     }
     advance();
-  }, [item.playbackRange, advance, playback.loop]);
+  }, [item.playbackRange, advance]);
   React.useEffect(() => {
     const tile = tileRef.current;
     const playbackRange = item.playbackRange;
@@ -109,7 +112,7 @@ export function LoadedNativePlayer({
       }
       if (rangeEndHandledRef.current) return;
       rangeEndHandledRef.current = true;
-      if (playback.loop) {
+      if (loopRef.current) {
         setTimestampRef.current?.(playbackRange.start);
       } else {
         advance();
@@ -142,7 +145,7 @@ export function LoadedNativePlayer({
       observer.disconnect();
       detachPlayer();
     };
-  }, [initialTimestamp, item.playbackRange, advance, playback.loop, playerId]);
+  }, [initialTimestamp, item.playbackRange, advance, playerId]);
   React.useEffect(() => {
     const tile = tileRef.current;
     if (!tile) return;

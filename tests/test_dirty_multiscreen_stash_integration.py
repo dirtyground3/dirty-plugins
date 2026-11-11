@@ -29,20 +29,22 @@ def verify_frontend(fixture):
 
 def exercise(fixture, transcode=False):
     files = []
+    sizes = {"Alpha": "192x108", "Beta": "108x192", "Gamma": "144x108", "Delta": "192x108"}
     for index, name in enumerate(("Alpha", "Beta", "Gamma", "Delta")):
         path = fixture.root / "media" / (name + (".mkv" if transcode else ".mp4"))
         video_options = ["-c:v", "ffv1"] if transcode else ["-c:v", "libx264", "-preset", "ultrafast", "-movflags", "+faststart"]
-        subprocess.run([shutil.which("ffmpeg"), "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=192x108:rate=15",
+        subprocess.run([shutil.which("ffmpeg"), "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=" + sizes[name] + ":rate=15",
                         "-f", "lavfi", "-i", "sine=frequency=" + str(220 + index * 110), "-t", str(12 + index * 4), *video_options,
                         "-pix_fmt", "yuv420p", "-c:a", "aac", str(path)], check=True)
         files.append(path)
     hashes = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
     fixture.scan()
-    scenes = fixture.gql('{findScenes(filter:{sort:"title",direction:ASC}){count scenes{id title files{id path duration} paths{stream}}}}')["findScenes"]
+    scenes = fixture.gql('{findScenes(filter:{sort:"title",direction:ASC}){count scenes{id title files{id path duration width height} paths{stream}}}}')["findScenes"]
     assert scenes["count"] == 4
     ids = {}
     for scene in scenes["scenes"]:
         title = Path(scene["files"][0]["path"]).stem
+        assert (scene["files"][0]["width"], scene["files"][0]["height"]) == tuple(map(int, sizes[title].split("x")))
         fixture.gql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}', {"input": {"id": scene["id"], "title": title, "details": "Synthetic Multiscreen fixture; preserve identity"}})
         ids[title] = scene["id"]
     performer = fixture.gql('mutation{performerCreate(input:{name:"Synthetic Multiscreen performer"}){id}}')["performerCreate"]["id"]

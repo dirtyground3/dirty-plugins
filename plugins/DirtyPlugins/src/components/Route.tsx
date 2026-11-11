@@ -6,6 +6,7 @@ import {
   SETTINGS_PANELS_CHANGED_EVENT,
   UNSAVED_SETTINGS_MESSAGE,
 } from "../constants";
+import { useNavHubAvailable } from "../navHub";
 import { React } from "../runtime";
 import { createSaveController, type SaveController } from "../save";
 import {
@@ -100,6 +101,7 @@ function useLeaveProtection(hasUnsavedChanges: boolean) {
 }
 
 export function DirtyPluginsRoute() {
+  const navHubAvailable = useNavHubAvailable();
   const [snapshot, setSnapshot] = React.useState<Snapshot | null>(null);
   const [drafts, setDrafts] = React.useState<Drafts>({});
   const [savedDrafts, setSavedDrafts] = React.useState<Drafts>({});
@@ -317,12 +319,11 @@ export function DirtyPluginsRoute() {
   }
 
   /** Every setting the tab shows returns to its schema default and saves like an edit. */
-  function resetPlugin(pluginId: string) {
-    const plugin = snapshot && snapshot.plugins.find(item => item.id === pluginId);
-    if (!plugin || !window.confirm("Reset every " + plugin.name + " setting to its default value?")) return;
+  function resetPlugin(plugin: Plugin) {
+    if (!window.confirm("Reset every " + plugin.name + " setting shown to its default value?")) return;
     updateFields(
-      pluginId,
-      Object.fromEntries((plugin.settings || []).map(setting => [setting.name, defaultFieldValue(pluginId, setting)])),
+      plugin.id,
+      Object.fromEntries((plugin.settings || []).map(setting => [setting.name, defaultFieldValue(plugin.id, setting)])),
     );
   }
 
@@ -359,6 +360,10 @@ export function DirtyPluginsRoute() {
 
   const activePlugin = snapshot && snapshot.plugins.find(plugin => plugin.id === activePluginId);
   const activeSettingsPanel = activePlugin && settingsPanels[activePlugin.id];
+  const visiblePlugin =
+    activePlugin?.id === "dirtyPlugins" && !navHubAvailable
+      ? { ...activePlugin, settings: activePlugin.settings?.filter(setting => setting.name !== "useNavHub") }
+      : activePlugin;
   usePageTitle(activePlugin && activePlugin.id !== "dirtyPlugins" ? activePlugin.name : "Dirty Plugins", "Settings");
 
   const ready = snapshot;
@@ -413,7 +418,7 @@ export function DirtyPluginsRoute() {
               );
             })}
           </div>
-          {activePlugin && (
+          {activePlugin && visiblePlugin && (
             <div
               aria-labelledby={"dirty-plugins-tab-" + activePlugin.id}
               className="dirty-plugins-tab-panel"
@@ -431,7 +436,7 @@ export function DirtyPluginsRoute() {
                 <PluginCard
                   actionRevision={actionRevision}
                   draft={drafts[activePlugin.id]}
-                  plugin={activePlugin}
+                  plugin={visiblePlugin}
                   status={statuses[activePlugin.id]}
                   onFieldChange={updateField}
                   onReset={resetPlugin}

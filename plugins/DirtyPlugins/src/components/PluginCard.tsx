@@ -24,7 +24,7 @@ export function PluginCard({ plugin, draft = {}, status, actionRevision, onField
         className="btn btn-secondary dirty-ui-button"
         disabled={atDefaults}
         title={atDefaults ? "Every setting already has its default value." : undefined}
-        onClick={() => onReset(plugin.id)}
+        onClick={() => onReset(plugin)}
       >
         Reset to defaults
       </button>

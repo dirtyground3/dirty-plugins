@@ -147,9 +147,9 @@ uses it for index progress and refresh/stop actions.
 See the [DirtyCaptions guide](../DirtyCaptions/README.md) for filtering, playback and format
 support.
 
-The page has no navigation entry. Open it using the link shown in the normal
-Stash settings panel for a managed Dirty plugin. Each installed plugin has its
-own inner tab, and the link opens that plugin's tab directly.
+Open the page from the Dirty Plugins settings button in the Stash header or
+from a managed plugin's card under **Settings → Plugins**. Each installed
+plugin has its own tab, and the link from its card opens that tab directly.
 On Stash's main Plugins page, the Dirty plugin setting cards are kept together
 in a stable shared-hub-first order without changing other plugins' order.
 Standard settings and DirtyRank's custom settings save automatically shortly
@@ -157,8 +157,12 @@ after a control changes. Pending or invalid values remain visibly marked and
 are protected by confirmation when the page is closed, refreshed, or left
 through an in-app link. DirtyTasks deliberately keeps its explicit preview and
 confirmation workflow because its strategy can move and rename files.
-The direct URL is `/plugins/dirty-plugins`; it remains unlisted in Stash's
-navigation.
+The direct URL is `/plugins/dirty-plugins`.
+
+When Nav Hub is active, enable **Group Dirty Plugins in Nav Hub** on the
+**General** tab to move visible Dirty Plugins buttons into its **Plugins**
+menu. The option is off by default. Use Nav Hub's **Manage** controls to
+restore individual buttons to the Stash header. [Nav Hub integration guide](https://github.com/xlxil/stash-plugins/tree/main/plugins/NavHub#integration-api)
 
 ## Debug logging
 

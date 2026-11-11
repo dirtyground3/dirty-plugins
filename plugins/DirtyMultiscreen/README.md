@@ -4,7 +4,7 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 
 ## Features
 
-- Configurable rows and columns. Every cell plays unless you set fewer screens.
+- A grid of up to 6 x 6 screens, chosen in edit mode. Every cell plays.
 - Random or ordered scene playback.
 - Optional scene splitting across panes.
 - Contextual playback continues through independently loaded pages of at most 240 items per pane.
@@ -38,9 +38,62 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   random sample, and choosing another order reshuffles with that order and saves
   it as the **Scene order** setting. A list launched in its plugin's own order
   shows **Keep the list order** checked until you choose another.
+- The grid button beside the shuffle button turns edit mode on and off. Videos
+  keep playing, and every screen shows six buttons: move, flip horizontally,
+  flip vertically, rotate, loop, and fill. A flip mirrors the picture only, not the
+  controls or captions, and belongs to its video: it leaves when the screen
+  moves to another scene and returns if you go back. Loop and fill stay with the
+  screen. Loop starts from the **Loop scenes** setting and overrides it for that
+  screen. Fill crops the picture to cover the screen instead of fitting inside
+  it, including under themes that force the player to fit, such as Refract.
+- Rotate turns the picture 90° clockwise each time: 90°, 180°, 270°, then back
+  to normal. It belongs to the video like a flip, keeps playback running, and
+  leaves controls and captions upright. At 90° and 270° its width and height
+  swap, so **Fit videos** immediately repacks the screens using the turned
+  picture's shape. Flips work along the displayed horizontal and vertical axes.
+- Drag a screen's move button onto another screen to swap the two: the screen
+  shrinks and follows the pointer, still playing, and the screen it would swap
+  with is outlined. Or click the move button on one screen and then on another.
+  Both keep playing: a screen
+  takes its scene, queue, position, audio and picture to its new place. Screens
+  are numbered by place, from the top left.
+- Edit mode also shows a square for every grid size under the main buttons.
+  Click a square, or press and drag to it, to choose that many columns and rows.
+  Another grid deals a new queue, so every screen restarts: a dialog asks first.
+  The chosen grid is saved as the default for later sessions.
+- **Fit videos**, below the grid size, fits screens to their videos and packs
+  them into rows or columns. It is on by default; switching it here also
+  changes **Fit screens to videos** in the settings. The picker still chooses
+  how many screens play.
+  Toggling, swapping and resizing keep the same players running. The layout
+  follows each new video's shape, using 16:9 until its size is known. If it
+  covers at least 90% of the window, it fills the window with a small crop;
+  otherwise the exact shapes form a centred block. Fill is controlled by this
+  mode; each screen's own fill choice returns when you switch it off.
+- The bookmark button beside the grid button opens **Saved grids**. Name the
+  current screens to save them: the grid, and every screen's place, scene,
+  position, sound, flip, rotation, loop and fill, plus the Fit videos mode. Older saved
+  grids keep your current Fit videos choice. A name already in the list replaces that
+  grid after asking, and so does the overwrite button on a saved grid, which
+  keeps its name. Click a saved grid to open it in place of the current
+  screens; Next then continues through the list it was saved from. Opening a
+  grid also makes its rows, columns, scene order, spreading, duplicate avoidance
+  and splitting the current settings, because they deal its queue. If a saved
+  scene has left the library, that screen starts from its queue instead. Saved
+  grids can be renamed and deleted there, and are kept in the shared Dirty
+  Plugins database, so they follow you to another browser or device. This needs
+  Python 3.9 or newer where Stash runs; the rest of the player works without it.
+- **Saved grids** also lists your **Autosaves**, numbered newest first:
+  Autosave 1 is the grid you played last. Every launch becomes one, saved at
+  most every ten seconds while it plays and at once when you hide the tab or
+  close the player. Reloading or opening an autosave goes on updating it; a new
+  launch starts another, and the oldest goes once there are more than
+  **Autosaves to keep** (5 by default, 0 turns autosave off). The bookmark
+  button on an autosave keeps it under a name of your own, as a saved grid that
+  is never overwritten automatically.
 - Closing the tab keeps the session. Reloading, reopening the plugin page or
   clicking the header button on a page without a list returns every screen to
-  its scene, position and audio. The header button on a scene, marker, performer,
+  its place, scene, position, audio and picture. The header button on a scene, marker, performer,
   studio or tag list, on a performer, studio or tag page, or on a page another
   plugin announced a list for, starts a new session, and so does the shuffle
   button; either replaces the saved one. An announced empty list shows its
@@ -114,17 +167,18 @@ runtime files and Stash's package-provenance `manifest` during a local update.
 
 ## Configuration
 
-The DirtyMultiscreen tab of the Dirty Plugins settings has five groups:
+Rows and columns are chosen in the player's edit mode, not on the settings
+page. The DirtyMultiscreen tab of the Dirty Plugins settings has six groups:
 
-- **Grid:** rows, columns and **Total screens**. Leave **Total screens** empty
-  to fill every cell (rows x columns, at most 36), or enter a smaller number to
-  leave the remaining cells empty.
+- **Grid:** **Fit screens to videos** (enabled by default), the same choice as
+  the Fit videos button in edit mode.
 - **Scenes:** scene order, **Spread performers and studios**, **Split scenes
   between panes** and **Avoid the same scene on several screens**.
 - **Playback:** **Start muted**, **Random start**, **Loop scenes**, **Pause when
   hidden** and the length of markers without an end time.
 - **Navigation:** whether screens show performer next-scene buttons, and whether
   the grid button appears in the Stash header.
+- **Saved grids:** **Autosaves to keep**, from 0 to 10 (5 by default).
 - **Advanced:** **Lists from other plugins** (Off, Known plugins only, the
   default, or Any plugin) and **List size limit**, the most items taken from one
   plugin's list (10,000 by default, from 1,000 to 100,000).
@@ -186,7 +240,14 @@ through the hub's `registerPlugin`. A reloaded bundle is ignored, including afte
 native registration failure, which is logged once. Unmounting components clear
 their timers, listeners and observers, ignore late responses and release the
 native players.
-Domain tests compile modules on demand; UI tests execute the final browser bundle.
+Saved grids are the only server-side part: `dirty_multiscreen.py` answers the
+browser through the shared protocol and `dirty_multiscreen_grids.py` owns the
+`dirty_multiscreen_grids` table in the shared database, where a `recent` flag
+marks the autosaves. A grid's session is stored as the JSON
+text the browser sent. The row limits come from the generated
+`dirty_multiscreen_metadata.py`.
+Domain tests compile modules on demand; UI tests execute the final browser bundle;
+`tests/test_dirty_multiscreen_grids.py` covers the table and the protocol.
 An opt-in isolated Stash fixture uses synthetic media only:
 
 ```powershell

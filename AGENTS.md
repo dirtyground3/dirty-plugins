@@ -16,7 +16,7 @@ plugins/
 ├── DirtyCaptions/       # embedded text subtitles via in-memory WebVTT tracks
 ├── DirtyPlugins/        # shared runtime: GraphQL, settings, React components, SQLite owner
 ├── DirtyFileExtractor/  # selection UI + Python extraction backend
-├── DirtyMultiscreen/    # multiscreen playback UI
+├── DirtyMultiscreen/    # multiscreen playback UI + saved-grids backend
 ├── DirtyRank/           # battle/leaderboard UI + Glicko-2 backend
 ├── DirtyStats/          # statistics/visualization UI
 └── DirtyTasks/          # file organization, additive encoding and tag updates
@@ -129,8 +129,9 @@ ui:
   demand and replace an import where a fake is required
   (`tests/plugin_paths.js`).
 - Selected settings metadata (keys, labels, descriptions, defaults, bounds,
-  options, headed `sections`, `disabledWhen` rules and placeholders for numbers
-  that may stay empty) and constants shared by
+  options, headed `sections`, `disabledWhen` rules, placeholders for numbers
+  that may stay empty and `hidden` for a setting its plugin edits in its own
+  interface, which stays out of the manifest and the settings page) and constants shared by
   TS and Python live only in
   `schemas/<pluginId>.settings.json`. The build generates `@generated/<id>.settings`
   TS modules in `.build/generated/`, the staged manifest's `settings:` section,

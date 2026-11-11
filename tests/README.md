@@ -182,7 +182,11 @@ Rebuild after changing plugin source, schemas or scripts: tests read
   hidden-tab pause/resume, counters, searched queue positions across pages,
   split and shuffled neighbors, lookup retry/stale responses, independent native
   player/streaming identities and player/listener/observer
-  cleanup of unmounted components. The opt-in fixture is
+  cleanup of unmounted components. Edit mode covers per-screen flip, loop and
+  fill, the grid picker and its confirmation, and screens swapped by click or
+  drag. Saved grids run against a stand-in backend in the harness, and
+  `test_dirty_multiscreen_grids.py` checks the real table, limits, the raw
+  protocol and public error messages in a temporary database. The opt-in fixture is
   `python -B tests/test_dirty_multiscreen_stash_integration.py --binary /path/to/stash`:
   synthetic scene/marker/performer/studio contexts, native order/counts,
   HTTP seeking, byte/entity preservation and the exact served bundle.

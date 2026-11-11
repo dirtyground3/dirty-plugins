@@ -50,7 +50,11 @@ async function main() {
     assert.equal(lib.readManifest(plugin).settings, undefined, id + " source manifest must not repeat its schema");
     const staged = lib.readManifest(plugin, runtimePath(plugin.directory));
     assert.deepEqual(staged.settings || {}, generator.manifestSettings(schema), id + " staged manifest settings");
-    assert.deepEqual(Object.keys(staged.settings || {}), Object.keys(schema.settings), id + " setting order");
+    assert.deepEqual(
+      Object.keys(staged.settings || {}),
+      Object.keys(schema.settings).filter(name => !schema.settings[name].hidden),
+      id + " setting order",
+    );
     // Prose defaults in descriptions cannot drift from the schema.
     for (const [name, setting] of Object.entries(schema.settings)) {
       const text = setting.description;
@@ -80,6 +84,17 @@ async function main() {
     ["count"],
     "authored integer requirements reach TypeScript validation",
   );
+  // A hidden setting keeps its tables but never reaches the manifest, so the settings page never shows it.
+  const hidden = {
+    settings: {
+      count: { ...valid.settings.count, hidden: true },
+      flag: { type: "BOOLEAN", displayName: "Flag", description: "Flag.", default: true },
+    },
+  };
+  assert.equal(generator.validateSchema("example", hidden), hidden);
+  assert.deepEqual(Object.keys(generator.manifestSettings(hidden)), ["flag"]);
+  assert.deepEqual(generator.settingsTables(hidden).order, ["count", "flag"]);
+  assert.deepEqual(generator.settingsTables(hidden).limits, { count: { min: 1, max: 4 } });
   const { default: _default, ...optionalCount } = valid.settings.count;
   const optional = { settings: { count: { ...optionalCount, placeholder: "Automatic" } } };
   assert.equal(generator.validateSchema("example", optional), optional);
@@ -165,6 +180,7 @@ async function main() {
       /placeholder needs a number or text field/,
     ],
     [{ settings: { count: { ...valid.settings.count, default: 1.5 } } }, /whole number/],
+    [{ settings: { count: { ...valid.settings.count, hidden: false } } }, /hidden must be true or absent/],
     [{ settings: { count: { ...valid.settings.count, min: 5 } } }, /min exceeds max/],
     [
       { settings: { flag: { type: "BOOLEAN", displayName: "Flag", description: "Flag.", default: true, max: 1 } } },

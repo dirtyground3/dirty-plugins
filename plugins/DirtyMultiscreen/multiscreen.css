@@ -17,10 +17,235 @@
 
 .ms-cell {
   position: relative;
+  container-type: size;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: #000;
+}
+
+.ms-grid.ms-fit {
+  display: block;
+  position: relative;
+}
+
+.ms-fit > .ms-cell {
+  position: absolute;
+  transition: left 200ms ease, top 200ms ease, width 200ms ease, height 200ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ms-fit > .ms-cell {
+    transition: none;
+  }
+}
+
+/* Fill crops the picture to the screen. Flips mirror the picture only, never the controls or captions.
+   Themes such as Refract force the player's video to contain, so fill has to outrank them. */
+#root .ms-fill .ms-native-tile .video-js video,
+#root .ms-fit .ms-native-tile .video-js video {
+  object-fit: cover !important;
+}
+
+.ms-flip-x {
+  --ms-flip-x: -1;
+}
+
+.ms-flip-y {
+  --ms-flip-y: -1;
+}
+
+.ms-rotate-90 {
+  --ms-rotation: 90deg;
+}
+
+.ms-rotate-180 {
+  --ms-rotation: 180deg;
+}
+
+.ms-rotate-270 {
+  --ms-rotation: 270deg;
+}
+
+/* Flips apply along the displayed axes, after rotation. Native controls and captions stay upright. */
+#root .ms-cell .ms-native-tile .video-js video {
+  transform: translate(var(--ms-video-offset, 0), var(--ms-video-offset, 0))
+    scale(var(--ms-flip-x, 1), var(--ms-flip-y, 1)) rotate(var(--ms-rotation, 0deg))
+    scale(var(--ms-capture-scale, 1)) !important;
+}
+
+/* Swap the video's box before rotating it, so both contain and cover use the turned picture's shape.
+   Container units follow the cell through fit-layout animations and window resizes. */
+#root :is(.ms-rotate-90, .ms-rotate-270) .ms-native-tile .video-js video {
+  --ms-video-offset: -50%;
+  top: 50% !important;
+  left: 50% !important;
+  width: 100cqh !important;
+  height: 100cqw !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+
+.ms-docs-capture .ms-cell {
+  --ms-capture-scale: 1.15;
+}
+
+/* Edit mode: each screen's picture controls sit in the middle of it and stay visible while it plays. */
+.ms-screen-controls {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3rem;
+  max-width: calc(100% - 1rem);
+  padding: 0.3rem;
+  border-radius: 1.3rem;
+  background: rgba(0, 0, 0, 0.62);
+  transform: translate(-50%, -50%);
+}
+
+/* The move button drags its screen onto another one. Touch must not scroll or select instead. */
+.ms-move-handle {
+  display: flex;
+  touch-action: none;
+  user-select: none;
+}
+
+.ms-route .ms-move-handle .ms-button {
+  cursor: grab;
+}
+
+/* A screen moves by its CSS order. These mark the one picked up and the one it would swap with. */
+.ms-swap-source::after,
+.ms-swap-target::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border: 3px solid #fff;
+  pointer-events: none;
+}
+
+/* A lifted screen follows the pointer above the others; its own style carries the position. */
+.ms-swap-source {
+  box-shadow: 0 0.6rem 2rem rgba(0, 0, 0, 0.7);
+}
+
+.ms-route .ms-swap-source .ms-move-handle .ms-button {
+  cursor: grabbing;
+}
+
+.ms-swap-target::after {
+  border-style: dashed;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Edit mode: squares for every grid size, under the main buttons. */
+.ms-grid-picker {
+  position: fixed;
+  top: 3.3rem;
+  right: 0.85rem;
+  z-index: 1060;
+  padding: 0.45rem;
+  border-radius: var(--dirty-ui-radius-small);
+  color: #fff;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.ms-grid-squares {
+  display: grid;
+  touch-action: none;
+}
+
+/* The button fills its cell so a drag never falls between squares; the square is drawn inside it. */
+.ms-grid-square {
+  width: 1.3rem;
+  height: 1.3rem;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ms-grid-square::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 2px;
+}
+
+.ms-grid-square-on::before {
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.ms-grid-square:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -1px;
+}
+
+.ms-grid-size {
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.ms-fit-toggle {
+  display: block;
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: var(--dirty-ui-radius-small);
+  font-size: 0.78rem;
+  color: #fff;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ms-fit-toggle[aria-pressed="true"] {
+  color: #000;
+  background: #fff;
+}
+
+.ms-grid-confirm {
+  width: min(26rem, 100%);
+  padding: 1rem;
+  color: var(--dirty-ui-text);
+}
+
+.ms-grid-confirm h2 {
+  margin: 0 0 var(--dirty-ui-space-3);
+  font-size: 1.25rem;
+}
+
+.ms-route .ms-screen-controls .ms-button {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  color: #fff;
+  background: transparent;
+}
+
+.ms-route .ms-screen-controls .ms-button:hover,
+.ms-route .ms-screen-controls .ms-button:focus-visible {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.ms-route .ms-button[aria-pressed="true"],
+.ms-route .ms-button[aria-pressed="true"]:hover,
+.ms-route .ms-button[aria-pressed="true"]:focus-visible {
+  color: #000;
+  background: #fff;
+  opacity: 1;
 }
 
 .ms-queue-status {
@@ -159,6 +384,96 @@
   color: var(--dirty-ui-text);
 }
 
+.ms-saved-grids {
+  width: min(34rem, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  padding: 1rem;
+  color: var(--dirty-ui-text);
+}
+
+.ms-saved-form {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--dirty-ui-space-2);
+}
+
+.ms-saved-form > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The Save button shares the name box's row; the help text sits under both. */
+.ms-saved-grids .dirty-ui-field-control .form-control {
+  flex: 1;
+}
+
+.ms-saved-grids .dirty-ui-field-control .dirty-ui-button {
+  flex-shrink: 0;
+}
+
+.ms-saved-results {
+  margin-top: var(--dirty-ui-space-3);
+}
+
+.ms-saved-heading {
+  margin: var(--dirty-ui-space-3) 0 var(--dirty-ui-space-2);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--dirty-ui-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ms-saved-heading:first-child {
+  margin-top: 0;
+}
+
+.ms-saved-list + .ms-saved-list {
+  margin-top: var(--dirty-ui-space-2);
+}
+
+.ms-saved-list {
+  display: grid;
+  gap: var(--dirty-ui-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ms-saved-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--dirty-ui-space-2);
+}
+
+#root .ms-saved-open,
+.ms-saved-grids .ms-saved-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  text-align: left;
+}
+
+.ms-saved-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ms-saved-open small {
+  color: var(--dirty-ui-muted);
+}
+
+/* Grid names are the user's own words, so documentation captures blur them like titles. */
+.ms-docs-capture .ms-saved-name {
+  filter: blur(6px) !important;
+}
+
 .ms-scene-search-heading {
   display: flex;
   align-items: center;
@@ -218,12 +533,12 @@
   right: 0.85rem;
   z-index: 1060;
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .ms-floating .ms-button {
-  width: 2.6rem;
-  height: 2.6rem;
+  width: 2rem;
+  height: 2rem;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.62);
   opacity: 0.45;
@@ -243,9 +558,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.6rem;
-  min-width: 2.6rem;
-  height: 2.6rem;
+  width: 2rem;
+  min-width: 2rem;
+  height: 2rem;
   padding: 0 !important;
   border: 0 !important;
   border-radius: 50% !important;
@@ -346,6 +661,19 @@
 .ms-native-tile .VideoPlayer {
   max-width: none;
   max-height: none;
+  padding: 0;
+}
+
+/* Screens meet edge to edge. Themes such as Refract frame the player with a border, rounded corners and a glow,
+   which show around contained pictures where four screens meet. */
+#root .ms-native-tile .video-wrapper {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+#root .ms-native-tile .video-js .vjs-control-bar {
+  border-radius: 0 !important;
 }
 
 /* Keep the source/settings menu inside the pane, including themes with auto width. */

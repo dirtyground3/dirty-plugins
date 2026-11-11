@@ -4,7 +4,7 @@ const { test } = require("node:test");
 const { createHubHarness } = require("./hub_harness");
 const { requireSource, runSource } = require("./plugin_paths");
 
-const field = (h, name = "screens") => h.nodes(node => node.props.id === "dirty-plugin-multiscreen-" + name)[0];
+const field = (h, name = "markerDuration") => h.nodes(node => node.props.id === "dirty-plugin-multiscreen-" + name)[0];
 const edit = (h, value, name) => field(h, name).props.onChange({ target: { value } });
 const writes = h => h.requests.filter(request => request.variables?.args?.mode === "setSettings");
 const refresh = (h, pluginId) => h.window.DirtyPlugins.notifyConfigurationChanged(pluginId);
@@ -23,7 +23,7 @@ function deferred() {
 test("custom panels own dirty state even when their generic numeric fields have no stored values", async () => {
   const h = createHubHarness({
     plugins: [
-      { id: "multiscreen", name: "DirtyMultiscreen", settings: [{ name: "screens", type: "NUMBER" }] },
+      { id: "multiscreen", name: "DirtyMultiscreen", settings: [{ name: "markerDuration", type: "NUMBER" }] },
       { id: "dirtyRank", name: "DirtyRank", settings: [{ name: "initialRating", type: "NUMBER" }] },
     ],
   });
@@ -42,40 +42,33 @@ test("numeric metadata rejects blank, non-finite, fractional integer and out-of-
   const h = createHubHarness();
   h.load();
   await h.settle();
-  for (const value of ["bad", "Infinity", "0", "37", "1.5"]) {
+  for (const value of ["bad", "Infinity", "0", "601", "1.5"]) {
     edit(h, value);
     await h.tick();
     assert.equal(field(h).props.value, value);
     assert.equal(writes(h).length, 0);
-    assert.equal(h.settings.multiscreen.screens, 4);
+    assert.equal(h.settings.multiscreen.markerDuration, 30);
     assert.match(h.text(), /Unsaved changes/);
     assert.equal(h.window.handlers.get("beforeunload").size, 1);
   }
-  for (const value of ["1", "36"]) {
+  for (const value of ["1", "600"]) {
     edit(h, value);
     await h.tick();
-    assert.equal(h.settings.multiscreen.screens, Number(value));
+    assert.equal(h.settings.multiscreen.markerDuration, Number(value));
     assert.match(h.text(), /Saved automatically/);
     assert.doesNotMatch(h.text(), /Unsaved changes/);
   }
   assert.equal(writes(h).length, 2);
-  // A number with a placeholder may be emptied: the save removes the stored value.
-  assert.equal(field(h).props.placeholder, "Rows x columns");
-  edit(h, " ");
-  await h.tick();
-  assert.equal(writes(h).length, 3);
-  assert.equal("screens" in h.settings.multiscreen, false);
-  assert.equal(h.settings.multiscreen.rows, 2);
-  assert.match(h.text(), /Saved automatically/);
+  assert.equal(field(h).props.placeholder, undefined);
   for (const value of ["", " "]) {
-    edit(h, value, "rows");
+    edit(h, value);
     await h.tick();
-    assert.equal(writes(h).length, 3, "a number without a placeholder cannot stay empty");
-    assert.match(h.text(), /rows must be a number/i);
+    assert.equal(writes(h).length, 2, "a number without a placeholder cannot stay empty");
+    assert.match(h.text(), /markerDuration must be a number/i);
   }
+  assert.equal(h.settings.multiscreen.markerDuration, 600);
   h.unmount();
 
-  // Fractional steps use the authored minimum as their base; floating-point noise is harmless.
   const constants = requireSource("DirtyPlugins", "src/constants.ts");
   const domain = runSource(
     "DirtyPlugins",
@@ -88,13 +81,20 @@ test("numeric metadata rejects blank, non-finite, fractional integer and out-of-
           ...constants,
           FIELD_LIMITS: { fixture: { amount: { min: 0.1, max: 1, step: 0.1 } } },
           FIELD_INTEGERS: { fixture: new Set() },
+          FIELD_PLACEHOLDERS: { fixture: { optional: "Automatic" } },
         },
       },
     },
   );
+  // Fractional steps use the authored minimum as their base; floating-point noise is harmless.
   const setting = { name: "amount", type: "NUMBER" };
   assert.equal(domain.serializeFieldValue("fixture", setting, "0.3"), 0.3);
   assert.throws(() => domain.serializeFieldValue("fixture", setting, "0.35"), /increments of 0.1/);
+  // A number with a placeholder may be emptied: null tells the save to remove the stored value.
+  const optional = { name: "optional", type: "NUMBER" };
+  assert.equal(domain.fieldDefinition("fixture", optional).placeholder, "Automatic");
+  assert.equal(domain.serializeFieldValue("fixture", optional, " "), null);
+  assert.equal(domain.serializeFieldValue("fixture", optional, "3"), 3);
 });
 
 test("unrelated events preserve valid pending and invalid raw drafts and fetch only the affected settings", async () => {
@@ -115,7 +115,7 @@ test("unrelated events preserve valid pending and invalid raw drafts and fetch o
     assert.equal(reads[0].variables.args.pluginId, "dirtyPlugins");
     await h.tick();
     assert.equal(field(h).props.value, value);
-    assert.equal(h.settings.multiscreen.screens, value === "8" ? 8 : 4);
+    assert.equal(h.settings.multiscreen.markerDuration, value === "8" ? 8 : 30);
     h.unmount();
   }
 });
@@ -133,7 +133,7 @@ test("same-plugin refresh flushes pending edits before reading the saved baselin
     ["setSettings", "getSettings"],
   );
   assert.equal(Number(field(h).props.value), 8);
-  assert.equal(h.settings.multiscreen.screens, 8);
+  assert.equal(h.settings.multiscreen.markerDuration, 8);
   assert.doesNotMatch(h.text(), /Unsaved changes/);
   await h.tick();
   assert.equal(writes(h).length, 1);
@@ -164,7 +164,7 @@ test("reverting during an in-flight write retains the explicit field intent thro
     0,
     "the reload waits for the active write",
   );
-  edit(h, "4");
+  edit(h, "30");
   await h.tick();
   assert.equal(writes(h).length, 1, "the second write remains serialized");
   assert.match(h.text(), /Unsaved changes/);
@@ -174,8 +174,8 @@ test("reverting during an in-flight write retains the explicit field intent thro
   await h.settle();
   assert.equal(writes(h).length, 2);
   assert.equal(writes(h)[1].variables.args.expectedRevision, 2);
-  assert.equal(field(h).props.value, "4");
-  assert.equal(h.settings.multiscreen.screens, 4);
+  assert.equal(field(h).props.value, "30");
+  assert.equal(h.settings.multiscreen.markerDuration, 30);
   assert.doesNotMatch(h.text(), /Unsaved changes/);
   h.unmount();
 });
@@ -197,18 +197,18 @@ test("out-of-order reloads cannot regress the draft, baseline or next write revi
   await h.settle();
   refresh(h, "multiscreen");
   await h.settle();
-  h.settings.multiscreen.screens = 7;
+  h.settings.multiscreen.markerDuration = 7;
   h.revisions.multiscreen = 3;
-  reads[1].resolve(response({ settings: { screens: 7, rows: 2, columns: 2 }, revision: 3 }));
+  reads[1].resolve(response({ settings: { markerDuration: 7, listSizeLimit: 10000 }, revision: 3 }));
   await h.settle();
-  reads[0].resolve(response({ settings: { screens: 6, rows: 2, columns: 2 }, revision: 2 }));
+  reads[0].resolve(response({ settings: { markerDuration: 6, listSizeLimit: 10000 }, revision: 2 }));
   await h.settle();
   assert.equal(field(h).props.value, 7);
   assert.doesNotMatch(h.text(), /Unsaved changes/);
   edit(h, "8");
   await h.tick();
   assert.equal(writes(h)[0].variables.args.expectedRevision, 3);
-  assert.equal(h.settings.multiscreen.screens, 8);
+  assert.equal(h.settings.multiscreen.markerDuration, 8);
   h.unmount();
 });
 
@@ -225,16 +225,16 @@ test("edits made during a reload keep their value while untouched fields adopt t
   refresh(h, "multiscreen");
   await h.settle();
   edit(h, "8");
-  h.settings.multiscreen.rows = 3;
+  h.settings.multiscreen.listSizeLimit = 20000;
   h.revisions.multiscreen = 2;
-  read.resolve(response({ settings: { screens: 4, rows: 3, columns: 2 }, revision: 2 }));
+  read.resolve(response({ settings: { markerDuration: 30, listSizeLimit: 20000 }, revision: 2 }));
   await h.settle();
   assert.equal(field(h).props.value, "8");
-  assert.equal(field(h, "rows").props.value, 3);
+  assert.equal(field(h, "listSizeLimit").props.value, 20000);
   assert.match(h.text(), /Unsaved changes/);
   await h.tick();
-  assert.equal(h.settings.multiscreen.screens, 8);
-  assert.equal(h.settings.multiscreen.rows, 3, "the save merges only explicitly edited fields");
+  assert.equal(h.settings.multiscreen.markerDuration, 8);
+  assert.equal(h.settings.multiscreen.listSizeLimit, 20000, "the save merges only explicitly edited fields");
   assert.equal(writes(h)[0].variables.args.expectedRevision, 2);
   h.unmount();
 });
@@ -253,7 +253,7 @@ test("unmount discards a late reload response", async () => {
   await h.settle();
   h.unmount();
   const previous = h.text();
-  read.resolve(response({ settings: { screens: 7, rows: 2, columns: 2 }, revision: 2 }));
+  read.resolve(response({ settings: { markerDuration: 7, listSizeLimit: 10000 }, revision: 2 }));
   await h.settle();
   assert.equal(h.text(), previous);
   assert.equal(writes(h).length, 0);
@@ -266,7 +266,7 @@ test("reset to defaults asks first, then saves every setting at its schema defau
   for (const confirm of [false, true]) {
     const h = createHubHarness({
       confirm,
-      settings: { multiscreen: { screens: 4, rows: 3, columns: 2, randomize: true } },
+      settings: { multiscreen: { markerDuration: 45, listSizeLimit: 20000, randomize: true } },
     });
     h.load();
     await h.settle();
@@ -276,11 +276,15 @@ test("reset to defaults asks first, then saves every setting at its schema defau
     await h.tick();
     if (!confirm) {
       assert.equal(writes(h).length, 0, "a declined reset changes nothing");
-      assert.equal(field(h, "rows").props.value, 3);
+      assert.equal(field(h, "listSizeLimit").props.value, 20000);
     } else {
       assert.equal(writes(h).length, 1);
-      assert.deepEqual(h.settings.multiscreen, { rows: 2, columns: 2, randomize: true }, "unreported keys are kept");
-      assert.equal(field(h).props.value, "");
+      assert.deepEqual(
+        h.settings.multiscreen,
+        { markerDuration: 30, listSizeLimit: 10000, randomize: true },
+        "unreported keys are kept",
+      );
+      assert.equal(field(h).props.value, 30);
       assert.equal(reset(h).props.disabled, true, "nothing is left to reset");
       assert.match(h.text(), /Saved automatically/);
     }

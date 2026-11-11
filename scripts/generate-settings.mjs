@@ -21,6 +21,7 @@ const SETTING_KEYS = [
   "options",
   "disabledWhen",
   "placeholder",
+  "hidden",
 ];
 const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
 
@@ -50,6 +51,7 @@ export function validateSchema(pluginId, schema) {
     const numeric = ["integer", "min", "max", "step"].filter(key => setting[key] !== undefined);
     if (setting.type !== "NUMBER" && numeric.length) where("uses " + numeric.join(", ") + " without type NUMBER");
     if (setting.integer !== undefined && typeof setting.integer !== "boolean") where("integer must be true or false");
+    if (setting.hidden !== undefined && setting.hidden !== true) where("hidden must be true or absent");
     for (const key of ["min", "max", "step"]) {
       if (setting[key] !== undefined && !Number.isFinite(setting[key])) where(key + " must be a finite number");
     }
@@ -170,13 +172,18 @@ export function settingsTables(schema) {
   return tables;
 }
 
-/** The Stash manifest settings section; the source manifest keeps everything else. */
+/**
+ * The Stash manifest settings section; the source manifest keeps everything else.
+ * A hidden setting is edited in its plugin's own interface: Stash never reports it, so the settings page never shows it.
+ */
 export function manifestSettings(schema) {
   return Object.fromEntries(
-    Object.entries(schema.settings).map(([name, setting]) => [
-      name,
-      { displayName: setting.displayName, description: setting.description, type: setting.type },
-    ]),
+    Object.entries(schema.settings)
+      .filter(([, setting]) => !setting.hidden)
+      .map(([name, setting]) => [
+        name,
+        { displayName: setting.displayName, description: setting.description, type: setting.type },
+      ]),
   );
 }
 

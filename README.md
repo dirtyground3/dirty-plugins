@@ -17,11 +17,11 @@ a shared SQLite database, and is installed automatically as a dependency.
 | --- | --- | ---: |
 | [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.14 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.1.1 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.24 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.25 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.11 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.9 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.17 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.18 |
 
 ## Shared look and settings
 
@@ -35,6 +35,11 @@ icons; native Stash cards, filters, and players keep the host theme. The same ta
 A settings button in the Stash header, after every other Dirty plugin button,
 opens this page. Turn off **Show settings in the Stash header** in the
 **General** tab to hide it.
+
+When Nav Hub is active, the **General** tab also offers **Group Dirty Plugins
+in Nav Hub**. Enable it to move visible Dirty Plugins navigation buttons into
+the **Plugins** menu. Use **Manage** in that menu to restore individual buttons
+to the Stash header. [Nav Hub](https://github.com/xlxil/stash-plugins/tree/main/plugins/NavHub)
 
 ![DirtyPlugins General tab with the suite theme selector and database backup](docs/images/dirty-plugins-general.png)
 
@@ -140,8 +145,11 @@ Every change saves automatically.
   lists and pages, preserving the active list order.
 - Plays the list another plugin's page shows, such as Cherry Pick's For you,
   when that plugin announces it (see [For plugin authors](#for-plugin-authors)).
-- Configures grid rows and columns; every cell plays unless you set fewer
-  screens.
+- Plays a grid of up to 6 x 6 screens. Edit mode chooses the grid, swaps
+  screens while they play, and rotates, flips, loops or fills each one. **Fit videos**
+  packs screens to match their videos' shapes without restarting playback.
+- Saves named grids with every screen's scene, position, sound and picture, and
+  opens them again later from any browser.
 - Orders scenes at random, with fewer repeats, favouring unwatched, highly
   rated or recently added scenes, as a mix of favourites and unwatched scenes,
   or in the list's own order. Scenes that share a performer or studio are kept
@@ -505,7 +513,7 @@ plugins/
 ├── DirtyCaptions/       # embedded text subtitles via in-memory WebVTT
 ├── DirtyPlugins/        # shared UI, GraphQL helpers, settings and SQLite owner
 ├── DirtyFileExtractor/  # selection UI and Python extraction backend
-├── DirtyMultiscreen/    # multiscreen playback UI
+├── DirtyMultiscreen/    # multiscreen playback UI and saved-grids backend
 ├── DirtyRank/           # battle/leaderboard UI and Glicko-2 backend
 ├── DirtyStats/          # dashboard, statistics and visualizations
 └── DirtyTasks/          # organization, additional encodes and tag updates
@@ -687,6 +695,20 @@ prerelease/
 ```
 
 ## Release notes
+
+- **DirtyMultiscreen 1.0.25:** the grid button opens edit mode. Each screen
+  then flips, rotates, loops or fills its picture, and screens swap places by
+  click or drag while they keep playing. Squares under the main buttons choose
+  a grid of up to 6 x 6, so rows, columns and **Total screens** leave the
+  settings page. **Fit videos** shapes the screens to their videos and is on by
+  default (**Fit screens to videos** in the settings). **Saved grids** keeps
+  named grids with every screen's scene, position, sound and picture in the
+  shared database, and autosaves the last grids you played as Autosave 1, 2 and
+  so on (**Autosaves to keep**, 5 by default). Themes no longer draw a frame
+  around each screen.
+
+- **DirtyPlugins 1.0.18:** the **General** tab offers optional grouping in Nav
+  Hub's **Plugins** menu when Nav Hub is active.
 
 - **DirtyTasks 1.0.11 and DirtyCaptions 1.0.9:** an encoding run that no Stash
   task is running any more, for example after Stash restarted, no longer blocks

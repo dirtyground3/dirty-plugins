@@ -1823,6 +1823,17 @@ body.dirty-ui-modal-open {
   padding-top: 0;
 }
 
+/* Stash renders its utility buttons twice. Nav Hub manages the header copy, and the collapsed copy follows it. */
+nav.top-nav:has(.navbar-buttons .dirty-stats-nav-button.nh-managed) .navbar-collapse .dirty-stats-nav-button,
+nav.top-nav:has(.navbar-buttons .dirty-rank-nav-link.nh-managed:not(.dirty-rank-leaderboards-nav-link))
+  .navbar-collapse .dirty-rank-nav-link:not(.dirty-rank-leaderboards-nav-link),
+nav.top-nav:has(.navbar-buttons .dirty-rank-leaderboards-nav-link.nh-managed)
+  .navbar-collapse .dirty-rank-leaderboards-nav-link,
+nav.top-nav:has(.navbar-buttons .ms-nav-button.nh-managed) .navbar-collapse .ms-nav-button,
+nav.top-nav:has(.navbar-buttons .dirty-plugins-nav.nh-managed) .navbar-collapse .dirty-plugins-nav {
+  display: none !important;
+}
+
 /* A setting that does not apply to the current choices stays visible but inactive. */
 .dirty-plugins-setting:has(> input:disabled, > select:disabled) > :is(label, .dirty-ui-field-help) {
   opacity: 0.5;

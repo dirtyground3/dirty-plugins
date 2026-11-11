@@ -12,6 +12,7 @@ import { debugElapsed, debugLog, installDebug, setDebugPlugin } from "./debug";
 import { manageDialog, notify } from "./dialogs";
 import { createJobHook } from "./jobs";
 import { ensureComponents, loadComponent } from "./native";
+import { installNavHubIntegration } from "./navHub";
 import { bindHost, hubApi, PluginApi, React, readHost } from "./runtime";
 import { createSaveController } from "./save";
 import {
@@ -73,6 +74,7 @@ if (api && !window.DirtyPlugins) {
       </React.Fragment>
     ));
     PluginApi.register.route(ROUTE_PATH, DirtyPluginsRoute);
+    installNavHubIntegration();
     debugLog("dirtyPlugins", "hub script finished registering", { route: ROUTE_PATH, elapsedMs: debugElapsed() });
   } catch (error) {
     releaseDebug?.();

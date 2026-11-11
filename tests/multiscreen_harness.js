@@ -24,6 +24,7 @@ function createMultiscreenHarness(options = {}) {
       if (node.props.ref && node.props.className?.includes("ms-native-tile")) {
         if (!media.has(address) || !media.get(address).video.isConnected) media.set(address, newMedia());
         node.props.ref.current = media.get(address).tile;
+        media.get(address).video.closest = () => ({ dataset: { msScreen: address.match(/ms-native-(\d+)/)?.[1] } });
       }
       if (node.props.ref && node.props.className?.includes("ms-native-grid")) node.props.ref.current = grid;
     },
@@ -38,6 +39,8 @@ function createMultiscreenHarness(options = {}) {
       events(this);
       this.currentTime = 0;
       this.duration = 10;
+      this.videoWidth = 0;
+      this.videoHeight = 0;
       this.paused = false;
       this.ended = false;
       this.isConnected = true;
@@ -148,8 +151,83 @@ function createMultiscreenHarness(options = {}) {
       "Glyph",
     ].map(name => [name, props => React.createElement(name, props, props.children)]),
   );
+  // Like the hub's field, an action sits beside the control.
+  controls.Field = props => React.createElement("Field", props, props.children, props.action);
   const saved = [],
-    notices = [];
+    notices = [],
+    operations = [],
+    confirms = [];
+  // Stands in for the saved-grids backend; pass one harness's map to the next to keep its grids.
+  const grids = options.grids || new Map();
+  function gridOperation(args) {
+    const summary = ({ data, ...row }) => row;
+    const cleanName = name => String(name).split(/\s+/).filter(Boolean).join(" ");
+    const found = () => {
+      const row = grids.get(args.id);
+      if (!row) throw new Error("This saved grid no longer exists");
+      return row;
+    };
+    const nextId = () => Math.max(0, ...grids.keys()) + 1;
+    const store = (id, recent) => {
+      const row = {
+        id,
+        name: cleanName(args.name),
+        rows: args.rows,
+        columns: args.columns,
+        data: args.data,
+        // One clock for every harness that shares these grids.
+        updatedAt: Math.max(0, ...[...grids.values()].map(other => other.updatedAt)) + 1,
+        recent,
+      };
+      grids.set(id, row);
+      return row;
+    };
+    // Like the backend: only the newest recent grids stay.
+    const trim = keep =>
+      [...grids.values()]
+        .filter(row => row.recent)
+        .sort((first, second) => second.updatedAt - first.updatedAt)
+        .slice(keep)
+        .forEach(row => grids.delete(row.id));
+    if (args.mode === "gridList") {
+      if (args.keepRecent !== undefined) trim(args.keepRecent);
+      const rows = [...grids.values()].map(summary);
+      return {
+        grids: [
+          ...rows.filter(row => row.recent).sort((first, second) => second.updatedAt - first.updatedAt),
+          ...rows.filter(row => !row.recent).sort((first, second) => first.name.localeCompare(second.name)),
+        ],
+      };
+    }
+    if (args.mode === "gridGet") return { ...found() };
+    if (args.mode === "gridSave") {
+      if (args.id !== undefined) found();
+      return summary(store(args.id ?? nextId(), false));
+    }
+    if (args.mode === "gridRecent") {
+      if (!args.keep) {
+        trim(0);
+        return { grid: null };
+      }
+      const row = store(grids.get(args.id)?.recent ? args.id : nextId(), true);
+      trim(args.keep);
+      return { grid: summary(row) };
+    }
+    if (args.mode === "gridKeep") {
+      const row = found();
+      const name = cleanName(args.name);
+      for (const other of [...grids.values()])
+        if (!other.recent && other.name.toLowerCase() === name.toLowerCase()) grids.delete(other.id);
+      Object.assign(row, { name, recent: false });
+      return summary(row);
+    }
+    if (args.mode === "gridRename") {
+      found().name = cleanName(args.name);
+      return summary(found());
+    }
+    if (args.mode === "gridDelete") return { deleted: grids.delete(args.id) };
+    throw new Error("Unsupported DirtyMultiscreen operation");
+  }
   const hub = {
     react: { ...controls, usePageTitle() {} },
     ui: { notify: (message, tone) => notices.push({ message, tone }) },
@@ -157,6 +235,11 @@ function createMultiscreenHarness(options = {}) {
       saved.push({ id, settings });
       if (options.saveFails) throw new Error("conflict");
       return { revision: saved.length + 1, settings };
+    },
+    runPluginOperation: async (id, args) => {
+      operations.push({ id, args });
+      if (options.operationFails) throw new Error(options.operationFails);
+      return gridOperation(args);
     },
     captureEnabled: () => !!options.capture,
     debugLog() {},
@@ -208,10 +291,20 @@ function createMultiscreenHarness(options = {}) {
   const localStorage = options.localStorage || new Map();
   const document = events({ hidden: false }),
     grid = events({
+      querySelector: selector => {
+        const index = selector.match(/data-ms-screen="(\d+)"/)?.[1];
+        return (
+          [...media].find(
+            ([address, pair]) => address.includes("ms-native-" + index + "/") && pair.video.isConnected,
+          )?.[1].video ?? null
+        );
+      },
       querySelectorAll: () => [...media.values()].map(pair => pair.video).filter(video => video.isConnected),
       contains: video => [...media.values()].some(pair => pair.video === video && video.isConnected),
     });
   const window = events({
+    innerWidth: options.width ?? 1600,
+    innerHeight: options.height ?? 900,
     DirtyPlugins: hub,
     location: {
       get pathname() {
@@ -223,6 +316,10 @@ function createMultiscreenHarness(options = {}) {
       },
     },
     history: { length: 1, back() {} },
+    confirm(message) {
+      confirms.push(message);
+      return options.confirm ?? true;
+    },
     setTimeout(fn, delay) {
       const id = ++nextTimer;
       timers.set(id, { fn, delay });
@@ -319,6 +416,9 @@ function createMultiscreenHarness(options = {}) {
     calls,
     saved,
     notices,
+    operations,
+    confirms,
+    grids,
     errors,
     timers,
     observers,
@@ -332,6 +432,12 @@ function createMultiscreenHarness(options = {}) {
       return renderer.tree;
     },
     nodes: predicate => findAll(renderer.tree, predicate),
+    async resize(width, height) {
+      window.innerWidth = width;
+      window.innerHeight = height;
+      window.emit("resize");
+      await flush();
+    },
     button: label => findAll(renderer.tree, node => node.type === "IconButton" && node.props.ariaLabel === label)[0],
     async tick(delay) {
       for (const [id, timer] of [...timers])

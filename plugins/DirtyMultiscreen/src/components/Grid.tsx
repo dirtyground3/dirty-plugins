@@ -1,19 +1,25 @@
+import { screenOrder } from "../domain/session";
+import { DEFAULT_ASPECT, fitLayout, videoAspect } from "../domain/layout";
 import { useSessionSaver } from "../hooks";
 import { React } from "../runtime";
-import type { AudioState, GridProps, Item, SavedPane } from "../types";
+import type { AudioState, GridProps, Item, PaneView, SavedPane, SwapControls } from "../types";
 import { NativePlayerPane } from "./PlayerPane";
 export function NativeMultiscreenGrid({
   avoidDuplicates,
   columns,
   continuation,
+  editing,
+  fitVideos,
   findPerformerItems,
   nativePlayer,
   onSessionChange,
   onVisibleSceneIdsChange,
   playback,
   playlists,
+  savedOrder,
   savedPanes,
   searchSession,
+  snapshotRef,
   showPerformerNavigation,
   rows,
   totalScreens,
@@ -22,14 +28,145 @@ export function NativeMultiscreenGrid({
   const gridRef = React.useRef<HTMLDivElement | null>(null);
   const videosToResumeRef = React.useRef(new Set<HTMLVideoElement>());
   const [visibleByPane, setVisibleByPane] = React.useState<Array<string | null>>([]);
+  const [aspects, setAspects] = React.useState<number[]>([]);
+  const [rotations, setRotations] = React.useState<number[]>([]);
+  const updateAspect = React.useCallback((index: number, aspect: number) => {
+    setAspects(current => {
+      if (current[index] === aspect) return current;
+      const next = current.slice();
+      next[index] = aspect;
+      return next;
+    });
+  }, []);
+  React.useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    // Metadata can arrive after the scene query, and a source change can update it again.
+    const readSize = (event: Event) => {
+      const video = event.target;
+      if (!(video instanceof HTMLVideoElement) || !video.videoWidth || !video.videoHeight) return;
+      const cell = video.closest<HTMLElement>("[data-ms-screen]");
+      if (cell) updateAspect(Number(cell.dataset.msScreen), videoAspect(video.videoWidth, video.videoHeight));
+    };
+    grid.addEventListener("loadedmetadata", readSize, true);
+    grid.addEventListener("resize", readSize, true);
+    return () => {
+      grid.removeEventListener("loadedmetadata", readSize, true);
+      grid.removeEventListener("resize", readSize, true);
+    };
+  }, [updateAspect]);
+  const [size, setSize] = React.useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  React.useEffect(() => {
+    const resize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
   // Read when a pane advances, so it never waits for a render to see the others.
   const playingByPane = React.useRef<Array<string | null>>([]);
   // A pane still restoring keeps its saved entry until it reports its scene.
   const panes = React.useRef<Array<SavedPane | null>>(savedPanes?.slice() ?? []);
-  const scheduleSave = useSessionSaver(() => onSessionChange(panes.current.slice(0, totalScreens)));
+  // The item each pane plays, which a saved grid stores so it can return to it under any later queue.
+  const playing = React.useRef<Array<Item | null>>([]);
+  // Each screen's place in the layout. Moving one changes only its CSS, so its video is never touched.
+  const [order, setOrder] = React.useState(() => screenOrder(savedOrder, totalScreens));
+  const places = React.useRef(order);
+  places.current = order.length === totalScreens ? order : screenOrder(undefined, totalScreens);
+  const rectangles = React.useMemo(() => {
+    if (!fitVideos) return [];
+    const placed = Array<number>(totalScreens).fill(DEFAULT_ASPECT);
+    places.current.forEach((place, index) => {
+      const aspect = aspects[index] ?? DEFAULT_ASPECT;
+      placed[place] = rotations[index] % 2 ? 1 / aspect : aspect;
+    });
+    return fitLayout(placed, size.width, size.height);
+  }, [fitVideos, aspects, rotations, order, totalScreens, size]);
+  const scheduleSave = useSessionSaver(() => onSessionChange(panes.current.slice(0, totalScreens), places.current));
+  const [swapping, setSwapping] = React.useState<{ source: number; target: number | null } | null>(null);
+  const swappingRef = React.useRef(swapping);
+  swappingRef.current = swapping;
+  const drag = React.useRef<{ from: number; target: number | null; moved: boolean } | null>(null);
+  const afterDrag = React.useRef(false);
+  const swap = React.useMemo<SwapControls>(() => {
+    const exchange = (first: number, second: number) => {
+      const next = places.current.slice();
+      [next[first], next[second]] = [next[second], next[first]];
+      places.current = next;
+      setOrder(next);
+      scheduleSave();
+    };
+    return {
+      toggle(index) {
+        // The click that ends a drag chooses nothing.
+        if (afterDrag.current) return;
+        const picked = swappingRef.current?.source;
+        if (picked !== undefined && picked !== index) exchange(picked, index);
+        setSwapping(picked === undefined ? { source: index, target: null } : null);
+      },
+      dragStart(index) {
+        drag.current = { from: index, target: null, moved: false };
+      },
+      dragOver(index) {
+        const current = drag.current;
+        if (!current) return;
+        // The screen has been lifted, so releasing it is no longer a click.
+        current.moved = true;
+        const target = index === current.from ? null : index;
+        current.target = target;
+        setSwapping(previous =>
+          previous?.source === current.from && previous.target === target ? previous : { source: current.from, target },
+        );
+      },
+      dragEnd() {
+        const current = drag.current;
+        drag.current = null;
+        if (!current?.moved) return;
+        if (current.target !== null) exchange(current.from, current.target);
+        setSwapping(null);
+        afterDrag.current = true;
+        window.setTimeout(() => {
+          afterDrag.current = false;
+        }, 0);
+      },
+      cancel() {
+        drag.current = null;
+        setSwapping(null);
+      },
+    };
+  }, [scheduleSave]);
+  React.useEffect(() => {
+    if (!editing) swap.cancel();
+  }, [editing, swap]);
+  React.useEffect(() => {
+    snapshotRef.current = () => ({
+      panes: panes.current.slice(0, totalScreens).map((pane, index) => {
+        const item = playing.current[index];
+        return pane && item?.id === pane.itemId ? { ...pane, item: { ...item, outsidePage: true } } : pane;
+      }),
+      order: places.current,
+    });
+    return () => {
+      snapshotRef.current = null;
+    };
+  }, [snapshotRef, totalScreens]);
   const onSceneChange = React.useCallback(
-    (index: number, item: Item | null, page: number) => {
+    (index: number, item: Item | null, page: number, rotation: number) => {
+      setRotations(current => {
+        if (current[index] === rotation) return current;
+        const next = current.slice();
+        next[index] = rotation;
+        return next;
+      });
       playingByPane.current[index] = item?.id ?? null;
+      playing.current[index] = item;
+      const file = item?.scene.files?.[0];
+      // A cached/native source may already have metadata before this scene's effect runs.
+      const video = gridRef.current?.querySelector<HTMLVideoElement>(`[data-ms-screen="${index}"] video`);
+      updateAspect(
+        index,
+        video?.videoWidth && video.videoHeight
+          ? videoAspect(video.videoWidth, video.videoHeight)
+          : videoAspect(file?.width, file?.height),
+      );
       if (item) {
         const previous = panes.current[index];
         panes.current[index] = {
@@ -49,7 +186,7 @@ export function NativeMultiscreenGrid({
         return next;
       });
     },
-    [scheduleSave],
+    [scheduleSave, updateAspect],
   );
   const updatePane = React.useCallback(
     (index: number, change: Partial<SavedPane>) => {
@@ -68,6 +205,7 @@ export function NativeMultiscreenGrid({
     (index: number, audio: AudioState) => updatePane(index, { audio }),
     [updatePane],
   );
+  const onViewChange = React.useCallback((index: number, view: PaneView) => updatePane(index, { view }), [updatePane]);
   const playingElsewhere = React.useMemo(
     () =>
       avoidDuplicates
@@ -130,13 +268,20 @@ export function NativeMultiscreenGrid({
     gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
   };
   return (
-    <div className="ms-grid ms-native-grid" ref={gridRef} style={gridStyle}>
+    <div className={`ms-grid ms-native-grid${fitVideos ? " ms-fit" : ""}`} ref={gridRef} style={gridStyle}>
       {Array.from({ length: totalScreens }, (_, screenIndex) => (
         <NativePlayerPane
           key={`ms-native-${screenIndex}`}
           screenIndex={screenIndex}
+          position={places.current[screenIndex]}
+          rectangle={rectangles[places.current[screenIndex]]}
+          fitVideos={fitVideos}
+          swap={swap}
+          swapSource={swapping?.source ?? null}
+          swapTarget={swapping?.target ?? null}
           playlist={playlists[screenIndex] ?? []}
           continuation={continuation}
+          editing={editing}
           findPerformerItems={findPerformerItems}
           nativePlayer={nativePlayer}
           playback={playback}
@@ -144,6 +289,7 @@ export function NativeMultiscreenGrid({
           onAudioChange={onAudioChange}
           onPositionChange={onPositionChange}
           onSceneChange={onSceneChange}
+          onViewChange={onViewChange}
           playingElsewhere={playingElsewhere}
           saved={savedPanes?.[screenIndex]}
           searchSession={searchSession}

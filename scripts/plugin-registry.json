@@ -15,6 +15,9 @@
     "entry": "multiscreen.js",
     "generatedImports": [
       "multiscreen"
+    ],
+    "generatedFiles": [
+      "dirty_multiscreen_metadata.py"
     ]
   },
   {

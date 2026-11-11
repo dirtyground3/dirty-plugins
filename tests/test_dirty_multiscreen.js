@@ -6,6 +6,7 @@ const SOURCES = {
   contexts: "src/contexts.ts",
   counts: "src/counts.ts",
   items: "src/domain/items.ts",
+  layout: "src/domain/layout.ts",
   order: "src/domain/order.ts",
   playlists: "src/domain/playlists.ts",
   queries: "src/queries.ts",
@@ -33,6 +34,84 @@ const seeded = seed => () => {
 };
 const plain = value => JSON.parse(JSON.stringify(value));
 async function main() {
+  const { fitLayout, videoAspect, DEFAULT_ASPECT, FIT_COVERAGE_THRESHOLD } = feature("layout");
+  assert.equal(FIT_COVERAGE_THRESHOLD, 0.9);
+  assert.deepEqual(fitLayout(Array(4).fill(16 / 9), 1600, 900), [
+    { left: 0, top: 0, width: 800, height: 450 },
+    { left: 800, top: 0, width: 800, height: 450 },
+    { left: 0, top: 450, width: 800, height: 450 },
+    { left: 800, top: 450, width: 800, height: 450 },
+  ]);
+  const portraits = fitLayout(Array(4).fill(1 / 2), 1600, 900);
+  assert.equal(new Set(portraits.map(rect => rect.top)).size, 1, "four portraits use one row");
+  assert.deepEqual(
+    portraits.map(rect => rect.width),
+    [400, 400, 400, 400],
+  );
+  assert.deepEqual(fitLayout([1], 1000, 900), [{ left: 0, top: 0, width: 1000, height: 900 }], "90% stretches");
+  assert.deepEqual(fitLayout([1], 1000, 899), [{ left: 51, top: 0, width: 899, height: 899 }], "below 90% centres");
+  assert.deepEqual(fitLayout([16 / 9], 1600, 900), [{ left: 0, top: 0, width: 1600, height: 900 }]);
+  assert.deepEqual(fitLayout([], 1600, 900), []);
+  for (const size of [
+    [undefined, undefined],
+    [0, 108],
+    [-1, 108],
+    [192, NaN],
+    [Infinity, 108],
+  ])
+    assert.equal(videoAspect(...size), DEFAULT_ASPECT);
+  assert.equal(videoAspect(108, 192), 9 / 16);
+  assert.deepEqual(fitLayout([0, NaN, -2, Infinity], 1600, 900), fitLayout(Array(4).fill(DEFAULT_ASPECT), 1600, 900));
+  const verifyTiling = (aspects, width, height) => {
+    const rectangles = fitLayout(aspects, width, height);
+    assert.equal(rectangles.length, aspects.length);
+    const right = Math.max(...rectangles.map(rect => rect.left + rect.width));
+    const bottom = Math.max(...rectangles.map(rect => rect.top + rect.height));
+    const left = Math.min(...rectangles.map(rect => rect.left));
+    const top = Math.min(...rectangles.map(rect => rect.top));
+    let area = 0;
+    rectangles.forEach((rect, index) => {
+      for (const value of Object.values(rect)) assert.ok(Number.isInteger(value) && value >= 0);
+      assert.ok(rect.left + rect.width <= width && rect.top + rect.height <= height);
+      area += rect.width * rect.height;
+      for (const other of rectangles.slice(index + 1))
+        assert.ok(
+          rect.left + rect.width <= other.left ||
+            other.left + other.width <= rect.left ||
+            rect.top + rect.height <= other.top ||
+            other.top + other.height <= rect.top,
+          "no overlapping interiors",
+        );
+    });
+    assert.equal(area, (right - left) * (bottom - top), "rounded cells tile the block without gaps");
+    assert.ok(Math.abs(left - (width - right)) <= 1 && Math.abs(top - (height - bottom)) <= 1, "centred block");
+    return rectangles;
+  };
+  const mixedLayout = verifyTiling([16 / 9, 9 / 16, 4 / 3, 16 / 9], 1601, 901);
+  assert.ok(new Set(mixedLayout.map(rect => rect.width)).size > 1, "mixed videos have different widths");
+  const columnLayout = verifyTiling([0.5, 1, 2, 0.5], 900, 1600);
+  assert.equal(columnLayout[0].left, columnLayout[1].left);
+  assert.equal(columnLayout[2].left, columnLayout[3].left);
+  assert.notEqual(columnLayout[0].width, columnLayout[2].width, "unequal justified columns beat rows");
+  for (let count = 1; count <= 36; count++)
+    for (const [width, height] of [
+      [1601, 901],
+      [701, 1203],
+      [993, 993],
+    ])
+      verifyTiling(
+        Array.from({ length: count }, (_, index) => [16 / 9, 9 / 16, 4 / 3][index % 3]),
+        width,
+        height,
+      );
+  assert.deepEqual(
+    a.normalizeSettings({ fitVideos: true }),
+    a.normalizeSettings({ fitVideos: false }),
+    "fit is absent from query settings",
+  );
+  assert.equal(a.normalizeFitVideos({}), true, "screens fit their videos by default");
+  assert.equal(a.normalizeFitVideos({ fitVideos: "true" }), true);
+  assert.equal(a.normalizeFitVideos({ fitVideos: "false" }), false);
   const defaults = a.normalizeSettings({});
   assert.deepEqual(plain(defaults), {
     totalScreens: 4,
@@ -50,25 +129,18 @@ async function main() {
     showPerformerNavigation: true,
   });
   assert.equal(a.normalizeSettings({ showPerformerNavigation: false }).showPerformerNavigation, false);
-  assert.equal(
-    a.normalizeSettings({ screens: 6, rows: 2, columns: 2 }).totalScreens,
-    4,
-    "tiles must not exceed rows x columns",
-  );
-  assert.equal(a.normalizeSettings({ screens: 99, rows: 3, columns: 3 }).totalScreens, 9);
-  assert.equal(a.normalizeSettings({ screens: 0, rows: 0, columns: 40 }).totalScreens, 1);
-  // An empty screen count fills the grid; a number leaves the remaining cells empty.
-  for (const screens of [undefined, null, "", " "])
-    assert.equal(a.normalizeSettings({ screens, rows: 3, columns: 4 }).totalScreens, 12, String(screens));
-  assert.equal(a.normalizeSettings({ screens: 3, rows: 2, columns: 2 }).totalScreens, 3);
-  assert.equal(a.normalizeSettings({ screens: "5", rows: 3, columns: 3 }).totalScreens, 5);
-  assert.equal(a.normalizeSettings({ rows: 12, columns: 12 }).totalScreens, 36, "a full grid stops at 36 panes");
+  // Every cell of the grid plays.
+  assert.equal(a.normalizeSettings({ rows: 3, columns: 4 }).totalScreens, 12);
+  assert.equal(a.normalizeSettings({ rows: 0, columns: 0 }).totalScreens, 1);
+  assert.deepEqual(a.GRID_LIMITS, { rows: 6, columns: 6 });
+  const largest = a.normalizeSettings({ rows: 12, columns: 40 });
+  assert.deepEqual([largest.rows, largest.columns, largest.totalScreens], [6, 6, 36], "the picker's largest grid");
   assert.equal(
     a.normalizeSettings({ totalScreens: 4, rows: 3, columns: 3 }).totalScreens,
     9,
     "the former stored count no longer limits a larger grid",
   );
-  assert.equal(a.normalizeSettings({ rows: 40 }).rows, 12);
+  assert.equal(a.normalizeSettings({ rows: 40 }).rows, 6);
   assert.equal(a.normalizeSettings({ markerDuration: 10000 }).markerDuration, 600);
   assert.equal(a.normalizeSettings({ sceneOrder: "fresh" }).sceneOrder, "fresh");
   assert.equal(a.normalizeSettings({ sceneOrder: "sideways" }).sceneOrder, "random", "unknown orders fall back");

@@ -3,14 +3,34 @@ import { getMarkerItem, getSceneItem, getSceneTitle } from "../domain/items";
 import { pagePlaylists } from "../domain/playlists";
 import { useMarkerQuery, useNativePlayerComponent, useSceneQuery } from "../hooks";
 import { queueKey, readSession, writeSession } from "../domain/session";
-import { getPlaybackSettings, getSceneLimit, normalizeSettings } from "../domain/settings";
+import {
+  getPlaybackSettings,
+  getSceneLimit,
+  normalizeFitVideos,
+  normalizeRecentGrids,
+  normalizeSettings,
+  savedGridSettings,
+} from "../domain/settings";
+import { useRecentGrid } from "../savedGrids";
 import { contexts, DirtyPlugins, PluginApi, React } from "../runtime";
 import { icon, PluginIconButton, StateView } from "./Controls";
 import { VisibleOCounterButton } from "./Counter";
 import { NativeMultiscreenGrid } from "./Grid";
+import { GridChangeDialog, GridPicker, type GridSize } from "./GridPicker";
+import { SavedGridsButton } from "./SavedGrids";
 import { ShuffleMenu } from "./ShuffleMenu";
 import { SEARCH_PAGE_SIZE } from "../queries";
-import type { FindPerformerItems, LaunchContext, SavedPane, SavedSession, SceneOrder, SessionSearch } from "../types";
+import type {
+  FindPerformerItems,
+  GridSnapshot,
+  LaunchContext,
+  SavedGrid,
+  SavedGridSummary,
+  SavedPane,
+  SavedSession,
+  SceneOrder,
+  SessionSearch,
+} from "../types";
 const PLUGIN_ID = "multiscreen";
 const closeRoute = () => {
   if (window.history.length > 1) window.history.back();
@@ -20,9 +40,19 @@ const keepsOrder = (context: LaunchContext | null) => context?.source === "plugi
 /** A list launched with keepOrder plays in its own order whatever the Scene order setting says. */
 const playSettings = (data: Record<string, unknown>, keepOrder: boolean) =>
   normalizeSettings(keepOrder ? { ...data, sceneOrder: "list" } : data);
+/** Opening a saved grid starts the player over, so it reads that grid as the session to resume. */
 export function MultiscreenRoute() {
+  const [generation, setGeneration] = React.useState(0);
+  return <MultiscreenSession key={generation} onRestart={() => setGeneration(value => value + 1)} />;
+}
+function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   DirtyPlugins.react.usePageTitle("DirtyMultiscreen");
+  const snapshotRef = React.useRef<(() => GridSnapshot) | null>(null);
+  // Set once a saved grid has replaced this session, whose own last save must not overwrite it.
+  const replaced = React.useRef(false);
   const [visibleNativeSceneIds, setVisibleNativeSceneIds] = React.useState<string[]>([]);
+  const [editing, setEditing] = React.useState(false);
+  const [pendingGrid, setPendingGrid] = React.useState<GridSize | null>(null);
   // A launch context means the header button just chose a scope; without one the saved session continues.
   const [launch] = React.useState(() => {
     const context = contexts.readLaunchContext();
@@ -71,6 +101,14 @@ export function MultiscreenRoute() {
     void reloadSettings();
   }, [reloadSettings]);
   const rawSettings = settingsQuery.data;
+  const fitVideos = normalizeFitVideos(rawSettings);
+  // Nothing is saved before the settings say how many autosaves to keep.
+  const recentGrids = settingsQuery.loading ? 0 : normalizeRecentGrids(rawSettings);
+  // A launch is a new autosave; a resumed session goes on updating its own.
+  const recent = useRecentGrid(recentGrids, launch.saved?.recent, id => {
+    const stored = replaced.current ? null : readSession();
+    if (stored) writeSession({ ...stored, recent: id });
+  });
   const settings = React.useMemo(() => playSettings(rawSettings, keepOrder), [rawSettings, keepOrder]);
   const playbackSettings = React.useMemo(() => getPlaybackSettings(settings), [settings]);
   const nativePlayerQuery = useNativePlayerComponent();
@@ -214,7 +252,54 @@ export function MultiscreenRoute() {
       DirtyPlugins.ui.notify("Could not save the scene order. It applies to this session only.", "error"),
     );
   };
-  const saveSession = (panes: Array<SavedPane | null>) => {
+  /** Another grid becomes the saved grid and deals a new queue for every screen. */
+  const changeGrid = ({ columns, rows }: GridSize) => {
+    setPendingGrid(null);
+    resume.current = null;
+    const data = { ...rawSettings, rows, columns };
+    setSettingsQuery(current => ({ ...current, data }));
+    DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
+      DirtyPlugins.ui.notify("Could not save the grid. It applies to this session only.", "error"),
+    );
+  };
+  const changeFitVideos = () => {
+    const data = { ...rawSettings, fitVideos: !fitVideos };
+    setSettingsQuery(current => ({ ...current, data }));
+    DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
+      DirtyPlugins.ui.notify("Could not save the layout. It applies to this session only.", "error"),
+    );
+  };
+  /** The current screens as a saved grid: this session, and the stored settings its queue was dealt under. */
+  const snapshot = (): SavedGrid | null => {
+    const current = snapshotRef.current?.();
+    if (!current) return null;
+    return {
+      // The stored Scene order, not the order a list imposes: opening the grid must not change that setting.
+      settings: savedGridSettings(normalizeSettings(rawSettings), fitVideos),
+      session: { context: launchContext, queue: queueKey(settings), sort: activeQuery.sort, seed, now, ...current },
+    };
+  };
+  /**
+   * A saved grid's settings become the current ones, so its session resumes under the queue it was dealt from.
+   * An autosave goes on being updated; a named grid starts an autosave of its own.
+   */
+  const openGrid = async (grid: SavedGrid, summary: SavedGridSummary) => {
+    recent.update(snapshot());
+    const opened = savedGridSettings(
+      normalizeSettings({ ...rawSettings, ...grid.settings }),
+      grid.settings.fitVideos === undefined ? fitVideos : normalizeFitVideos(grid.settings),
+    );
+    await DirtyPlugins.configurePlugin(PLUGIN_ID, { ...rawSettings, ...opened });
+    replaced.current = true;
+    if (!writeSession({ ...grid.session, recent: summary.recent ? summary.id : undefined })) {
+      replaced.current = false;
+      throw new Error("This browser could not store the grid to open it.");
+    }
+    contexts.storeLaunchContext(null);
+    onRestart();
+  };
+  const saveSession = (panes: Array<SavedPane | null>, order: number[]) => {
+    if (replaced.current) return;
     const saved = writeSession({
       context: launchContext,
       queue: queueKey(settings),
@@ -222,9 +307,12 @@ export function MultiscreenRoute() {
       seed,
       now,
       panes,
+      order,
+      recent: recent.id(),
     });
     // The launch has become this session, so a reload resumes it instead of dealing a new one.
     if (saved) contexts.storeLaunchContext(null);
+    recent.update(snapshot());
   };
   const itemType = markerMode ? "markers" : "scenes";
   const emptyList =
@@ -260,6 +348,8 @@ export function MultiscreenRoute() {
           rows={settings.rows}
           columns={settings.columns}
           avoidDuplicates={avoidDuplicates}
+          editing={editing}
+          fitVideos={fitVideos}
           totalScreens={settings.totalScreens}
           playlists={playlists}
           searchSession={searchSession}
@@ -271,11 +361,43 @@ export function MultiscreenRoute() {
           onSessionChange={saveSession}
           onVisibleSceneIdsChange={setVisibleNativeSceneIds}
           savedPanes={resume.current?.panes}
+          savedOrder={resume.current?.order}
+          snapshotRef={snapshotRef}
           useFindScene={PluginApi.utils!.StashService!.useFindScene}
+        />
+      )}
+      {editing && !loading && !error && items.length > 0 && (
+        <GridPicker
+          fitVideos={fitVideos}
+          onToggleFit={changeFitVideos}
+          columns={settings.columns}
+          rows={settings.rows}
+          onPick={size => {
+            if (size.columns !== settings.columns || size.rows !== settings.rows) setPendingGrid(size);
+          }}
+        />
+      )}
+      {pendingGrid && (
+        <GridChangeDialog
+          size={pendingGrid}
+          onCancel={() => setPendingGrid(null)}
+          onConfirm={() => changeGrid(pendingGrid)}
         />
       )}
       <div className="ms-floating">
         <VisibleOCounterButton sceneIds={visibleNativeSceneIds} />
+        {!loading && !error && items.length > 0 && (
+          <PluginIconButton
+            ariaLabel={editing ? "Finish editing screens" : "Edit screens"}
+            fallback="▦"
+            icon={icon("edit")}
+            pressed={editing}
+            onClick={() => setEditing(value => !value)}
+          />
+        )}
+        {!settingsQuery.loading && !settingsQuery.error && (
+          <SavedGridsButton capture={docsCapture} keepRecent={recentGrids} snapshot={snapshot} onOpen={openGrid} />
+        )}
         {!error && items.length > 0 && <ShuffleMenu order={settings.sceneOrder} onShuffle={reshuffle} />}
         <PluginIconButton ariaLabel="Close DirtyMultiscreen" fallback="x" icon={icon("close")} onClick={closeRoute} />
       </div>

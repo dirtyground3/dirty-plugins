@@ -1,7 +1,9 @@
 import { React } from "../runtime";
+import type { Rectangle } from "../domain/layout";
 import { locatePlaylistItem, nextFreeIndex, nextItemAfter } from "../domain/playlists";
-import type { AudioState, GridProps, Item, SavedPane } from "../types";
+import type { AudioState, GridProps, Item, PaneView, SavedPane, SwapControls } from "../types";
 import { NativePlayerTile } from "./NativePlayerTile";
+import { ScreenControls } from "./ScreenControls";
 import { PaneHeader } from "./SceneSearch";
 
 interface PaneProps
@@ -11,15 +13,25 @@ interface PaneProps
     | "playback"
     | "useFindScene"
     | "continuation"
+    | "editing"
+    | "fitVideos"
     | "searchSession"
     | "findPerformerItems"
     | "showPerformerNavigation"
   > {
   playlist: Item[];
+  /** The pane's own index: its queue, saved state and player follow it. */
   screenIndex: number;
+  /** Where the pane sits in the grid, which is the screen number people see. */
+  position: number;
+  rectangle?: Rectangle;
+  swap: SwapControls;
+  swapSource: number | null;
+  swapTarget: number | null;
   onAudioChange(index: number, audio: AudioState): void;
   onPositionChange(index: number, seconds: number): void;
-  onSceneChange(index: number, item: Item | null, page: number): void;
+  onSceneChange(index: number, item: Item | null, page: number, rotation: number): void;
+  onViewChange(index: number, view: PaneView): void;
   /** Items the other panes are playing; absent when duplicates are allowed. */
   playingElsewhere?(screen: number): Set<string>;
   /** Where this pane was in a resumed session. */
@@ -31,14 +43,23 @@ export function NativePlayerPane({
   playlist,
   screenIndex,
   continuation,
+  editing,
+  fitVideos,
   findPerformerItems,
   onAudioChange,
   onPositionChange,
   onSceneChange,
+  onViewChange,
+  playback: defaultPlayback,
   playingElsewhere,
+  position,
+  rectangle,
   saved,
   searchSession,
   showPerformerNavigation,
+  swap,
+  swapSource,
+  swapTarget,
   ...player
 }: PaneProps) {
   // A restoring pane shows no scene until its page is back, so the queue's first scene never starts.
@@ -58,6 +79,17 @@ export function NativePlayerPane({
     retry = React.useRef<QueueStep | Item>({ direction: 1 }),
     performerLookup = React.useRef<AbortController | null>(null);
   const [notice, setNotice] = React.useState("");
+  const [view, setView] = React.useState<PaneView>(() => saved?.view ?? {});
+  const changeView = (next: PaneView) => {
+    setView(next);
+    onViewChange(screenIndex, next);
+  };
+  // The screen's own loop choice overrides the Loop scenes setting.
+  const loop = view.loop ?? defaultPlayback.loop;
+  const playback = React.useMemo(
+    () => (loop === defaultPlayback.loop ? defaultPlayback : { ...defaultPlayback, loop }),
+    [defaultPlayback, loop],
+  );
   current.current = state;
   React.useEffect(() => {
     if (!notice) return undefined;
@@ -85,10 +117,11 @@ export function NativePlayerPane({
     };
   }, [playlist, continuation]);
   const item = state.items[state.cursor];
+  const rotation = item && view.rotation?.itemId === item.id ? view.rotation.turns : 0;
   React.useEffect(() => {
     if (item && item.id !== resumeAt.current?.itemId) resumeAt.current = null;
-    onSceneChange(screenIndex, item || null, state.page);
-  }, [onSceneChange, screenIndex, item, state.page]);
+    onSceneChange(screenIndex, item || null, state.page, rotation);
+  }, [onSceneChange, screenIndex, item, state.page, rotation]);
   const navigate = async (direction: 1 | -1) => {
     const previous = current.current;
     if (previous.busy && "direction" in retry.current && direction === retry.current.direction) return;
@@ -252,11 +285,21 @@ export function NativePlayerPane({
     if (restoring.current && continuation) void restore(restoring.current, continuation);
     else if (!playlist.length) void navigate(1);
   }, [playlist, continuation]);
+  // A flip mirrors one video: it leaves with that item and returns with it.
+  const flip = item && view.flip?.itemId === item.id ? view.flip : undefined;
+  const cellClass =
+    "ms-cell" +
+    (view.fill ? " ms-fill" : "") +
+    (flip?.x ? " ms-flip-x" : "") +
+    (flip?.y ? " ms-flip-y" : "") +
+    (rotation ? ` ms-rotate-${rotation * 90}` : "") +
+    (swapSource === screenIndex ? " ms-swap-source" : "") +
+    (swapTarget === screenIndex ? " ms-swap-target" : "");
   return (
-    <div className="ms-cell">
+    <div className={cellClass} style={rectangle ?? { order: position }} data-ms-screen={screenIndex}>
       <PaneHeader
         item={item}
-        screenIndex={screenIndex}
+        screenIndex={position}
         searchSession={searchSession}
         onSelect={selected => void select(selected)}
         busy={state.busy}
@@ -273,6 +316,7 @@ export function NativePlayerPane({
       {item && (
         <NativePlayerTile
           {...player}
+          playback={playback}
           audio={saved?.audio}
           item={item}
           nextItem={() => {
@@ -284,6 +328,29 @@ export function NativePlayerPane({
             void navigate(-1);
           }}
           resumeTime={resumeAt.current?.itemId === item.id ? resumeAt.current.time : undefined}
+        />
+      )}
+      {editing && item && (
+        <ScreenControls
+          paneIndex={screenIndex}
+          position={position}
+          swap={swap}
+          swapSource={swapSource}
+          fill={!!view.fill}
+          fitVideos={fitVideos}
+          flipX={!!flip?.x}
+          flipY={!!flip?.y}
+          loop={loop}
+          rotation={rotation}
+          onRotate={() =>
+            changeView({
+              ...view,
+              rotation: rotation === 3 ? undefined : { itemId: item.id, turns: (rotation + 1) as 1 | 2 | 3 },
+            })
+          }
+          onFill={fill => changeView({ ...view, fill })}
+          onFlip={(x, y) => changeView({ ...view, flip: x || y ? { itemId: item.id, x, y } : undefined })}
+          onLoop={value => changeView({ ...view, loop: value })}
         />
       )}
       {state.busy && (

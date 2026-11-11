@@ -4,4 +4,5 @@ interface Window {
   dirtyPluginsDumpDebugLogs?: () => unknown[];
   PluginApi?: import("../plugins/DirtyPlugins/src/types").Host;
   DirtyPlugins?: import("../plugins/DirtyPlugins/src/types").HubApi;
+  NavHub?: import("../plugins/DirtyPlugins/src/navHub").NavHubApi;
 }
