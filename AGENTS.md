@@ -285,6 +285,10 @@ Rules behind the flow:
   so the release commit is what moves candidate installs to the final version.
 - The workflow token may not push `.github/workflows` changes. Release such a
   candidate by hand with the commands in README, Releases.
+- Repository rulesets block deleting or force-pushing `main`, deleting
+  `prerelease` (force-push stays allowed to replace a candidate), and moving or
+  deleting `*-v*` release tags. GitHub does not let a personal repository's
+  ruleset exempt the workflow token, so `main` cannot also refuse direct pushes.
 - GitHub Pages replaces the whole site on every deploy, so each deploy builds
   its own branch's source and copies the other one as published
   (`scripts/fetch-channel.mjs`). Deploys run only for `main` and `prerelease`.
