@@ -85,6 +85,7 @@ async function main() {
     "SettingsCard",
     "Dialog",
     "SceneFilterEditor",
+    "NativeSceneFilter",
     "StateView",
     "ActionMenu",
     "StatisticSelector",

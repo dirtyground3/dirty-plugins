@@ -2,6 +2,12 @@
 
 Newest first. Each GitHub Release of DirtyPlugins uses the entry that names its version.
 
+- **DirtyPlugins 1.0.20:** Stash's own scene search, saved filters and Filter
+  button are available inline as `DirtyPlugins.react.NativeSceneFilter`, which
+  DirtyMultiscreen's search uses. The scene filter dialog keeps hiding Stash's
+  list controls under themes that restyle them, and hides Stash's floating
+  pagination bar.
+
 - **DirtyPlugins 1.0.19:** the server folder picker is shared by the suite as
   `DirtyPlugins.ui.pickFolder`. DirtyFileExtractor's destination and DirtyTasks'
   backup folder use it.

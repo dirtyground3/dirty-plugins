@@ -21,7 +21,6 @@ CAPTURE_RULES = (
     ("DirtyMultiscreen", "multiscreen.css", ".ms-docs-capture .ms-native-tile canvas", "filter: blur("),
     ("DirtyMultiscreen", "multiscreen.css", ".ms-docs-capture .ms-native-tile .vjs-poster", "filter: blur("),
     ("DirtyMultiscreen", "multiscreen.css", ".ms-docs-capture .ms-native-tile .vjs-text-track-display", "visibility: hidden"),
-    ("DirtyMultiscreen", "multiscreen.css", ".ms-docs-capture .ms-title", "filter: blur("),
     ("DirtyRank", "dirtyRank.css", ".dirty-rank-censored-media img", "visibility: hidden"),
     ("DirtyRank", "dirtyRank.css", ".dirty-rank-censored-media video", "visibility: hidden"),
     ("DirtyRank", "dirtyRank.css", ".dirty-rank-censored-media canvas", "visibility: hidden"),

@@ -1,6 +1,15 @@
 import { playbackSort } from "./domain/order";
 import { getSceneLimit, NON_RANDOM_SCENE_SORT, normalizeSettings } from "./domain/settings";
-import type { Hub, Item, LaunchContext, MarkerContext, QueryResult, QueryVariables, Settings } from "./types";
+import type {
+  Hub,
+  Item,
+  LaunchContext,
+  MarkerContext,
+  QueryResult,
+  QueryVariables,
+  SearchCondition,
+  Settings,
+} from "./types";
 
 // Play history, ratings, dates, performers and studios feed the scene orders.
 const SCENE_FIELDS =
@@ -73,6 +82,15 @@ const sortFor = (settings: Settings, contextualSort: string) =>
 const titleMatching = (text: string) => ({
   title: { value: "(?i)" + text.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), modifier: "MATCHES_REGEX" },
 });
+const searchText = (condition: SearchCondition) =>
+  typeof condition.find?.q === "string" ? condition.find.q.trim() : "";
+/** The scene sort Stash's controls chose; markers have none, since scene sorts do not apply to them. */
+function chosenSort(condition: SearchCondition, marker: boolean) {
+  const { sort, direction } = condition.find ?? {};
+  return !marker && typeof sort === "string" && sort
+    ? { sort, direction: direction === "ASC" ? "ASC" : "DESC" }
+    : undefined;
+}
 const withCount = (data: QueryResult, marker: boolean, count: number): QueryResult =>
   marker
     ? { ...data, findSceneMarkers: { ...data.findSceneMarkers, count } }
@@ -105,8 +123,16 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
    * The list's items that match a scene condition, in list order. Stash's ids argument ignores
    * filters, so the library's matching IDs are read 1,000 at a time and checked against the list.
    */
-  async function matchListed(list: string[], marker: boolean, condition: Record<string, unknown>, signal: AbortSignal) {
-    const key = JSON.stringify([marker, condition]);
+  async function matchListed(
+    list: string[],
+    marker: boolean,
+    condition: Record<string, unknown>,
+    signal: AbortSignal,
+    q?: string,
+    /** Results in this order instead of the list's. */
+    sort?: { sort: string; direction: string },
+  ) {
+    const key = JSON.stringify([marker, condition, q, sort]);
     if (scanned?.list === list && scanned.key === key) return scanned.matches;
     const position = new Map(list.map((id, index) => [id, index]));
     const matches: Listed[] = [];
@@ -114,7 +140,7 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
       const data = await graphqlRequest<QueryResult>(
         marker ? MARKER_IDS : SCENE_IDS,
         {
-          filter: { page, per_page: ID_PAGE_SIZE, sort: "id", direction: "ASC" },
+          filter: { page, per_page: ID_PAGE_SIZE, ...(sort ?? { sort: "id", direction: "ASC" }), ...(q ? { q } : {}) },
           ...(marker ? { scene_marker_filter: { scene_filter: condition } } : { scene_filter: condition }),
         },
         { signal },
@@ -125,13 +151,26 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
       found = rows.length;
       for (const row of rows) if (position.has(row.id)) matches.push(row);
     }
-    matches.sort((left, right) => position.get(left.id)! - position.get(right.id)!);
+    if (!sort) matches.sort((left, right) => position.get(left.id)! - position.get(right.id)!);
     scanned = { list, key, matches };
     return matches;
   }
-  async function searchList(list: string[], marker: boolean, text: string, page: number, signal: AbortSignal) {
-    const matches = await matchListed(list, marker, titleMatching(text), signal);
-    const shown = matches.slice((page - 1) * SEARCH_PAGE_SIZE, page * SEARCH_PAGE_SIZE).map(row => row.id);
+  /** A list is matched against the library only when something is searched, filtered or sorted. */
+  async function searchList(
+    list: string[],
+    marker: boolean,
+    condition: SearchCondition,
+    page: number,
+    signal: AbortSignal,
+  ) {
+    const q = searchText(condition),
+      scene = condition.scene ?? {},
+      sort = chosenSort(condition, marker);
+    const matches =
+      q || sort || Object.keys(scene).length
+        ? (await matchListed(list, marker, scene, signal, q, sort)).map(row => row.id)
+        : list;
+    const shown = matches.slice((page - 1) * SEARCH_PAGE_SIZE, page * SEARCH_PAGE_SIZE);
     return withCount(await findListed(marker, shown, signal), marker, matches.length);
   }
   /** Only the performer's next item after `playing` in list order, skipping the playing scene's other markers. */
@@ -252,17 +291,33 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
     getLiveSceneCount,
     findListed,
     findScenesQuery: SCENES,
-    searchSession: (scope: QueryVariables, marker: boolean, text: string, page: number, signal: AbortSignal) => {
-      // Stash's ids argument bypasses filters; explicit selections are searched
-      // from their already loaded session items instead.
-      if (scope.ids) throw new Error("Selected session items must be searched locally.");
-      if (scope.list) return searchList(scope.list, marker, text, page, signal);
+    /** The session's items that Stash's own search and filter controls choose. */
+    searchSession: (
+      scope: QueryVariables,
+      marker: boolean,
+      condition: SearchCondition,
+      page: number,
+      signal: AbortSignal,
+    ) => {
+      // Stash's ids argument bypasses filters, so a selection is matched like a list.
+      const list = scope.list ?? scope.ids;
+      if (list) return searchList(list, marker, condition, page, signal);
+      const q = searchText(condition),
+        sessionQ = typeof scope.filter.q === "string" && scope.filter.q.trim() ? scope.filter.q : "";
+      // Stash keeps one search term: the session's own stays, and the searched one then matches titles.
+      const scene = { ...condition.scene, ...(q && sessionQ ? titleMatching(q) : {}) };
       return graphqlRequest<QueryResult>(
         marker ? MARKER_SEARCH : SCENE_SEARCH,
         {
           ...scope,
-          filter: { ...scope.filter, page, per_page: SEARCH_PAGE_SIZE, sort: "title", direction: "ASC" },
-          ...narrowed(scope, marker, titleMatching(text)),
+          filter: {
+            ...scope.filter,
+            ...(q && !sessionQ ? { q } : {}),
+            ...(chosenSort(condition, marker) ?? { sort: "title", direction: "ASC" }),
+            page,
+            per_page: SEARCH_PAGE_SIZE,
+          },
+          ...(Object.keys(scene).length ? narrowed(scope, marker, scene) : {}),
         },
         { signal },
       );

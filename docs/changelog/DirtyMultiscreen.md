@@ -2,6 +2,20 @@
 
 Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names its version.
 
+- **DirtyMultiscreen 1.0.26:** a slimmer screen header and Stash's own search.
+  - **Scene link:** an icon opens the scene page in a new tab instead of the
+    scene title, which is now its tooltip.
+  - **Search:** each screen's search uses Stash's own search box, saved
+    filters, Filter dialog and sort, limited to the session. Lists and
+    selections follow the chosen sort too.
+  - **O per scene:** a drop button after the performers adds one O to that
+    screen's scene only.
+  - **Performer buttons:** smaller round portraits with the Next mark on their
+    corner.
+  - **Top right:** the button that adds an O to every visible scene shows
+    several drops, and the top-right buttons fade after three seconds without
+    mouse movement unless hovered.
+
 - **DirtyMultiscreen 1.0.25:** edit mode, saved grids and autosaves.
   - **Edit mode:** the grid button opens it. Each screen can be flipped,
     rotated, looped or filled, and screens swap places by click or drag

@@ -1,5 +1,5 @@
 import { isMarkerLaunchContext } from "../domain/context";
-import { getMarkerItem, getSceneItem, getSceneTitle } from "../domain/items";
+import { getMarkerItem, getSceneItem } from "../domain/items";
 import { pagePlaylists } from "../domain/playlists";
 import { useMarkerQuery, useNativePlayerComponent, useSceneQuery } from "../hooks";
 import { queueKey, readSession, writeSession } from "../domain/session";
@@ -19,7 +19,6 @@ import { NativeMultiscreenGrid } from "./Grid";
 import { GridChangeDialog, GridPicker, type GridSize } from "./GridPicker";
 import { SavedGridsButton } from "./SavedGrids";
 import { ShuffleMenu } from "./ShuffleMenu";
-import { SEARCH_PAGE_SIZE } from "../queries";
 import type {
   FindPerformerItems,
   GridSnapshot,
@@ -40,6 +39,27 @@ const keepsOrder = (context: LaunchContext | null) => context?.source === "plugi
 /** A list launched with keepOrder plays in its own order whatever the Scene order setting says. */
 const playSettings = (data: Record<string, unknown>, keepOrder: boolean) =>
   normalizeSettings(keepOrder ? { ...data, sceneOrder: "list" } : data);
+const CONTROLS_IDLE_MS = 3000;
+/** True once the pointer and keyboard have rested for `delay`; any movement, tap or key wakes it. */
+function useIdle(delay: number) {
+  const [idle, setIdle] = React.useState(false);
+  React.useEffect(() => {
+    let timer = 0;
+    const wake = () => {
+      setIdle(false);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setIdle(true), delay);
+    };
+    const events = ["pointermove", "pointerdown", "keydown"];
+    wake();
+    for (const event of events) window.addEventListener(event, wake, { passive: true });
+    return () => {
+      window.clearTimeout(timer);
+      for (const event of events) window.removeEventListener(event, wake);
+    };
+  }, [delay]);
+  return idle;
+}
 /** Opening a saved grid starts the player over, so it reads that grid as the session to resume. */
 export function MultiscreenRoute() {
   const [generation, setGeneration] = React.useState(0);
@@ -52,6 +72,8 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   const replaced = React.useRef(false);
   const [visibleNativeSceneIds, setVisibleNativeSceneIds] = React.useState<string[]>([]);
   const [editing, setEditing] = React.useState(false);
+  // The top-right buttons fade while nothing moves, like a player's controls.
+  const controlsIdle = useIdle(CONTROLS_IDLE_MS);
   const [pendingGrid, setPendingGrid] = React.useState<GridSize | null>(null);
   // A launch context means the header button just chose a scope; without one the saved session continues.
   const [launch] = React.useState(() => {
@@ -129,16 +151,9 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   const activeQuery = markerMode ? markersQuery : scenesQuery;
   const explicitSelection = launchContext?.source === "selection" || launchContext?.source === "marker-selection";
   const searchSession = React.useCallback<SessionSearch>(
-    async (text, page, signal) => {
-      // An explicit selection is a fixed, already loaded pool; do not expand it
-      // into a library query. Every other launch searches its whole scope.
-      if (explicitSelection) {
-        const term = text.trim().toLocaleLowerCase();
-        const matches = items.filter(item => getSceneTitle(item.scene).toLocaleLowerCase().includes(term));
-        return { count: matches.length, items: matches.slice((page - 1) * SEARCH_PAGE_SIZE, page * SEARCH_PAGE_SIZE) };
-      }
+    async (condition, page, signal) => {
       if (markerMode) {
-        const data = await markersQuery.search(text, page, signal);
+        const data = await markersQuery.search(condition, page, signal);
         return {
           count: data.count,
           items: data.scene_markers
@@ -146,10 +161,10 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
             .filter(item => item !== null),
         };
       }
-      const data = await scenesQuery.search(text, page, signal);
+      const data = await scenesQuery.search(condition, page, signal);
       return { count: data.count, items: data.scenes.map(getSceneItem).filter(item => item !== null) };
     },
-    [explicitSelection, items, markerMode, markersQuery.search, scenesQuery.search, settings.markerDuration],
+    [markerMode, markersQuery.search, scenesQuery.search, settings.markerDuration],
   );
   const findPerformerItems = React.useCallback<FindPerformerItems>(
     async (performerId, playing, signal) => {
@@ -384,7 +399,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           onConfirm={() => changeGrid(pendingGrid)}
         />
       )}
-      <div className="ms-floating">
+      <div className={"ms-floating" + (controlsIdle && !editing ? " ms-floating-idle" : "")}>
         <VisibleOCounterButton sceneIds={visibleNativeSceneIds} />
         {!loading && !error && items.length > 0 && (
           <PluginIconButton

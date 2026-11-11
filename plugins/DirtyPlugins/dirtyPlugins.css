@@ -1500,27 +1500,29 @@ body.dirty-ui-modal-open {
   width: min(100%, 680px);
 }
 
-#dirty-shared-scene-filter-dialog .sidebar,
-#dirty-shared-scene-filter-dialog .sidebar-toggle-button-container,
-#dirty-shared-scene-filter-dialog .pagination-index-container,
-#dirty-shared-scene-filter-dialog .list-operations,
-#dirty-shared-scene-filter-dialog .sort-by-select,
-#dirty-shared-scene-filter-dialog .page-size-selector,
-#dirty-shared-scene-filter-dialog .stash-view-wrap,
-#dirty-shared-scene-filter-dialog .zoom-slider-container,
-#dirty-shared-scene-filter-dialog .filtered-list-toolbar > .btn-group:not(.sort-by-select):not(:has(.filter-button)),
-#dirty-shared-scene-filter-dialog .scene-card {
+/* :is() with an unused ID keeps ID specificity, so themes that restyle the native toolbar cannot show these. */
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .sidebar,
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .sidebar-toggle-button-container,
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .pagination-index-container,
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .list-operations,
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .sort-by-select,
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .page-size-selector,
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .stash-view-wrap,
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .zoom-slider-container,
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .pagination-footer-container,
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .filtered-list-toolbar > .btn-group:not(.sort-by-select):not(:has(.filter-button)),
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .scene-card {
   display: none !important;
 }
-#dirty-shared-scene-filter-dialog .item-list-container,
-#dirty-shared-scene-filter-dialog .sidebar-pane,
-#dirty-shared-scene-filter-dialog .sidebar-pane-content {
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .item-list-container,
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .sidebar-pane,
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .sidebar-pane-content {
   margin: 0;
   padding: 0;
   width: 100%;
   min-width: 0;
 }
-#dirty-shared-scene-filter-dialog .filtered-list-toolbar {
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .filtered-list-toolbar {
   position: static !important;
   transform: none !important;
   height: auto !important;
@@ -1529,7 +1531,7 @@ body.dirty-ui-modal-open {
   overflow: visible !important;
   gap: .5rem;
 }
-#dirty-shared-scene-filter-dialog .search-term-input {
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .search-term-input {
   display: flex !important;
   flex: 1 1 14rem;
   min-width: 0;

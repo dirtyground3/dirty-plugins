@@ -27,10 +27,11 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - Seek preview thumbnails are disabled in the grid to keep smaller panes clear.
 - The source/settings menu opens to the left of its button so it stays visible in right-hand panes, including with themes that override the native menu width.
 - With Refract, every pane uses the same native source menu and its own speed and projection controls. Refract's single-player replacement panel is hidden inside the grid; its ordinary player styling is preserved.
-- Search video titles available in the current session from each screen without
-  interrupting the others. Explicit selections stay fixed; every other session,
-  including one opened without a list, searches its whole scope, continues
-  through later queue pages and preserves all launch filters.
+- Search each screen's session with Stash's own search box, saved filters,
+  Filter dialog and sort, without interrupting the others. Results stay inside
+  the session: selections and lists keep only their own videos, and every
+  other session, including one opened without a list, searches its whole
+  scope, continues through later queue pages and preserves all launch filters.
   Choosing a result moves that screen to its position in the session queue, so
   Previous/Next follows from there, including across pages.
 - The shuffle button beside the close button reshuffles every screen. Its menu
@@ -106,11 +107,13 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   they then continue from their saved position. The browser keeps one saved
   session, in local storage, so two open grids overwrite each other's save and it
   does not follow you to another device.
-- Scene titles and search buttons use translucent backgrounds over the video.
-  The title, search and performer portraits show and hide with the player's
-  control bar, so they fade out on a playing screen you are not hovering.
-- Each performer has a portrait button with a Next icon beside the screen's
-  title and search. Click a portrait to move to another scene featuring that
+- Each screen's header has a link icon that opens its scene page in a new tab
+  (the scene title is its tooltip), the search button, the performer portraits
+  and an O button. They use translucent backgrounds over the video and show and
+  hide with the player's control bar, so they fade out on a playing screen you
+  are not hovering.
+- Each performer has a small round portrait button with a Next badge on its
+  corner. Click a portrait to move to another scene featuring that
   performer anywhere in its cast. Tooltips name the performer and explain the
   session scope and wraparound; missing or broken photos use initials.
   Repeated clicks step through that performer's scenes in the session's sort
@@ -122,7 +125,14 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   preserve playback with a message that clears after a second. Documentation capture loads no portraits.
   Turn these buttons off with **Show performer next-scene buttons** in the
   Navigation settings.
-- The O-counter button fades away after one click per playback session. Failed saves can be retried without incrementing scenes that already succeeded.
+- A screen's O button adds one O to the scene it is playing, and only that
+  scene; each press adds another and briefly shows the new count.
+- The O-counter button at the top right, drawn as several drops, adds one O to
+  every visible scene and fades away after one click per playback session.
+  Failed saves can be retried without incrementing scenes that already succeeded.
+- The buttons at the top right fade after three seconds without mouse movement
+  or key presses, and come back when you move the mouse. Hovering or keyboard
+  focus keeps them, and so does edit mode.
 - Runs inside Stash and uses its existing scene and marker data.
 
 ## Screenshots
@@ -134,8 +144,8 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 ![DirtyMultiscreen nine-pane playback grid with video frames blurred and controls visible](../../docs/images/dirty-multiscreen-grid-3x3-censored.png)
 
 Real edge-to-edge 2x2 and 3x3 sessions with the players paused. The video frames
-and scene titles are blurred for the public repository; the controls, search
-buttons and performer buttons stay sharp.
+are blurred for the public repository; the controls, search buttons and
+performer buttons stay sharp.
 
 ### Settings
 
@@ -154,11 +164,12 @@ header button, and lists from other plugins.
 4. Expand **DirtyMultiscreen** and follow its settings link.
 5. Use the DirtyMultiscreen action in Stash to open the playback grid.
 
-In the grid, click the magnifying glass beside a screen's scene title, type a
-scene search, and choose a result. Search results are paginated and limited to
-the session's playable videos. Titles match the complete text you type, ignoring
-case and treating punctuation literally. During marker playback, results keep the original
-marker ranges.
+In the grid, click a screen's magnifying glass, search or filter with Stash's
+own controls, and choose a result. Search results are paginated, follow the sort
+you choose and are limited to the session's playable videos. When the session
+was itself launched with a search term, the text you type matches titles, since
+Stash keeps one search term per query. During marker playback, results keep the
+original marker ranges.
 
 The authored source directory requires a build before installation. Back up
 replaced files, copy runtime files before the manifest, reload plugins, then
@@ -267,7 +278,7 @@ icon/state components, and visual tokens so its controls remain consistent with
 the other plugins in this repository.
 The navigation action is one focusable link, and overlay controls become fully
 visible on keyboard focus. Native ScenePlayer remains the playback component.
-With `?docsCapture=1`, video frames, posters and scene titles are blurred,
+With `?docsCapture=1`, video frames and posters are blurred,
 captions are hidden and performer portraits show a placeholder, while the player
 controls stay sharp.
 

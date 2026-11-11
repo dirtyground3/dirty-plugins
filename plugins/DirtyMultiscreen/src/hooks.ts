@@ -10,6 +10,7 @@ import type {
   QueryVariables,
   SavedSession,
   Scene,
+  SearchCondition,
   Settings,
 } from "./types";
 const SESSION_SAVE_MS = 5000;
@@ -86,10 +87,10 @@ function useItems<T>(
     [key],
   );
   const search = React.useCallback(
-    async (text: string, page: number, signal: AbortSignal): Promise<T> => {
+    async (condition: SearchCondition, page: number, signal: AbortSignal): Promise<T> => {
       const current = pager.current;
       if (!current || current.revision !== request.current) throw new Error("Playback queue was replaced.");
-      const data = await queries.searchSession(current.variables, marker, text, page, signal);
+      const data = await queries.searchSession(current.variables, marker, condition, page, signal);
       if (current.revision !== request.current) throw new Error("Playback queue was replaced.");
       return rows(data);
     },

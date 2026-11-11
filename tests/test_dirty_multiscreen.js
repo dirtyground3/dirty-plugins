@@ -460,10 +460,22 @@ async function main() {
     filter: { q: "original search", page: 4, per_page: 240, sort: "random_123" },
     scene_filter: { OR: { title: { value: "old title", modifier: "INCLUDES" } }, organized: true },
   };
-  await sessionQueries.searchSession(sceneScope, false, "  new title  ", 2, signal);
+  // Stash's native controls choose a search term, a sort and criteria.
+  const rated = { rating100: { value: 60, modifier: "GREATER_THAN" } };
+  await sessionQueries.searchSession(
+    sceneScope,
+    false,
+    { find: { q: "  new title  ", sort: "date", direction: "DESC" }, scene: rated },
+    2,
+    signal,
+  );
   assert.deepEqual(plain(searchRequests[0].variables), {
-    filter: { q: "original search", page: 2, per_page: 20, sort: "title", direction: "ASC" },
-    scene_filter: { title: { value: "(?i)new title", modifier: "MATCHES_REGEX" }, AND: sceneScope.scene_filter },
+    filter: { q: "original search", page: 2, per_page: 20, sort: "date", direction: "DESC" },
+    scene_filter: {
+      ...rated,
+      title: { value: "(?i)new title", modifier: "MATCHES_REGEX" },
+      AND: sceneScope.scene_filter,
+    },
   });
   assert.equal(sceneScope.filter.page, 4, "search never mutates playback variables");
   assert.strictEqual(searchRequests[0].options.signal, signal);
@@ -471,23 +483,46 @@ async function main() {
     filter: { q: "range" },
     scene_marker_filter: { tags: { value: ["tag"], modifier: "INCLUDES" }, scene_filter: { organized: true } },
   };
-  await sessionQueries.searchSession(markerScope, true, "scene", 1, signal);
+  await sessionQueries.searchSession(
+    markerScope,
+    true,
+    { find: { q: "scene", sort: "date" }, scene: { organized: false } },
+    1,
+    signal,
+  );
   assert.match(searchRequests[1].query, /MultiscreenMarkerSearch/);
   assert.deepEqual(plain(searchRequests[1].variables), {
     filter: { q: "range", page: 1, per_page: 20, sort: "title", direction: "ASC" },
     scene_marker_filter: {
       tags: markerScope.scene_marker_filter.tags,
-      scene_filter: { title: { value: "(?i)scene", modifier: "MATCHES_REGEX" }, AND: { organized: true } },
+      scene_filter: {
+        organized: false,
+        title: { value: "(?i)scene", modifier: "MATCHES_REGEX" },
+        AND: { organized: true },
+      },
     },
   });
-  assert.throws(
-    () => sessionQueries.searchSession({ filter: {}, ids: ["3"] }, false, "other", 1, signal),
-    /searched locally/,
+  await sessionQueries.searchSession(
+    { filter: { page: 3, per_page: 48, sort: "random_1" } },
+    false,
+    { find: { q: " new " }, scene: {} },
+    1,
+    signal,
   );
-  assert.equal(searchRequests.length, 2, "selected-ID searches cannot bypass session filtering through Stash");
-  await sessionQueries.searchSession({ filter: {} }, false, " title.*(part)[1]+?^$|\\ ", 1, signal);
-  assert.equal(searchRequests[2].variables.scene_filter.title.modifier, "MATCHES_REGEX");
-  const literalSearch = new RegExp(searchRequests[2].variables.scene_filter.title.value.slice(4), "i");
+  assert.deepEqual(
+    plain(searchRequests[2].variables),
+    { filter: { q: "new", page: 1, per_page: 20, sort: "title", direction: "ASC" } },
+    "without a session search term, Stash's own search applies",
+  );
+  await sessionQueries.searchSession(
+    { filter: { q: "x" } },
+    false,
+    { find: { q: " title.*(part)[1]+?^$|\\ " } },
+    1,
+    signal,
+  );
+  assert.equal(searchRequests[3].variables.scene_filter.title.modifier, "MATCHES_REGEX");
+  const literalSearch = new RegExp(searchRequests[3].variables.scene_filter.title.value.slice(4), "i");
   assert(literalSearch.test("A TITLE.*(PART)[1]+?^$|\\ suffix"));
   assert(!literalSearch.test("A title something else"), "search punctuation cannot become regex operators");
 
@@ -759,11 +794,10 @@ async function main() {
         if (missing) throw new Error(`scene with id ${missing} not found`);
         return { findScenes: { count: variables.ids.length, scenes: variables.ids.map(id => byId.get(id)) } };
       }
-      const { title, performers } = variables.scene_filter;
+      const { q } = variables.filter,
+        { performers } = variables.scene_filter;
       const matching = library.filter(scene =>
-        title
-          ? new RegExp(title.value.slice(4), "i").test(scene.title)
-          : scene.performers.some(({ id }) => id === performers.value[0]),
+        q ? scene.title.toLowerCase().includes(q) : scene.performers.some(({ id }) => id === performers.value[0]),
       );
       const { page, per_page: size } = variables.filter;
       return { findScenes: { scenes: matching.slice((page - 1) * size, page * size).map(({ id }) => ({ id })) } };
@@ -788,7 +822,8 @@ async function main() {
     ids: library.map(scene => scene.id).reverse(),
   });
   listRequests.length = 0;
-  const searched = await listQueries.searchSession(scope, false, "odd", 2, signal);
+  const searchFor = q => ({ find: { q }, scene: {} });
+  const searched = await listQueries.searchSession(scope, false, searchFor("odd"), 2, signal);
   assert.equal(searched.findScenes.count, 1250);
   assert.deepEqual(
     searched.findScenes.scenes.map(scene => scene.id),
@@ -796,25 +831,45 @@ async function main() {
     "results follow the list's order",
   );
   assert.deepEqual(plain(listRequests[0].variables), {
-    filter: { page: 1, per_page: feature("queries").ID_PAGE_SIZE, sort: "id", direction: "ASC" },
-    scene_filter: { title: { value: "(?i)odd", modifier: "MATCHES_REGEX" } },
+    filter: { page: 1, per_page: feature("queries").ID_PAGE_SIZE, sort: "id", direction: "ASC", q: "odd" },
+    scene_filter: {},
   });
   assert.strictEqual(listRequests[0].options.signal, signal);
   assert.equal(listRequests.length, 3, "two pages of matching IDs, then one page of details");
-  await listQueries.searchSession(scope, false, "odd", 3, signal);
+  await listQueries.searchSession(scope, false, searchFor("odd"), 3, signal);
   assert.equal(listRequests.length, 4, "another page of the same search reuses the scan");
   const cancelled = new AbortController();
   cancelled.abort();
-  await assert.rejects(listQueries.searchSession(scope, false, "even", 1, cancelled.signal), /aborted/);
+  await assert.rejects(listQueries.searchSession(scope, false, searchFor("even"), 1, cancelled.signal), /aborted/);
   const beforeEven = listRequests.length;
-  await listQueries.searchSession(scope, false, "even", 1, signal);
+  await listQueries.searchSession(scope, false, searchFor("even"), 1, signal);
   assert.equal(listRequests.length, beforeEven + 3, "a cancelled scan is not reused");
-  const late = await listQueries.searchSession({ ...scope, list: ["2500", "1"] }, false, "odd", 1, signal);
+  const late = await listQueries.searchSession({ ...scope, list: ["2500", "1"] }, false, searchFor("odd"), 1, signal);
   assert.deepEqual(
     late.findScenes.scenes.map(scene => scene.id),
     ["2500"],
   );
   assert.equal(late.findScenes.count, 1, "matches outside the list never count or hide one inside it");
+  listRequests.length = 0;
+  const sorted = await listQueries.searchSession(
+    scope,
+    false,
+    { find: { q: "odd", sort: "title", direction: "ASC" } },
+    1,
+    signal,
+  );
+  assert.deepEqual(plain(listRequests[0].variables.filter), {
+    page: 1,
+    per_page: feature("queries").ID_PAGE_SIZE,
+    sort: "title",
+    direction: "ASC",
+    q: "odd",
+  });
+  assert.deepEqual(
+    sorted.findScenes.scenes.slice(0, 2).map(scene => scene.id),
+    ["2", "4"],
+    "a chosen sort orders the list's matches the way Stash returns them",
+  );
 
   listRequests.length = 0;
   const playingScene = id => ({ id, scene: { id } });
@@ -838,14 +893,26 @@ async function main() {
     },
   });
   const markerList = { filter: { page: 1, per_page: 48 }, list: ["9", "8", "7"] };
-  const markerSearch = await markerQueries.searchSession(markerList, true, "scene", 1, signal);
+  const markerSearch = await markerQueries.searchSession(
+    markerList,
+    true,
+    { find: { q: "scene" }, scene: { organized: true } },
+    1,
+    signal,
+  );
   assert.match(markerRequests[0].query, /MultiscreenMarkerIds/);
-  assert.deepEqual(plain(markerRequests[0].variables.scene_marker_filter), {
-    scene_filter: { title: { value: "(?i)scene", modifier: "MATCHES_REGEX" } },
-  });
+  assert.equal(markerRequests[0].variables.filter.q, "scene");
+  assert.deepEqual(plain(markerRequests[0].variables.scene_marker_filter), { scene_filter: { organized: true } });
   assert.deepEqual(
     markerSearch.findSceneMarkers.scene_markers.map(marker => marker.id),
     ["9", "8", "7"],
+  );
+  const beforeUnfiltered = markerRequests.length;
+  await markerQueries.searchSession(markerList, true, { find: {}, scene: {} }, 1, signal);
+  assert.deepEqual(
+    markerRequests.slice(beforeUnfiltered).map(request => request.variables.ids?.join() ?? "scan"),
+    ["9,8,7"],
+    "with nothing searched or filtered, the list is paged without a scan",
   );
   const nextMarker = await markerQueries.findPerformerItems(markerList, true, "p", signal, {
     id: "marker-8",

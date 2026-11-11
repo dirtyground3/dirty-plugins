@@ -2,8 +2,10 @@ import type * as R from "react";
 import { getSceneTitle } from "../domain/items";
 import { DirtyPlugins, PluginApi, React } from "../runtime";
 import { SEARCH_PAGE_SIZE } from "../queries";
-import type { Item, SessionSearch, SessionSearchResult } from "../types";
+import type { SceneCondition } from "../../../DirtyPlugins/src/types";
+import type { Item, SearchCondition, SessionSearch, SessionSearchResult } from "../types";
 import { icon, PluginIconButton } from "./Controls";
+import { SceneOCounterButton } from "./Counter";
 import { PerformerNavigation } from "./PerformerNavigation";
 
 function SceneSearchDialog({
@@ -19,22 +21,28 @@ function SceneSearchDialog({
   openerRef: R.RefObject<HTMLButtonElement>;
   searchSession: SessionSearch;
 }) {
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  const [search, setSearch] = React.useState({ text: "", page: 1, revision: 0 });
+  const closeRef = React.useRef<HTMLButtonElement>(null);
+  const filterRef = React.useRef<HTMLDivElement>(null);
+  // Nothing is searched until Stash's own controls report their first filter.
+  const [search, setSearch] = React.useState<{ condition: SearchCondition | null; page: number; revision: number }>({
+    condition: null,
+    page: 1,
+    revision: 0,
+  });
   const [result, setResult] = React.useState<{
     key: string;
     source: SessionSearch;
     data?: SessionSearchResult;
     error?: boolean;
   } | null>(null);
-  const term = search.text.trim();
-  const key = JSON.stringify([term, search.page, search.revision]);
+  const condition = search.condition;
+  const key = JSON.stringify([condition, search.page, search.revision]);
   React.useEffect(() => {
-    if (!term) return;
+    if (!condition) return;
     let active = true;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      void searchSession(term, search.page, controller.signal).then(
+      void searchSession(condition, search.page, controller.signal).then(
         data => {
           if (active) setResult({ key, source: searchSession, data });
         },
@@ -49,36 +57,46 @@ function SceneSearchDialog({
       controller.abort();
     };
   }, [key, searchSession]);
-  const current = term && result?.key === key && result.source === searchSession ? result : null;
+  const current = condition && result?.key === key && result.source === searchSession ? result : null;
+  const changeCondition = (value: SceneCondition) => {
+    const next = { find: value.find ?? {}, scene: value.scene ?? {} };
+    // The first filter arrives once the native search box exists, which then takes focus.
+    if (!search.condition && document.activeElement === closeRef.current)
+      filterRef.current?.querySelector<HTMLInputElement>(".filtered-list-toolbar .search-term-input input")?.focus();
+    setSearch(previous =>
+      JSON.stringify(previous.condition) === JSON.stringify(next)
+        ? previous
+        : { condition: next, page: 1, revision: 0 },
+    );
+  };
   return (
     <DirtyPlugins.react.Dialog
       className="dirty-ui-dialog ms-scene-search-dialog"
+      backdropClassName="dirty-ui-backdrop ms-scene-search-backdrop"
       ariaLabel={`Search scenes for screen ${screenIndex + 1}`}
-      initialFocusRef={inputRef}
+      allowNativePopup={true}
+      initialFocusRef={closeRef}
       openerRef={openerRef}
       onClose={onClose}
     >
       <div className="ms-scene-search-heading">
         <h2>Scene for screen {screenIndex + 1}</h2>
-        <PluginIconButton ariaLabel="Close scene search" fallback="x" icon={icon("close")} onClick={onClose} />
-      </div>
-      <DirtyPlugins.react.Field
-        id={`ms-scene-search-${screenIndex}`}
-        label="Search scenes"
-        help="Search video titles in this session. Choosing a result changes only this screen."
-      >
-        <input
-          ref={inputRef}
-          type="search"
-          className="form-control"
-          value={search.text}
-          placeholder="Search for a scene…"
-          onChange={event => setSearch({ text: event.target.value, page: 1, revision: 0 })}
+        <PluginIconButton
+          ariaLabel="Close scene search"
+          buttonRef={closeRef}
+          fallback="x"
+          icon={icon("close")}
+          onClick={onClose}
         />
-      </DirtyPlugins.react.Field>
-      <div className="ms-scene-search-results" aria-busy={!!term && !current}>
-        {!term && <p role="status">Enter a search to find a scene.</p>}
-        {!!term && !current && <p role="status">Searching scenes…</p>}
+      </div>
+      <p className="ms-scene-search-help">
+        Search and filter this session with Stash&apos;s own controls. Choosing a result changes only this screen.
+      </p>
+      <div ref={filterRef}>
+        <DirtyPlugins.react.NativeSceneFilter className="ms-scene-search-filter" onChange={changeCondition} />
+      </div>
+      <div className="ms-scene-search-results" aria-busy={!!condition && !current}>
+        {!!condition && !current && <p role="status">Searching scenes…</p>}
         {current?.error && (
           <div role="alert">
             <p>Could not search scenes.</p>
@@ -154,19 +172,17 @@ export function PaneHeader({
   return (
     <>
       <div className="ms-pane-header">
-        {item ? (
+        {item && (
           <PluginApi.libraries.ReactRouterDOM.NavLink
             aria-label={`Open scene page for ${item.title}`}
-            className="ms-title"
+            className="dirty-ui-icon-button ms-button ms-scene-link"
             rel="noopener noreferrer"
             target="_blank"
             title={`Open scene page: ${item.title}`}
             to={`/scenes/${item.scene.id}`}
           >
-            {item.title}
+            <DirtyPlugins.react.Glyph icon={icon("scene")} fallback="↗" />
           </PluginApi.libraries.ReactRouterDOM.NavLink>
-        ) : (
-          <span className="ms-title">Screen {screenIndex + 1}</span>
         )}
         <PluginIconButton
           ariaLabel={`Search scenes for screen ${screenIndex + 1}`}
@@ -186,6 +202,7 @@ export function PaneHeader({
             onNext={onNavigatePerformer}
           />
         )}
+        {item && <SceneOCounterButton key={item.scene.id} sceneId={item.scene.id} screenIndex={screenIndex} />}
       </div>
       {open && (
         <SceneSearchDialog

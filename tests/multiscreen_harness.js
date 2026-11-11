@@ -149,6 +149,7 @@ function createMultiscreenHarness(options = {}) {
       "Pagination",
       "ActionMenu",
       "Glyph",
+      "NativeSceneFilter",
     ].map(name => [name, props => React.createElement(name, props, props.children)]),
   );
   // Like the hub's field, an action sits beside the control.
@@ -258,6 +259,18 @@ function createMultiscreenHarness(options = {}) {
     graphql: async (query, variables, requestOptions) => {
       calls.push({ query, variables });
       if (options.graphql) return options.graphql(query, variables, requestOptions);
+      // Like Stash, matching IDs page by page; the search term matches titles.
+      if (query.includes("MultiscreenSceneIds") || query.includes("MultiscreenMarkerIds")) {
+        const marker = query.includes("MultiscreenMarkerIds");
+        const q = String(variables.filter.q || "").toLowerCase();
+        const { page, per_page: size } = variables.filter;
+        const rows = (marker ? options.markers || [] : scenes)
+          .filter(row => !q || [row.title, row.scene?.title].some(title => title?.toLowerCase().includes(q)))
+          .slice((page - 1) * size, page * size);
+        return marker
+          ? { findSceneMarkers: { scene_markers: rows.map(row => ({ id: row.id, scene: { id: row.scene.id } })) } }
+          : { findScenes: { scenes: rows.map(row => ({ id: row.id })) } };
+      }
       if (query.includes("MultiscreenMarkers"))
         return {
           findSceneMarkers: {

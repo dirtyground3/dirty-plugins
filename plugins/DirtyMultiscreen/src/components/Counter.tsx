@@ -1,6 +1,65 @@
 import { DirtyPlugins, queries, React } from "../runtime";
 import type { CounterAction } from "../types";
-import { icon, PluginIconButton } from "./Controls";
+import { DropsGlyph, icon, PluginIconButton } from "./Controls";
+const SAVED_MS = 1500;
+/** Adds one O to the scene a screen is playing; it can be pressed again for each one. */
+export function SceneOCounterButton({ sceneId, screenIndex }: { sceneId: string; screenIndex: number }) {
+  const [state, setState] = React.useState<{ status: "idle" | "saving" | "saved" | "error"; count?: number }>({
+    status: "idle",
+  });
+  const mounted = React.useRef(true);
+  React.useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
+  React.useEffect(() => {
+    if (state.status !== "saved") return undefined;
+    const timer = window.setTimeout(() => setState(value => ({ ...value, status: "idle" })), SAVED_MS);
+    return () => window.clearTimeout(timer);
+  }, [state]);
+  // A second press before the button re-renders as busy must not add another O.
+  const saving = React.useRef(false);
+  const increment = () => {
+    if (saving.current) return;
+    saving.current = true;
+    setState(value => ({ ...value, status: "saving" }));
+    DirtyPlugins.graphql<{ sceneIncrementO: number }>(queries.incrementSceneOQuery, { id: sceneId })
+      .then(
+        data => {
+          if (mounted.current) setState({ status: "saved", count: data.sceneIncrementO });
+        },
+        error => {
+          console.error("Could not increment the O counter for scene " + sceneId + ".", error);
+          if (mounted.current) setState(value => ({ ...value, status: "error" }));
+        },
+      )
+      .finally(() => {
+        saving.current = false;
+      });
+  };
+  const screen = screenIndex + 1;
+  const label =
+    state.status === "error"
+      ? `Could not add an O to the scene on screen ${screen}; retry`
+      : `Add an O to the scene on screen ${screen}` + (state.count === undefined ? "" : ` (now ${state.count})`);
+  return (
+    <React.Fragment>
+      <PluginIconButton
+        ariaLabel={label}
+        busy={state.status === "saving"}
+        fallback={state.status === "error" ? "!" : "O"}
+        icon={icon(state.status === "error" ? "error" : state.status === "saved" ? "success" : "oCounter")}
+        onClick={increment}
+      />
+      <span className="ms-o-counter-status" role="status" aria-live="polite">
+        {state.status === "saved" ? `O counter is now ${state.count}.` : ""}
+        {state.status === "error" ? "The O counter could not be saved." : ""}
+      </span>
+    </React.Fragment>
+  );
+}
 export function VisibleOCounterButton(props: { sceneIds: string[] }) {
   const [status, setStatus] = React.useState("idle");
   const [hidden, setHidden] = React.useState(false);
@@ -67,8 +126,8 @@ export function VisibleOCounterButton(props: { sceneIds: string[] }) {
           <PluginIconButton
             ariaLabel={label}
             disabled={dismissing}
-            fallback={status === "error" ? "!" : "O"}
-            icon={status === "error" ? icon("error") : icon("oCounter")}
+            fallback={status === "error" ? "!" : <DropsGlyph />}
+            icon={status === "error" ? icon("error") : undefined}
             onClick={increment}
           />
         </div>

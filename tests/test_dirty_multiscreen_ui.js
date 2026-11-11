@@ -240,6 +240,74 @@ async function markersAndLoops() {
   );
   await advance.unmount();
 }
+async function sceneHeaderActions() {
+  const scenes = [
+      { id: "a", title: "Alpha", paths: { stream: "/a" } },
+      { id: "b", title: "Beta", paths: { stream: "/b" } },
+    ],
+    pending = [];
+  const h = await start({
+    scenes,
+    settings: { rows: 1, columns: 2, sceneOrder: "list", splitScenes: true, randomStart: false },
+    graphql: (query, variables) => {
+      if (query.includes("MultiscreenScenes")) return { findScenes: { count: 2, scenes } };
+      const request = deferred();
+      pending.push({ ...request, query, id: variables.id });
+      return request.promise;
+    },
+  });
+  const links = h.nodes(node => node.type === "NavLink" && node.props.className?.includes("ms-scene-link"));
+  assert.deepEqual(
+    links.map(link => [link.props.to, link.props["aria-label"], link.props.target]),
+    [
+      ["/scenes/a", "Open scene page for Alpha", "_blank"],
+      ["/scenes/b", "Open scene page for Beta", "_blank"],
+    ],
+    "each screen links to its scene with an icon instead of its title",
+  );
+  assert.doesNotMatch(h.text(), /Alpha|Beta/, "titles are no longer shown as text");
+  const sceneCounter = screen =>
+    h.nodes(
+      node => node.type === "IconButton" && node.props.ariaLabel?.includes(`O to the scene on screen ${screen}`),
+    )[0];
+  sceneCounter(2).props.onClick();
+  sceneCounter(2).props.onClick();
+  await h.flush();
+  assert.deepEqual(
+    pending.map(request => [request.id, /sceneIncrementO/.test(request.query)]),
+    [["b", true]],
+    "one press adds one O to only that screen's scene",
+  );
+  assert.equal(sceneCounter(2).props.busy, true);
+  pending[0].resolve({ sceneIncrementO: 7 });
+  await h.flush();
+  assert.match(sceneCounter(2).props.ariaLabel, /\(now 7\)/);
+  assert.match(h.text(), /O counter is now 7/);
+  await h.tick(1500);
+  assert.doesNotMatch(h.text(), /O counter is now/, "the confirmation clears");
+  sceneCounter(2).props.onClick();
+  await h.flush();
+  pending[1].reject(Error("offline"));
+  await h.flush();
+  assert.match(sceneCounter(2).props.ariaLabel, /^Could not add an O/);
+  sceneCounter(2).props.onClick();
+  await h.flush();
+  assert.equal(pending.length, 3, "a failed O can be retried");
+  const visible = h.nodes(node => node.type === "IconButton" && node.props.ariaLabel?.startsWith("Increase O"))[0];
+  assert.equal(visible.props.icon, undefined, "the visible-scenes button draws its own drops");
+  const floating = () => h.nodes(node => node.props.className?.startsWith("ms-floating"))[0].props.className;
+  assert.equal(floating(), "ms-floating");
+  await h.tick(3000);
+  assert.equal(floating(), "ms-floating ms-floating-idle", "the top-right buttons fade after a rest");
+  h.window.emit("pointermove");
+  await h.flush();
+  assert.equal(floating(), "ms-floating", "moving the pointer brings them back");
+  await h.unmount();
+  pending[2].resolve({ sceneIncrementO: 8 });
+  await h.flush();
+  assert.equal(h.timers.size, 0);
+}
+
 async function counters() {
   const pending = [],
     h = await start({
@@ -639,9 +707,9 @@ async function sceneSearch() {
   });
   const players = () => h.nodes(node => node.type === "native-player");
   const ids = () => players().map(player => player.props.scene.id);
-  const input = () => h.nodes(node => node.type === "input" && node.props.type === "search")[0];
+  const filter = () => h.nodes(node => node.type === "NativeSceneFilter")[0];
   const search = async text => {
-    input().props.onChange({ target: { value: text } });
+    filter().props.onChange({ find: { q: text }, scene: {} });
     await h.flush();
     await h.tick(300);
   };
@@ -713,12 +781,12 @@ async function sceneSearch() {
   assert.deepEqual(ids(), ["a", "b"], "previous reaches the selected scene's preceding page");
   h.button("Search scenes for screen 1").props.onClick();
   await h.flush();
-  input().props.onChange({ target: { value: "cancel debounce" } });
+  filter().props.onChange({ find: { q: "cancel debounce" }, scene: {} });
   await h.flush();
   h.nodes(node => node.type === "Dialog")[0].props.onClose();
   await h.flush();
   assert.equal(
-    [...h.timers.values()].filter(timer => timer.delay !== 5000).length,
+    [...h.timers.values()].filter(timer => timer.delay !== 5000 && timer.delay !== 3000).length,
     0,
     "closing cancels the debounce timer",
   );
@@ -746,7 +814,7 @@ async function fixedSessionSearch() {
   });
   const results = () => h.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result");
   const search = async value => {
-    h.nodes(node => node.type === "input")[0].props.onChange({ target: { value } });
+    h.nodes(node => node.type === "NativeSceneFilter")[0].props.onChange({ find: { q: value }, scene: {} });
     await h.flush();
     await h.tick(300);
   };
@@ -767,7 +835,10 @@ async function fixedSessionSearch() {
     h.nodes(node => node.type === "native-player").map(node => node.props.scene.id),
     ["45", "2"],
   );
-  assert.equal(h.calls.length, 1, "fixed selection searches do not query or expand the library");
+  assert(
+    h.calls.every(call => !call.query.includes("MultiscreenSceneSearch")),
+    "a fixed selection is matched by ID, never expanded into a library search",
+  );
   const players = () => h.nodes(node => node.type === "native-player");
   players()[0].props.onPrevious();
   await h.flush();
@@ -807,16 +878,17 @@ async function fixedSessionSearch() {
   });
   library.button("Search scenes for screen 1").props.onClick();
   await library.flush();
-  library.nodes(node => node.type === "input")[0].props.onChange({ target: { value: "Available 45" } });
+  library
+    .nodes(node => node.type === "NativeSceneFilter")[0]
+    .props.onChange({ find: { q: "Available 45" }, scene: {} });
   await library.flush();
   await library.tick(300);
   await library.flush();
   assert.doesNotMatch(library.text(), /No scenes match/, "an unscoped launch searches the whole library");
   const libraryQuery = library.calls.at(-1);
   assert.match(libraryQuery.query, /MultiscreenSceneSearch/);
-  assert.deepEqual(JSON.parse(JSON.stringify(libraryQuery.variables.scene_filter)), {
-    title: { value: "(?i)Available 45", modifier: "MATCHES_REGEX" },
-  });
+  assert.equal(libraryQuery.variables.filter.q, "Available 45", "Stash's own search term applies");
+  assert.equal(libraryQuery.variables.scene_filter, undefined);
   await library.unmount();
 }
 
@@ -839,7 +911,7 @@ async function searchDuringMarkersAndPaging() {
   const choose = async (label, index) => {
     h.button(label).props.onClick();
     await h.flush();
-    h.nodes(node => node.type === "input")[0].props.onChange({ target: { value: "a" } });
+    h.nodes(node => node.type === "NativeSceneFilter")[0].props.onChange({ find: { q: "a" }, scene: {} });
     await h.flush();
     await h.tick(300);
     const results = h.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result");
@@ -888,7 +960,7 @@ async function searchDuringMarkersAndPaging() {
   assert.match(paged.text(), /Loading next page/);
   paged.button("Search scenes for screen 1").props.onClick();
   await paged.flush();
-  paged.nodes(node => node.type === "input")[0].props.onChange({ target: { value: "b" } });
+  paged.nodes(node => node.type === "NativeSceneFilter")[0].props.onChange({ find: { q: "b" }, scene: {} });
   await paged.flush();
   await paged.tick(300);
   paged.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result")[0].props.onClick();
@@ -919,7 +991,7 @@ async function searchedQueueNavigation() {
     launch: { source: "filter", filter: { sort: "title" }, sceneFilter: {} },
     graphql: async (query, variables) => {
       if (query.includes("MultiscreenSceneSearch")) {
-        const term = variables.scene_filter.title.value.slice(4).replace(/\\/g, "");
+        const term = variables.filter.q;
         const matches = scenes.filter(scene => scene.title.includes(term));
         return { findScenes: { count: matches.length, scenes: matches } };
       }
@@ -935,7 +1007,7 @@ async function searchedQueueNavigation() {
   const choose = async id => {
     h.button("Search scenes for screen 1").props.onClick();
     await h.flush();
-    h.nodes(node => node.type === "input")[0].props.onChange({ target: { value: `Video (${id})` } });
+    h.nodes(node => node.type === "NativeSceneFilter")[0].props.onChange({ find: { q: `Video (${id})` }, scene: {} });
     await h.flush();
     await h.tick(300);
     h.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result")[0].props.onClick();
@@ -982,7 +1054,9 @@ async function searchedQueueNavigation() {
   const order = queues[0].items.map(item => item.scene.id);
   random.button("Search scenes for screen 1").props.onClick();
   await random.flush();
-  random.nodes(node => node.type === "input")[0].props.onChange({ target: { value: `Video (${order[5]})` } });
+  random
+    .nodes(node => node.type === "NativeSceneFilter")[0]
+    .props.onChange({ find: { q: `Video (${order[5]})` }, scene: {} });
   await random.flush();
   await random.tick(300);
   random.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result")[0].props.onClick();
@@ -1678,7 +1752,11 @@ async function sessionRestore() {
   assert.equal(saved(first).panes[0].time, undefined, "playback does not write on every timeupdate");
   assert.equal(sessionTimers(first), 1, "one save is pending however many panes changed");
   first.window.emit("pagehide");
-  assert.equal(first.timers.size, 0, "leaving the page also saves the recent grid");
+  assert.equal(
+    [...first.timers.values()].filter(timer => timer.delay !== 3000).length,
+    0,
+    "leaving the page also saves the recent grid",
+  );
   assert.equal(saved(first).panes[0].time, 7);
   assert.deepEqual(saved(first).panes[1].audio, { muted: false, volume: 0.25 });
 
@@ -1840,9 +1918,7 @@ async function sessionRestore() {
   });
   searching.button("Search scenes for screen 1").props.onClick();
   await searching.flush();
-  searching
-    .nodes(node => node.type === "input" && node.props.type === "search")[0]
-    .props.onChange({ target: { value: "Scene 1" } });
+  searching.nodes(node => node.type === "NativeSceneFilter")[0].props.onChange({ find: { q: "Scene 1" }, scene: {} });
   await searching.flush();
   await searching.tick(300);
   searching
@@ -3025,6 +3101,7 @@ async function recentGrids() {
   await markersAndLoops();
   await stablePaneSubscriptions();
   await counters();
+  await sceneHeaderActions();
   await gridsAndAsync();
   await playableStartupAndTranscodeClock();
   await independentNativePlayerIdentities();

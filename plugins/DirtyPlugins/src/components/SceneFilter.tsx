@@ -1,6 +1,14 @@
 import { ensureComponents } from "../native";
 import { PluginApi, React } from "../runtime";
-import type { FilterProps, NativeFilter, NativePatchArguments, NativePatchHandler, SceneCondition } from "../types";
+import { withClass } from "../shared/values";
+import type {
+  FilterProps,
+  NativeFilter,
+  NativePatchArguments,
+  NativePatchHandler,
+  NativeSceneFilterProps,
+  SceneCondition,
+} from "../types";
 import { Button, StateView } from "./Controls";
 import { Dialog } from "./Dialog";
 
@@ -39,22 +47,22 @@ export function sceneListPatch(...args: NativePatchArguments) {
   return <SharedSceneFilterCapture owner={owner} filter={props.filter} />;
 }
 
-export function SceneFilterEditor(props: FilterProps) {
+/**
+ * Stash's own search, filter and saved-filter controls for scenes. Each change of their
+ * filter is reported; the native results stay hidden so the caller shows its own.
+ */
+export function NativeSceneFilter(props: NativeSceneFilterProps) {
   const [ready, setReady] = React.useState(false);
   const [error, setError] = React.useState("");
-  const candidate = React.useRef(props.value || {});
   const owner = React.useRef("filter-" + Math.random().toString(36).slice(2));
-  const closeRef = React.useRef<HTMLButtonElement | null>(null);
   const callback = React.useRef(props.onChange);
   callback.current = props.onChange;
+  // The router starts from the given value; later changes come from the native controls.
+  const [initialEntries] = React.useState(() => [{ pathname: "/scenes", search: "?" + (props.value?.query || "") }]);
   React.useEffect(() => {
-    if (!props.open) return undefined;
     let active = true;
-    candidate.current = props.value || {};
     activeOwner = owner.current;
-    listeners[owner.current] = value => {
-      candidate.current = value;
-    };
+    listeners[owner.current] = value => callback.current(value);
     ensureComponents("SceneList", ["FilteredSceneList"])
       .then(() => {
         if (active) setReady(true);
@@ -67,21 +75,40 @@ export function SceneFilterEditor(props: FilterProps) {
       delete listeners[owner.current];
       if (activeOwner === owner.current) activeOwner = null;
     };
+  }, []);
+  return (
+    <div className={withClass("dirty-ui-native-scene-filter", props.className)}>
+      {error ? (
+        <StateView title="Stash filters unavailable" detail={error} />
+      ) : !ready ? (
+        <StateView title="Loading filters…" />
+      ) : (
+        <PluginApi.libraries.ReactRouterDOM.MemoryRouter initialEntries={initialEntries}>
+          <PluginApi.components.FilteredSceneList
+            alterQuery={true}
+            extraCriteria={{ dirtySharedFilter: owner.current }}
+          />
+        </PluginApi.libraries.ReactRouterDOM.MemoryRouter>
+      )}
+    </div>
+  );
+}
+
+export function SceneFilterEditor(props: FilterProps) {
+  const [captured, setCaptured] = React.useState(false);
+  const candidate = React.useRef(props.value || {});
+  const closeRef = React.useRef<HTMLButtonElement | null>(null);
+  const callback = React.useRef(props.onChange);
+  callback.current = props.onChange;
+  React.useEffect(() => {
+    if (!props.open) return;
+    candidate.current = props.value || {};
+    setCaptured(false);
   }, [props.open]);
   function applyFilter() {
     callback.current(candidate.current);
     props.onClose();
   }
-  const initialEntries = [{ pathname: "/scenes", search: "?" + ((props.value || {}).query || "") }];
-  const body = error ? (
-    <StateView title="Stash filters unavailable" detail={error} />
-  ) : !ready ? (
-    <StateView title="Loading filters…" />
-  ) : (
-    <PluginApi.libraries.ReactRouterDOM.MemoryRouter initialEntries={initialEntries}>
-      <PluginApi.components.FilteredSceneList alterQuery={true} extraCriteria={{ dirtySharedFilter: owner.current }} />
-    </PluginApi.libraries.ReactRouterDOM.MemoryRouter>
-  );
   return (
     <Dialog
       id="dirty-shared-scene-filter-dialog"
@@ -94,12 +121,20 @@ export function SceneFilterEditor(props: FilterProps) {
       backdropClassName="dirty-ui-native-filter-overlay"
     >
       <h2>Scene filter</h2>
-      {body}
+      {props.open && (
+        <NativeSceneFilter
+          value={props.value}
+          onChange={value => {
+            candidate.current = value;
+            setCaptured(true);
+          }}
+        />
+      )}
       <div className="dirty-ui-control-row">
         <Button onClick={props.onClose} buttonRef={closeRef}>
           Cancel
         </Button>
-        <Button tone="primary" disabled={!ready || Boolean(error)} onClick={applyFilter}>
+        <Button tone="primary" disabled={!captured} onClick={applyFilter}>
           Use filter
         </Button>
       </div>

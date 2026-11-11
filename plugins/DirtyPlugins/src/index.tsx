@@ -4,7 +4,7 @@ import * as controls from "./components/Controls";
 import { Dialog } from "./components/Dialog";
 import * as navigation from "./components/Navigation";
 import { DirtyPluginsRoute } from "./components/Route";
-import { SceneFilterEditor, sceneListPatch } from "./components/SceneFilter";
+import { NativeSceneFilter, SceneFilterEditor, sceneListPatch } from "./components/SceneFilter";
 import * as settings from "./components/Settings";
 import { SettingsLink, SettingsNavLink } from "./components/SettingsLink";
 import { MANAGED_PLUGIN_ID_SET, ROUTE_PATH } from "./constants";
@@ -53,7 +53,16 @@ if (api && !window.DirtyPlugins) {
       createJobHook,
       ui: { notify, manageDialog, pickFolder },
       theme,
-      react: { ...controls, ...settings, ...navigation, Dialog, usePageTitle, useSettingsDraft, SceneFilterEditor },
+      react: {
+        ...controls,
+        ...settings,
+        ...navigation,
+        Dialog,
+        usePageTitle,
+        useSettingsDraft,
+        SceneFilterEditor,
+        NativeSceneFilter,
+      },
       native: { loadComponent, ensureComponents },
       captureEnabled,
       captureUrl,

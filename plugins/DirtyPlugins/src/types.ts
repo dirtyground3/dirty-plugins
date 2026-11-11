@@ -206,6 +206,12 @@ export interface NativeFilter {
   makeQueryParameters(): string | Record<string, string>;
   makeFilter(): Record<string, unknown>;
 }
+export interface NativeSceneFilterProps {
+  className?: string;
+  /** Where the native controls start; later changes of this value are ignored. */
+  value?: SceneCondition;
+  onChange(value: SceneCondition): void;
+}
 export interface FilterProps {
   open: boolean;
   value?: SceneCondition;
@@ -252,6 +258,7 @@ export interface HubApi {
       usePageTitle: typeof usePageTitle;
       useSettingsDraft: typeof useSettingsDraft;
       SceneFilterEditor: R.ComponentType<FilterProps>;
+      NativeSceneFilter: R.ComponentType<NativeSceneFilterProps>;
     };
   native: {
     loadComponent(name: string): Promise<NativeComponent>;

@@ -1,5 +1,5 @@
 import type * as R from "react";
-import type { HubApi } from "../../DirtyPlugins/src/types";
+import type { HubApi, SceneCondition } from "../../DirtyPlugins/src/types";
 export type SceneOrder = "random" | "fresh" | "unwatched" | "favorites" | "newest" | "mix" | "list";
 export type Hub = Pick<HubApi, "graphql" | "react" | "native" | "getPluginSettings" | "captureEnabled" | "debugLog">;
 export interface Settings {
@@ -63,7 +63,13 @@ export interface SessionSearchResult {
   count: number;
   items: Item[];
 }
-export type SessionSearch = (text: string, page: number, signal: AbortSignal) => Promise<SessionSearchResult>;
+/** What Stash's own scene search and filter controls choose: find options and scene criteria. */
+export type SearchCondition = Pick<SceneCondition, "find" | "scene">;
+export type SessionSearch = (
+  condition: SearchCondition,
+  page: number,
+  signal: AbortSignal,
+) => Promise<SessionSearchResult>;
 /** The session's items featuring a performer; an ID list returns only the one after `playing`. */
 export type FindPerformerItems = (
   performerId: string,
