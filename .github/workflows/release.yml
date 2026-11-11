@@ -1,8 +1,8 @@
 name: Release prerelease to main
 
 # After prerelease publishes, the release job waits for approval in the "release" environment.
-# Approving it removes -rc from the versions, fast-forwards main and prerelease to that commit and
-# publishes both channels.
+# Approving it removes -rc from the versions, fast-forwards main and prerelease to that commit,
+# publishes both channels and creates a GitHub Release for each released plugin version.
 on:
   workflow_run:
     workflows:
@@ -91,3 +91,10 @@ jobs:
           git push --atomic origin HEAD:main HEAD:prerelease
           # Pushes made with the workflow token start no workflows, so the deploy is started here.
           gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref main
+
+      # After the deploy has started, so a failure here never holds packages back. It creates only
+      # missing Releases; run `node scripts/release.mjs github` on main to finish a failed run.
+      - name: Create GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release.mjs github

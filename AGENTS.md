@@ -262,9 +262,11 @@ directly:
 5. `.github/workflows/release.yml` then waits for approval in the `release`
    environment. Approval belongs to the user, after trying the candidate; never
    approve it yourself. Approving commits "Release …" without `-rc`,
-   fast-forwards `main` and `prerelease` to that commit and publishes both
-   sources. A newer push to `prerelease` replaces a release that is still
-   waiting.
+   fast-forwards `main` and `prerelease` to that commit, publishes both
+   sources and creates a GitHub Release per released plugin version
+   (`node scripts/release.mjs github`: tag `<id>-v<version>`, text from the
+   README release notes, only Releases that are missing). A newer push to
+   `prerelease` replaces a release that is still waiting.
 6. After every push, check the runs with
    `gh run list --repo dirtyground3/dirty-plugins --limit 4`. A failed deploy
    leaves the previous packages published.
@@ -280,7 +282,7 @@ Rules behind the flow:
   date is that of the last commit touching the plugin or shared build inputs,
   so the release commit is what moves candidate installs to the final version.
 - The workflow token may not push `.github/workflows` changes. Release such a
-  candidate by hand with the three commands in README, Releases.
+  candidate by hand with the commands in README, Releases.
 - GitHub Pages replaces the whole site on every deploy, so each deploy builds
   its own branch's source and copies the other one as published
   (`scripts/fetch-channel.mjs`). Deploys run only for `main` and `prerelease`.

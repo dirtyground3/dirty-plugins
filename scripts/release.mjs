@@ -1,6 +1,7 @@
 // Release channels: main publishes X.Y.Z versions; prerelease marks a plugin X.Y.Z-rc until it is released.
 //   node scripts/release.mjs check main|prerelease   checks the versions a channel may publish
 //   node scripts/release.mjs finalize                removes -rc and prints the release commit message
+//   node scripts/release.mjs github                  creates a GitHub Release for every plugin version without one
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -37,6 +38,51 @@ export function versionProblems(channel, versions, released = {}) {
 /** The manifest without its version's -rc suffix. */
 export function finalManifest(text) {
   return text.replace(/^(version:[ \t]*\d+\.\d+\.\d+)-rc([ \t]*)$/m, "$1$2");
+}
+
+/** A plugin version's Git tag, for example `multiscreen-v1.0.25`. */
+export const releaseTag = (id, version) => `${id}-v${version}`;
+
+/** A README list item with its wrapped lines joined; nested items stay on lines of their own. */
+function unwrap(entry) {
+  const lines = [];
+  for (const line of entry.split("\n")) {
+    const text = line.trim();
+    if (!text) continue;
+    if (lines.length && text.startsWith("- ")) lines.push("  " + text);
+    else if (lines.length) lines[lines.length - 1] += " " + text;
+    else lines.push(text);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * The README release notes that name `name version`, one list item each. Links point into the repository
+ * at `tag`, because a GitHub Release does not resolve the README's relative links.
+ */
+export function releaseNotes(readme, name, version, repository, tag) {
+  const section = /^## Release notes\n([\s\S]*?)(?=^## |$(?![\s\S]))/m.exec(readme)?.[1] ?? "";
+  const escaped = (name + " " + version).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const names = new RegExp(`\\b${escaped}(?![\\d.]*\\d)`);
+  const entries = section
+    .split(/\n(?=- )/)
+    .map(unwrap)
+    .filter(entry => entry.startsWith("- **") && names.test(/^- \*\*(.*?)\*\*/.exec(entry)?.[1] ?? ""));
+  const base = `https://github.com/${repository}/blob/${tag}/`;
+  return entries
+    .map(entry =>
+      entry.replace(/\]\((?!https?:)([^)]*)\)/g, (_, target) =>
+        target.startsWith("#") ? `](${base}README.md${target})` : `](${base}${target})`,
+      ),
+    )
+    .join("\n\n");
+}
+
+/** The releases GitHub lacks: every plugin version whose tag has none. */
+export function missingReleases(plugins, existingTags) {
+  return plugins
+    .map(plugin => ({ ...plugin, tag: releaseTag(plugin.id, plugin.version) }))
+    .filter(plugin => !existingTags.has(plugin.tag));
 }
 
 function manifests() {
@@ -85,9 +131,62 @@ function finalize() {
   if (released.length) console.log("Release " + released.join(", "));
 }
 
+function gh(args, input) {
+  const result = spawnSync("gh", args, { cwd: root, encoding: "utf8", input });
+  if (result.status !== 0) throw new Error(`gh ${args[0]} ${args[1]} failed: ${result.stderr || result.error}`);
+  return result.stdout;
+}
+
+/**
+ * Run on a pushed release commit. Each plugin version without a GitHub Release gets one, tagged on this
+ * commit, so a rerun or a release by hand creates only what is missing.
+ */
+function github() {
+  const repository = process.env.GITHUB_REPOSITORY || "dirtyground3/dirty-plugins";
+  const [owner, name] = repository.split("/");
+  const commit = git("rev-parse", "HEAD").stdout.trim();
+  const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
+  const plugins = manifests().map(({ id, file }) => {
+    const text = fs.readFileSync(path.join(root, file), "utf8");
+    return { id, name: /^name:[ \t]*(.*?)[ \t]*$/m.exec(text)?.[1] ?? id, version: versionOf(text) };
+  });
+  const problems = versionProblems("main", Object.fromEntries(plugins.map(plugin => [plugin.id, plugin.version])));
+  if (problems.length) throw new Error("GitHub Releases are made from released versions only:\n" + problems.join("\n"));
+  const existing = new Set(
+    JSON.parse(gh(["release", "list", "--repo", repository, "--limit", "1000", "--json", "tagName"])).map(
+      release => release.tagName,
+    ),
+  );
+  const source = `https://${owner}.github.io/${name}/main/index.yml`;
+  for (const plugin of missingReleases(plugins, existing)) {
+    const notes = releaseNotes(readme, plugin.name, plugin.version, repository, plugin.tag);
+    const body =
+      (notes || `No release notes were written for ${plugin.name} ${plugin.version}.`) +
+      `\n\nInstall or update it in Stash from the package source \`${source}\`.\n`;
+    gh(
+      [
+        "release",
+        "create",
+        plugin.tag,
+        "--repo",
+        repository,
+        "--target",
+        commit,
+        "--title",
+        `${plugin.name} ${plugin.version}`,
+        "--notes-file",
+        "-",
+      ],
+      body,
+    );
+    console.log(`Created the GitHub Release ${plugin.tag}.`);
+  }
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [command, channel] = process.argv.slice(2);
   if (command === "check" && (channel === "main" || channel === "prerelease")) check(channel);
   else if (command === "finalize") finalize();
-  else throw new Error("Usage: node scripts/release.mjs check main|prerelease | finalize");
+  else if (command === "github") github();
+  else throw new Error("Usage: node scripts/release.mjs check main|prerelease | finalize | github");
 }

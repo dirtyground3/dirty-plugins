@@ -655,6 +655,13 @@ directly:
    unchanged. A newer push to `prerelease` replaces a release that is still
    waiting.
 
+Each released plugin version also gets a
+[GitHub Release](https://github.com/dirtyground3/dirty-plugins/releases),
+tagged `<plugin id>-v<version>` (for example `multiscreen-v1.0.25`) on the
+release commit. Its text is the README release note that names that version.
+`node scripts/release.mjs github`, run on `main`, creates the Releases that
+are missing; the workflow runs it after every release.
+
 `scripts/release.mjs` stops `main` from publishing a `-rc` version, requires
 each `-rc` version to be newer than the one on `main`, and requires
 `prerelease` to contain every commit on `main`, so a release only moves `main`
@@ -673,6 +680,7 @@ git fetch origin
 git switch --detach origin/prerelease
 git commit --all --message "$(node scripts/release.mjs finalize)"
 git push --atomic origin HEAD:main HEAD:prerelease
+node scripts/release.mjs github
 ```
 
 Skip the commit when `finalize` prints nothing.

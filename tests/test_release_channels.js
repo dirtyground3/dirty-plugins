@@ -33,6 +33,55 @@ test("finalizing removes only the version's -rc", async () => {
   assert.equal(finalManifest("version: 1.0.4\n"), "version: 1.0.4\n");
 });
 
+test("GitHub Releases take their notes from the README and skip versions that have one", async () => {
+  const { missingReleases, releaseNotes, releaseTag } = await release();
+  const readme = [
+    "# Plugins",
+    "",
+    "## Release notes",
+    "",
+    "- **DirtyMultiscreen 1.0.25:** the grid button opens edit mode, see",
+    "  [For plugin authors](#for-plugin-authors) and [the plugin](plugins/DirtyMultiscreen/).",
+    "",
+    "- **DirtyTasks 1.0.11 and DirtyCaptions 1.0.9:** encoding runs no longer",
+    "  block organization.",
+    "  - A nested point stays a nested point.",
+    "",
+    "- **DirtyMultiscreen 1.0.2:** an older release.",
+    "",
+    "- **DirtyMultiscreen 1.0.250:** not this one.",
+    "",
+    "## License",
+    "",
+    "- **DirtyMultiscreen 1.0.25:** outside the notes.",
+  ].join("\n");
+  const tag = releaseTag("multiscreen", "1.0.25");
+  assert.equal(tag, "multiscreen-v1.0.25");
+  assert.equal(
+    releaseNotes(readme, "DirtyMultiscreen", "1.0.25", "owner/repo", tag),
+    "- **DirtyMultiscreen 1.0.25:** the grid button opens edit mode, see " +
+      "[For plugin authors](https://github.com/owner/repo/blob/multiscreen-v1.0.25/README.md#for-plugin-authors) and " +
+      "[the plugin](https://github.com/owner/repo/blob/multiscreen-v1.0.25/plugins/DirtyMultiscreen/).",
+  );
+  // A note shared by two plugins belongs to both, and nested items keep their own lines.
+  const shared =
+    "- **DirtyTasks 1.0.11 and DirtyCaptions 1.0.9:** encoding runs no longer block organization.\n" +
+    "  - A nested point stays a nested point.";
+  assert.equal(releaseNotes(readme, "DirtyCaptions", "1.0.9", "owner/repo", "t"), shared);
+  assert.equal(releaseNotes(readme, "DirtyTasks", "1.0.11", "owner/repo", "t"), shared);
+  assert.equal(releaseNotes(readme, "DirtyStats", "1.0.14", "owner/repo", "t"), "");
+
+  const plugins = [
+    { id: "multiscreen", name: "DirtyMultiscreen", version: "1.0.25" },
+    { id: "dirtyStats", name: "DirtyStats", version: "1.0.14" },
+  ];
+  assert.deepEqual(
+    missingReleases(plugins, new Set(["dirtyStats-v1.0.14", "multiscreen-v1.0.24"])).map(plugin => plugin.tag),
+    ["multiscreen-v1.0.25"],
+  );
+  assert.deepEqual(missingReleases(plugins, new Set(["dirtyStats-v1.0.14", "multiscreen-v1.0.25"])), []);
+});
+
 function serve(files) {
   const requests = [];
   const server = http.createServer((request, response) => {
