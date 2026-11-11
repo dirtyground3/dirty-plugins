@@ -43,7 +43,10 @@ export function finalManifest(text) {
 /** A plugin version's Git tag, for example `multiscreen-v1.0.25`. */
 export const releaseTag = (id, version) => `${id}-v${version}`;
 
-/** A README list item with its wrapped lines joined; nested items stay on lines of their own. */
+/** A plugin's changelog, for example `docs/changelog/DirtyMultiscreen.md`. */
+export const changelogFile = directory => `docs/changelog/${directory}.md`;
+
+/** A changelog list item with its wrapped lines joined; nested items stay on lines of their own. */
 function unwrap(entry) {
   const lines = [];
   for (const line of entry.split("\n")) {
@@ -57,24 +60,20 @@ function unwrap(entry) {
 }
 
 /**
- * The README release notes that name `name version`, one list item each. Links point into the repository
- * at `tag`, because a GitHub Release does not resolve the README's relative links.
+ * The entries of the changelog at repository path `file` that name `name version`, one list item each.
+ * Links point into the repository at `tag`, because a GitHub Release does not resolve relative links.
  */
-export function releaseNotes(readme, name, version, repository, tag) {
-  const section = /^## Release notes\n([\s\S]*?)(?=^## |$(?![\s\S]))/m.exec(readme)?.[1] ?? "";
+export function releaseNotes(changelog, file, name, version, repository, tag) {
   const escaped = (name + " " + version).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const names = new RegExp(`\\b${escaped}(?![\\d.]*\\d)`);
-  const entries = section
+  const entries = changelog
     .split(/\n(?=- )/)
     .map(unwrap)
     .filter(entry => entry.startsWith("- **") && names.test(/^- \*\*(.*?)\*\*/.exec(entry)?.[1] ?? ""));
   const base = `https://github.com/${repository}/blob/${tag}/`;
+  const target = link => (link.startsWith("#") ? file + link : path.posix.join(path.posix.dirname(file), link));
   return entries
-    .map(entry =>
-      entry.replace(/\]\((?!https?:)([^)]*)\)/g, (_, target) =>
-        target.startsWith("#") ? `](${base}README.md${target})` : `](${base}${target})`,
-      ),
-    )
+    .map(entry => entry.replace(/\]\((?!https?:)([^)]*)\)/g, (_, link) => `](${base}${target(link)})`))
     .join("\n\n");
 }
 
@@ -100,7 +99,11 @@ export function missingReleases(plugins, existingTags) {
 
 function manifests() {
   const registry = JSON.parse(fs.readFileSync(path.join(root, "scripts", "plugin-registry.json"), "utf8"));
-  return registry.map(plugin => ({ id: plugin.id, file: `plugins/${plugin.directory}/${plugin.id}.yml` }));
+  return registry.map(plugin => ({
+    id: plugin.id,
+    directory: plugin.directory,
+    file: `plugins/${plugin.directory}/${plugin.id}.yml`,
+  }));
 }
 
 function git(...args) {
@@ -158,10 +161,9 @@ function github() {
   const repository = process.env.GITHUB_REPOSITORY || "dirtyground3/dirty-plugins";
   const [owner, name] = repository.split("/");
   const commit = git("rev-parse", "HEAD").stdout.trim();
-  const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
-  const plugins = manifests().map(({ id, file }) => {
+  const plugins = manifests().map(({ id, directory, file }) => {
     const text = fs.readFileSync(path.join(root, file), "utf8");
-    return { id, name: /^name:[ \t]*(.*?)[ \t]*$/m.exec(text)?.[1] ?? id, version: versionOf(text) };
+    return { id, directory, name: /^name:[ \t]*(.*?)[ \t]*$/m.exec(text)?.[1] ?? id, version: versionOf(text) };
   });
   const problems = versionProblems("main", Object.fromEntries(plugins.map(plugin => [plugin.id, plugin.version])));
   if (problems.length) throw new Error("GitHub Releases are made from released versions only:\n" + problems.join("\n"));
@@ -172,7 +174,9 @@ function github() {
   );
   const source = `https://${owner}.github.io/${name}/main/index.yml`;
   for (const plugin of missingReleases(plugins, existing)) {
-    const notes = releaseNotes(readme, plugin.name, plugin.version, repository, plugin.tag);
+    const file = changelogFile(plugin.directory);
+    const changelog = fs.existsSync(path.join(root, file)) ? fs.readFileSync(path.join(root, file), "utf8") : "";
+    const notes = releaseNotes(changelog, file, plugin.name, plugin.version, repository, plugin.tag);
     const previous = previousTag(plugin.id, plugin.version, existing);
     const body =
       (notes || `No release notes were written for ${plugin.name} ${plugin.version}.`) +

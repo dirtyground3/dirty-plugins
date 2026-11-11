@@ -33,15 +33,16 @@ test("finalizing removes only the version's -rc", async () => {
   assert.equal(finalManifest("version: 1.0.4\n"), "version: 1.0.4\n");
 });
 
-test("GitHub Releases take their notes from the README and skip versions that have one", async () => {
-  const { missingReleases, releaseNotes, releaseTag } = await release();
-  const readme = [
-    "# Plugins",
-    "",
-    "## Release notes",
+test("GitHub Releases take their notes from the plugin's changelog and skip versions that have one", async () => {
+  const { changelogFile, missingReleases, releaseNotes, releaseTag } = await release();
+  const file = changelogFile("DirtyMultiscreen");
+  assert.equal(file, "docs/changelog/DirtyMultiscreen.md");
+  const changelog = [
+    "# DirtyMultiscreen release notes",
     "",
     "- **DirtyMultiscreen 1.0.25:** the grid button opens edit mode, see",
-    "  [For plugin authors](#for-plugin-authors) and [the plugin](plugins/DirtyMultiscreen/).",
+    "  [For plugin authors](../../README.md#for-plugin-authors), [the plugin](../../plugins/DirtyMultiscreen/)",
+    "  and [an older note](#dirtymultiscreen-102).",
     "",
     "- **DirtyTasks 1.0.11 and DirtyCaptions 1.0.9:** encoding runs no longer",
     "  block organization.",
@@ -50,26 +51,23 @@ test("GitHub Releases take their notes from the README and skip versions that ha
     "- **DirtyMultiscreen 1.0.2:** an older release.",
     "",
     "- **DirtyMultiscreen 1.0.250:** not this one.",
-    "",
-    "## License",
-    "",
-    "- **DirtyMultiscreen 1.0.25:** outside the notes.",
   ].join("\n");
   const tag = releaseTag("multiscreen", "1.0.25");
   assert.equal(tag, "multiscreen-v1.0.25");
+  const base = "https://github.com/owner/repo/blob/multiscreen-v1.0.25/";
   assert.equal(
-    releaseNotes(readme, "DirtyMultiscreen", "1.0.25", "owner/repo", tag),
+    releaseNotes(changelog, file, "DirtyMultiscreen", "1.0.25", "owner/repo", tag),
     "- **DirtyMultiscreen 1.0.25:** the grid button opens edit mode, see " +
-      "[For plugin authors](https://github.com/owner/repo/blob/multiscreen-v1.0.25/README.md#for-plugin-authors) and " +
-      "[the plugin](https://github.com/owner/repo/blob/multiscreen-v1.0.25/plugins/DirtyMultiscreen/).",
+      `[For plugin authors](${base}README.md#for-plugin-authors), [the plugin](${base}plugins/DirtyMultiscreen/) ` +
+      `and [an older note](${base}docs/changelog/DirtyMultiscreen.md#dirtymultiscreen-102).`,
   );
   // A note shared by two plugins belongs to both, and nested items keep their own lines.
   const shared =
     "- **DirtyTasks 1.0.11 and DirtyCaptions 1.0.9:** encoding runs no longer block organization.\n" +
     "  - A nested point stays a nested point.";
-  assert.equal(releaseNotes(readme, "DirtyCaptions", "1.0.9", "owner/repo", "t"), shared);
-  assert.equal(releaseNotes(readme, "DirtyTasks", "1.0.11", "owner/repo", "t"), shared);
-  assert.equal(releaseNotes(readme, "DirtyStats", "1.0.14", "owner/repo", "t"), "");
+  assert.equal(releaseNotes(changelog, file, "DirtyCaptions", "1.0.9", "owner/repo", "t"), shared);
+  assert.equal(releaseNotes(changelog, file, "DirtyTasks", "1.0.11", "owner/repo", "t"), shared);
+  assert.equal(releaseNotes(changelog, file, "DirtyStats", "1.0.14", "owner/repo", "t"), "");
 
   const plugins = [
     { id: "multiscreen", name: "DirtyMultiscreen", version: "1.0.25" },
@@ -84,7 +82,8 @@ test("GitHub Releases take their notes from the README and skip versions that ha
   // A wrapped nested item joins its own lines, not its parent's.
   assert.equal(
     releaseNotes(
-      "## Release notes\n\n- **DirtyRank 1.2.0:** two things.\n  - **New:** one\n    point.\n  - **Fixed:** another.\n",
+      "# DirtyRank release notes\n\n- **DirtyRank 1.2.0:** two things.\n  - **New:** one\n    point.\n  - **Fixed:** another.\n",
+      changelogFile("DirtyRank"),
       "DirtyRank",
       "1.2.0",
       "owner/repo",
@@ -92,6 +91,19 @@ test("GitHub Releases take their notes from the README and skip versions that ha
     ),
     "- **DirtyRank 1.2.0:** two things.\n  - **New:** one point.\n  - **Fixed:** another.",
   );
+});
+
+test("every plugin's changelog has notes for its current version", async () => {
+  const { changelogFile, releaseNotes } = await release();
+  const registry = JSON.parse(fs.readFileSync(path.join(root, "scripts", "plugin-registry.json"), "utf8"));
+  for (const plugin of registry) {
+    const manifest = fs.readFileSync(path.join(root, "plugins", plugin.directory, plugin.id + ".yml"), "utf8");
+    const name = /^name:[ \t]*(.*?)[ \t]*$/m.exec(manifest)[1];
+    const version = /^version:[ \t]*(\d+\.\d+\.\d+)/m.exec(manifest)[1];
+    const file = changelogFile(plugin.directory);
+    const changelog = fs.readFileSync(path.join(root, file), "utf8");
+    assert.notEqual(releaseNotes(changelog, file, name, version, "owner/repo", "t"), "", `${file} lacks ${version}`);
+  }
 });
 
 test("the full changelog compares with the plugin's newest earlier Release", async () => {

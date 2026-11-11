@@ -529,6 +529,7 @@ schemas/                 # authored settings metadata shared by manifests, TS an
 build_site.sh            # packages staged plugins for GitHub Pages
 .github/workflows/       # deploy.yml publishes main and prerelease; release.yml releases prerelease
 docs/images/             # censored screenshots used by the documentation
+docs/changelog/          # release notes, one <plugin directory>.md per plugin
 ```
 
 Open work is tracked in [TODO.md](TODO.md); contributor conventions are in
@@ -638,8 +639,9 @@ directly:
 1. **Develop** on a branch started from `main`, or from `prerelease` to continue
    an unreleased candidate.
 2. **Version** each plugin whose runtime files change with its next version and
-   `-rc`: `1.0.23` becomes `1.0.24-rc`. Write the README version table and
-   release notes with the final version, `1.0.24`.
+   `-rc`: `1.0.23` becomes `1.0.24-rc`. Update the README version table and
+   add a release note at the top of the plugin's changelog in
+   `docs/changelog/`, both with the final version, `1.0.24`.
 3. **Try it locally** if you like, by installing the staged build as described
    above.
 4. **Publish the candidate:**
@@ -663,9 +665,13 @@ directly:
 Each released plugin version also gets a
 [GitHub Release](https://github.com/dirtyground3/dirty-plugins/releases),
 tagged `<plugin id>-v<version>` (for example `multiscreen-v1.0.25`) on the
-release commit. Its text is the README release note that names that version,
-one `- **Plugin X.Y.Z:**` item with nested items for the details, followed by
-a **Full changelog** link to the plugin's previous Release.
+release commit. Its text is the entry of the plugin's changelog
+(`docs/changelog/<plugin directory>.md`) that names that version, one
+`- **Plugin X.Y.Z:**` item with nested items for the details, followed by a
+**Full changelog** link to the plugin's previous Release. A note shared by
+several plugins goes in each of their changelogs. The changelogs sit outside
+the plugin directories, so correcting a note never offers a Stash update, and
+the tests require a note for every plugin's current version.
 `node scripts/release.mjs github`, run on `main`, creates the Releases that
 are missing; the workflow runs it after every release.
 
@@ -711,433 +717,19 @@ prerelease/
 
 ## Release notes
 
-- **DirtyTasks 1.0.12:** time schedules and library backups.
-  - **Schedules:** Move, Rename, Update tags, each encoding rule and the backup
-    can **Run on a schedule** at a time on chosen weekdays, in the Stash
-    server's time. An open Stash tab runs them at that time through Stash's
-    task queue, like Scan and Generate automation.
-  - **Missed runs:** a schedule missed while no Stash tab was open shows
-    **Missed scheduled tasks** on the next page load. Run the selected ones or
-    skip them until their next time; each time runs or is skipped once,
-    whichever tab answers.
-  - **Backup:** **Back up library data** writes one zip with the Stash
-    database, copied safely while Stash runs, and, by choice, blobs,
-    `config.yml` with custom CSS, JavaScript and locales, the scrapers folder
-    and the DirtyPlugins database. It is also under **Settings → Tasks**.
-  - **Backup settings:** a folder chosen with **Browse…** or Stash's backup
-    folder, **Keep newest backups**, the included parts, **Back up now**, and
-    the last backup's date and size. Backups run manually, after Scan or
-    Generate, or on a schedule.
+Each plugin keeps its release notes, newest first, in its own changelog:
 
-- **DirtyPlugins 1.0.19:** the server folder picker is shared by the suite as
-  `DirtyPlugins.ui.pickFolder`. DirtyFileExtractor's destination and DirtyTasks'
-  backup folder use it.
+- [DirtyStats](docs/changelog/DirtyStats.md)
+- [DirtyRank](docs/changelog/DirtyRank.md)
+- [DirtyMultiscreen](docs/changelog/DirtyMultiscreen.md)
+- [DirtyFileExtractor](docs/changelog/DirtyFileExtractor.md)
+- [DirtyTasks](docs/changelog/DirtyTasks.md), which also holds the notes of
+  DirtyTidy and DirtyCompactor, the plugins it replaced
+- [DirtyCaptions](docs/changelog/DirtyCaptions.md)
+- [DirtyPlugins](docs/changelog/DirtyPlugins.md)
 
-- **DirtyFileExtractor 1.0.6:** **Browse…** beside **Destination folder** opens
-  the shared DirtyPlugins folder picker and works as before.
-
-- **DirtyMultiscreen 1.0.25:** edit mode, saved grids and autosaves.
-  - **Edit mode:** the grid button opens it. Each screen can be flipped,
-    rotated, looped or filled, and screens swap places by click or drag
-    without stopping playback.
-  - **Grid picker:** squares under the main buttons choose a grid of up to
-    6 x 6, and every cell plays.
-  - **Fit videos:** shapes each screen to its video and packs the screens into
-    the window. It's on by default and is in the settings as **Fit screens to
-    videos**.
-  - **Saved grids:** keeps named grids with every screen's scene, position,
-    sound and picture in the shared database, so they work from any browser.
-  - **Autosaves:** your last grids are saved automatically as Autosave 1, 2 and
-    so on, newest first. **Autosaves to keep** sets how many (5 by default);
-    naming one keeps it for good.
-  - **Changed:** rows, columns and **Total screens** are no longer on the
-    settings page; edit mode chooses the grid instead.
-  - **Fixed:** themes no longer draw a border around each screen.
-
-- **DirtyPlugins 1.0.18:** the **General** tab offers optional grouping in Nav
-  Hub's **Plugins** menu when Nav Hub is active.
-
-- **DirtyTasks 1.0.11 and DirtyCaptions 1.0.9:** an encoding run that no Stash
-  task is running any more, for example after Stash restarted, no longer blocks
-  file organization. Organization pauses it and goes ahead, **Pause** and
-  **Cancel** act on it at once, and the Stash log says when organization has to
-  wait. Bulk edits of selected scenes no longer start one caption-index job per
-  scene.
-
-- **DirtyMultiscreen 1.0.24 and DirtyPlugins 1.0.17:** the header button plays
-  the list another plugin's page announces through a `stash-scenes:context`
-  event, such as Cherry Pick's For you, in that plugin's own order when it asks
-  for one (see [For plugin authors](#for-plugin-authors)). Search and the
-  performer buttons stay inside the list. The new Advanced settings choose
-  whose lists play and how many items one list may hold. The button also
-  launches from tag lists, tag selections and tag pages. **Total screens** is
-  empty by default and fills every grid cell. When every other scene is already
-  on a screen, Next moves on and repeats one. Every settings tab except
-  DirtyRank's and DirtyTasks' has a **Reset to defaults** button.
-
-- **DirtyRank 1.1.1 and DirtyStats 1.0.14:** setting descriptions no longer end
-  with "Enabled by default."
-
-- **DirtyRank 1.1.0:** keeps an ordered journal of battle outcomes and up to
-  100 recent undo snapshots per category and gender box. Existing databases
-  upgrade automatically with ratings and outcomes preserved.
-
-- **DirtyMultiscreen 1.0.23 and DirtyPlugins 1.0.16:** a performer button loads
-  that performer's scenes in the session's sort and moves to the next one, which
-  is much faster on large libraries, and "No other scenes" clears after a
-  second. Each button is a dark pill with the portrait and a Next icon beside it.
-  The title, search and performer buttons show and hide with the player's
-  control bar. **Show performer next-scene buttons** in the Navigation settings
-  turns the portraits off. Documentation capture blurs video frames instead of
-  covering whole screens, so the player controls stay visible.
-
-- **DirtyMultiscreen 1.0.22:** each performer has a portrait button with a Next
-  icon beside the screen's title and search. Click a portrait to move to another
-  scene featuring that performer in the screen's session queue, including across
-  pages and wrapping at the end. Tooltips explain the action; missing photos use
-  initials. Other screens keep playing, and no-match results preserve playback.
-
-- **DirtyCaptions 1.0.8:** edits to the **Production date** field added in Stash
-  0.32 count as metadata saves and no longer queue caption-index work.
-
-- **DirtyPlugins 1.0.15, DirtyStats 1.0.13, DirtyRank 1.0.10 and DirtyMultiscreen
-  1.0.21:** the new **StockStash** suite theme makes the suite look like Stash
-  itself, with its slate surfaces, flat blue and red buttons, sunken fields and
-  underlined tabs. Every suite theme now has its own navigation icons: De Stijl
-  Dark keeps the previous ones and De Stijl uses light versions of them. A Stash
-  theme that sizes navbar icons itself keeps that size. In DirtyStats, **Age at
-  scene** now counts scenes instead of performers and shows native scene cards.
-
-- **DirtyTasks 1.0.10:** Resize/Reencode preserves continuous MP4/M4V timecode
-  tracks and copies MOV timecode tracks. Outputs must retain their timecode;
-  other unsupported data tracks remain blocked with their format identified.
-
-- **DirtyTasks 1.0.9:** job file-action buttons are enabled only while eligible
-  files remain. Availability follows current scene files and primary choices;
-  missing replacements, removed originals and shared files disable the affected
-  action. Full content checks still run before deletion.
-
-- **DirtyTasks 1.0.8:** validation now reports decode progress. Full content
-  checks show byte-based progress, and indexing/attachment show separate
-  activity labels. Validation checks and encoding settings are unchanged.
-
-- **DirtyTasks 1.0.7:** **View scenes** beside each encoding rule's filter
-  selector opens its matching scenes in a new tab with the selected filter.
-
-- **DirtyTasks 1.0.6:** finished Resize/Reencode job details have **Make all new
-  files primary** and **Delete all old files…** actions for the whole job.
-  Already-primary new files are skipped. Confirmed deletion verifies each
-  replacement and original, retains shared or changed files, and uses Stash's
-  trash setting. Actions run in the task queue with progress counts and recovery
-  for interrupted work.
-
-- **DirtyStats 1.0.12, DirtyRank 1.0.9 and DirtyPlugins 1.0.14:** the new **Scenes
-  per studio** statistic is a multi-level pie chart with up to four levels of
-  studios, as a page and a dashboard widget. Click a segment to zoom into a studio
-  and show its scenes. **Tag DNA** has a **View** choice beside the treemap: a **Bar
-  chart** of average rating colored by scene count, and a **Cluster plot** that
-  groups tags appearing on the same scenes. The entries of the DirtyStats page menu
-  and the DirtyRank leaderboard menu are real links, so they can be opened in a new
-  tab or window.
-
-- **DirtyStats 1.0.11:** the dashboard has an **Options** button beside **Edit
-  dashboard** that opens the DirtyStats settings. The new **Replace default
-  stats page** setting, off by default, sends the Stash
-  statistics button and `/stats` to the dashboard. The new **Default stats**
-  widget shows the figures of that page, so the dashboard can fully replace it.
-  **Hide widget titles**, also off by default, removes the title above every
-  dashboard widget.
-
-- **DirtyPlugins 1.0.13:** the package list says that DirtyPlugins is the required
-  runtime and adds only a settings link on its own, and it shows every plugin's
-  full description instead of cutting longer ones off after the first line.
-
-- **DirtyTasks 1.0.5:** encoding runs have **Pause** and **Resume**. Pausing
-  stops the current encode at once and discards its unfinished output; resuming
-  starts that file again and continues with the rest. Results say how much
-  smaller each new file is than its original instead of reporting added disk space.
-
-- **DirtyMultiscreen 1.0.20 and DirtyPlugins 1.0.12:** the new **Avoid the same
-  scene on several screens** setting, enabled by default, starts every screen on
-  a different scene and skips scenes already playing on another screen when a
-  screen moves forward. Going back and search results never skip, so the same
-  scene can still play on several screens on purpose. It is greyed out while
-  **Split scenes between panes** is on, where screens never share a scene. A
-  shuffle button beside the close button reshuffles every screen: its menu
-  lists the scene orders with the current one checked, and choosing another
-  order also saves it as the **Scene order** setting.
-
-- **DirtyMultiscreen 1.0.19:** opening DirtyMultiscreen without a list (for
-  example from the header on the home page) now plays through the whole library
-  page by page instead of stopping after the first page, and scene search finds
-  any playable scene in the library instead of only the loaded page.
-
-- **DirtyMultiscreen 1.0.18 and DirtyPlugins 1.0.11:** the DirtyMultiscreen
-  settings tab is grouped into Grid, Scenes, Playback and Navigation, with
-  shorter descriptions. **Spread performers and studios** is greyed out while
-  **Keep the list order** is selected, where it has no effect. Saved settings
-  keep their values.
-
-- **DirtyMultiscreen 1.0.17 and DirtyPlugins 1.0.10:** **Scene order** replaces
-  the **Random scenes** switch with seven orders: Random, Fewer repeats, Favour
-  unwatched scenes, Favour high ratings and O counts, Favour recently added
-  scenes, Mix favourites with unwatched scenes, and Keep the list order. The new
-  **Spread performers and studios** setting, enabled by default, keeps scenes
-  that share a performer or studio apart in a pane and across split panes.
-  Random stays the default.
-
-- **DirtyRank 1.0.8:** two new overall scoring strategies under **Settings →
-  DirtyRank → Categories → Overall score**. **Rating strength** compares
-  category ratings with each category's average, so a large lead at the top
-  counts in full instead of a few percentile points. **Proven rating strength**
-  also subtracts each rating's deviation, so performers with few battles rank
-  lower until more votes confirm them. Simple weighted stays the default.
-  DirtyRank settings are now split into Categories, Battles, Leaderboards,
-  Gender boxes and Advanced tabs. Categories fit on one row each with their
-  share of the overall score, and Reset ratings moved into each category's
-  details. Advanced parameters have short explanations, and **Current** is now
-  **Undo changes**. The default provisional threshold is now 85 instead of 100,
-  also in the Default, Confident and Extremely confident presets, so a rating
-  needs more battles before it counts as settled. Saved settings keep their
-  value.
-
-- **DirtyStats 1.0.10, DirtyMultiscreen 1.0.16 and DirtyPlugins 1.0.9:** the
-  DirtyStats and DirtyMultiscreen tabs of the Dirty Plugins settings can hide
-  their buttons from the Stash header. A button disappears or returns as soon
-  as the setting changes, and its pages stay reachable by URL. A hidden
-  DirtyMultiscreen button no longer counts scenes in the background.
-
-- **DirtyStats 1.0.9:** ECharts and the world map moved into a separate file
-  that loads the first time a Stats page opens. The Stats script that every
-  Stash page loads fell from 1.15 MB to 160 KB. Charts and map look the same.
-
-- **DirtyPlugins 1.0.8:** a settings button with the suite's navigation colors
-  opens the Dirty Plugins settings from the Stash header. It always follows the
-  other Dirty plugin buttons and can be hidden in **General**.
-
-- **DirtyPlugins 1.0.7:** autosaved settings no longer leave **Unsaved
-  changes** showing after a successful save.
-
-- **DirtyTasks 1.0.4:** the summary of imported Tidy and Compactor settings
-  can be closed, and stays closed.
-
-- **DirtyTasks 1.0.3:** show organization recovery as a warning only when an
-  abandoned reservation is blocking file work. Active and stopping jobs keep
-  the warning hidden; recovery clears it after rechecking the current task.
-
-- **DirtyTasks 1.0.2:** independent Manual, Scan, or Generate triggers for Move,
-  Rename, Tags, and each encoding rule. The previous shared choice is copied to
-  existing actions while templates, approvals and rule enable states are kept.
-  Scan and Generate retain separate deferred work; encoding rule priority and
-  duplicate prevention remain unchanged.
-
-- **DirtyTasks 1.0.1:** one shared running strategy controls organization, tag
-  updates and every enabled encoding rule: Manual only, after Scan or after
-  Generate. Separate automation switches and per-rule modes are removed.
-  Existing organization approvals and disabled rules are preserved.
-
-- **DirtyTasks 1.0.0, DirtyPlugins 1.0.6:** DirtyTidy and DirtyCompactor are now one
-  plugin with organization, encoding and tag updates. Resize/Reencode add a
-  validated alternate file to the existing scene and keep the original primary
-  file. Media deletion and output review are removed. Settings migrate once;
-  old Delete rules are retired, pending trial outputs are discarded, and a new
-  preview is required before enabling automation. Upgrade instructions are in
-  [DirtyTasks](plugins/DirtyTasks/).
-
-- **DirtyMultiscreen 1.0.15:** use consistent native source menus in every pane
-  with Refract, restoring each player's speed and projection controls while
-  retaining the theme's ordinary styling. The normal scene page is unaffected.
-
-- **DirtyMultiscreen 1.0.14:** keep the source/settings menu visible in right-hand
-  video panes, including themes that collapse the native menu width.
-
-- **DirtyMultiscreen 1.0.13:** disabled seek preview thumbnails inside the
-  smaller video panes, while retaining the seek bar and time display.
-
-- **DirtyMultiscreen 1.0.12:** native players have independent IDs, preventing
-  another screen's duration from appearing on the timebar or affecting streaming
-  playback and seeking.
-
-- **DirtyMultiscreen 1.0.11:** restored translucent backgrounds behind each
-  screen's scene title and search button, including hover and keyboard focus.
-
-- **DirtyMultiscreen 1.0.10:** choosing a search result moves that screen to the
-  scene's position in the session queue. Previous/Next follows its neighbors
-  across pages while the other screens keep their positions.
-
-- **DirtyMultiscreen 1.0.9:** title search matches the complete phrase, ignoring
-  case and treating punctuation literally, instead of matching individual words.
-
-- **DirtyMultiscreen 1.0.8:** scene search is limited to the current session's
-  selection, sampled queue or filters, including later filtered pages. Marker
-  results keep their original playback ranges.
-
-- **DirtyMultiscreen 1.0.7:** apply starting positions after the native source is
-  playable, avoiding pending seeks during transcoding fallback. Marker boundaries
-  use the native full-scene clock, including transcoding offsets.
-
-- **DirtyMultiscreen 1.0.6:** each screen has a scene search. Choose a scene from
-  the full library without interrupting other screens; Next/Previous returns to
-  that screen's existing queue.
-
-- **DirtyRank 1.0.7:** performer profiles show a button for each ranked category
-  beside **Start Gauntlet**, with the current position and a link to that
-  category's leaderboard in the matching gender box.
-
-- **DirtyRank 1.0.6:** opening the leaderboard **Filter** dialog places the cursor
-  in the performer search box.
-
-- **DirtyStats 1.0.8:** the navigation icon is now a bubble chart, so it no
-  longer looks like the DirtyMultiscreen grid.
-
-- **DirtyStats 1.0.7:** added **Performer vs scene rating** as a full view and
-  dashboard widget. Compare each performer's rating with the average of their
-  rated scenes, with a dotted equal-rating diagonal, native performer filters,
-  performer selection and PNG export.
-- **DirtyCaptions 1.0.7:** scene rating, rating-tag and other metadata saves no
-  longer queue caption-index work. Media changes, custom-field edits and hooks
-  without field information still update the index; bulk scene inputs are handled.
-
-- **DirtyTidy 1.0.6:** optional tag updates after Scan. Choose a configured stash-box
-  Tagger source and save to enable the task. It adds missing tags without removing
-  existing ones or changing other scene metadata, and saves only scenes gaining tags.
-  Duplicate tabs queue one task; unmatched or ambiguous scenes are skipped.
-  Tag-only source lookups run in batches of up to 20 without fetching images.
-  Successful checks are cached for 24 hours; **Refresh tags now** bypasses the cache.
-- **DirtyStats 1.0.6, DirtyRank and DirtyMultiscreen 1.0.5:** bounded library work.
-  - Constellations display at most 5,000 connections, prioritizing a strongest-first
-    spanning forest and then strongest remaining links. Counts include hidden links.
-  - Rank loads its complete reference population in 500-row pages, coalesces compatible
-    requests, and separates settings refreshes from library refreshes. Preferred playback
-    uses bounded queries and retains the earliest marker across best-rated scene ties.
-  - Multiscreen contextual queues continue in independent pages capped at 240 items.
-    Panes share pending requests; explicit selections stay complete; random playback
-    uses bounded page permutations. Failed loads retain the current video and can retry.
-- **DirtyPlugins 1.0.5:** backups use unique names and exclusive creation, preventing
-  same-second collisions and accidental replacement of an existing backup.
-- **DirtyTidy and DirtyCompactor 1.0.5:** planning work follows the active strategy.
-  - Tidy requests only needed template fields, reuses normalized paths within each
-    plan, and computes scene-level template values once while retaining file-level values.
-  - Quality samples budget encoder and VMAF threads per worker and use single-thread
-    decoding/filter pipelines. Up to three workers remain; smaller CPUs use fewer.
-    The measurement version changes so saved quality samples are recalculated.
-
-- **DirtyCompactor and DirtyFileExtractor 1.0.5:** subprocess reliability.
-  - Quality samples, packet scans, and marker encoders share Windows child
-    containment so forced parent termination stops them. Silent pipes cannot
-    block cancellation/deadlines; diagnostics remain bounded.
-  - Packet scans observe preview/run cancellation. Marker extraction stops and
-    reaps its child before removing partial output, and callback cancellation
-    can still abort before publication. Forced Stash termination can leave a
-    partial file and an empty reservation, without leaving its encoder running.
-
-- **DirtyStats and DirtyCaptions 1.0.6, DirtyRank and DirtyMultiscreen 1.0.5:** frontend responsiveness.
-  - Dashboard charts retain their instances and zoom/pan while options change.
-    Origin also retains zoom/pan on country, label and theme changes and registers its map once.
-    Unrelated edits reuse widget aggregates. Only added or changed datasets load;
-    removed requests are cancelled and their data is released. Growth widgets share
-    capacity discovery, and full-view forecast selections reuse daily aggregation.
-  - Rank reuses category entries and confidence estimates until their population,
-    settings, or rating pool changes. Score rebuilds evaluate each rating pair once,
-    preserving tied scores and the existing formula.
-    Accepted votes retain comparison sums and replace only changed performers'
-    contributions; larger updates and snapshots rebuild the affected scores.
-    Cold comparisons reuse one shifted weight per rating and yield between bounded
-    batches. Overall leaderboards and native sorting wait for complete scores;
-    changes cancel obsolete calculations, and ordering calculates each overall value once.
-  - Advancing a Multiscreen pane retains other panes' marker and audio subscriptions.
-    Embedded captions load silently in every native player, including Multiscreen panes.
-    Slow caption status polls remain visible without overlapping requests, and successful
-    polling clears recovered errors.
-
-- **DirtyCaptions 1.0.6, DirtyCompactor and DirtyFileExtractor 1.0.5:** backend efficiency.
-  - Captions reuses short database reads during indexing, reads pending revisions
-    per scene page, and limits queue batches in SQLite. Unchanged media still
-    requires no file access; cancellation, leases, and queue revisions stay fresh.
-  - Compactor polling reads no longer reserve the shared database's writer lock.
-    Ownership checks before encoding and replacement query the affected scene
-    instead of downloading the library. Native rule criteria and the attachment
-    set are checked again; files with another owner remain blocked.
-  - Extractor resolves scenes in batches of 25 and markers/images in batches
-    of 100 while preserving order, missing-item reporting, and collision planning.
-    FFmpeg configuration is
-    resolved once per run, including runs with multiple failed marker clips.
-
-- **DirtyPlugins, DirtyRank, and DirtyTidy 1.0.5:** workflow and state correctness.
-  - Tidy manual confirmation identifies an immutable preview. A later preview
-    with the same strategy cannot add unseen moves; each confirmed source and
-    destination is checked again before execution. Automation still approves
-    a strategy for future library changes. Generate a new preview after updating.
-  - Hub settings events refresh the affected plugin while preserving raw edits,
-    pending saves, and custom-panel workflows. Numeric autosave now enforces
-    authored bounds, integer requirements, and steps.
-  - Rank reads ratings/settings with their revision from one database snapshot,
-    rejects stale individual replies, and publishes each vote/undo response
-    once after updating both performers. Unaffected score caches are retained.
-
-- **DirtyCaptions 1.0.5:** playback uses the caption index.
-  - Opening a scene whose file the index found without subtitle streams no
-    longer probes the file. Stash's stored size, modification time and hashes
-    decide whether the saved result still applies.
-  - Playback no longer queues a caption-index job when the index already
-    holds the same result. Unknown files and results that differ are still
-    saved and queued.
-  - A request that gets no answer from Stash, as can happen when changing
-    scenes quickly, is no longer reported. It is repeated after 1, 2, 4, 8
-    and 16 seconds. Errors returned by Stash still show **Retry captions**.
-
-- **DirtyStats 1.0.5 and 1.0.4 for the other plugins:** internal simplification
-  with no changes to settings or stored data.
-  - The hub registers every plugin once per page. A plugin whose registration
-    fails is reported once in the browser console
-    (`[<pluginId>] registration failed`) and no longer stops the others.
-  - Browser debug timing of patches and routes is recorded only when debugging
-    was enabled before the page loaded (set `dirtyPluginsDebug` in localStorage
-    and reload). `dirtyPluginsDumpDebugLogs()` still works;
-    `DirtyPlugins.dumpDebugLogs()` is removed.
-  - Server logs: every backend reports failures in the same form
-    (`<Plugin> failed: mode=... after ...ms: ...`), including DirtyCompactor,
-    which previously reported them only to the browser. DirtyStats'
-    `started`/`finished` lines use the same wording as the other backends.
-  - The marker that tells DirtyTidy, DirtyCaptions and DirtyCompactor
-    automation to ignore scans started by DirtyCompactor moved to another table
-    of the shared database. Markers written before the update are not read, so
-    a Compactor-started scan that is still running during the update may be
-    treated as an ordinary scan once.
-  - Developer-facing: plugins no longer expose `destroy()` handles or the
-    `DirtyPlugins.values`/`settingsMetadata`/`unregister*` members.
-
-- **DirtyStats 1.0.4 and 1.0.3 for the other plugins:** internal
-  simplification with no behavior changes. The hub's internal modules import
-  each other instead of being wired through factory dependency objects, and
-  DirtyMultiscreen's components import their bound runtime. Converted
-  `var`/`function` code and template-era JSX are modernized, and repeated
-  logic is shared: leaderboard paging, the battle vote queue, matchmaking
-  scoring, Stats aggregations, shared settings storage, backend start-up and
-  the backends' settings parsing and result building.
-  Settings, stored data and the hub's public API are unchanged; the
-  DirtyPlugins backend's failure log line now matches the other backends.
-- **DirtyStats 1.0.3 and 1.0.2 for the other plugins:** dead code and
-  compatibility with pre-1.0 developer builds are removed. The hub no longer
-  bundles HTM (`react.html`) and exposes only the API members the plugins use;
-  older-hub fallbacks and the `?censorMedia=1` alias are gone (use
-  `?docsCapture=1`). Readers for data written by pre-1.0 versions were removed
-  after a read-only check showed current data no longer uses them: the shared
-  Stats rounding key and Stats-only theme, Tidy JSON-string settings, Rank
-  cohort-only settings and old category IDs, caption-index records without
-  Stash identities, and Compactor outcomes recorded before quick fingerprints.
-  DirtyRank's reset message drops its always-zero failure count.
-- **DirtyPlugins 1.0.2, DirtyRank 1.0.2, DirtyCompactor 1.0.2:** settings
-  labels, defaults, bounds and options, and the constants shared by browser and
-  backend, now come from one schema per plugin, so Stash's settings, the browser
-  code and the Python backends cannot drift apart. DirtyRank's backend lists
-  gender-box categories in a stable order. No visible behavior changes.
-- **1.0.1 for all plugins, DirtyStats 1.0.2:** minified release bundles without
-  inline source maps, and DirtyStats loads only the ECharts modules it uses.
-  Served plugin JavaScript fell from about 8.8 MB to 1.5 MB.
-- **1.0.0 for all plugins:** frontends rewritten in TypeScript/TSX, each
-  compiled to one bundle that uses Stash's React. Settings, stored data and
-  behavior are unchanged.
+The same notes appear on each plugin version's
+[GitHub Release](https://github.com/dirtyground3/dirty-plugins/releases).
 
 ## License
 

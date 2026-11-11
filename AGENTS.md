@@ -28,6 +28,7 @@ types/                   # the only global TypeScript declarations
 build_site.sh            # packages staged plugins for GitHub Pages
 .github/workflows/       # deploy.yml publishes main and prerelease; release.yml releases prerelease
 docs/images/             # censored screenshots used by the README
+docs/changelog/          # release notes, one <plugin directory>.md per plugin
 ```
 
 Each plugin directory contains: `<manifest>.yml`, the JS/CSS assets it names,
@@ -251,8 +252,10 @@ directly:
    unreleased candidate.
 2. Give each plugin whose runtime files change (bundle, manifest content,
    styles, backends) its next version with `-rc`, once per release: `1.0.23`
-   becomes `1.0.24-rc`. Write the README version table and release notes with
-   the final version, `1.0.24`. README-only and staging-only changes keep
+   becomes `1.0.24-rc`. Update the README version table and add the release
+   note at the top of `docs/changelog/<Directory>.md`, both with the final
+   version, `1.0.24`; a note shared by several plugins goes in each of their
+   changelogs. README-only, changelog-only and staging-only changes keep
    versions. Every plugin's first TS/TSX release was `1.0.0`.
 3. Optionally install the staged build locally (see Local install below).
 4. Run `node scripts/release.mjs check prerelease`, then
@@ -265,7 +268,7 @@ directly:
    fast-forwards `main` and `prerelease` to that commit, publishes both
    sources and creates a GitHub Release per released plugin version
    (`node scripts/release.mjs github`: tag `<id>-v<version>`, text from the
-   README release notes plus a Full changelog link to the previous tag, only
+   plugin's changelog entry plus a Full changelog link to the previous tag, only
    Releases that are missing). Write each release note as one
    `- **Plugin X.Y.Z:**` item with nested items for the details. A newer push to
    `prerelease` replaces a release that is still waiting.
