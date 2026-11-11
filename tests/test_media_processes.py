@@ -173,14 +173,18 @@ else: e.extract_marker_clip('synthetic', pathlib.Path('unused'), pathlib.Path(sy
                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                 handle = None
                 try:
+                    # The child creates its PID file before it has written the number, so wait for the number.
+                    def pid():
+                        return pid_file.read_text().strip() if pid_file.exists() else ""
+
                     deadline = time.monotonic() + 10
-                    while not (pid_file.exists() and ready.exists()) and parent.poll() is None and time.monotonic() < deadline:
+                    while not (pid() and ready.exists()) and parent.poll() is None and time.monotonic() < deadline:
                         time.sleep(0.02)
-                    if not (pid_file.exists() and ready.exists()):
+                    if not (pid() and ready.exists()):
                         parent.kill()
                         diagnostic = parent.communicate()[1].decode(errors="replace")
                         self.fail("Runner never reached contained state: " + diagnostic)
-                    handle = kernel.OpenProcess(0x00100001, False, int(pid_file.read_text()))
+                    handle = kernel.OpenProcess(0x00100001, False, int(pid()))
                     self.assertTrue(handle)
                     self.assertEqual(kernel.WaitForSingleObject(handle, 0), 258, "synthetic child is running")
                     parent.kill()

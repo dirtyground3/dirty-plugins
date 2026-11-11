@@ -78,6 +78,19 @@ export function releaseNotes(readme, name, version, repository, tag) {
     .join("\n\n");
 }
 
+/** The tag of the plugin's newest Release before `version`, or null when it has none. */
+export function previousTag(id, version, tags) {
+  const current = parseVersion(version)?.numbers;
+  let best = null;
+  for (const tag of tags) {
+    if (!current || !tag.startsWith(id + "-v")) continue;
+    const found = parseVersion(tag.slice(id.length + 2));
+    if (!found || found.rc || !newer(current, found.numbers)) continue;
+    if (!best || newer(found.numbers, best.numbers)) best = { tag, numbers: found.numbers };
+  }
+  return best?.tag ?? null;
+}
+
 /** The releases GitHub lacks: every plugin version whose tag has none. */
 export function missingReleases(plugins, existingTags) {
   return plugins
@@ -160,8 +173,10 @@ function github() {
   const source = `https://${owner}.github.io/${name}/main/index.yml`;
   for (const plugin of missingReleases(plugins, existing)) {
     const notes = releaseNotes(readme, plugin.name, plugin.version, repository, plugin.tag);
+    const previous = previousTag(plugin.id, plugin.version, existing);
     const body =
       (notes || `No release notes were written for ${plugin.name} ${plugin.version}.`) +
+      (previous ? `\n\n**Full changelog:** https://github.com/${repository}/compare/${previous}...${plugin.tag}` : "") +
       `\n\nInstall or update it in Stash from the package source \`${source}\`.\n`;
     gh(
       [

@@ -658,7 +658,9 @@ directly:
 Each released plugin version also gets a
 [GitHub Release](https://github.com/dirtyground3/dirty-plugins/releases),
 tagged `<plugin id>-v<version>` (for example `multiscreen-v1.0.25`) on the
-release commit. Its text is the README release note that names that version.
+release commit. Its text is the README release note that names that version,
+one `- **Plugin X.Y.Z:**` item with nested items for the details, followed by
+a **Full changelog** link to the plugin's previous Release.
 `node scripts/release.mjs github`, run on `main`, creates the Releases that
 are missing; the workflow runs it after every release.
 
@@ -704,16 +706,23 @@ prerelease/
 
 ## Release notes
 
-- **DirtyMultiscreen 1.0.25:** the grid button opens edit mode. Each screen
-  then flips, rotates, loops or fills its picture, and screens swap places by
-  click or drag while they keep playing. Squares under the main buttons choose
-  a grid of up to 6 x 6, so rows, columns and **Total screens** leave the
-  settings page. **Fit videos** shapes the screens to their videos and is on by
-  default (**Fit screens to videos** in the settings). **Saved grids** keeps
-  named grids with every screen's scene, position, sound and picture in the
-  shared database, and autosaves the last grids you played as Autosave 1, 2 and
-  so on (**Autosaves to keep**, 5 by default). Themes no longer draw a frame
-  around each screen.
+- **DirtyMultiscreen 1.0.25:** edit mode, saved grids and autosaves.
+  - **Edit mode:** the grid button opens it. Each screen can be flipped,
+    rotated, looped or filled, and screens swap places by click or drag
+    without stopping playback.
+  - **Grid picker:** squares under the main buttons choose a grid of up to
+    6 x 6, and every cell plays.
+  - **Fit videos:** shapes each screen to its video and packs the screens into
+    the window. It's on by default and is in the settings as **Fit screens to
+    videos**.
+  - **Saved grids:** keeps named grids with every screen's scene, position,
+    sound and picture in the shared database, so they work from any browser.
+  - **Autosaves:** your last grids are saved automatically as Autosave 1, 2 and
+    so on, newest first. **Autosaves to keep** sets how many (5 by default);
+    naming one keeps it for good.
+  - **Changed:** rows, columns and **Total screens** are no longer on the
+    settings page; edit mode chooses the grid instead.
+  - **Fixed:** themes no longer draw a border around each screen.
 
 - **DirtyPlugins 1.0.18:** the **General** tab offers optional grouping in Nav
   Hub's **Plugins** menu when Nav Hub is active.

@@ -80,6 +80,28 @@ test("GitHub Releases take their notes from the README and skip versions that ha
     ["multiscreen-v1.0.25"],
   );
   assert.deepEqual(missingReleases(plugins, new Set(["dirtyStats-v1.0.14", "multiscreen-v1.0.25"])), []);
+
+  // A wrapped nested item joins its own lines, not its parent's.
+  assert.equal(
+    releaseNotes(
+      "## Release notes\n\n- **DirtyRank 1.2.0:** two things.\n  - **New:** one\n    point.\n  - **Fixed:** another.\n",
+      "DirtyRank",
+      "1.2.0",
+      "owner/repo",
+      "t",
+    ),
+    "- **DirtyRank 1.2.0:** two things.\n  - **New:** one point.\n  - **Fixed:** another.",
+  );
+});
+
+test("the full changelog compares with the plugin's newest earlier Release", async () => {
+  const { previousTag } = await release();
+  const tags = ["multiscreen-v1.0.9", "multiscreen-v1.0.24", "multiscreen-v1.0.30", "dirtyRank-v1.0.24", "other"];
+  assert.equal(previousTag("multiscreen", "1.0.25", tags), "multiscreen-v1.0.24");
+  assert.equal(previousTag("multiscreen", "1.0.10", tags), "multiscreen-v1.0.9");
+  assert.equal(previousTag("multiscreen", "1.0.9", tags), null, "a first Release has nothing to compare with");
+  assert.equal(previousTag("dirtyRank", "1.1.0", tags), "dirtyRank-v1.0.24");
+  assert.equal(previousTag("dirtyStats", "1.0.14", tags), null);
 });
 
 function serve(files) {

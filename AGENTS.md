@@ -265,7 +265,9 @@ directly:
    fast-forwards `main` and `prerelease` to that commit, publishes both
    sources and creates a GitHub Release per released plugin version
    (`node scripts/release.mjs github`: tag `<id>-v<version>`, text from the
-   README release notes, only Releases that are missing). A newer push to
+   README release notes plus a Full changelog link to the previous tag, only
+   Releases that are missing). Write each release note as one
+   `- **Plugin X.Y.Z:**` item with nested items for the details. A newer push to
    `prerelease` replaces a release that is still waiting.
 6. After every push, check the runs with
    `gh run list --repo dirtyground3/dirty-plugins --limit 4`. A failed deploy
