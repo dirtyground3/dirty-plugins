@@ -1,6 +1,7 @@
 # DirtyTasks
 
-DirtyTasks combines file organization, encoding and optional scene tag updates.
+DirtyTasks combines file organization, encoding, optional scene tag updates and
+library backups.
 It depends on DirtyPlugins, Python 3.9+, and (for encoding) FFmpeg/FFprobe.
 Open **Dirty Plugins → DirtyTasks**.
 
@@ -8,17 +9,34 @@ Open **Dirty Plugins → DirtyTasks**.
 
 ## Action triggers
 
-Move into folders, Rename files, Update scene tags, and each encoding rule have
-an independent **Manual only**, **Run after Scan**, or **Run after Generate**
-selector. Triggers autosave. A Stash tab must remain open to observe successful
-job completion; queued work continues without the browser. Changing a trigger
-does not launch work. Manual Preview/Run and Refresh tags now remain available.
+Move into folders, Rename files, Update scene tags, each encoding rule and
+Back up library data have an independent **Manual only**, **Run after Scan**,
+**Run after Generate** or **Run on a schedule** selector. Triggers autosave. A
+Stash tab must remain open to observe successful job completion; queued work
+continues without the browser. Changing a trigger does not launch work. Manual
+Preview/Run, Refresh tags now and Back up now remain available.
+
+## Schedules
+
+**Run on a schedule** shows a time and weekday buttons; it starts every day at
+03:00. Times are the Stash server's local time. A schedule keeps its time and
+days while its action uses another trigger.
+
+An open Stash tab runs a scheduled action at its time, through the same queued
+tasks as Scan and Generate automation. If no tab was open then, the next page
+load shows **Missed scheduled tasks**: run the selected ones now or skip them
+until their next time. Closing the card asks again on the next page load. Each
+action offers only its latest missed time, and each time runs or is skipped
+once, whichever tab answers. A new or changed schedule starts from the moment
+it is saved, so its earlier times never count as missed. Disabled actions and
+rules are not scheduled. Documentation captures (`?docsCapture=1`) never show
+the card.
 
 Move and Rename run only their scheduled action, using the approved file
 strategy. For example, Scan can move files and Generate can rename them. Tag
 updates use their own trigger and do not need file-organization approval.
-Queued work rechecks its trigger before starting. Deferred Scan and Generate
-work are retained separately.
+Queued work rechecks its trigger before starting. Deferred Scan, Generate and
+scheduled work are retained separately; waiting scheduled slots add up to one run.
 
 On upgrade from the shared running strategy, its selection is copied to every
 existing action and encoding rule. Templates, approvals, rule order and enabled
@@ -102,6 +120,35 @@ a run with an encoded file still waiting to be attached keeps the files until
 its recovery. When organization has to wait, the Stash log says so, and it runs
 once the other task finishes.
 Internal refresh scans do not trigger another automation cycle.
+
+## Backup
+
+The **Backup** section's **Back up now**, its trigger, and **Settings → Tasks →
+Plugin Tasks → Back up library data** all write one
+`dirty-backup-YYYYMMDD_HHMMSS.zip`. It goes to the **Backup folder** chosen
+with **Browse…**, or, after **Use Stash's folder**, to Stash's backup folder
+(the database's folder unless **Backup directory path** is set). It holds:
+
+- the Stash database (`stash-go.sqlite`), copied through SQLite while Stash runs;
+- blobs (covers and images), when Stash stores them on the filesystem;
+- `config.yml` and any `custom.css`, `custom.js` and `custom-locales.json`;
+- the scrapers folder, without Python caches;
+- DirtyPlugins' `dirty_plugins.sqlite3` (all plugin settings, DirtyRank
+  ratings and battles, caption index and task journals);
+- `backup.json`, which lists where each part came from.
+
+Every part except the Stash database can be turned off. **Keep newest
+backups** deletes older `dirty-backup-…` zips in that folder after a successful
+backup; 0 keeps them all, and other files are never touched. Settings
+autosave; the section shows the last backup and a failed attempt after it.
+
+Generated files, the cache and installed plugins are left out: Generate and the
+package sources recreate them. `config.yml` contains Stash's API key, password
+hash and stash-box keys, so keep backups private. The task checks free space
+first, writes to a `.partial` file and removes it if anything fails.
+
+To restore, stop Stash, then put each part back where `backup.json` says. Delete
+any `-wal` and `-shm` files next to a database you replace, then start Stash.
 
 ## Upgrade from DirtyTidy / DirtyCompactor
 

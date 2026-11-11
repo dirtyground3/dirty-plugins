@@ -42,7 +42,7 @@ async function main() {
   await h.advance(500);
   assert.deepEqual(
     h.writes[1],
-    { move: "generate", rename: "manual", tags: "manual", encoding: {} },
+    { move: "generate", rename: "manual", tags: "manual", backup: "manual", encoding: {}, schedules: {} },
     "action triggers save in their own section",
   );
   assert.equal(h.dirty.at(-1), true, "saving triggers preserves an unsaved organization draft");
@@ -70,8 +70,62 @@ async function main() {
     move: "generate",
     rename: "scan",
     tags: "generate",
+    backup: "manual",
     encoding: { [rule.id]: "scan" },
+    schedules: {},
   });
+  // A schedule starts every day at 03:00; days and time then change in place.
+  changeTrigger("Back up library data", "schedule");
+  await h.flush();
+  assert.equal(h.nodes(node => node.props["aria-label"] === "Back up library data time")[0].props.value, "03:00");
+  h.nodes(node => node.props["aria-label"] === "Back up library data on Sun")[0].props.onClick();
+  await h.flush();
+  h.nodes(node => node.props["aria-label"] === "Back up library data time")[0].props.onChange({
+    target: { value: "04:30" },
+  });
+  changeTrigger(rule.name, "schedule");
+  await h.advance(500);
+  assert.equal(h.writes.at(-1).backup, "schedule");
+  assert.deepEqual(h.writes.at(-1).schedules, {
+    backup: { time: "04:30", days: [0, 1, 2, 3, 4, 5] },
+    ["encoding:" + rule.id]: { time: "03:00", days: [0, 1, 2, 3, 4, 5, 6] },
+  });
+  const lastDay = () => h.nodes(node => node.props["aria-label"] === "Back up library data on " + "Mon")[0];
+  for (const day of ["Tue", "Wed", "Thu", "Fri", "Sat"]) {
+    h.nodes(node => node.props["aria-label"] === "Back up library data on " + day)[0].props.onClick();
+    await h.flush();
+  }
+  assert.equal(lastDay().props.disabled, true, "a schedule keeps at least one day");
+  changeTrigger("Back up library data", "manual");
+  await h.advance(500);
+  assert.deepEqual(h.writes.at(-1).schedules.backup, { time: "04:30", days: [0] }, "a schedule outlives its trigger");
+  assert.equal(h.nodes(node => node.props["aria-label"] === "Back up library data time").length, 0);
+  // Backup options autosave in their own section; the folder comes from the hub's picker.
+  const folderInput = () =>
+    h.nodes(node => node.type === "input" && node.props.placeholder === "Stash's backup folder")[0];
+  assert.equal(folderInput().props.readOnly, true);
+  assert.equal(h.button("Use Stash's folder"), undefined, "Stash's folder is already in use");
+  h.button("Browse…").props.onClick({ currentTarget: "browse-button" });
+  assert.equal(h.folderPickers.length, 1);
+  assert.equal(h.folderPickers[0].title, "Choose backup folder");
+  assert.equal(h.folderPickers[0].initialPath(), "");
+  assert.equal(h.folderPickers[0].opener, "browse-button");
+  h.folderPickers[0].onSelect("D:/Backups");
+  h.nodes(node => node.type === "input" && node.props.type === "number")[0].props.onChange({ target: { value: "7" } });
+  h.nodes(node => node.type === "SettingsToggle" && node.props.label === "Scrapers folder")[0].props.onChange(false);
+  await h.advance(500);
+  assert.deepEqual(h.backupWrites.at(-1), {
+    folder: "D:/Backups",
+    keep: 7,
+    blobs: true,
+    configuration: true,
+    scrapers: false,
+    dirtyPlugins: true,
+  });
+  assert.equal(folderInput().props.value, "D:/Backups");
+  await h.click("Use Stash's folder");
+  await h.advance(500);
+  assert.equal(h.backupWrites.at(-1).folder, "", "clearing the folder returns to Stash's backup folder");
   const selectors = h.nodes(node => node.type === "select" && node.props["aria-label"] === "New rule trigger");
   assert.equal(selectors.length, 2);
   assert.equal(selectors[1].props.value, "manual", "new rules start with a Manual trigger");
@@ -200,6 +254,50 @@ async function main() {
   await dismissed.flush();
   assert(!text(dismissed.tree).includes("Existing task settings imported"), "a dismissed summary stays hidden");
   dismissed.unmount();
+  // Slots missed while Stash was closed wait for an answer; unselected ones are skipped.
+  const answers = [];
+  let missed = [
+    { key: "backup", label: "Back up library data", slot: 1767225600 },
+    { key: "move", label: "Move into folders", slot: 1767225600 },
+  ];
+  const prompted = createCompactorHarness({
+    combined: true,
+    operation: async args => {
+      if (args.mode === "checkSchedules") return { queued: [], missed, next: null };
+      if (args.mode === "resolveMissedSchedules") {
+        answers.push(args.choices);
+        missed = [];
+        return { queued: ["backup"], skipped: ["move"] };
+      }
+    },
+  });
+  prompted.load();
+  await prompted.flush();
+  assert(text(prompted.tree).includes("Missed scheduled tasks"));
+  assert(prompted.button("Run now"));
+  prompted
+    .nodes(node => node.type === "SettingsToggle" && String(node.props.label).startsWith("Move into folders"))[0]
+    .props.onChange(false);
+  await prompted.flush();
+  await prompted.click("Run selected");
+  assert.deepEqual(JSON.parse(JSON.stringify(answers)), [
+    [
+      { key: "backup", slot: 1767225600, run: true },
+      { key: "move", slot: 1767225600, run: false },
+    ],
+  ]);
+  assert(!text(prompted.tree).includes("Missed scheduled tasks"));
+  prompted.unmount();
+  const captured = createCompactorHarness({
+    combined: true,
+    capture: true,
+    operation: async args => (args.mode === "checkSchedules" ? { queued: [], missed, next: null } : undefined),
+  });
+  missed = [{ key: "backup", label: "Back up library data", slot: 1767225600 }];
+  captured.load();
+  await captured.flush();
+  assert(!text(captured.tree).includes("Missed scheduled tasks"), "documentation captures hide the prompt");
+  captured.unmount();
   h.unmount();
   await h.flush();
   assert.equal(h.timers.size, 0);

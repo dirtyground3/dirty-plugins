@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { PanelProps } from "../../../DirtyPlugins/src/types";
-export type AutomationMode = "manual" | "scan" | "generate";
+export type AutomationMode = "manual" | "scan" | "generate" | "schedule";
 export interface Settings extends Record<string, unknown> {
   moveEnabled: boolean;
   moveRequireStashId: boolean;

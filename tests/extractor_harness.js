@@ -1,6 +1,7 @@
 "use strict";
 const vm = require("node:vm");
 const { sourceFor } = require("./load_plugin_scripts");
+const { runSource } = require("./plugin_paths");
 const { createHooks, element, events } = require("./ui_harness");
 
 class Node {
@@ -177,6 +178,15 @@ function createExtractorHarness(options = {}) {
     },
   });
   require("./shared_runtime").installRegistration(window, { error: (...args) => errors.push(args) });
+  // The hub's real folder picker, over this harness's DOM, GraphQL and dialog fakes.
+  hub.ui.pickFolder = runSource("DirtyPlugins", "src/folderPicker.ts", context, {
+    external: ["./capture", "./dialogs", "./transport"],
+    modules: {
+      "./capture": { captureEnabled: () => hub.captureEnabled() },
+      "./dialogs": { manageDialog: options => hub.ui.manageDialog(options) },
+      "./transport": { loggedGraphql: (query, variables) => hub.graphql(query, variables) },
+    },
+  }).pickFolder;
   const source = sourceFor("DirtyFileExtractor");
   const load = () => vm.runInContext(source, context);
   const flush = async () => {

@@ -41,7 +41,7 @@ def finish(fixture, job_id):
 
 def verify_frontend(fixture):
     detail = verify_served_bundle(fixture, "DirtyFileExtractor", "extractScenes", "extractScenes.js",
-                                  {"ExtractionAction": "ExtractionAction"}, required=("/picker.ts",))
+                                  {"ExtractionAction": "ExtractionAction"}, required=("/domain/selection.ts",))
     print("PASS: " + detail, flush=True)
 
 

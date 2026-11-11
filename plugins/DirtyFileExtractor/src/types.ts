@@ -29,35 +29,3 @@ export interface Host {
   ReactDOM?: { createPortal(children: R.ReactNode, container: Element): R.ReactPortal };
   patch: { after(name: string, callback: (...args: unknown[]) => R.ReactNode): void };
 }
-export interface OpenEvent {
-  preventDefault(): void;
-  currentTarget?: EventTarget | null;
-}
-export interface Picker {
-  backdrop: HTMLDivElement;
-  dialog: HTMLDivElement;
-  closeButton: HTMLButtonElement;
-  currentPath: string | null;
-  parentPath: string | null;
-  list: HTMLDivElement;
-  pathInput: HTMLInputElement;
-  status: HTMLDivElement;
-  upButton: HTMLButtonElement;
-  useButton: HTMLButtonElement;
-  releaseDialog?: () => void;
-}
-export interface PickerState {
-  picker: Picker | null;
-  pickerRequest: number;
-}
-export interface PickerActions {
-  closeFolderPicker(): void;
-  loadDirectory(picker: Picker, path: string | null, fallbackToHome: boolean): Promise<void>;
-  saveDestinationFolder(picker: Picker): Promise<void>;
-}
-export interface PickerDependencies {
-  hubApi: Hub;
-  pluginId: string;
-  getSettings(): Promise<Record<string, unknown>>;
-  notify(message: string, isError: boolean): void;
-}

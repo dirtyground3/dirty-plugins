@@ -1,11 +1,18 @@
 "use strict";
 const assert = require("node:assert/strict"),
   { requireSource } = require("./plugin_paths");
-const { selectionFor, selectionLabel, taskRequest, pickerPathLabel } = requireSource(
-  "DirtyFileExtractor",
-  "src/domain/selection.ts",
-);
+const { selectionFor, selectionLabel, taskRequest } = requireSource("DirtyFileExtractor", "src/domain/selection.ts");
 const { createExtractionController } = requireSource("DirtyFileExtractor", "src/extraction.ts");
+// The hub's folder labels; the picker's host imports are not needed for them.
+const { folderLabel } = require("./plugin_paths").runSource(
+  "DirtyPlugins",
+  "src/folderPicker.ts",
+  {},
+  {
+    external: ["./capture", "./dialogs", "./transport"],
+    modules: { "./capture": {}, "./dialogs": {}, "./transport": {} },
+  },
+);
 
 (async () => {
   for (const kind of ["scene", "marker", "image"]) {
@@ -16,9 +23,9 @@ const { createExtractionController } = requireSource("DirtyFileExtractor", "src/
     assert.equal(selectionLabel(selection, true), "Queuing extraction…");
     assert.equal(selectionLabel(selectionFor(kind, [1]), false), "Extract selected " + kind);
   }
-  assert.equal(pickerPathLabel("C:\\folder\\child\\"), "child");
-  assert.equal(pickerPathLabel("/"), "/");
-  assert.equal(pickerPathLabel(null), "Computer");
+  assert.equal(folderLabel("C:\\folder\\child\\"), "child");
+  assert.equal(folderLabel("/"), "/");
+  assert.equal(folderLabel(null), "Computer");
   let queued = 0,
     destination = "",
     release,

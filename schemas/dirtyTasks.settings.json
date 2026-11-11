@@ -262,7 +262,9 @@
         "move": "manual",
         "rename": "manual",
         "tags": "manual",
-        "encoding": {}
+        "backup": "manual",
+        "encoding": {},
+        "schedules": {}
       },
       "modes": [
         {
@@ -276,8 +278,44 @@
         {
           "value": "generate",
           "label": "Run after Generate"
+        },
+        {
+          "value": "schedule",
+          "label": "Run on a schedule"
         }
+      ],
+      "defaultSchedule": {
+        "time": "03:00",
+        "days": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "weekdays": [
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri",
+        "Sat",
+        "Sun"
       ]
+    },
+    "backup": {
+      "defaultSettings": {
+        "folder": "",
+        "keep": 0,
+        "blobs": true,
+        "scrapers": true,
+        "configuration": true,
+        "dirtyPlugins": true
+      },
+      "keepMax": 1000
     }
   }
 }

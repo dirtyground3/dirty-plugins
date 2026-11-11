@@ -30,9 +30,3 @@ export function taskRequest(selection: Selection) {
     },
   };
 }
-export function pickerPathLabel(path: string | null): string {
-  const parts = String(path || "")
-    .split(/[\\/]/)
-    .filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : String(path || "Computer");
-}

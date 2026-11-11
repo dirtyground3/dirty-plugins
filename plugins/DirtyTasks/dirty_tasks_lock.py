@@ -24,7 +24,8 @@ def release(kind, owner):
 
 
 def queue_pending(client):
-    for key in ("pendingOrganization", "pendingOrganization:scan", "pendingOrganization:generate"):
+    for key in ("pendingOrganization", "pendingOrganization:scan", "pendingOrganization:generate",
+                "pendingOrganization:schedule"):
         raw = storage.get_metadata(NAMESPACE, key)
         if raw:
             args = json.loads(raw)
@@ -33,7 +34,11 @@ def queue_pending(client):
 
 
 def defer_organization(args):
-    storage.set_metadata(NAMESPACE, "pendingOrganization:" + args["automationTrigger"], json.dumps(args))
+    def merge(current):
+        # Scheduled slots name their actions; waiting slots add up to one run.
+        actions = sorted(set(current.get("actions") or []) | set(args.get("actions") or []))
+        return dict(args, actions=actions) if actions else dict(args)
+    storage.update_json_metadata(NAMESPACE, "pendingOrganization:" + args["automationTrigger"], merge)
 
 
 def interrupted_organization(client):

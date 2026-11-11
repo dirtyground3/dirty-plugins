@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { ExtractionAction } from "./components/ExtractionAction";
 import { selectionFor, taskRequest } from "./domain/selection";
 import { createExtractionController } from "./extraction";
-import { createPicker } from "./picker";
 import { hubApi, PLUGIN_ID, PluginApi, React } from "./runtime";
 import type { Kind } from "./types";
 
@@ -25,8 +24,22 @@ hubApi?.registerPlugin(PLUGIN_ID, () => {
       return data.runPluginTask;
     },
   });
-  const picker = createPicker({ hubApi, getSettings, notify, pluginId: PLUGIN_ID });
-  hubApi.registerFieldAction(PLUGIN_ID, "destinationFolder", { label: "Browse…", onClick: picker.openFolderPicker });
+  hubApi.registerFieldAction(PLUGIN_ID, "destinationFolder", {
+    label: "Browse…",
+    onClick: event => {
+      event.preventDefault();
+      hubApi.ui.pickFolder({
+        title: "Choose destination folder",
+        opener: event.currentTarget,
+        initialPath: async () => String((await getSettings()).destinationFolder || ""),
+        onSelect: async destinationFolder => {
+          await hubApi.configurePlugin(PLUGIN_ID, { ...(await getSettings()), destinationFolder });
+          hubApi.notifyConfigurationChanged(PLUGIN_ID);
+          notify("Destination folder saved.", false);
+        },
+      });
+    },
+  });
   for (const [component, kind] of LIST_ACTIONS) {
     PluginApi.patch.after(component, (...args) => {
       const result = args.pop() as ReactNode;

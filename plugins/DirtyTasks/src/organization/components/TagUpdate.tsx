@@ -108,9 +108,9 @@ export function TagUpdate({ workflow, trigger }: { workflow: Workflow; trigger?:
         <p className="dirty-tidy-help">Add a stash-box source in Stash Settings → Metadata Providers.</p>
       )}
       <p className="dirty-tidy-help">
-        Save to enable this task. Choose Manual, Scan, or Generate for this action. Keep the Stash UI open until the
-        selected job finishes. Tags are fetched in batches. Successful checks are cached for one day. Missing local tags
-        are created; unmatched or ambiguous scenes are skipped.
+        Save to enable this task. Choose Manual, Scan, Generate or a schedule for this action. Keep the Stash UI open
+        until the selected job finishes or the scheduled time. Tags are fetched in batches. Successful checks are cached
+        for one day. Missing local tags are created; unmatched or ambiguous scenes are skipped.
       </p>
       <ui.Button
         busy={refreshing}

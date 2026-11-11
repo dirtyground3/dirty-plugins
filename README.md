@@ -18,10 +18,10 @@ a shared SQLite database, and is installed automatically as a dependency.
 | [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.14 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.1.1 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.0.25 |
-| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.5 |
-| [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, and updates tags with independent action triggers. | 1.0.11 |
+| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.6 |
+| [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, updates tags with independent action triggers, and backs up library data. | 1.0.12 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.9 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.18 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.19 |
 
 ## Shared look and settings
 
@@ -214,6 +214,11 @@ capture.
   organization and encoding; internal scans never start another automation cycle.
 - Encoding runs can be paused and resumed. Cancellation and a small recovery
   journal handle interrupted encoding and attachment. There is no media Delete action or output-review stage.
+- Each action can also **Run on a schedule** at a time on chosen weekdays. A schedule missed
+  while Stash was closed asks on the next page load whether to run it now.
+- **Back up library data** writes one zip with the Stash database and, by choice, blobs,
+  `config.yml`, custom CSS/JS/locales, scrapers and DirtyPlugins' database. It has its own
+  folder, keeps the newest backups you choose, and runs manually, after Scan/Generate or on a schedule.
 
 [DirtyTasks documentation and upgrade instructions](plugins/DirtyTasks/).
 
@@ -705,6 +710,31 @@ prerelease/
 ```
 
 ## Release notes
+
+- **DirtyTasks 1.0.12:** time schedules and library backups.
+  - **Schedules:** Move, Rename, Update tags, each encoding rule and the backup
+    can **Run on a schedule** at a time on chosen weekdays, in the Stash
+    server's time. An open Stash tab runs them at that time through Stash's
+    task queue, like Scan and Generate automation.
+  - **Missed runs:** a schedule missed while no Stash tab was open shows
+    **Missed scheduled tasks** on the next page load. Run the selected ones or
+    skip them until their next time; each time runs or is skipped once,
+    whichever tab answers.
+  - **Backup:** **Back up library data** writes one zip with the Stash
+    database, copied safely while Stash runs, and, by choice, blobs,
+    `config.yml` with custom CSS, JavaScript and locales, the scrapers folder
+    and the DirtyPlugins database. It is also under **Settings → Tasks**.
+  - **Backup settings:** a folder chosen with **Browse…** or Stash's backup
+    folder, **Keep newest backups**, the included parts, **Back up now**, and
+    the last backup's date and size. Backups run manually, after Scan or
+    Generate, or on a schedule.
+
+- **DirtyPlugins 1.0.19:** the server folder picker is shared by the suite as
+  `DirtyPlugins.ui.pickFolder`. DirtyFileExtractor's destination and DirtyTasks'
+  backup folder use it.
+
+- **DirtyFileExtractor 1.0.6:** **Browse…** beside **Destination folder** opens
+  the shared DirtyPlugins folder picker and works as before.
 
 - **DirtyMultiscreen 1.0.25:** edit mode, saved grids and autosaves.
   - **Edit mode:** the grid button opens it. Each screen can be flipped,

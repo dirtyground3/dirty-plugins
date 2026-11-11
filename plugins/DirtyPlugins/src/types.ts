@@ -244,7 +244,7 @@ export interface HubApi {
   ): Promise<{ revision: number; settings?: Record<string, unknown> }>;
   createSaveController: typeof createSaveController;
   createJobHook: typeof createJobHook;
-  ui: Pick<typeof import("./dialogs"), "notify" | "manageDialog">;
+  ui: Pick<typeof import("./dialogs"), "notify" | "manageDialog"> & Pick<typeof import("./folderPicker"), "pickFolder">;
   react: typeof import("./components/Controls") &
     typeof import("./components/Settings") &
     typeof import("./components/Navigation") &

@@ -1,4 +1,5 @@
 """DirtyTasks migration, section isolation, and additive encoding behavior."""
+from contextlib import closing
 import copy
 import json
 import os
@@ -19,8 +20,9 @@ storage = tasks.settings.storage
 encoding = tasks.encoding
 
 
-def triggers(mode="manual", rule_ids=("rule-1",)):
-    return {"move": mode, "rename": mode, "tags": mode, "encoding": {key: mode for key in rule_ids}}
+def triggers(mode="manual", rule_ids=("rule-1",), backup="manual", schedules=None):
+    return {"move": mode, "rename": mode, "tags": mode, "backup": backup, "encoding": {key: mode for key in rule_ids},
+            "schedules": schedules or {}}
 
 
 
@@ -103,7 +105,8 @@ class TaskSettingsTests(unittest.TestCase):
             "encoding": {"automationPaused": False, "rules": [encoding_tests.rule(mode="automatic")]},
         })
         tasks.settings.migrate_triggers()
-        self.assertEqual(tasks.settings.get_section("execution"), {"move": "manual", "rename": "manual", "tags": "scan", "encoding": {"rule-1": "scan"}})
+        self.assertEqual(tasks.settings.get_section("execution"), {"move": "manual", "rename": "manual", "tags": "scan", "backup": "manual",
+                                                                   "encoding": {"rule-1": "scan"}, "schedules": {}})
 
     def test_simultaneous_first_requests_all_observe_the_migrated_action_triggers(self):
         storage.set_plugin_settings("dirtyTidy", {"automationMode": "scan"})
@@ -825,6 +828,266 @@ class AdditionalEncodingTests(unittest.TestCase):
         storage.set_plugin_settings("dirtyTasks", values)
         with patch.object(encoding, "build_preview", side_effect=AssertionError("must not plan")):
             self.assertTrue(encoding.handle_automatic_trigger(self.case.client, self.case.client.jobs[-1])["paused"])
+
+
+class BackupTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.dirty = self.root / "plugins" / "dirtyPlugins" / "dirty_plugins.sqlite3"
+        environment = patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(self.dirty)})
+        environment.start()
+        self.addCleanup(environment.stop)
+        storage.set_plugin_settings("dirtyRank", {"pool": "kept"})
+        self.database = self.root / "stash-go.sqlite"
+        # An open writer with checkpoints off keeps the newest rows only in the WAL.
+        self.writer = tasks.backup.sqlite3.connect(self.database)
+        self.addCleanup(self.writer.close)
+        self.writer.execute("PRAGMA journal_mode=WAL")
+        self.writer.execute("PRAGMA wal_autocheckpoint=0")
+        self.writer.execute("CREATE TABLE scenes(title TEXT)")
+        self.writer.execute("INSERT INTO scenes VALUES ('only in the WAL')")
+        self.writer.commit()
+        (self.root / "blobs" / "ab" / "cd").mkdir(parents=True)
+        (self.root / "blobs" / "ab" / "cd" / "abcd1234").write_bytes(b"cover")
+        (self.root / "scrapers" / "custom" / "__pycache__").mkdir(parents=True)
+        (self.root / "scrapers" / "custom" / "custom.yml").write_text("name: Custom", encoding="utf-8")
+        (self.root / "scrapers" / "custom" / "__pycache__" / "custom.cpython-39.pyc").write_bytes(b"cache")
+        (self.root / "config.yml").write_text("database: stash-go.sqlite", encoding="utf-8")
+        (self.root / "custom.css").write_text("body{}", encoding="utf-8")
+
+    def client(self, **general):
+        values = {"databasePath": str(self.database), "backupDirectoryPath": "", "blobsPath": str(self.root / "blobs"),
+                  "blobsStorage": "FILESYSTEM", "configFilePath": str(self.root / "config.yml"),
+                  "scrapersPath": str(self.root / "scrapers"), **general}
+
+        class Client:
+            def call(self, query, variables=None):
+                return {"configuration": {"general": values}, "version": {"version": "v0.32.0"}}
+        return Client()
+
+    def read(self, archive, name):
+        target = self.root / "restored" / name
+        target.parent.mkdir(exist_ok=True)
+        target.write_bytes(archive.read(name))
+        return target
+
+    def test_one_zip_holds_both_databases_blobs_configuration_and_scrapers(self):
+        progress = []
+        reporter = tasks.protocol.Reporter()
+        reporter.progress = progress.append
+        result = tasks.backup.run(self.client(), reporter)
+        path = Path(result["path"])
+        self.assertEqual(path.parent, self.root, "Stash's default backup folder is the database's folder")
+        self.assertEqual([item.name for item in self.root.iterdir() if "dirty-backup" in item.name], [path.name])
+        with tasks.backup.zipfile.ZipFile(path) as archive:
+            self.assertEqual(sorted(archive.namelist()), [
+                "backup.json", "blobs/ab/cd/abcd1234", "config.yml", "custom.css", "dirty_plugins.sqlite3",
+                "scrapers/custom/custom.yml", "stash-go.sqlite"])
+            self.assertEqual(archive.read("blobs/ab/cd/abcd1234"), b"cover")
+            with closing(tasks.backup.sqlite3.connect(self.read(archive, "stash-go.sqlite"))) as copy:
+                self.assertEqual(copy.execute("SELECT title FROM scenes").fetchall(), [("only in the WAL",)])
+            restored = self.read(archive, "dirty_plugins.sqlite3")
+            self.assertEqual(storage.get_plugin_settings("dirtyRank", path=restored), {"pool": "kept"})
+            manifest = json.loads(archive.read("backup.json"))
+        self.assertEqual(manifest["restoreTo"]["stash-go.sqlite"], str(self.database))
+        self.assertEqual(manifest["restoreTo"]["dirty_plugins.sqlite3"], str(self.dirty.resolve()))
+        self.assertEqual(progress[-1], 1.0)
+
+    def test_database_blob_storage_and_a_chosen_backup_folder(self):
+        folder = self.root / "backups"
+        result = tasks.backup.run(self.client(blobsStorage="DATABASE", backupDirectoryPath=str(folder)), tasks.protocol.Reporter())
+        self.assertEqual(Path(result["path"]).parent, folder)
+        with tasks.backup.zipfile.ZipFile(result["path"]) as archive:
+            self.assertFalse([name for name in archive.namelist() if name.startswith("blobs/")])
+
+    def test_a_failed_backup_leaves_no_partial_zip_or_copies(self):
+        with patch.object(tasks.backup.zipfile.ZipFile, "write", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                tasks.backup.run(self.client(), tasks.protocol.Reporter())
+        self.assertFalse([item.name for item in self.root.iterdir() if "dirty-backup" in item.name])
+
+    def test_the_stash_task_dispatches_to_the_backup(self):
+        with patch.object(tasks.encoding, "Client", return_value=self.client()), \
+                patch.object(tasks.settings, "migrate"):
+            result = tasks.run({"args": {"task": "backup"}})
+        self.assertTrue(Path(result["path"]).is_file())
+
+    def save_backup(self, **changes):
+        values = {**tasks.settings.get_section("backup"), **changes}
+        tasks.settings.save_section("backup", values, tasks.settings.snapshot("backup")["revision"])
+
+    def test_chosen_parts_folder_and_retention(self):
+        folder = self.root / "kept"
+        folder.mkdir()
+        for stamp in ("20260101_000000", "20260102_000000", "20260103_000000"):
+            (folder / ("dirty-backup-" + stamp + ".zip")).write_bytes(b"old")
+        (folder / "dirty-backup-notes.zip").write_bytes(b"not a backup")
+        (folder / "stash-go.sqlite.85.20260101_000000").write_bytes(b"native backup")
+        self.save_backup(folder=str(folder), keep=2, blobs=False, scrapers=False, configuration=False, dirtyPlugins=False)
+        result = tasks.backup.run(self.client(backupDirectoryPath=str(self.root / "ignored")), tasks.protocol.Reporter())
+        self.assertEqual(Path(result["path"]).parent, folder, "the chosen folder wins over Stash's backup folder")
+        with tasks.backup.zipfile.ZipFile(result["path"]) as archive:
+            self.assertEqual(sorted(archive.namelist()), ["backup.json", "stash-go.sqlite"])
+        self.assertEqual(result["removed"], 2)
+        self.assertEqual(sorted(item.name for item in folder.iterdir()), sorted([
+            Path(result["path"]).name, "dirty-backup-20260103_000000.zip", "dirty-backup-notes.zip",
+            "stash-go.sqlite.85.20260101_000000"]), "only the oldest DirtyTasks backups are removed")
+        self.assertEqual(tasks.backup.status()["success"]["path"], result["path"])
+
+    def test_invalid_backup_settings_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "full backup folder"):
+            self.save_backup(folder="relative/folder")
+        with self.assertRaisesRegex(ValueError, "Keep between"):
+            self.save_backup(keep=-1)
+
+    def test_a_failure_is_recorded_until_the_next_success(self):
+        with self.assertRaises(RuntimeError):
+            tasks.backup.run(self.client(databasePath=str(self.root / "missing.sqlite")), tasks.protocol.Reporter())
+        self.assertIn("database file was not found", tasks.backup.status()["failure"]["error"])
+        tasks.backup.run(self.client(), tasks.protocol.Reporter())
+        self.assertNotIn("failure", tasks.backup.status())
+
+    def test_queued_automatic_backups_recheck_their_trigger_and_scans_queue_once(self):
+        execution = tasks.settings.snapshot("execution")
+        tasks.settings.save_section("execution", triggers(rule_ids=(), backup="scan"), execution["revision"])
+        client = unittest.mock.Mock()
+        client.queue.return_value = "42"
+        first = tasks.backup.queue_automation(client, tasks.protocol.Reporter(), "scan", "5", "start")
+        again = tasks.backup.queue_automation(client, tasks.protocol.Reporter(), "scan", "5", "start")
+        self.assertEqual((first, again["reason"]), ({"queuedJobId": "42"}, "duplicate"))
+        self.assertEqual(client.queue.call_args.args[1], {"task": "backup", "automationTrigger": "scan"})
+        self.assertTrue(tasks.backup.queue_automation(client, tasks.protocol.Reporter(), "generate", "6", "start")["skipped"])
+        tasks.settings.save_section("execution", triggers(rule_ids=()), tasks.settings.snapshot("execution")["revision"])
+        self.assertTrue(tasks.backup.run(self.client(), tasks.protocol.Reporter(), {"automationTrigger": "scan"})["skipped"])
+        self.assertTrue(Path(tasks.backup.run(self.client(), tasks.protocol.Reporter(), {})["path"]).is_file(),
+                        "manual backups need no trigger")
+
+
+class ScheduleTests(unittest.TestCase):
+    """Slots are computed in local time; 2026-11-09 is a Monday."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        environment = patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(Path(temporary.name) / "shared.sqlite3")})
+        environment.start()
+        self.addCleanup(environment.stop)
+        tasks.settings.migrate()
+        self.queued = []
+
+    @staticmethod
+    def at(day, hour, minute=0):
+        return tasks.schedule.datetime(2026, 11, day, hour, minute).timestamp()
+
+    def save(self, **changes):
+        values = {**triggers(rule_ids=()), **changes}
+        tasks.settings.save_section("execution", values, tasks.settings.snapshot("execution")["revision"])
+
+    def queue(self, client, reporter, group, keys, slot):
+        self.queued.append((group, keys, slot))
+
+    def check(self, now):
+        return tasks.schedule.check(None, tasks.protocol.Reporter(), self.queue, now)
+
+    def test_slots_follow_time_and_weekdays(self):
+        weekdays = {"time": "03:30", "days": [0, 1, 2, 3, 4]}
+        saturday_noon = self.at(14, 12)
+        self.assertEqual(tasks.schedule.latest_slot(weekdays, saturday_noon), self.at(13, 3, 30))
+        self.assertEqual(tasks.schedule.next_slot(weekdays, saturday_noon), self.at(16, 3, 30))
+        self.assertEqual(tasks.schedule.latest_slot({"time": "12:00", "days": [5]}, saturday_noon), saturday_noon)
+
+    def test_a_slot_runs_once_on_time_and_a_new_schedule_never_runs_its_past_slot(self):
+        self.save(backup="schedule", schedules={"backup": {"time": "03:00", "days": list(range(7))}})
+        result = self.check(self.at(10, 12))
+        self.assertEqual((result["queued"], result["missed"], self.queued), ([], [], []))
+        self.assertEqual(result["next"], self.at(11, 3))
+        self.assertEqual(self.check(self.at(11, 3, 2))["queued"], ["backup"])
+        self.assertEqual(self.check(self.at(11, 3, 3))["queued"], [], "another tab finds the slot handled")
+        self.assertEqual(self.queued, [("backup", ["backup"], self.at(11, 3))])
+
+    def test_missed_slots_wait_for_an_answer_and_only_the_latest_is_offered(self):
+        self.save(move="schedule", backup="schedule", schedules={
+            "backup": {"time": "03:00", "days": list(range(7))}, "move": {"time": "04:00", "days": list(range(7))}})
+        self.check(self.at(10, 12))
+        result = self.check(self.at(13, 9))
+        self.assertEqual(self.queued, [], "slots long past do not run by themselves")
+        self.assertEqual([(item["key"], item["slot"]) for item in result["missed"]],
+                         [("move", self.at(13, 4)), ("backup", self.at(13, 3))])
+        answer = tasks.schedule.resolve(None, tasks.protocol.Reporter(), self.queue, [
+            {"key": "backup", "slot": self.at(13, 3), "run": True}, {"key": "move", "slot": self.at(13, 4), "run": False}])
+        self.assertEqual((answer["queued"], answer["skipped"]), (["backup"], ["move"]))
+        self.assertEqual(self.check(self.at(13, 9, 5))["missed"], [])
+        tasks.schedule.resolve(None, tasks.protocol.Reporter(), self.queue, [{"key": "backup", "slot": self.at(13, 3), "run": True}])
+        self.assertEqual(len(self.queued), 1, "an answer from a second tab finds the slot handled")
+
+    def test_changing_a_schedule_starts_it_afresh_and_a_failed_queue_retries(self):
+        self.save(backup="schedule", schedules={"backup": {"time": "03:00", "days": list(range(7))}})
+        self.check(self.at(10, 2))
+        self.save(backup="schedule", schedules={"backup": {"time": "01:00", "days": list(range(7))}})
+        self.assertEqual(self.check(self.at(10, 2, 30))["missed"], [], "the changed schedule starts now")
+
+        def failing(*_args):
+            raise RuntimeError("Stash unavailable")
+        with self.assertRaisesRegex(RuntimeError, "unavailable"):
+            tasks.schedule.check(None, tasks.protocol.Reporter(), failing, self.at(11, 1, 1))
+        self.assertEqual(self.check(self.at(11, 1, 2))["queued"], ["backup"])
+
+    def test_disabled_actions_and_rules_are_not_scheduled_and_due_slots_group_by_task(self):
+        tasks.settings.save_section("encoding", {"rules": [encoding_tests.rule(), encoding_tests.rule(id="rule-2", enabled=False)]},
+                                    tasks.settings.snapshot("encoding")["revision"])
+        daily = {"time": "03:00", "days": list(range(7))}
+        self.save(move="schedule", rename="schedule", tags="schedule", encoding={"rule-1": "schedule", "rule-2": "schedule"},
+                  schedules={"move": daily, "rename": daily, "tags": daily, "encoding:rule-1": daily, "encoding:rule-2": daily})
+        self.assertEqual(sorted(tasks.schedule.scheduled()), ["encoding:rule-1", "move"],
+                         "Rename and tag updates are off; rule-2 is disabled")
+        self.check(self.at(10, 2))
+        self.check(self.at(10, 3, 1))
+        self.assertEqual(sorted(self.queued), [("encoding", ["encoding:rule-1"], self.at(10, 3)), ("organization", ["move"], self.at(10, 3))])
+
+    def test_schedules_need_a_time_and_a_day(self):
+        with self.assertRaisesRegex(ValueError, "at least one day"):
+            self.save(backup="schedule")
+        with self.assertRaisesRegex(ValueError, "at least one day"):
+            self.save(backup="schedule", schedules={"backup": {"time": "25:00", "days": [0]}})
+        with self.assertRaisesRegex(ValueError, "at least one day"):
+            self.save(backup="schedule", schedules={"backup": {"time": "03:00", "days": []}})
+
+    def test_scheduled_groups_use_the_automation_paths(self):
+        daily = {"time": "03:00", "days": list(range(7))}
+        organization = tasks.organization.normalize_settings({"moveEnabled": True, "renameEnabled": True})
+        organization["approvedStrategyHash"] = tasks.organization.strategy_hash(organization)
+        tasks.settings.save_section("organization", organization, tasks.settings.snapshot("organization")["revision"])
+        self.save(move="schedule", rename="scan", schedules={"move": daily})
+        client = unittest.mock.Mock()
+        client.call.return_value = {"runPluginTask": "100"}
+        client.queue.return_value = "101"
+        tasks.queue_scheduled(client, tasks.protocol.Reporter(), "organization", ["move", "rename"], self.at(10, 3))
+        queued = client.call.call_args.args[1]
+        self.assertEqual(queued["args"]["actions"], ["move"], "only actions still on a schedule run")
+        self.assertIn("scheduled", queued["description"])
+        self.assertEqual(tasks.organization.organization_actions(organization, "schedule", ["move", "rename"]), {"move"})
+        tasks.queue_scheduled(client, tasks.protocol.Reporter(), "backup", ["backup"], self.at(10, 3))
+        self.assertEqual(client.queue.call_args.args[1], {"task": "backup", "automationTrigger": "schedule"})
+        tasks.reservation.defer_organization({"automationTrigger": "schedule", "actions": ["move"]})
+        tasks.reservation.defer_organization({"automationTrigger": "schedule", "actions": ["rename"]})
+        deferred = json.loads(storage.get_metadata(tasks.reservation.NAMESPACE, "pendingOrganization:schedule"))
+        self.assertEqual(deferred["actions"], ["move", "rename"], "waiting slots add up to one run")
+
+    def test_scheduled_encoding_evaluates_only_the_due_rules(self):
+        tasks.settings.save_section("encoding", {"rules": [encoding_tests.rule(), encoding_tests.rule(id="rule-2")]},
+                                    tasks.settings.snapshot("encoding")["revision"])
+        daily = {"time": "03:00", "days": list(range(7))}
+        self.save(encoding={"rule-1": "schedule", "rule-2": "schedule"},
+                  schedules={"encoding:rule-1": daily, "encoding:rule-2": daily})
+        self.assertEqual([rule["id"] for rule in tasks.encoding.automatic_rules("schedule", ["rule-2"])], ["rule-2"])
+        self.assertEqual(tasks.encoding.automatic_rules("schedule", []), [])
+        client = unittest.mock.Mock()
+        result = tasks.encoding.handle_automatic_trigger(client, {"mode": "startAutomaticRun", "automationTrigger": "schedule",
+                                                                  "jobId": "schedule:1", "startTime": "start", "ruleIds": ["rule-2"]})
+        self.assertTrue(result["queued"])
+        self.assertEqual(client.queue.call_args.args[1]["ruleIds"], ["rule-2"])
 
 
 if __name__ == "__main__":

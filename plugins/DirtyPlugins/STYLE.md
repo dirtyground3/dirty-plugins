@@ -23,6 +23,7 @@ reusing save/error colours.
 | Statistic navigation | `StatisticSelector` with `to` on each option, so the items are links | Available statistics and their routes |
 | Secondary row actions | `ActionMenu` (⋮ overflow menu) | Which actions are rare enough to hide |
 | Modal | `react.Dialog` or `ui.manageDialog` for DOM-created content | Dialog body and data operation |
+| Server folder setting | A read-only path with **Browse…** opening `ui.pickFolder` | Title and what the chosen folder saves |
 
 Call `DirtyPlugins.react.usePageTitle("Plugin", "View")` in each route component.
 The hub formats the title as `View - Plugin`, keeps native list loading from

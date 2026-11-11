@@ -1,6 +1,7 @@
 """DirtyTasks' sole Stash JSON entry point; task workflows remain independent."""
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 import sys
 import time
@@ -18,6 +19,8 @@ import dirty_tasks_settings as settings
 import dirty_tasks_lock as reservation
 import dirty_tidy as organization
 import dirty_compactor as encoding
+import dirty_tasks_backup as backup
+import dirty_tasks_schedule as schedule
 
 
 def acquire_organization(client, owner, reporter):
@@ -44,6 +47,26 @@ def acquire_organization(client, owner, reporter):
         return False
 
 
+def queue_scheduled(client, reporter, group, keys, slot):
+    """Queue one group of due scheduled actions through the same paths as Scan/Generate automation."""
+    job_id, start = "schedule:" + str(int(slot)), datetime.fromtimestamp(slot).isoformat(timespec="minutes")
+    if group == "organization":
+        result = organization.queue_automation(client, {"automationTrigger": "schedule", "sourceJobId": job_id,
+                                                        "sourceStartTime": start, "actions": keys}, reporter)
+    elif group == "tags":
+        result = organization.queue_tag_update(client, {"automationTrigger": "schedule", "sourceJobId": job_id,
+                                                        "sourceStartTime": start}, reporter)
+    elif group == "encoding":
+        result = encoding.dispatch(client, {"mode": "startAutomaticRun", "automationTrigger": "schedule", "jobId": job_id,
+                                            "startTime": start, "ruleIds": [key.split(":", 1)[1] for key in keys]})
+    else:
+        result = {"queuedJobId": client.queue("dirtyTasks", {"task": "backup", "automationTrigger": "schedule"},
+                                              backup.DESCRIPTION + "scheduled " + start)}
+    if result.get("skipped"):
+        reporter.info("DirtyTasks skipped the scheduled " + ", ".join(keys) + " run: " + str(result.get("reason")) + ".")
+    return result
+
+
 def run(payload, reporter=None):
     args = payload.get("args") or {}
     if not isinstance(args, dict):
@@ -60,6 +83,12 @@ def run(payload, reporter=None):
         return json.loads(settings.storage.get_metadata(settings.NAMESPACE, "migrated"))
     if mode == "dismissMigrationNotice":
         return settings.dismiss_migration_notice()
+    if mode == "checkSchedules":
+        return schedule.check(client, reporter or protocol.Reporter(), queue_scheduled)
+    if mode == "resolveMissedSchedules":
+        return schedule.resolve(client, reporter or protocol.Reporter(), queue_scheduled, args.get("choices"))
+    if mode == "backupStatus":
+        return backup.status()
     if mode == "organizationRecoveryStatus":
         return reservation.organization_recovery_status(client)
     if mode == "recoverOrganization":
@@ -77,15 +106,21 @@ def run(payload, reporter=None):
         except Exception as error:
             errors.append(str(error))
         compact = {"skipped": True}
+        saved = {"skipped": True}
         if args.get("automationTrigger") in ("scan", "generate"):
             try:
                 compact = encoding.dispatch(client, {"mode": "startAutomaticRun", "automationTrigger": args.get("automationTrigger"), "jobId": args.get("sourceJobId"),
                                                      "startTime": args.get("sourceStartTime")})
             except Exception as error:
                 errors.append(str(error))
+            try:
+                saved = backup.queue_automation(client, reporter or protocol.Reporter(), args["automationTrigger"],
+                                                args.get("sourceJobId"), args.get("sourceStartTime"))
+            except Exception as error:
+                errors.append(str(error))
         if errors:
             raise RuntimeError("; ".join(errors))
-        return {"organization": files, "encoding": compact}
+        return {"organization": files, "encoding": compact, "backup": saved}
     task = args.get("task")
     if task == "organization":
         if mode in ("execute", "automation"):
@@ -107,7 +142,9 @@ def run(payload, reporter=None):
         return organization.run(payload, reporter)
     if task == "encoding":
         return encoding.run(payload, reporter)
-    raise ValueError("Choose an organization or encoding task")
+    if task == "backup":
+        return backup.run(client, reporter or protocol.Reporter(), args)
+    raise ValueError("Choose an organization, encoding or backup task")
 
 
 def main():

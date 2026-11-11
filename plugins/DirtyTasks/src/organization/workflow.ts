@@ -1,8 +1,8 @@
 import { settingsFromConfiguration } from "./domain/settings";
 import type { Preview, PreviewFilter, Settings } from "./types";
-export const TRIGGER_LABELS = { manual: "", scan: "Scan", generate: "Generate" };
+export const TRIGGER_LABELS = { manual: "", scan: "Scan", generate: "Generate", schedule: "Schedule" };
 export const AUTOMATION_HELP =
-  "Automation applies the approved folder and filename rules to the current library, including new scenes and updated metadata. The Stash UI must stay open until the Scan or Generate job finishes.";
+  "Automation applies the approved folder and filename rules to the current library, including new scenes and updated metadata. The Stash UI must stay open until the Scan or Generate job finishes, or at the scheduled time.";
 export interface WorkflowDependencies {
   getSettings(): Promise<Record<string, unknown>>;
   runPreview(settings: Settings): Promise<Preview>;

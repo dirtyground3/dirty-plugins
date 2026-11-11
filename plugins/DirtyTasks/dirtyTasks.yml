@@ -1,6 +1,6 @@
 name: DirtyTasks
-description: Organize scene files, create additional encoded versions, and update tags from a selected tagger.
-version: 1.0.11
+description: Organize scene files, create additional encoded versions, update tags from a selected tagger, and back up library data.
+version: 1.0.12-rc
 ui:
   requires:
     - dirtyPlugins
@@ -13,3 +13,8 @@ exec:
   - "{pluginDir}/dirty_tasks.py"
 interface: raw
 errLog: error
+tasks:
+  - name: Back up library data
+    description: Save the Stash database, blobs, configuration, custom scrapers and DirtyPlugins data into one zip in Stash's backup folder.
+    defaultArgs:
+      task: backup

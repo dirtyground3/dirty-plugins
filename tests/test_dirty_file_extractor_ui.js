@@ -59,10 +59,10 @@ const deferred = () => {
   h.open();
   await h.flush();
   const input = h.pickerNode("form-control"),
-    status = h.pickerNode("dirty-file-extractor-picker-status");
+    status = h.pickerNode("dirty-ui-folder-picker-status");
   assert.equal(input.value, "/exports");
   assert.match(status.textContent, /1 subfolder/);
-  h.pickerNode("dirty-file-extractor-folder").click();
+  h.pickerNode("dirty-ui-folder-picker-folder").click();
   await h.flush();
   assert.equal(input.value, "/exports/subfolder");
   const dialog = h.pickerNode("dirty-ui-dialog");
@@ -141,14 +141,14 @@ const deferred = () => {
   await capture.flush();
   assert.equal(capture.pickerNode("form-control").disabled, true);
   assert.equal(capture.pickerNode("form-control").value, "Path hidden for documentation");
-  assert.equal(capture.pickerNode("dirty-file-extractor-folder").textContent, "Folder 1");
+  assert.equal(capture.pickerNode("dirty-ui-folder-picker-folder").textContent, "Folder 1");
   const use = capture.pickerNode("dirty-ui-dialog").children.at(-1).children[1];
   use.click();
   await capture.flush();
   assert.equal(use.disabled, false);
   assert.equal(capture.body.textContent.includes("/private"), false);
   assert.equal(
-    capture.pickerNode("dirty-file-extractor-picker-status").textContent,
+    capture.pickerNode("dirty-ui-folder-picker-status").textContent,
     "Folder unavailable during documentation capture.",
   );
   console.log("DirtyFileExtractor bundle selection, queueing, picker, races, masking, guards and cleanup passed");

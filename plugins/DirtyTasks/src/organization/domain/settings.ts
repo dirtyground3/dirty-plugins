@@ -59,7 +59,7 @@ export function parseAutomationMode(value: unknown): AutomationMode {
   const mode = String(value == null ? "" : value)
     .trim()
     .toLowerCase();
-  return ["manual", "scan", "generate"].indexOf(mode) >= 0 ? (mode as AutomationMode) : "manual";
+  return ["manual", "scan", "generate", "schedule"].indexOf(mode) >= 0 ? (mode as AutomationMode) : "manual";
 }
 
 export function parseApprovalHash(value: unknown): string {

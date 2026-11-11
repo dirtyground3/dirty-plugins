@@ -453,6 +453,8 @@ def build_preview(client, preview):
                 try:
                     if preview.get("automatic") and rule.get("trigger", "manual") != preview.get("automationTrigger", "scan"):
                         op.update(status="manual", reason="Winning rule uses a different trigger")
+                    elif preview.get("automationTrigger") == "schedule" and str(rule["id"]) not in preview.get("ruleIds", []):
+                        op.update(status="manual", reason="Winning rule is scheduled at another time")
                     elif records.get("generated", str(file["id"])):
                         op.update(status="unchanged", reason="Generated encoding; original files only")
                     elif any(len(owners.get(str(f["id"]), set())) > 1 for f in files):
@@ -732,13 +734,21 @@ def complete_run(client, run, status="completed"):
     queue_pending(client)
 
 
+def automatic_rules(kind, rule_ids=None):
+    """Enabled rules for an automatic trigger; a schedule names the rules whose slot is due."""
+    return [r for r in settings()["rules"] if r.get("enabled") and r.get("trigger") == kind
+            and (kind != "schedule" or str(r["id"]) in (rule_ids or []))]
+
+
 def queue_pending(client):
-    for key in ("pending", "pending:scan", "pending:generate"):
+    for key in ("pending", "pending:scan", "pending:generate", "pending:schedule"):
         pending = records.get("control", key)
         if pending and pending.get("trigger"):
             kind = pending.get("automationTrigger", "scan")
-            if any(r.get("enabled") and r.get("trigger") == kind for r in settings()["rules"]):
-                client.queue(PLUGIN_ID, {"mode": "pendingAutomatic", "trigger": pending["trigger"], "automationTrigger": kind}, "DirtyTasks: encoding: pending automatic evaluation")
+            if automatic_rules(kind, pending.get("ruleIds")):
+                client.queue(PLUGIN_ID, {"mode": "pendingAutomatic", "trigger": pending["trigger"], "automationTrigger": kind,
+                                         **({"ruleIds": pending["ruleIds"]} if kind == "schedule" else {})},
+                             "DirtyTasks: encoding: pending automatic evaluation")
             records.put("control", key, {"trigger": None}, expected=pending["_revision"])
 
 
@@ -1056,9 +1066,11 @@ def start_run_handler(client, args):
 def handle_automatic_trigger(client, args):
     mode = args.get("mode")
     kind = args.get("automationTrigger") or "scan"
-    if kind not in ("scan", "generate"):
-        raise PluginError("A Scan or Generate trigger is required")
-    if not any(r.get("enabled") and r.get("trigger") == kind for r in settings()["rules"]):
+    if kind not in ("scan", "generate", "schedule"):
+        raise PluginError("A Scan, Generate or schedule trigger is required")
+    rule_ids = [str(item) for item in args.get("ruleIds") or []] if kind == "schedule" else None
+    scheduled = {"ruleIds": rule_ids} if kind == "schedule" else {}
+    if not automatic_rules(kind, rule_ids):
         return {"paused": True}
     if mode == "startAutomaticRun":
         if storage.internal_scan_check(args.get("jobId"), args.get("startTime")):
@@ -1072,27 +1084,34 @@ def handle_automatic_trigger(client, args):
         # Queue planning, never do expensive probing in the browser request.
         claim = records.put("trigger", trigger, {"queued": True}, expected=previous_trigger["_revision"] if previous_trigger else -1)
         try:
-            client.queue(PLUGIN_ID, {"mode": "pendingAutomatic", "trigger": trigger, "automationTrigger": kind}, "DirtyTasks: encoding: automatic evaluation")
+            client.queue(PLUGIN_ID, {"mode": "pendingAutomatic", "trigger": trigger, "automationTrigger": kind, **scheduled},
+                         "DirtyTasks: encoding: " + ("scheduled evaluation" if kind == "schedule" else "automatic evaluation"))
         except Exception:
             records.put("trigger", trigger, {"queued": False, "error": "Queue failed"})
             raise
         return claim
+    def defer():
+        # Waiting scheduled slots add up to one evaluation of all their rules.
+        waiting = records.get("control", "pending:" + kind) or {}
+        if kind == "schedule" and waiting.get("trigger"):
+            scheduled["ruleIds"] = sorted(set(waiting.get("ruleIds") or []) | set(rule_ids))
+        records.put("control", "pending:" + kind, {"trigger": args["trigger"], "automationTrigger": kind, **scheduled})
+        return {"coalesced": True}
     file_work = storage.get_metadata(reservation.NAMESPACE, "active")
     if file_work and json.loads(file_work).get("kind") == "organization":
-        records.put("control", "pending:" + kind, {"trigger": args["trigger"], "automationTrigger": kind})
-        return {"coalesced": True}
+        return defer()
     active = records.get("control", "active")
     if active:
         current = get("run", active["id"])
         if current["status"] not in TERMINAL:
-            records.put("control", "pending:" + kind, {"trigger": args["trigger"], "automationTrigger": kind})
-            return {"coalesced": True}
+            return defer()
     preview = {
         "id": uuid.uuid4().hex,
         "status": "planning",
         "settings": settings(),
         "automatic": True,
         "automationTrigger": kind,
+        **scheduled,
         "created": time.time(),
     }
     save("preview", preview)

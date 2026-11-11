@@ -75,7 +75,9 @@ Stash module registers several components, as the Stats filters do.
 `DirtyPlugins.react.Dialog` and `DirtyPlugins.ui.manageDialog` share focus,
 Escape, stacked scroll locks, and focus restoration across React and DOM
 dialogs. A dialog containing Stash filters uses `allowNativePopup` so a native
-popup can take focus. `DirtyPlugins.captureEnabled`
+popup can take focus. `DirtyPlugins.ui.pickFolder({ title, initialPath, onSelect })`
+opens the shared server folder picker over Stash's directory query; a rejected
+`onSelect` keeps it open with the error, and capture mode hides folder names. `DirtyPlugins.captureEnabled`
 accepts `docsCapture=1`; `captureUrl` carries
 capture mode through suite navigation. Capture pages still need opaque covers
 for media and private paths before a screenshot is saved.

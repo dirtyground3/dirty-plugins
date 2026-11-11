@@ -9,7 +9,20 @@ from dirty_tasks_metadata import CONSTANTS
 
 PLUGIN_ID = "dirtyTasks"
 NAMESPACE = "dirtyTasks.settings"
-SECTIONS = ("organization", "encoding", "execution")
+SECTIONS = ("organization", "encoding", "execution", "backup")
+ACTIONS = ("move", "rename", "tags", "backup")
+
+
+def schedule_value(value):
+    """A valid {time: "HH:MM", days: [0-6, Monday first]}, or None."""
+    if not isinstance(value, dict) or not isinstance(value.get("time"), str) or not isinstance(value.get("days"), list):
+        return None
+    hours, _, minutes = value["time"].partition(":")
+    if not (hours.isdigit() and minutes.isdigit() and len(hours) == 2 and len(minutes) == 2
+            and int(hours) < 24 and int(minutes) < 60):
+        return None
+    days = sorted({day for day in value["days"] if isinstance(day, int) and not isinstance(day, bool) and 0 <= day <= 6})
+    return {"time": value["time"], "days": days} if days else None
 
 
 def execution_settings(value):
@@ -18,8 +31,23 @@ def execution_settings(value):
     def mode(item):
         return item if item in modes else "manual"
     rules = value.get("encoding") if isinstance(value.get("encoding"), dict) else {}
-    return {**{key: mode(value.get(key)) for key in ("move", "rename", "tags")},
-            "encoding": {str(key): mode(item) for key, item in rules.items()}}
+    schedules = value.get("schedules") if isinstance(value.get("schedules"), dict) else {}
+    # Keys are the actions and "encoding:<rule id>"; a schedule is kept while its action uses another trigger.
+    return {**{key: mode(value.get(key)) for key in ACTIONS},
+            "encoding": {str(key): mode(item) for key, item in rules.items()},
+            "schedules": {str(key): schedule for key, schedule in
+                          ((key, schedule_value(item)) for key, item in schedules.items()) if schedule}}
+
+
+def backup_settings(value):
+    value = value if isinstance(value, dict) else {}
+    defaults = CONSTANTS["backup"]["defaultSettings"]
+    folder = value.get("folder") if isinstance(value.get("folder"), str) else ""
+    keep = value.get("keep")
+    keep = keep if isinstance(keep, int) and not isinstance(keep, bool) else defaults["keep"]
+    return {"folder": folder.strip(), "keep": max(0, min(CONSTANTS["backup"]["keepMax"], keep)),
+            **{key: value[key] if isinstance(value.get(key), bool) else defaults[key]
+               for key in ("blobs", "scrapers", "configuration", "dirtyPlugins")}}
 
 
 def migrate_triggers():
@@ -59,6 +87,8 @@ def project(section, values):
     execution = execution_settings(values.get("execution"))
     if section == "execution":
         return execution
+    if section == "backup":
+        return backup_settings(values.get("backup"))
     current = dict(values.get(section) or {})
     # Approval context for the organization editor; scheduling uses each action.
     if section == "organization":
@@ -160,13 +190,29 @@ def save_section(section, values, expected):
         values = validate_settings(values)
         values.pop("automationPaused", None)
         values["rules"] = [{k: v for k, v in rule.items() if k not in ("mode", "trigger")} for rule in values["rules"]]
+    elif section == "backup":
+        folder = values.get("folder")
+        if not isinstance(folder, str) or (folder.strip() and not Path(folder.strip()).is_absolute()):
+            raise ValueError("Enter a full backup folder path, or leave it empty for Stash's backup folder")
+        keep = values.get("keep")
+        if not isinstance(keep, int) or isinstance(keep, bool) or not 0 <= keep <= CONSTANTS["backup"]["keepMax"]:
+            raise ValueError("Keep between 0 and " + str(CONSTANTS["backup"]["keepMax"]) + " backups")
+        values = backup_settings(values)
     else:
         modes = {item["value"] for item in CONSTANTS["execution"]["modes"]}
-        if (any(values.get(key) not in modes for key in ("move", "rename", "tags"))
+        if (any(values.get(key) not in modes for key in ACTIONS)
                 or not isinstance(values.get("encoding"), dict)
                 or any(item not in modes for item in values["encoding"].values())):
-            raise ValueError("Choose Manual, Scan, or Generate")
+            raise ValueError("Choose Manual, Scan, Generate, or a schedule")
+        schedules = values.get("schedules")
+        if not isinstance(schedules, dict) or any(schedule_value(item) is None for item in schedules.values()):
+            raise ValueError("Choose a time and at least one day for each schedule")
         values = execution_settings(values)
+        missing = [key for key in ACTIONS if values[key] == "schedule" and key not in values["schedules"]]
+        missing += ["encoding:" + key for key, item in values["encoding"].items()
+                    if item == "schedule" and "encoding:" + key not in values["schedules"]]
+        if missing:
+            raise ValueError("Choose a time and at least one day for each schedule")
     with storage.transaction() as connection:
         revision = int(storage.get_metadata(NAMESPACE, section, connection=connection) or 0)
         if expected is None or isinstance(expected, bool) or expected != revision:

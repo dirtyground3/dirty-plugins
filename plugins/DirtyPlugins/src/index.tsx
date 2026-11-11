@@ -10,6 +10,7 @@ import { SettingsLink, SettingsNavLink } from "./components/SettingsLink";
 import { MANAGED_PLUGIN_ID_SET, ROUTE_PATH } from "./constants";
 import { debugElapsed, debugLog, installDebug, setDebugPlugin } from "./debug";
 import { manageDialog, notify } from "./dialogs";
+import { pickFolder } from "./folderPicker";
 import { createJobHook } from "./jobs";
 import { ensureComponents, loadComponent } from "./native";
 import { installNavHubIntegration } from "./navHub";
@@ -50,7 +51,7 @@ if (api && !window.DirtyPlugins) {
       configurePlugin,
       createSaveController,
       createJobHook,
-      ui: { notify, manageDialog },
+      ui: { notify, manageDialog, pickFolder },
       theme,
       react: { ...controls, ...settings, ...navigation, Dialog, usePageTitle, useSettingsDraft, SceneFilterEditor },
       native: { loadComponent, ensureComponents },

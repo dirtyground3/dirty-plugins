@@ -15,6 +15,8 @@ function createCompactorHarness(options = {}) {
     nextTimer = 0;
   let settings = copy(options.settings || { rules: [], automationPaused: true });
   let execution = copy(options.execution || { move: "manual", rename: "manual", tags: "manual", encoding: {} });
+  let backup = copy(options.backup || {});
+  const backupWrites = [];
   let preview = options.preview || null,
     run = options.run || null;
   let event = null;
@@ -22,6 +24,7 @@ function createCompactorHarness(options = {}) {
     calls = [],
     writes = [],
     dirty = [];
+  const folderPickers = [];
   const notifications = [],
     players = [],
     registrations = [],
@@ -94,7 +97,7 @@ function createCompactorHarness(options = {}) {
     notifyConfigurationChanged() {},
     captureEnabled: () => Boolean(options.capture),
     captureUrl: to => (options.capture ? to + (to.includes("?") ? "&" : "?") + "docsCapture=1" : to),
-    ui: { notify: message => notifications.push(message) },
+    ui: { notify: message => notifications.push(message), pickFolder: options => folderPickers.push(options) },
     registerSettingsPanel(id, component) {
       registrations.push(id);
       panel = component;
@@ -124,7 +127,9 @@ function createCompactorHarness(options = {}) {
               ? options.organization || {}
               : args.section === "execution"
                 ? execution
-                : settings,
+                : args.section === "backup"
+                  ? backup
+                  : settings,
           ),
           revision: writes.length,
         };
@@ -138,6 +143,11 @@ function createCompactorHarness(options = {}) {
         if (args.section === "organization") {
           writes.push(copy(args.settings));
           return { revision: writes.length };
+        }
+        if (args.section === "backup") {
+          backupWrites.push(copy(args.settings));
+          backup = copy(args.settings);
+          return { revision: backupWrites.length };
         }
         return hub.configurePlugin(id, args.settings);
       }
@@ -178,6 +188,10 @@ function createCompactorHarness(options = {}) {
     removeEventListener(type, listener) {
       listeners.get(type)?.delete(listener);
     },
+    dispatchEvent(event) {
+      for (const listener of listeners.get(event.type) || []) listener(event);
+      return true;
+    },
     location: { search: options.capture ? "?docsCapture=1" : "" },
     DirtyPlugins: hub,
     PluginApi: {
@@ -192,7 +206,13 @@ function createCompactorHarness(options = {}) {
       },
     },
   };
-  const context = vm.createContext({ window, ...clock, console });
+  // The browser's Event, as far as the panel uses it.
+  class Event {
+    constructor(type) {
+      this.type = type;
+    }
+  }
+  const context = vm.createContext({ window, Event, ...clock, console });
   const errors = [];
   require("./shared_runtime").installRegistration(window, { error: (...args) => errors.push(args) });
   hub.createSaveController = require("./shared_runtime").loadFeature(window, "Save").createSaveController;
@@ -245,8 +265,10 @@ function createCompactorHarness(options = {}) {
     advance,
     calls,
     writes,
+    backupWrites,
     dirty,
     notifications,
+    folderPickers,
     players,
     registrations,
     patches,

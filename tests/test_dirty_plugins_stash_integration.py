@@ -12,7 +12,7 @@ from test_dirty_compactor_stash_integration import Fixture, exercise, verify_fro
 def verify_hub_frontend(fixture):
     detail = verify_served_bundle(fixture, "DirtyPlugins", "dirtyPlugins", "dirtyPlugins.js",
                                   {"SettingsToggle": "Settings", "DirtyPluginsRoute": "Route"},
-                                  required=("/components/Route.tsx", "/components/Controls.tsx"))
+                                  required=("/components/Route.tsx", "/components/Controls.tsx", "/folderPicker.ts"))
     print("PASS: " + detail, flush=True)
 
 

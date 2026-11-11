@@ -115,7 +115,7 @@ async function main() {
   ])
     assert.equal(hub[name], undefined, name);
   for (const name of ["html", "SettingsField"]) assert.equal(hub.react[name], undefined, name);
-  assert.deepEqual(Object.keys(hub.ui).sort(), ["manageDialog", "notify"]);
+  assert.deepEqual(Object.keys(hub.ui).sort(), ["manageDialog", "notify", "pickFolder"]);
   assert.equal(hub.theme.load, undefined);
   const numberField = domain.fieldDefinition("multiscreen", {
     name: "markerDuration",

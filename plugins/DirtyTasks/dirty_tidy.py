@@ -30,7 +30,8 @@ AUTOMATION_NAMESPACE = "dirtyTidy.automationJobs"
 TAG_AUTOMATION_NAMESPACE = "dirtyTidy.tagUpdateJobs"
 STRATEGY_VERSION = 7
 DEFAULT_SETTINGS = CONSTANTS["defaultSettings"]
-AUTOMATION_MODES = {"manual", "scan", "generate"}
+AUTOMATION_MODES = {"manual", "scan", "generate", "schedule"}
+TRIGGERS = {"scan", "generate", "schedule"}
 STRATEGY_SETTING_KEYS = (
     "moveEnabled",
     "moveRequireStashId",
@@ -521,7 +522,7 @@ def execute_plan(
     if apply_approved_strategy:
         # Automation approves the rules for future libraries, including newly
         # scanned scenes. It must not be tied to the preview's file list.
-        if settings["automationMode"] not in {"scan", "generate"} or settings["approvedStrategyHash"] != plan["strategy_hash"]:
+        if settings["automationMode"] not in TRIGGERS or settings["approvedStrategyHash"] != plan["strategy_hash"]:
             raise PluginError("The current strategy has not been approved for automation.")
     else:
         # Manual execution only applies the exact operations the user confirmed.
@@ -587,9 +588,11 @@ def execute_plan(
     }
 
 
-def organization_actions(settings, trigger):
+def organization_actions(settings, trigger, scheduled=None):
+    """Enabled actions using trigger; a schedule names the actions whose slot is due."""
     execution = get_section("execution")
-    return {key for key in ("move", "rename") if settings[key + "Enabled"] and execution[key] == trigger}
+    keys = ("move", "rename") if trigger != "schedule" else [key for key in ("move", "rename") if key in (scheduled or ())]
+    return {key for key in keys if settings[key + "Enabled"] and execution[key] == trigger}
 
 
 def queue_automation(client: StashClient, args: dict[str, Any], reporter: Reporter) -> dict[str, Any]:
@@ -597,10 +600,10 @@ def queue_automation(client: StashClient, args: dict[str, Any], reporter: Report
     trigger = str(args.get("automationTrigger") or "").strip().lower()
     job_id = str(args.get("sourceJobId") or "").strip()
     start_time = str(args.get("sourceStartTime") or "").strip()
-    if trigger not in {"scan", "generate"} or not job_id or not start_time:
+    if trigger not in TRIGGERS or not job_id or not start_time:
         raise PluginError("DirtyTasks organization automation requires the completed job's trigger, ID and start time")
     settings = normalize_settings(get_section("organization"))
-    actions = organization_actions(settings, trigger)
+    actions = organization_actions(settings, trigger, args.get("actions"))
     if not actions:
         return {"skipped": True, "reason": "disabled"}
     if not settings["approvedStrategyHash"] or settings["approvedStrategyHash"] != strategy_hash(settings):
@@ -614,10 +617,10 @@ def queue_automation(client: StashClient, args: dict[str, Any], reporter: Report
         "organize scene files into folders" if "move" in actions else "rename scene files"
     )
     return claim_automation_job(client, reporter, trigger, job_id, start_time, AUTOMATION_NAMESPACE,
-                                "automation", action)
+                                "automation", action, {"actions": sorted(actions)} if trigger == "schedule" else {})
 
 
-def claim_automation_job(client, reporter, trigger, job_id, start_time, namespace, mode, action):
+def claim_automation_job(client, reporter, trigger, job_id, start_time, namespace, mode, action, extra=None):
     key = json.dumps([trigger, job_id, start_time], separators=(",", ":"))
     token = uuid.uuid4().hex
     claimed = shared_storage.update_json_metadata(
@@ -627,14 +630,15 @@ def claim_automation_job(client, reporter, trigger, job_id, start_time, namespac
         reporter.info(f"DirtyTasks organization skipped duplicate {trigger} job {job_id} ({start_time}).")
         return {"skipped": True, "reason": "duplicate"}
 
-    description = f"DirtyTasks: organization: {action} (after {trigger.title()} #{job_id})"
+    description = (f"DirtyTasks: organization: {action} (scheduled {start_time})" if trigger == "schedule"
+                   else f"DirtyTasks: organization: {action} (after {trigger.title()} #{job_id})")
     try:
         queued_id = client.call(
             "mutation DirtyTidyAutomation($pluginId:ID!,$description:String,$args:Map){"
             "runPluginTask(plugin_id:$pluginId,description:$description,args_map:$args)}",
             {"pluginId": PLUGIN_ID, "description": description, "args": {
                 "task": "organization", "mode": mode, "automationTrigger": trigger,
-                "sourceJobId": job_id, "sourceStartTime": start_time,
+                "sourceJobId": job_id, "sourceStartTime": start_time, **(extra or {}),
             }},
         ).get("runPluginTask")
         if not queued_id:
@@ -650,7 +654,7 @@ def claim_automation_job(client, reporter, trigger, job_id, start_time, namespac
 def queue_tag_update(client, args, reporter):
     settings = normalize_settings(get_section("organization"))
     trigger = str(args.get("automationTrigger") or "").strip().lower()
-    if trigger not in {"scan", "generate"} or trigger != get_section("execution")["tags"] or not settings["tagUpdateEnabled"] or not settings["taggerEndpoint"]:
+    if trigger not in TRIGGERS or trigger != get_section("execution")["tags"] or not settings["tagUpdateEnabled"] or not settings["taggerEndpoint"]:
         return {"skipped": True, "reason": "disabled"}
     job_id, start_time = str(args["sourceJobId"]).strip(), str(args["sourceStartTime"]).strip()
     if shared_storage.internal_scan_check(job_id, start_time):
@@ -696,16 +700,16 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
     if mode == "automation":
         settings = normalize_settings(get_section("organization"))
         trigger = str(args.get("automationTrigger") or "").strip().lower()
-        if trigger not in {"scan", "generate"}:
-            raise PluginError("DirtyTasks organization automation requires a Scan or Generate trigger")
+        if trigger not in TRIGGERS:
+            raise PluginError("DirtyTasks organization automation requires a Scan, Generate or schedule trigger")
 
         def skip(message: str) -> dict[str, Any]:
             reporter.info(message)
             return {"skipped": True, "reason": message}
 
-        actions = organization_actions(settings, trigger)
+        actions = organization_actions(settings, trigger, args.get("actions"))
         if not actions:
-            return skip(f"DirtyTasks organization has no enabled actions scheduled after {trigger}.")
+            return skip(f"DirtyTasks organization has no enabled actions for the {trigger} trigger.")
         approved_hash = settings["approvedStrategyHash"]
         if not approved_hash:
             return skip("DirtyTasks organization skipped automation because this strategy has not been approved.")

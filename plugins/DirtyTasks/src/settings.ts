@@ -1,6 +1,6 @@
 import { hub } from "../../DirtyPlugins/src/shared/host";
 
-type Section = "organization" | "encoding" | "execution";
+type Section = "organization" | "encoding" | "execution" | "backup";
 const revisions: Partial<Record<Section, number>> = {};
 
 export async function loadSettings(section: Section): Promise<Record<string, unknown>> {

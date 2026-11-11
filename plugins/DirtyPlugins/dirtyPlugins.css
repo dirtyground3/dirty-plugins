@@ -1894,6 +1894,87 @@ nav.top-nav:has(.navbar-buttons .dirty-plugins-nav.nh-managed) .navbar-collapse 
   margin: 0;
 }
 
+/* Server folder picker (hub.ui.pickFolder). */
+.dirty-ui-folder-picker {
+  display: flex;
+  flex-direction: column;
+  max-height: min(44rem, calc(100vh - 2rem));
+  max-width: 46rem;
+  padding: 1rem;
+  width: 100%;
+}
+
+.dirty-ui-folder-picker-header,
+.dirty-ui-folder-picker-footer {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.dirty-ui-folder-picker-header h3 {
+  margin: 0;
+}
+
+.dirty-ui-folder-picker-header .close {
+  float: none;
+  font-size: 1rem;
+  opacity: 0.8;
+  text-shadow: none;
+}
+
+.dirty-ui-folder-picker-path {
+  display: flex;
+  margin-top: 1rem;
+}
+
+.dirty-ui-folder-picker-list {
+  border: 1px solid var(--dirty-ui-border);
+  border-radius: var(--dirty-ui-radius-small);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  margin-top: 0.75rem;
+  min-height: 12rem;
+  overflow-y: auto;
+}
+
+.dirty-ui-folder-picker-folder {
+  border-radius: 0;
+  color: inherit;
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  text-decoration: none;
+}
+
+.dirty-ui-folder-picker-folder:hover,
+.dirty-ui-folder-picker-folder:focus {
+  background: var(--dirty-ui-surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+.dirty-ui-folder-picker-folder:focus-visible {
+  outline: 2px solid var(--dirty-ui-focus);
+  outline-offset: -2px;
+}
+
+.dirty-ui-folder-picker-empty,
+.dirty-ui-folder-picker-status {
+  color: var(--dirty-ui-muted);
+  padding: 0.75rem;
+}
+
+.dirty-ui-folder-picker-status {
+  min-height: 2.5rem;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.dirty-ui-folder-picker-footer {
+  justify-content: flex-end;
+}
+
 /* Documentation captures keep machine-specific paths out of public images. */
 .dirty-plugins-docs-capture #dirty-plugins-panel-extractScenes input[type="text"] {
   filter: blur(8px);
