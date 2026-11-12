@@ -2909,20 +2909,13 @@ async function customRows() {
     boxes(h).forEach(([, , width, height], index) => assert.ok(Math.abs(width / height - aspect(index)) < 0.02));
   assert.deepEqual(boxes(h), fitted(h));
   shapes(h);
-  assert.ok(boxes(h)[3][3] > boxes(h)[1][3], "the larger row is larger");
-  assert.ok(
-    handles(h).some(node => /bottom/.test(node.props.className)),
-    "fitted rows still drag up and down",
-  );
+  assert.equal(handle(h, 1, "bottom"), undefined, "a fitted screen with its row to itself has no edge to move");
+  assert.ok(handle(h, 3, "top"), "a screen at the end of its row still reaches up");
   // A side edge still pushes screens down: screen 3 takes the bottom row and screen 4 gets a row of its own.
   await drag(h, 3, "right", boxes(h)[2][2] + 10, 0);
   assert.equal(shape(layoutOf(h)), "C(3*2 1 2 0)");
   assert.deepEqual(boxes(h), fitted(h));
-  // A bottom edge makes its fitted row larger: screen 2's row grows to the first row's size.
-  await drag(h, 2, "bottom", 0, boxes(h)[1][3] + 2);
-  assert.equal(shape(layoutOf(h)), "C(3*2 1*2 2 0)");
-  assert.deepEqual(boxes(h), fitted(h));
-  shapes(h);
+  assert.equal(handles(h).length, 0, "one screen per row leaves no edge that moves");
   h.nodes(node => node.props.className === "ms-fit-toggle")[0].props.onClick();
   await h.flush();
 

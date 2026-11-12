@@ -254,8 +254,8 @@ export function NativeMultiscreenGrid({
     units: number;
     draft: CustomLayout | null;
   } | null>(null);
-  const current = React.useRef({ structure, rectangles, closed, size, rows, columns });
-  current.current = { structure, rectangles, closed, size, rows, columns };
+  const current = React.useRef({ structure, rectangles, closed, size, rows, columns, fitVideos });
+  current.current = { structure, rectangles, closed, size, rows, columns, fitVideos };
   const resize = React.useMemo<ResizeControls>(() => {
     const stop = () => {
       resizing.current = null;
@@ -264,8 +264,8 @@ export function NativeMultiscreenGrid({
     };
     return {
       start(index, edge) {
-        const { structure, rectangles, closed, size, rows, columns } = current.current;
-        const measured = dragUnit(structure, closed, index, edge);
+        const { structure, rectangles, closed, size, rows, columns, fitVideos } = current.current;
+        const measured = dragUnit(structure, closed, index, edge, fitVideos);
         if (!measured) return;
         // The part the edge belongs to spans its screens' boxes; the grid's own cells stand in for missing boxes.
         const across = edge === "left" || edge === "right";
@@ -288,7 +288,14 @@ export function NativeMultiscreenGrid({
         const units = Math.round(toward / drag.unit);
         if (!Number.isFinite(units) || units === drag.units) return;
         drag.units = units;
-        const next = resizeScreen(drag.base, current.current.closed, drag.index, drag.edge, units);
+        const next = resizeScreen(
+          drag.base,
+          current.current.closed,
+          drag.index,
+          drag.edge,
+          units,
+          current.current.fitVideos,
+        );
         drag.draft = JSON.stringify(next) === JSON.stringify(drag.base) ? null : next;
         setDraft(drag.draft);
       },
@@ -448,7 +455,7 @@ export function NativeMultiscreenGrid({
     };
   }, [playback.pauseWhenHidden]);
   const edgesOf = (index: number) => {
-    const edges = draggableEdges(structure, closed, index);
+    const edges = draggableEdges(structure, closed, index, fitVideos);
     // In a fixed order: an edge moved in the page would drop its pointer.
     return held?.index === index && !edges.includes(held.edge)
       ? EDGES.filter(edge => edge === held.edge || edges.includes(edge))

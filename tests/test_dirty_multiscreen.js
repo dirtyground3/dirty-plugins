@@ -210,16 +210,32 @@ function customRows() {
     { left: 0, top: 900, width: 800, height: 450 },
     { left: 800, top: 900, width: 800, height: 450 },
   ]);
-  // A larger part makes its videos larger; the smaller part is centred.
+  // Sizes do not count there: the videos decide, so nothing opens between them.
   const larger = { ...layoutFromLanes([[0], [1, 2]], [0, 1, 2]) };
   larger.children = [larger.children[0], { ...larger.children[1], size: 2 }];
-  assert.deepEqual(plain(customRectangles(larger, [], 1600, 900, 1, sixteen)), [
-    { left: 400, top: 0, width: 800, height: 450 },
-    { left: 0, top: 450, width: 800, height: 450 },
-    { left: 800, top: 450, width: 800, height: 450 },
-  ]);
-  const reached = customRectangles(resizeScreen(grid, [], 1, "bottom", 1), [], 1600, 900, 1, sixteen);
-  for (const box of reached) assert.ok(Math.abs(box.width / box.height - 16 / 9) < 0.01, "every video keeps its shape");
+  assert.deepEqual(
+    plain(customRectangles(larger, [], 1600, 900, 1, sixteen)),
+    plain(customRectangles(layoutFromLanes([[0], [1, 2]], [0, 1, 2]), [], 1600, 900, 1, sixteen)),
+  );
+  const picture = resizeScreen(grid, [], 1, "bottom", 1);
+  for (const box of customRectangles(picture, [], 1600, 900, 1, sixteen))
+    assert.ok(Math.abs(box.width / box.height - 16 / 9) < 0.01, "every video keeps its shape");
+  // Only edges that move appear: fitted screens have no sizes to change, only screens and lanes to move.
+  assert.deepEqual(draggableEdges(picture, [], 0), ["right", "bottom"]);
+  assert.deepEqual(draggableEdges(picture, [], 0, true), ["right"], "screen 1 has nothing to give below it");
+  assert.deepEqual(draggableEdges(picture, [], 2, true), ["top", "right"]);
+  assert.deepEqual(draggableEdges(picture, [], 1, true), ["left"]);
+  assert.equal(resizeScreen(picture, [], 2, "top", -1, true), picture, "dragging 3's top edge down gives nothing back");
+  assert.equal(shape(resizeScreen(picture, [], 2, "top", 1, true)), "R(2 C(0 3) 1*2)");
+  assert.equal(shape(resizeScreen(picture, [], 2, "top", -1)), "R(C(0*2 R(2 3)) 1)", "unfitted, the row is lower");
+  // Fitted drags count whole screens and lanes.
+  assert.equal(shape(resizeScreen(wide, [], 0, "right", 1, true)), "C(R(0*3 2) 1)");
+  assert.equal(
+    resizeScreen(wide, [], 1, "left", -1, true),
+    wide,
+    "a fitted screen with no next row has nothing to bring up",
+  );
+  assert.deepEqual(plain(dragUnit(grid, [], 0, "right", true)), { panes: [0], units: 1 });
 }
 async function main() {
   const { fitLayout, videoAspect, DEFAULT_ASPECT, FIT_COVERAGE_THRESHOLD } = feature("layout");
