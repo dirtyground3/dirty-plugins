@@ -2,6 +2,10 @@
 
 Newest first. Each GitHub Release of DirtyPlugins uses the entry that names its version.
 
+- **DirtyPlugins 1.0.21:** fixed the native scene search toolbar under themes
+  such as Refract. The controls wrap inside the search dialog and the theme's
+  toolbar background no longer covers the backdrop.
+
 - **DirtyPlugins 1.0.20:** Stash's own scene search, saved filters and Filter
   button are available inline as `DirtyPlugins.react.NativeSceneFilter`, which
   DirtyMultiscreen's search uses. The scene filter dialog keeps hiding Stash's

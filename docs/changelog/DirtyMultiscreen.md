@@ -2,29 +2,38 @@
 
 Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names its version.
 
+- **DirtyMultiscreen 1.0.27:** resizable grids and fixes for marker and performer navigation.
+  - **Custom layouts.** Drag a shared edge to resize a screen or span several
+    rows or columns. The layout survives reloads and saved grids. Fit videos
+    keeps the video shapes and shows only handles that can move screens.
+  - **Add or remove screens.** The red minus closes a screen while the others
+    keep playing. The plus restores the last closed screen and its playback
+    position, or adds a screen when none are closed.
+  - **Screen controls.** The scene link and O counter sit on the right.
+    Overlay buttons and performer portraits share one circular size, and
+    reshuffle has a matching border. The X sits at the upper-right corner of
+    each screen's edit controls. The main toolbar stays visible in edit mode.
+  - **Marker seeking.** Scrubbing past a marker's end keeps playing from the
+    chosen time. Returning before the end restores normal marker playback.
+    Saved positions beyond the end resume there too.
+  - **Performer navigation.** Clicking a co-performer in a performer-filtered
+    scene list finds shared and solo scenes while keeping other filters.
+  - **Search dialog.** The native toolbar wraps inside the dialog under themes
+    such as Refract. This uses the shared fix in DirtyPlugins 1.0.21.
+
 - **DirtyMultiscreen 1.0.26:** a slimmer screen header and Stash's own search.
   - **Scene link:** an icon opens the scene page in a new tab instead of the
     scene title, which is now its tooltip.
   - **Search:** each screen's search uses Stash's own search box, saved
     filters, Filter dialog and sort, limited to the session. Lists and
     selections follow the chosen sort too.
-  - **O per scene:** a drop button beside the scene link adds one O to that
+  - **O per scene:** a drop button after the performers adds one O to that
     screen's scene only.
-  - **Consistent controls:** the scene link and O counter sit on the right of
-    each screen. Overlay buttons and performer portraits share one circular
-    size, reshuffle has a matching border, and Remove screen uses a red minus.
-    The X that finishes editing stays at the upper-right corner of each
-    screen's control group.
-  - **Marker seeking:** dragging past a marker's end keeps playing from the
-    chosen time instead of looping or advancing immediately. Returning before
-    the end restores normal marker playback; saved positions beyond it resume
-    there too.
-  - **Performer buttons:** round portraits with the Next mark on their corner.
-    In a performer-filtered scene list, clicking a co-performer finds their
-    other scenes while keeping the remaining scene filters.
+  - **Performer buttons:** smaller round portraits with the Next mark on their
+    corner.
   - **Top right:** the button that adds an O to every visible scene shows
     several drops, and the top-right buttons fade after three seconds without
-    mouse movement unless hovered. They stay visible throughout edit mode.
+    mouse movement unless hovered.
 
 - **DirtyMultiscreen 1.0.25:** edit mode, saved grids and autosaves.
   - **Edit mode:** the grid button opens it. Each screen can be flipped,
