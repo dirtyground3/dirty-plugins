@@ -44,7 +44,7 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - The grid button below the saved-grids button turns edit mode on and off. Videos
   keep playing, and every screen shows buttons to move, flip horizontally,
   flip vertically, rotate, loop, fill, remove the screen (a red minus), and
-  finish editing (the X at the group's upper-right corner). A flip mirrors the picture
+  finish editing (the small X at the group's upper-right corner). A flip mirrors the picture
   only, not the controls or captions, and belongs to its video: it leaves when
   the screen moves to another scene and returns if you go back. Loop and fill stay with the
   screen. Loop starts from the **Loop scenes** setting and overrides it for that
@@ -149,7 +149,7 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   does not follow you to another device.
 - Each screen's header has search and performer portraits on the left, with
   the scene link and O button on the right. The link opens the scene page in a
-  new tab (the scene title is its tooltip). All overlay buttons and portraits
+  new tab (the scene title is its tooltip). The header buttons and portraits
   share the same circular size. They use translucent backgrounds over the video and show and
   hide with the player's control bar, so they fade out on a playing screen you
   are not hovering.

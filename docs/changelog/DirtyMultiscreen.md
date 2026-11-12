@@ -2,6 +2,9 @@
 
 Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names its version.
 
+- **DirtyMultiscreen 1.0.28:** the X at the upper-right corner of each screen's
+  edit controls is smaller.
+
 - **DirtyMultiscreen 1.0.27:** resizable grids and fixes for marker and performer navigation.
   - **Custom layouts.** Drag a shared edge to resize a screen or span several
     rows or columns. The layout survives reloads and saved grids. Fit videos

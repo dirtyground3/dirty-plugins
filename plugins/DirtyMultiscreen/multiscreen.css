@@ -113,10 +113,12 @@
 
 /* Finish editing stays on the group's upper-right corner, outside its wrapping row of picture controls. */
 .ms-route .ms-screen-controls .ms-finish-editing.ms-button {
+  --ms-button-size: 1.15rem;
   position: absolute;
-  top: calc(-1 * var(--ms-button-size) + 0.25rem);
-  right: -0.5rem;
+  top: -0.45rem;
+  right: -0.45rem;
   background: rgba(0, 0, 0, 0.85);
+  font-size: 0.65rem;
 }
 
 /* The move button drags its screen onto another one. Touch must not scroll or select instead. */
@@ -308,7 +310,7 @@
   font-size: 1.25rem;
 }
 
-/* Overlay actions keep one circular size, including portraits and the menu toggle, across themes. */
+/* Overlay actions use circular buttons across themes. The corner X sets its own size. */
 #root .ms-route :is(.ms-pane-header, .ms-screen-controls, .ms-floating) .ms-button {
   box-sizing: border-box;
   flex: 0 0 auto;
