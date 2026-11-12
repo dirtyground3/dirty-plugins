@@ -40,8 +40,9 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   it as the **Scene order** setting. A list launched in its plugin's own order
   shows **Keep the list order** checked until you choose another.
 - The grid button below the saved-grids button turns edit mode on and off. Videos
-  keep playing, and every screen shows seven buttons: move, flip horizontally,
-  flip vertically, rotate, loop, fill, and close. A flip mirrors the picture
+  keep playing, and every screen shows buttons to move, flip horizontally,
+  flip vertically, rotate, loop, fill, remove the screen (a red minus), and
+  finish editing. A flip mirrors the picture
   only, not the controls or captions, and belongs to its video: it leaves when
   the screen moves to another scene and returns if you go back. Loop and fill stay with the
   screen. Loop starts from the **Loop scenes** setting and overrides it for that
@@ -143,9 +144,10 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   they then continue from their saved position. The browser keeps one saved
   session, in local storage, so two open grids overwrite each other's save and it
   does not follow you to another device.
-- Each screen's header has a link icon that opens its scene page in a new tab
-  (the scene title is its tooltip), the search button, the performer portraits
-  and an O button. They use translucent backgrounds over the video and show and
+- Each screen's header has search and performer portraits on the left, with
+  the scene link and O button on the right. The link opens the scene page in a
+  new tab (the scene title is its tooltip). All overlay buttons and portraits
+  share the same circular size. They use translucent backgrounds over the video and show and
   hide with the player's control bar, so they fade out on a playing screen you
   are not hovering.
 - Each performer has a small round portrait button with a Next badge on its
@@ -171,7 +173,8 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   the mouse is near them, and hide three seconds after it moves away, leaves
   the window, or after the player opens; moving the mouse elsewhere does not
   show them. Keyboard focus and an open shuffle menu keep them; a touch shows
-  them for three seconds. This holds in edit mode too.
+  them for three seconds. In edit mode they stay visible; finishing editing
+  starts a fresh three-second delay before they can hide again.
 - Runs inside Stash and uses its existing scene and marker data.
 
 ## Screenshots

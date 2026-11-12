@@ -324,11 +324,18 @@ async function sceneHeaderActions() {
   await h.tick(3000);
   assert.equal(floating(), "ms-floating ms-floating-idle");
   h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === "Edit screens")[0].props.onClick();
-  pointer(1500, 100);
   await h.flush();
+  assert.equal(floating(), "ms-floating", "entering edit mode reveals the toolbar even while idle");
   pointer(200, 200);
+  h.document.emit("pointerout", { relatedTarget: null });
   await h.tick(3000);
-  assert.equal(floating(), "ms-floating ms-floating-idle", "they hide in edit mode too");
+  assert.equal(floating(), "ms-floating", "the toolbar stays visible throughout edit mode");
+  h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === "Finish editing screens")[0].props.onClick();
+  await h.flush();
+  await h.tick(2900);
+  assert.equal(floating(), "ms-floating", "leaving edit mode starts a fresh idle delay");
+  await h.tick(3000);
+  assert.equal(floating(), "ms-floating ms-floating-idle", "the toolbar hides normally after editing");
   await h.unmount();
   pending[2].resolve({ sceneIncrementO: 8 });
   await h.flush();
@@ -2242,7 +2249,12 @@ async function editMode() {
   assert.equal(h.nodes(node => node.props.className === "ms-screen-controls").length, 0);
   pane(h, 0).video.currentTime = 5;
   await press(h, "Edit screens");
-  assert.equal(button(h, "Finish editing screens").props.pressed, true);
+  assert.ok(
+    h
+      .nodes(node => node.type === "IconButton" && node.props.ariaLabel === "Finish editing screens")
+      .some(node => node.props.pressed === true),
+    "the global edit toggle stays pressed while the screens also offer a finish button",
+  );
   assert.equal(h.nodes(node => node.props.className === "ms-screen-controls").length, 2);
   assert.deepEqual(playing(h), [first, second], "entering edit mode changes no screen");
   assert.equal(pane(h, 0).video.pauseCount, 0, "videos keep playing in edit mode");
@@ -2284,9 +2296,12 @@ async function editMode() {
   assert.equal(cells(h)[0], "ms-cell ms-fill ms-flip-x ms-flip-y", "the flip returns with its video");
 
   // The × on any screen's controls leaves edit mode for all of them and keeps the picture.
-  const corners = h.nodes(node => node.props.className === "ms-finish-editing");
-  assert.equal(corners.length, 2, "every screen's controls carry the ×");
-  corners[1].props.onClick();
+  const finishButtons = h.nodes(
+    node =>
+      node.type === "IconButton" && node.props.ariaLabel === "Finish editing screens" && node.props.pressed == null,
+  );
+  assert.equal(finishButtons.length, 2, "every screen's controls carry the ×");
+  finishButtons[1].props.onClick();
   await h.flush();
   assert.equal(button(h, "Edit screens").props.pressed, false);
   assert.equal(h.nodes(node => node.props.className === "ms-screen-controls").length, 0);

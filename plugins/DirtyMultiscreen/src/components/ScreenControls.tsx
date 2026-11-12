@@ -84,15 +84,6 @@ export function ScreenControls({
   };
   return (
     <div className="ms-screen-controls" role="group" aria-label={`Controls for ${screen}`}>
-      <button
-        type="button"
-        className="ms-finish-editing"
-        title="Finish editing screens"
-        aria-label="Finish editing screens"
-        onClick={onFinishEditing}
-      >
-        ×
-      </button>
       <span
         className="ms-move-handle"
         onPointerDown={event => {
@@ -163,10 +154,17 @@ export function ScreenControls({
       />
       <PluginIconButton
         ariaLabel={onClose ? `Close ${screen}` : `Close ${screen} is unavailable: it is the only open screen`}
-        fallback="x"
-        icon={icon("close")}
+        fallback="−"
+        icon={icon("minus")}
+        tone="danger"
         disabled={!onClose}
         onClick={() => onClose?.()}
+      />
+      <PluginIconButton
+        ariaLabel="Finish editing screens"
+        fallback="×"
+        icon={icon("close")}
+        onClick={onFinishEditing}
       />
     </div>
   );

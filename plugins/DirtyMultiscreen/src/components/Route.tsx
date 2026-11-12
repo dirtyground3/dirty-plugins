@@ -52,11 +52,13 @@ const NEAR_PX = 100;
 /**
  * True while the main buttons rest hidden. They show while the mouse is within NEAR_PX of their box and hide
  * `delay` after it leaves that area or the window, and after the player opens. Moving elsewhere never shows them;
- * a touch, which cannot hover, shows them for `delay`.
+ * a touch, which cannot hover, shows them for `delay`. Edit mode keeps them visible without an idle timer.
  */
-function useIdle(area: R.RefObject<HTMLElement | null>, delay: number) {
+function useIdle(area: R.RefObject<HTMLElement | null>, delay: number, keepVisible: boolean) {
   const [idle, setIdle] = React.useState(false);
   React.useEffect(() => {
+    setIdle(false);
+    if (keepVisible) return undefined;
     let timer = 0;
     const show = () => {
       window.clearTimeout(timer);
@@ -99,8 +101,8 @@ function useIdle(area: R.RefObject<HTMLElement | null>, delay: number) {
       window.removeEventListener("pointerdown", tap);
       document.removeEventListener("pointerout", out);
     };
-  }, [area, delay]);
-  return idle;
+  }, [area, delay, keepVisible]);
+  return !keepVisible && idle;
 }
 /** Opening a saved grid starts the player over, so it reads that grid as the session to resume. */
 export function MultiscreenRoute() {
@@ -114,9 +116,9 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   const replaced = React.useRef(false);
   const [visibleNativeSceneIds, setVisibleNativeSceneIds] = React.useState<string[]>([]);
   const [editing, setEditing] = React.useState(false);
-  // The top-right buttons show only while the mouse is near them.
+  // The top-right buttons stay visible in edit mode and otherwise show while the mouse is near them.
   const floatingRef = React.useRef<HTMLDivElement | null>(null);
-  const controlsIdle = useIdle(floatingRef, CONTROLS_IDLE_MS);
+  const controlsIdle = useIdle(floatingRef, CONTROLS_IDLE_MS, editing);
   const [pendingGrid, setPendingGrid] = React.useState<GridSize | null>(null);
   // A launch context means the header button just chose a scope; without one the saved session continues.
   const [launch] = React.useState(() => {
@@ -506,7 +508,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           onConfirm={() => changeGrid(pendingGrid)}
         />
       )}
-      {/* A column down from the corner. It shows only while the mouse is near it, in edit mode too. */}
+      {/* A column down from the corner, always visible while editing. */}
       <div className={"ms-floating" + (controlsIdle ? " ms-floating-idle" : "")} ref={floatingRef}>
         <PluginIconButton ariaLabel="Close DirtyMultiscreen" fallback="x" icon={icon("close")} onClick={closeRoute} />
         {!error && items.length > 0 && <ShuffleMenu order={settings.sceneOrder} onShuffle={reshuffle} />}

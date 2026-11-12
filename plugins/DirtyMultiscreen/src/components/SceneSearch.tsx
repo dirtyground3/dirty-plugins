@@ -175,37 +175,41 @@ export function PaneHeader({
   return (
     <>
       <div className="ms-pane-header">
-        {item && (
-          <PluginApi.libraries.ReactRouterDOM.NavLink
-            aria-label={`Open scene page for ${item.title}`}
-            className="dirty-ui-icon-button ms-button ms-scene-link"
-            rel="noopener noreferrer"
-            target="_blank"
-            title={`Open scene page: ${item.title}`}
-            to={`/scenes/${item.scene.id}`}
-          >
-            <DirtyPlugins.react.Glyph icon={icon("scene")} fallback="↗" />
-          </PluginApi.libraries.ReactRouterDOM.NavLink>
-        )}
-        <PluginIconButton
-          ariaLabel={`Search scenes for screen ${screenIndex + 1}`}
-          fallback="⌕"
-          icon={icon("search")}
-          buttonRef={openerRef}
-          onClick={() => {
-            openedWithoutFocusRing.current = !openerRef.current?.matches(":focus-visible");
-            setOpen(true);
-          }}
-        />
-        {showPerformerNavigation && (
-          <PerformerNavigation
-            performers={item?.scene.performers ?? []}
-            screenIndex={screenIndex}
-            busy={busy}
-            onNext={onNavigatePerformer}
+        <div className="ms-pane-navigation">
+          <PluginIconButton
+            ariaLabel={`Search scenes for screen ${screenIndex + 1}`}
+            fallback="⌕"
+            icon={icon("search")}
+            buttonRef={openerRef}
+            onClick={() => {
+              openedWithoutFocusRing.current = !openerRef.current?.matches(":focus-visible");
+              setOpen(true);
+            }}
           />
+          {showPerformerNavigation && (
+            <PerformerNavigation
+              performers={item?.scene.performers ?? []}
+              screenIndex={screenIndex}
+              busy={busy}
+              onNext={onNavigatePerformer}
+            />
+          )}
+        </div>
+        {item && (
+          <div className="ms-pane-actions">
+            <PluginApi.libraries.ReactRouterDOM.NavLink
+              aria-label={`Open scene page for ${item.title}`}
+              className="dirty-ui-icon-button ms-button ms-scene-link"
+              rel="noopener noreferrer"
+              target="_blank"
+              title={`Open scene page: ${item.title}`}
+              to={`/scenes/${item.scene.id}`}
+            >
+              <DirtyPlugins.react.Glyph icon={icon("scene")} fallback="↗" />
+            </PluginApi.libraries.ReactRouterDOM.NavLink>
+            <SceneOCounterButton key={item.scene.id} sceneId={item.scene.id} screenIndex={screenIndex} />
+          </div>
         )}
-        {item && <SceneOCounterButton key={item.scene.id} sceneId={item.scene.id} screenIndex={screenIndex} />}
       </div>
       {open && (
         <SceneSearchDialog

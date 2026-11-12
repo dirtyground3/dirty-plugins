@@ -8,13 +8,16 @@ Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names 
   - **Search:** each screen's search uses Stash's own search box, saved
     filters, Filter dialog and sort, limited to the session. Lists and
     selections follow the chosen sort too.
-  - **O per scene:** a drop button after the performers adds one O to that
+  - **O per scene:** a drop button beside the scene link adds one O to that
     screen's scene only.
+  - **Consistent controls:** the scene link and O counter sit on the right of
+    each screen. Overlay buttons and performer portraits share one circular
+    size, reshuffle has a matching border, and Remove screen uses a red minus.
   - **Performer buttons:** smaller round portraits with the Next mark on their
     corner.
   - **Top right:** the button that adds an O to every visible scene shows
     several drops, and the top-right buttons fade after three seconds without
-    mouse movement unless hovered.
+    mouse movement unless hovered. They stay visible throughout edit mode.
 
 - **DirtyMultiscreen 1.0.25:** edit mode, saved grids and autosaves.
   - **Edit mode:** the grid button opens it. Each screen can be flipped,

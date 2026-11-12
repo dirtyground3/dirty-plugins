@@ -10,6 +10,7 @@ const ICON_NAMES = {
   flipX: ["faLeftRight", "faArrowsAltH"],
   flipY: ["faUpDown", "faArrowsAltV"],
   loop: ["faRepeat", "faRetweet"],
+  minus: ["faMinus", "faMinus"],
   move: ["faUpDownLeftRight", "faArrowsAlt"],
   next: ["faForwardStep", "faStepForward"],
   oCounter: ["faDroplet", "faTint"],

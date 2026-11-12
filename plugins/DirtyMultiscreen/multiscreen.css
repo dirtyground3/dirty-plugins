@@ -1,4 +1,5 @@
 .ms-route {
+  --ms-button-size: 2rem;
   position: fixed;
   inset: 0;
   z-index: 1050;
@@ -108,32 +109,6 @@
   border-radius: 1.3rem;
   background: rgba(0, 0, 0, 0.62);
   transform: translate(-50%, -50%);
-}
-
-/* A small × on the controls' corner leaves edit mode for every screen. */
-.ms-route .ms-finish-editing {
-  position: absolute;
-  top: -0.45rem;
-  right: -0.45rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.15rem;
-  height: 1.15rem;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 50%;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.85);
-  font-size: 0.85rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.ms-route .ms-finish-editing:hover,
-.ms-route .ms-finish-editing:focus-visible {
-  color: #000;
-  background: #fff;
 }
 
 /* The move button drags its screen onto another one. Touch must not scroll or select instead. */
@@ -325,13 +300,26 @@
   font-size: 1.25rem;
 }
 
+/* Overlay actions keep one circular size, including portraits and the menu toggle, across themes. */
+#root .ms-route :is(.ms-pane-header, .ms-screen-controls, .ms-floating) .ms-button {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: var(--ms-button-size);
+  min-width: var(--ms-button-size);
+  height: var(--ms-button-size);
+  min-height: var(--ms-button-size);
+  padding: 0 !important;
+  border: 1px solid var(--dirty-ui-border) !important;
+  border-radius: 50% !important;
+}
+
 .ms-route .ms-screen-controls .ms-button {
-  flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
   color: #fff;
   background: transparent;
+}
+
+.ms-route .ms-screen-controls .dirty-ui-icon-button-danger {
+  color: var(--dirty-ui-danger);
 }
 
 .ms-route .ms-screen-controls .ms-button:hover,
@@ -362,20 +350,33 @@
   position: absolute;
   top: 0.45rem;
   left: 0.55rem;
+  /* Leave the viewport's global button column clear when this is a right-hand screen. */
+  right: 3.25rem;
   z-index: 4;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.4rem;
-  max-width: calc(100% - 1.1rem);
   opacity: 0.65;
   transition: opacity 140ms ease;
 }
 
+.ms-pane-navigation {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.ms-pane-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
 .ms-route .ms-pane-header .ms-button {
-  flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
   color: #fff;
   background: rgba(0, 0, 0, 0.62);
 }
@@ -408,13 +409,6 @@
 #root .ms-pane-header .ms-performer-next.dirty-ui-button {
   position: relative;
   display: block;
-  width: 1.75rem;
-  min-width: 0;
-  height: 1.75rem;
-  min-height: 0;
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 50% !important;
   overflow: visible;
   color: #fff !important;
   background: rgba(0, 0, 0, 0.62) !important;
@@ -670,9 +664,6 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
 }
 
 .ms-floating .ms-button {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
   background: rgba(0, 0, 0, 0.62);
   opacity: 0.45;
 }
@@ -691,11 +682,11 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  min-width: 2rem;
-  height: 2rem;
+  width: var(--ms-button-size);
+  min-width: var(--ms-button-size);
+  height: var(--ms-button-size);
   padding: 0 !important;
-  border: 0 !important;
+  border: 1px solid var(--dirty-ui-border) !important;
   border-radius: 50% !important;
   background: rgba(0, 0, 0, 0.62) !important;
   color: #fff !important;
