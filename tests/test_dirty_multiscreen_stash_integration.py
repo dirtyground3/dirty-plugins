@@ -147,6 +147,11 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
   assert.deepEqual(titles(await queries.findPerformerItems(sorted, false, performer, signal)), ['Alpha', 'Beta'], 'a performer query keeps the session sort');
   assert.deepEqual(titles(await queries.findPerformerItems({ ...sorted, filter: { sort: 'title', direction: 'DESC' } }, false, coPerformer, signal)), ['Gamma', 'Alpha'], 'any cast position matches');
   assert.deepEqual(titles(await queries.findPerformerItems({ ...sorted, scene_filter: scope.scene_filter }, false, performer, signal)), ['Alpha'], 'a performer query stays inside the session filter');
+  const performerSession = { ...sorted, scene_filter: { performers: { value: [performer], modifier: 'INCLUDES' } } };
+  assert.deepEqual(titles(await queries.findPerformerItems(performerSession, false, coPerformer, signal)), ['Alpha', 'Gamma'], 'a co-performer can take a screen beyond the launch performer');
+  const titleScope = { ...performerSession, scene_filter: { ...performerSession.scene_filter, ...scope.scene_filter } };
+  assert.deepEqual(titles(await queries.findPerformerItems(titleScope, false, coPerformer, signal)), ['Alpha'], 'switching performers preserves other scene filters');
+  assert.equal((await queries.searchSession(performerSession, false, find('Gamma'), 1, signal)).findScenes.count, 0, 'scene search still follows the launch performer');
   const markersWithPerformer = await queries.findPerformerItems(markerScope, true, performer, signal);
   assert.equal(markersWithPerformer.findSceneMarkers.scene_markers[0].title, 'Explicit');
   assert.equal(markersWithPerformer.findSceneMarkers.scene_markers[0].seconds, 1);
@@ -163,6 +168,14 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
   assert.equal(listSearch.findScenes.count, 3);
   const playingBeta = { id: all[1].id, scene: { id: all[1].id } };
   assert.deepEqual(titles(await queries.findPerformerItems(pluginScope, false, performer, signal, playingBeta)), ['Alpha']);
+  // Give the two performers a second shared scene, then restore the synthetic cast.
+  const setDeltaCast = performer_ids => graphql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}', { input: { id: all[2].id, performer_ids } });
+  await setDeltaCast([performer, coPerformer]);
+  try {
+    assert.deepEqual(titles(await queries.findPerformerItems(performerSession, false, coPerformer, signal)), ['Alpha', 'Delta', 'Gamma'], 'a portrait finds other shared scenes as well as solo scenes');
+  } finally {
+    await setDeltaCast([]);
+  }
   process.stdout.write('PASS: compiled bounded contextual query and stable seeded random continuation\n');
   process.stdout.write('PASS: session search preserves selections, filters, original text, performer/studio/tag membership and marker ranges\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -112,7 +112,7 @@
 }
 
 /* Finish editing stays on the group's upper-right corner, outside its wrapping row of picture controls. */
-.ms-route .ms-screen-controls .ms-finish-editing {
+.ms-route .ms-screen-controls .ms-finish-editing.ms-button {
   position: absolute;
   top: calc(-1 * var(--ms-button-size) + 0.25rem);
   right: -0.5rem;

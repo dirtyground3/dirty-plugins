@@ -210,7 +210,7 @@ export function NativePlayerPane({
         publish({ ...previous, busy: false, error: "" });
         const performer = playing?.scene.performers?.find(performer => performer.id === performerId);
         const name = performer?.name?.trim() || `Performer ${performerId}`;
-        setNotice(`No other scenes featuring ${name} in this session.`);
+        setNotice(`No other matching scenes featuring ${name}.`);
         return;
       }
       const cursor = previous.items.findIndex(item => item.id === next.id);

@@ -19,8 +19,9 @@ Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names 
     chosen time instead of looping or advancing immediately. Returning before
     the end restores normal marker playback; saved positions beyond it resume
     there too.
-  - **Performer buttons:** smaller round portraits with the Next mark on their
-    corner.
+  - **Performer buttons:** round portraits with the Next mark on their corner.
+    In a performer-filtered scene list, clicking a co-performer finds their
+    other scenes while keeping the remaining scene filters.
   - **Top right:** the button that adds an O to every visible scene shows
     several drops, and the top-right buttons fade after three seconds without
     mouse movement unless hovered. They stay visible throughout edit mode.

@@ -1247,7 +1247,7 @@ async function performerNavigation() {
   assert.equal(images().length, 4, "both performers have portraits in each screen");
   assert.equal(images()[0].props.src, "/performer/p1/image");
   assert.equal(images()[1].props.src, "/performer/p2/image");
-  assert.match(button("Blair").props.title, /Blair.*this session.*Wraps at the end.*other screens keep playing/);
+  assert.match(button("Blair").props.title, /Blair.*Wraps at the end.*other screens playing/);
   assert.equal(h.nodes(node => /Previous scene with|same first performer/.test(node.props?.ariaLabel || "")).length, 0);
   images()[0].props.onError();
   await h.flush();
@@ -1274,14 +1274,14 @@ async function performerNavigation() {
   await h.flush();
   assert.equal(players()[0].props.scene.id, "d");
   assert.equal(await step("Casey"), "d");
-  assert.match(h.text(), /No other scenes featuring Casey/);
+  assert.match(h.text(), /No other matching scenes featuring Casey/);
   await h.tick(1000);
-  assert.doesNotMatch(h.text(), /No other scenes featuring/, "the message clears itself after a second");
+  assert.doesNotMatch(h.text(), /No other matching scenes featuring/, "the message clears itself after a second");
   assert.equal(await step("Casey"), "d");
-  assert.match(h.text(), /No other scenes featuring Casey/, "another click shows it again");
+  assert.match(h.text(), /No other matching scenes featuring Casey/, "another click shows it again");
   players()[0].props.onNext();
   await h.flush();
-  assert.doesNotMatch(h.text(), /No other scenes featuring/);
+  assert.doesNotMatch(h.text(), /No other matching scenes featuring/);
   assert.equal(h.calls.length, 1, "fixed session navigation never queries or expands the library");
   await h.unmount();
 
@@ -1340,6 +1340,49 @@ async function performerNavigation() {
   await marker.flush();
   assert.equal(clock(), 2, "wrapping retains the matching scene's marker range");
   await marker.unmount();
+}
+
+async function performerNavigationFromPerformer() {
+  const alex = { id: "p1", name: "Alex" },
+    blair = { id: "p2", name: "Blair" };
+  const scenes = [
+    { id: "a", performers: [alex, blair], paths: { stream: "/a" } },
+    { id: "b", performers: [alex], paths: { stream: "/b" } },
+    { id: "c", performers: [blair], paths: { stream: "/c" } },
+    { id: "d", performers: [alex, blair], paths: { stream: "/d" } },
+  ];
+  const h = await start({
+    scenes,
+    launch: { source: "performer-detail", performerId: alex.id },
+    settings: { rows: 1, columns: 2, sceneOrder: "list", randomStart: false, splitScenes: true },
+    graphql: (_query, variables) => {
+      const matches = (scene, filter) =>
+        (!filter.performers || scene.performers.some(performer => filter.performers.value.includes(performer.id))) &&
+        (!filter.AND || matches(scene, filter.AND));
+      const selected = scenes.filter(scene => matches(scene, variables.scene_filter));
+      return { findScenes: { count: selected.length, scenes: selected } };
+    },
+  });
+  const players = () => h.nodes(node => node.type === "native-player");
+  const playing = () => players().map(node => node.props.scene.id);
+  const follow = async name => {
+    h.nodes(
+      node => node.type === "Button" && node.props.ariaLabel === `Next scene featuring ${name} for screen 1`,
+    )[0].props.onClick();
+    await h.flush();
+  };
+  assert.deepEqual(playing(), ["a", "b"], "the grid starts with the launch performer's scenes");
+  await follow("Alex");
+  assert.deepEqual(playing(), ["b", "b"]);
+  players()[0].props.onPrevious();
+  await h.flush();
+  await follow("Blair");
+  assert.deepEqual(playing(), ["c", "b"], "following a co-performer can play a scene without the launch performer");
+  await follow("Blair");
+  assert.deepEqual(playing(), ["d", "b"], "following a co-performer also finds another shared scene");
+  await follow("Blair");
+  assert.deepEqual(playing(), ["a", "b"], "the co-performer button still wraps through their scenes");
+  await h.unmount();
 }
 
 async function performerNavigationSetting() {
@@ -1434,7 +1477,7 @@ async function pagedPerformerNavigation() {
   await h.flush();
   assert.equal(players()[0].props.scene.id, "2", "a late performer lookup cannot overwrite newer navigation");
   assert.equal(await step("unique"), "2");
-  assert.match(h.text(), /No other scenes featuring Performer unique/);
+  assert.match(h.text(), /No other matching scenes featuring Performer unique/);
   for (const call of h.calls) {
     assert(call.variables.filter.per_page <= 240);
     assert.equal(call.variables.filter.q, "session", "every query preserves the session's text search");
@@ -3708,6 +3751,7 @@ async function recentGrids() {
   await searchDuringMarkersAndPaging();
   await searchedQueueNavigation();
   await performerNavigation();
+  await performerNavigationFromPerformer();
   await performerNavigationSetting();
   await pagedPerformerNavigation();
   await searchFocusAfterClosing();

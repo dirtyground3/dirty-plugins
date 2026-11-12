@@ -155,8 +155,10 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   are not hovering.
 - Each performer has a small round portrait button with a Next badge on its
   corner. Click a portrait to move to another scene featuring that
-  performer anywhere in its cast. Tooltips name the performer and explain the
-  session scope and wraparound; missing or broken photos use initials.
+  performer anywhere in its cast. When the scene list was filtered by performer,
+  the portrait switches the performer for that lookup and keeps the other
+  filters. Selections of specific scenes or markers and lists from other plugins
+  stay within their items. Missing or broken photos use initials.
   Repeated clicks step through that performer's scenes in the session's sort
   and wrap at the end without changing other screens, and Next then continues
   the screen's own queue. Other markers from the current scene are skipped,

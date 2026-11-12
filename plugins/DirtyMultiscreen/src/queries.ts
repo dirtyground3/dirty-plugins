@@ -1,3 +1,4 @@
+import { isRecord } from "./domain/context";
 import { playbackSort } from "./domain/order";
 import { getSceneLimit, NON_RANDOM_SCENE_SORT, normalizeSettings } from "./domain/settings";
 import type {
@@ -322,7 +323,7 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
         { signal },
       );
     },
-    /** Every session item featuring the performer, in the session's sort. One performer's rows stay small. */
+    /** Find the clicked performer in the session's sort, retaining its other filters. */
     findPerformerItems: (
       scope: QueryVariables,
       marker: boolean,
@@ -332,12 +333,20 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
     ) => {
       if (scope.ids) throw new Error("Selected session items must be searched locally.");
       if (scope.list) return nextListed(scope.list, marker, performerId, playing, signal);
+      const { performers: original, ...otherFilters } = scope.scene_filter ?? {};
+      // Following another portrait replaces the positive performer criterion on a scene list.
+      const replacePerformer =
+        !marker && isRecord(original) && (original.modifier === "INCLUDES" || original.modifier === "INCLUDES_ALL");
+      const lookup = replacePerformer
+        ? { ...scope, scene_filter: Object.keys(otherFilters).length ? otherFilters : undefined }
+        : scope;
+      const performers = { ...(replacePerformer ? original : {}), value: [performerId], modifier: "INCLUDES" };
       return graphqlRequest<QueryResult>(
         marker ? MARKERS_WITH_PERFORMER : SCENES_WITH_PERFORMER,
         {
-          ...scope,
+          ...lookup,
           filter: { ...scope.filter, page: 1, per_page: -1 },
-          ...narrowed(scope, marker, { performers: { value: [performerId], modifier: "INCLUDES" } }),
+          ...narrowed(lookup, marker, { performers }),
         },
         { signal },
       );
