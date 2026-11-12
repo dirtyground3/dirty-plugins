@@ -58,6 +58,29 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   Both keep playing: a screen
   takes its scene, queue, position, audio and picture to its new place. Screens
   are numbered by place, from the top left.
+- Drag an edge of a screen that faces another screen to resize it. The grid
+  then becomes a custom layout, and the grid size in edit mode reads
+  **Custom**. Dragging a side edge past half a screen makes the screen wider
+  by that many units of its row; the screens it covers move to the start of
+  the next row, which a new row at the bottom holds if there is none. So in a
+  2 x 2 grid, widening screen 1 over screen 2 gives one wide screen above
+  three, and widening screen 2 over that whole row then moves screens 3 and 4
+  to a third row. Dragging back brings screens up again.
+- Dragging the bottom edge of a screen at either end of its row down (or its
+  top edge up) makes it reach across the next row, whose screens keep that row
+  beside it.
+  In a 2 x 2 grid, dragging screen 2 down gives it the right half; screen 1
+  stays above, with screens 3 and 4 side by side below it. A screen at the top
+  or bottom of a column reaches across the next column from its side edge in
+  the same way, and dragging back gives the row or column back. Any other edge
+  makes its row or column larger. Every screen keeps playing, swapping trades
+  places, closed screens return beside their neighbour, and the layout stays
+  through reloads and saved grids. Click the current grid's square to get the
+  grid back with the same screens playing, or choose another grid to deal
+  again.
+- With **Fit videos** on, a custom layout keeps where each screen is and each
+  video keeps its shape: a row or column you made larger makes its videos
+  larger, and a smaller one is centred beside it.
 - Close stops a screen and removes it from the grid, so a 2 x 2 grid can play
   three screens. The other screens keep playing and close up in place order,
   and **Fit videos** packs them into the whole window. The last open screen
@@ -86,7 +109,7 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   mode; each screen's own fill choice returns when you switch it off.
 - The bookmark button above the grid button opens **Saved grids**. Name the
   current screens to save them: the grid, the closed screens, and every
-  screen's place, scene, position, sound, flip, rotation, loop and fill, plus
+  screen's place, custom row, scene, position, sound, flip, rotation, loop and fill, plus
   the Fit videos mode. Older saved grids keep your current Fit videos choice.
   A name already in the list replaces that grid after asking, and so does the
   overwrite button on a saved grid, which keeps its name. Click a saved grid to open it in place of the current

@@ -1,8 +1,21 @@
 import { closedScreens, screenOrder } from "../domain/session";
-import { DEFAULT_ASPECT, fitLayout, videoAspect } from "../domain/layout";
+import { DEFAULT_ASPECT, fitLayout, fitPlan, videoAspect } from "../domain/layout";
+import {
+  customRectangles,
+  draggableEdges,
+  dragUnit,
+  EDGES,
+  layoutFromLanes,
+  leaves,
+  normalizeLayout,
+  readingOrder,
+  resizeScreen,
+  swapCells,
+} from "../domain/custom";
+import type { CustomLayout, Edge } from "../domain/custom";
 import { useSessionSaver } from "../hooks";
 import { React } from "../runtime";
-import type { AudioState, GridProps, Item, PaneView, SavedPane, SwapControls } from "../types";
+import type { AudioState, GridProps, Item, PaneView, ResizeControls, SavedPane, SwapControls } from "../types";
 import { NativePlayerPane } from "./PlayerPane";
 export function NativeMultiscreenGrid({
   avoidDuplicates,
@@ -12,8 +25,11 @@ export function NativeMultiscreenGrid({
   editing,
   fitVideos,
   findPerformerItems,
+  layout,
   nativePlayer,
   onCloseScreen,
+  onFinishEditing,
+  onLayoutChange,
   onSessionChange,
   onVisibleSceneIdsChange,
   playback,
@@ -89,25 +105,86 @@ export function NativeMultiscreenGrid({
     .filter(({ index }) => !closed.includes(index))
     .sort((first, second) => first.place - second.place)
     .map(({ index }) => index);
+  // Every pane in place order, closed ones too.
+  const placeOrder = places.current
+    .map((place, index) => ({ place, index }))
+    .sort((first, second) => first.place - second.place)
+    .map(({ index }) => index);
+  const aspectOf = (index: number) => {
+    const aspect = aspects[index] ?? DEFAULT_ASPECT;
+    return rotations[index] % 2 ? 1 / aspect : aspect;
+  };
+  // Dragging an edge turns the grid into rows of screens, which stay until another grid is chosen.
+  const custom = React.useMemo(() => (layout ? normalizeLayout(layout, totalScreens) : null), [layout, totalScreens]);
+  const [draft, setDraft] = React.useState<CustomLayout | null>(null);
+  // The edge being dragged stays under the pointer even when the screens it moves leave it facing none.
+  const [held, setHeld] = React.useState<{ index: number; edge: Edge } | null>(null);
+  const shownLayout = draft ?? custom;
+  const rectangles = React.useMemo(() => {
+    if (shownLayout)
+      return customRectangles(
+        shownLayout,
+        closed,
+        size.width,
+        size.height,
+        size.ratio,
+        fitVideos ? aspectOf : undefined,
+      );
+    if (!fitVideos) return [];
+    const fitted = fitLayout(open.map(aspectOf), size.width, size.height, size.ratio);
+    const placed: typeof fitted = [];
+    open.forEach((index, rank) => {
+      placed[index] = fitted[rank];
+    });
+    return placed;
+  }, [shownLayout, fitVideos, aspects, rotations, order, closed, totalScreens, size]);
+  // The layout a first drag starts from: the one on show, else the fitted rows or columns, else the grid's rows.
+  const structure = React.useMemo(() => {
+    if (shownLayout) return shownLayout;
+    if (fitVideos && open.length) {
+      const plan = fitPlan(open.map(aspectOf), size.width, size.height);
+      const lanes = plan.ends.map((end, at) => open.slice(at ? plan.ends[at - 1] : 0, end));
+      return layoutFromLanes(lanes, placeOrder, plan.transposed ? "row" : "column");
+    }
+    const rows = Array.from({ length: Math.ceil(open.length / columns) }, (_, at) =>
+      open.slice(at * columns, (at + 1) * columns),
+    );
+    return layoutFromLanes(rows, placeOrder);
+  }, [shownLayout, fitVideos, aspects, rotations, order, closed, totalScreens, size, columns]);
   const shown = Array<number>(totalScreens).fill(-1);
-  open.forEach((index, rank) => {
+  (shownLayout ? readingOrder(shownLayout, closed) : open).forEach((index, rank) => {
     shown[index] = rank;
   });
-  const rectangles = React.useMemo(() => {
-    if (!fitVideos) return [];
-    const placed = open.map(index => {
-      const aspect = aspects[index] ?? DEFAULT_ASPECT;
-      return rotations[index] % 2 ? 1 / aspect : aspect;
+  const layoutRef = React.useRef(custom);
+  layoutRef.current = custom;
+  // Leaving the custom rows keeps the screens in the order they had there.
+  const previousLayout = React.useRef(custom);
+  React.useEffect(() => {
+    const previous = previousLayout.current;
+    previousLayout.current = custom;
+    if (!previous || custom) return;
+    const next = Array<number>(totalScreens);
+    leaves(previous).forEach((index, rank) => {
+      next[index] = rank;
     });
-    return fitLayout(placed, size.width, size.height, size.ratio);
-  }, [fitVideos, aspects, rotations, order, closed, totalScreens, size]);
+    places.current = screenOrder(next, totalScreens);
+    setOrder(places.current);
+    scheduleSave();
+  }, [custom]);
   const scheduleSave = useSessionSaver(() =>
     onSessionChange({
       panes: panes.current.slice(0, totalScreens),
       order: places.current,
       ...(closedRef.current.length ? { closed: closedRef.current } : {}),
+      ...(layoutRef.current ? { layout: layoutRef.current } : {}),
     }),
   );
+  const savedLayout = React.useRef(layout);
+  React.useEffect(() => {
+    if (savedLayout.current === layout) return;
+    savedLayout.current = layout;
+    scheduleSave();
+  }, [layout, scheduleSave]);
   const savedClosed = React.useRef(closedKey);
   React.useEffect(() => {
     if (savedClosed.current === closedKey) return;
@@ -125,6 +202,8 @@ export function NativeMultiscreenGrid({
       [next[first], next[second]] = [next[second], next[first]];
       places.current = next;
       setOrder(next);
+      // Screens in custom rows trade their cells.
+      if (layoutRef.current) onLayoutChange(swapCells(layoutRef.current, first, second));
       scheduleSave();
     };
     return {
@@ -165,10 +244,67 @@ export function NativeMultiscreenGrid({
         setSwapping(null);
       },
     };
-  }, [scheduleSave]);
+  }, [scheduleSave, onLayoutChange]);
+  // The drag in progress: the layout it started from and how many pixels one unit of it was then.
+  const resizing = React.useRef<{
+    index: number;
+    edge: Edge;
+    base: CustomLayout;
+    unit: number;
+    units: number;
+    draft: CustomLayout | null;
+  } | null>(null);
+  const current = React.useRef({ structure, rectangles, closed, size, rows, columns });
+  current.current = { structure, rectangles, closed, size, rows, columns };
+  const resize = React.useMemo<ResizeControls>(() => {
+    const stop = () => {
+      resizing.current = null;
+      setDraft(null);
+      setHeld(null);
+    };
+    return {
+      start(index, edge) {
+        const { structure, rectangles, closed, size, rows, columns } = current.current;
+        const measured = dragUnit(structure, closed, index, edge);
+        if (!measured) return;
+        // The part the edge belongs to spans its screens' boxes; the grid's own cells stand in for missing boxes.
+        const across = edge === "left" || edge === "right";
+        const spans = measured.panes.map(pane => {
+          const box = rectangles[pane];
+          return box
+            ? across
+              ? [box.left, box.left + box.width]
+              : [box.top, box.top + box.height]
+            : [0, across ? size.width / columns : size.height / rows];
+        });
+        const extent = Math.max(...spans.map(span => span[1])) - Math.min(...spans.map(span => span[0]));
+        setHeld({ index, edge });
+        resizing.current = { index, edge, base: structure, unit: extent / measured.units, units: 0, draft: null };
+      },
+      move(x, y) {
+        const drag = resizing.current;
+        if (!drag) return;
+        const toward = drag.edge === "right" ? x : drag.edge === "left" ? -x : drag.edge === "bottom" ? y : -y;
+        const units = Math.round(toward / drag.unit);
+        if (!Number.isFinite(units) || units === drag.units) return;
+        drag.units = units;
+        const next = resizeScreen(drag.base, current.current.closed, drag.index, drag.edge, units);
+        drag.draft = JSON.stringify(next) === JSON.stringify(drag.base) ? null : next;
+        setDraft(drag.draft);
+      },
+      end() {
+        const drafted = resizing.current?.draft;
+        stop();
+        if (drafted) onLayoutChange(drafted);
+      },
+      cancel: stop,
+    };
+  }, [onLayoutChange]);
   React.useEffect(() => {
-    if (!editing) swap.cancel();
-  }, [editing, swap]);
+    if (editing) return;
+    swap.cancel();
+    resize.cancel();
+  }, [editing, swap, resize]);
   React.useEffect(() => {
     snapshotRef.current = () => ({
       panes: panes.current.slice(0, totalScreens).map((pane, index) => {
@@ -177,6 +313,7 @@ export function NativeMultiscreenGrid({
       }),
       order: places.current,
       ...(closedRef.current.length ? { closed: closedRef.current } : {}),
+      ...(layoutRef.current ? { layout: layoutRef.current } : {}),
     });
     return () => {
       snapshotRef.current = null;
@@ -310,19 +447,32 @@ export function NativeMultiscreenGrid({
       videosToResumeRef.current.clear();
     };
   }, [playback.pauseWhenHidden]);
+  const edgesOf = (index: number) => {
+    const edges = draggableEdges(structure, closed, index);
+    // In a fixed order: an edge moved in the page would drop its pointer.
+    return held?.index === index && !edges.includes(held.edge)
+      ? EDGES.filter(edge => edge === held.edge || edges.includes(edge))
+      : edges;
+  };
   const gridStyle = {
     gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
     gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
   };
   return (
-    <div className={`ms-grid ms-native-grid${fitVideos ? " ms-fit" : ""}`} ref={gridRef} style={gridStyle}>
+    <div
+      className={`ms-grid ms-native-grid${fitVideos ? " ms-fit" : ""}${shownLayout ? " ms-custom" : ""}`}
+      ref={gridRef}
+      style={gridStyle}
+    >
       {Array.from({ length: totalScreens }, (_, screenIndex) =>
         shown[screenIndex] < 0 ? null : (
           <NativePlayerPane
             key={`ms-native-${screenIndex}`}
             screenIndex={screenIndex}
             position={shown[screenIndex]}
-            rectangle={rectangles[shown[screenIndex]]}
+            rectangle={rectangles[screenIndex]}
+            edges={editing ? edgesOf(screenIndex) : []}
+            resize={resize}
             fitVideos={fitVideos}
             onClose={open.length > 1 ? () => closeScreen(screenIndex) : undefined}
             swap={swap}
@@ -331,6 +481,7 @@ export function NativeMultiscreenGrid({
             playlist={playlists[screenIndex] ?? []}
             continuation={continuation}
             editing={editing}
+            onFinishEditing={onFinishEditing}
             findPerformerItems={findPerformerItems}
             nativePlayer={nativePlayer}
             playback={playback}

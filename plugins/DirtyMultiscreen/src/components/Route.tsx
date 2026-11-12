@@ -23,6 +23,7 @@ import { NativeMultiscreenGrid } from "./Grid";
 import { GridChangeDialog, GridPicker } from "./GridPicker";
 import { SavedGridsButton } from "./SavedGrids";
 import { ShuffleMenu } from "./ShuffleMenu";
+import type { CustomLayout } from "../domain/custom";
 import type {
   FindPerformerItems,
   GridSize,
@@ -131,6 +132,8 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   const resume = React.useRef<SavedSession | null>(launch.saved);
   // Screens closed in edit mode stay closed through reshuffles; another grid opens them all.
   const [closed, setClosed] = React.useState<number[]>(() => launch.saved?.closed ?? []);
+  // The custom rows that dragging an edge made of the grid. They stay until a grid is chosen again.
+  const [layout, setLayout] = React.useState<CustomLayout | null>(() => launch.saved?.layout ?? null);
   // The grid the queue was dealt for. + grows the grid without dealing again, so the playing screens go on.
   const [dealtGrid, setDealtGrid] = React.useState<GridSize | null>(() => launch.saved?.deal ?? null);
   const markerMode = isMarkerLaunchContext(launchContext);
@@ -335,6 +338,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
     setPendingGrid(null);
     resume.current = null;
     setClosed([]);
+    setLayout(null);
     setDealtGrid(null);
     const data = { ...rawSettings, rows, columns };
     setSettingsQuery(current => ({ ...current, data }));
@@ -459,7 +463,10 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           columns={settings.columns}
           avoidDuplicates={avoidDuplicates}
           closed={closed}
+          layout={layout}
+          onLayoutChange={setLayout}
           editing={editing}
+          onFinishEditing={() => setEditing(false)}
           fitVideos={fitVideos}
           totalScreens={settings.totalScreens}
           playlists={playlists}
@@ -484,8 +491,11 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           onToggleFit={changeFitVideos}
           columns={settings.columns}
           rows={settings.rows}
+          custom={!!layout}
           onPick={size => {
+            // The same grid returns from custom rows without dealing again.
             if (size.columns !== settings.columns || size.rows !== settings.rows) setPendingGrid(size);
+            else setLayout(null);
           }}
         />
       )}

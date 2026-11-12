@@ -1,4 +1,5 @@
 import { isMultiscreenLaunchContext, isRecord } from "./context";
+import { isCustomLayout } from "./custom";
 import type { AudioState, GridSize, PaneView, SavedPane, SavedSession, Settings } from "../types";
 
 const SESSION_STORAGE_KEY = "multiscreen.session";
@@ -46,6 +47,7 @@ export const isSession = (value: unknown): value is SavedSession =>
   value.panes.every(pane => pane === null || isPane(pane)) &&
   (value.order === undefined || (Array.isArray(value.order) && value.order.every(isFiniteNumber))) &&
   (value.closed === undefined || (Array.isArray(value.closed) && value.closed.every(isFiniteNumber))) &&
+  (value.layout === undefined || isCustomLayout(value.layout)) &&
   (value.deal === undefined || isGridSize(value.deal)) &&
   (value.recent === undefined || isFiniteNumber(value.recent));
 

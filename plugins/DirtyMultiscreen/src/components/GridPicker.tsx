@@ -8,11 +8,14 @@ const sizeLabel = ({ columns, rows }: GridSize) => `${columns} × ${rows}`;
 /** Squares for every grid size: click one, or press and drag to it, to choose that many columns and rows. */
 export function GridPicker({
   columns,
+  custom,
   rows,
   fitVideos,
   onPick,
   onToggleFit,
 }: GridSize & {
+  /** Dragged edges have replaced the grid with custom rows; any square brings a grid back. */
+  custom: boolean;
   fitVideos: boolean;
   onPick(size: GridSize): void;
   onToggleFit(): void;
@@ -20,7 +23,7 @@ export function GridPicker({
   const [preview, setPreview] = React.useState<GridSize | null>(null);
   // The square a press started on. Releasing on another one chooses it, since no click follows a drag.
   const pressed = React.useRef<number | null>(null);
-  const shown = preview ?? { columns, rows };
+  const shown = preview ?? (custom ? null : { columns, rows });
   return (
     <div className="ms-grid-picker" role="group" aria-label="Grid size" onPointerLeave={() => setPreview(null)}>
       <div className="ms-grid-squares" style={{ gridTemplateColumns: `repeat(${GRID_LIMITS.columns}, 1fr)` }}>
@@ -37,10 +40,10 @@ export function GridPicker({
               type="button"
               className={
                 "ms-grid-square" +
-                (size.columns <= shown.columns && size.rows <= shown.rows ? " ms-grid-square-on" : "")
+                (shown && size.columns <= shown.columns && size.rows <= shown.rows ? " ms-grid-square-on" : "")
               }
               aria-label={label}
-              aria-pressed={size.columns === columns && size.rows === rows}
+              aria-pressed={!custom && size.columns === columns && size.rows === rows}
               title={label}
               onPointerDown={event => {
                 pressed.current = index;
@@ -61,7 +64,7 @@ export function GridPicker({
         })}
       </div>
       <div className="ms-grid-size" aria-live="polite">
-        {sizeLabel(shown)}
+        {shown ? sizeLabel(shown) : "Custom"}
       </div>
       <button
         type="button"

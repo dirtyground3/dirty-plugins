@@ -1,8 +1,10 @@
 import { React } from "../runtime";
 import type { Rectangle } from "../domain/layout";
+import type { Edge } from "../domain/custom";
 import { locatePlaylistItem, nextFreeIndex, nextItemAfter } from "../domain/playlists";
-import type { AudioState, GridProps, Item, PaneView, SavedPane, SwapControls } from "../types";
+import type { AudioState, GridProps, Item, PaneView, ResizeControls, SavedPane, SwapControls } from "../types";
 import { NativePlayerTile } from "./NativePlayerTile";
+import { ResizeHandles } from "./ResizeHandles";
 import { ScreenControls } from "./ScreenControls";
 import { PaneHeader } from "./SceneSearch";
 
@@ -14,6 +16,7 @@ interface PaneProps
     | "useFindScene"
     | "continuation"
     | "editing"
+    | "onFinishEditing"
     | "fitVideos"
     | "searchSession"
     | "findPerformerItems"
@@ -24,7 +27,11 @@ interface PaneProps
   screenIndex: number;
   /** Where the pane sits in the grid, which is the screen number people see. */
   position: number;
+  /** Where the screen sits in the window when the videos are fitted or the rows are custom. */
   rectangle?: Rectangle;
+  /** The edges edit mode lets a drag move: those facing another screen. */
+  edges: Edge[];
+  resize: ResizeControls;
   /** Closes the screen in edit mode; absent for the last open screen. */
   onClose?(): void;
   swap: SwapControls;
@@ -42,6 +49,7 @@ interface PaneProps
 type QueueStep = { direction: 1 | -1 } | { performerId: string };
 const NOTICE_MS = 1000;
 export function NativePlayerPane({
+  edges,
   playlist,
   screenIndex,
   continuation,
@@ -50,6 +58,7 @@ export function NativePlayerPane({
   findPerformerItems,
   onAudioChange,
   onClose,
+  onFinishEditing,
   onPositionChange,
   onSceneChange,
   onViewChange,
@@ -57,6 +66,7 @@ export function NativePlayerPane({
   playingElsewhere,
   position,
   rectangle,
+  resize,
   saved,
   searchSession,
   showPerformerNavigation,
@@ -355,7 +365,11 @@ export function NativePlayerPane({
           onFlip={(x, y) => changeView({ ...view, flip: x || y ? { itemId: item.id, x, y } : undefined })}
           onLoop={value => changeView({ ...view, loop: value })}
           onClose={onClose}
+          onFinishEditing={onFinishEditing}
         />
+      )}
+      {editing && item && edges.length > 0 && (
+        <ResizeHandles edges={edges} paneIndex={screenIndex} position={position} resize={resize} />
       )}
       {state.busy && (
         <div className="ms-queue-status" role="status">

@@ -33,6 +33,194 @@ const seeded = seed => () => {
   return seed / 4294967296;
 };
 const plain = value => JSON.parse(JSON.stringify(value));
+function customRows() {
+  const custom = requireSource("DirtyMultiscreen", "src/domain/custom.ts");
+  const { layoutFromLanes, normalizeLayout, resizeScreen, readingOrder, customRectangles, draggableEdges, dragUnit } =
+    custom;
+  // R(...) is a row, C(...) a column, a number a screen's pane; "*n" is a size other than 1.
+  const shape = node => {
+    const size = node.size === 1 ? "" : `*${node.size}`;
+    return node.children
+      ? `${node.axis === "row" ? "R" : "C"}${size}(${node.children.map(shape).join(" ")})`
+      : `${node.pane}${size}`;
+  };
+  const grid = layoutFromLanes(
+    [
+      [0, 1],
+      [2, 3],
+    ],
+    [0, 1, 2, 3],
+  );
+  assert.equal(shape(grid), "C(R(0 1) R(2 3))");
+  // A closed screen keeps its place beside the open screen before it.
+  assert.equal(
+    shape(
+      layoutFromLanes(
+        [
+          [0, 2],
+          [3, 4],
+        ],
+        [1, 0, 2, 5, 3, 4],
+      ),
+    ),
+    "C(R(1 0 2 5) R(3 4))",
+  );
+  assert.equal(shape(layoutFromLanes([[0], [1, 2]], [0, 1, 2], "row")), "R(0 C(1 2))", "fitted columns");
+
+  // 2 x 2: screen 1 grows over screen 2, which goes down, so three screens share the second row.
+  let layout = resizeScreen(grid, [], 0, "right", 1);
+  assert.equal(shape(layout), "C(0 R(1 2 3))");
+  // Screen 2 then takes its whole row, and the other two go down to a third row.
+  layout = resizeScreen(layout, [], 1, "right", 2);
+  assert.equal(shape(layout), "C(0 1 R(2 3))");
+  // Screen 2 dragged down reaches across the second row; screens 3 and 4 keep their row beside screen 1.
+  assert.equal(shape(resizeScreen(grid, [], 1, "bottom", 1)), "R(C(0 R(2 3)) 1)");
+  assert.equal(shape(resizeScreen(grid, [], 3, "top", 1)), "R(C(R(0 1) 2) 3)");
+  assert.equal(shape(resizeScreen(grid, [], 0, "bottom", 1)), "R(0 C(1 R(2 3)))");
+  // Screen 1 of that layout reaches across screen 2's column; screen 2 joins the row of 3 and 4 below it.
+  assert.equal(shape(resizeScreen(resizeScreen(grid, [], 1, "bottom", 1), [], 0, "right", 1)), "C(0 R(2 3 1*2))");
+  // Further rows join the reach, and dragging back gives them back.
+  const three = layoutFromLanes(
+    [
+      [0, 1],
+      [2, 3],
+      [4, 5],
+    ],
+    [0, 1, 2, 3, 4, 5],
+  );
+  layout = resizeScreen(three, [], 1, "bottom", 1);
+  assert.equal(shape(layout), "C(R*2(C(0 R(2 3)) 1) R(4 5))");
+  assert.equal(shape(resizeScreen(layout, [], 1, "bottom", 1)), "R(C(0 R(2 3) R(4 5)) 1)");
+  assert.equal(shape(resizeScreen(layout, [], 1, "bottom", -1)), shape(three));
+  // A screen in the middle of its row makes the row taller, or the next one taller once its own is smallest.
+  const wideRows = layoutFromLanes(
+    [
+      [0, 1, 2],
+      [3, 4, 5],
+    ],
+    [0, 1, 2, 3, 4, 5],
+  );
+  assert.equal(shape(resizeScreen(wideRows, [], 1, "bottom", 1)), "C(R*2(0 1 2) R(3 4 5))");
+  assert.equal(shape(resizeScreen(wideRows, [], 1, "bottom", -1)), "C(R(0 1 2) R*2(3 4 5))");
+  // A screen with its row to itself makes that row taller.
+  assert.equal(shape(resizeScreen(resizeScreen(grid, [], 0, "right", 1), [], 0, "bottom", 1)), "C(0*2 R(1 2 3))");
+
+  // A left edge pushes the screens before it, in reading order; a screen covered in part gets narrower.
+  const wide = {
+    size: 1,
+    axis: "row",
+    children: [
+      { size: 1, pane: 0 },
+      { size: 2, pane: 1 },
+      { size: 1, pane: 2 },
+    ],
+  };
+  assert.equal(shape(resizeScreen(wide, [], 2, "left", 1)), "R(0 1 2*2)");
+  assert.equal(shape(resizeScreen(wide, [], 2, "left", 3)), "C(2 R(0 1*2))");
+  assert.equal(shape(resizeScreen(wide, [], 1, "left", -1)), "R(0 1 2)", "the last row narrows");
+  // Shrinking brings screens up from the start of the next row.
+  const pulled = {
+    size: 1,
+    axis: "column",
+    children: [
+      {
+        size: 1,
+        axis: "row",
+        children: [
+          { size: 2, pane: 0 },
+          { size: 1, pane: 1 },
+        ],
+      },
+      {
+        size: 1,
+        axis: "row",
+        children: [
+          { size: 1, pane: 2 },
+          { size: 1, pane: 3 },
+        ],
+      },
+    ],
+  };
+  assert.equal(shape(resizeScreen(pulled, [], 0, "right", -1)), "C(R(0 2 1) 3)");
+  assert.equal(resizeScreen(grid, [], 0, "right", -1), grid, "a screen keeps one unit");
+  // Closed screens take no part and return beside the screen before them.
+  assert.equal(resizeScreen(grid, [1], 0, "right", 1), grid);
+  assert.equal(shape(resizeScreen(grid, [1], 2, "right", 1)), "C(R(0 1) 2 3)");
+
+  assert.deepEqual(readingOrder(layoutFromLanes([[2], [0, 1]], [2, 0, 1, 3]), [3]), [2, 0, 1]);
+  const tall = {
+    size: 1,
+    axis: "column",
+    children: [
+      { size: 2, pane: 1 },
+      {
+        size: 1,
+        axis: "row",
+        children: [
+          { size: 1, pane: 0 },
+          { size: 2, pane: 2 },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(plain(customRectangles(tall, [], 1200, 900)), [
+    { left: 0, top: 600, width: 400, height: 300 },
+    { left: 0, top: 0, width: 1200, height: 600 },
+    { left: 400, top: 600, width: 800, height: 300 },
+  ]);
+  assert.equal(customRectangles(tall, [1], 1200, 900)[1], undefined, "a closed screen takes no room");
+  assert.deepEqual(plain(customRectangles(tall, [1], 1200, 900))[0], { left: 0, top: 0, width: 400, height: 900 });
+  assert.deepEqual(plain(customRectangles(resizeScreen(grid, [], 1, "bottom", 1), [], 1200, 900)), [
+    { left: 0, top: 0, width: 600, height: 450 },
+    { left: 600, top: 0, width: 600, height: 900 },
+    { left: 0, top: 450, width: 300, height: 450 },
+    { left: 300, top: 450, width: 300, height: 450 },
+  ]);
+  assert.deepEqual(draggableEdges(tall, [], 1), ["bottom"]);
+  assert.deepEqual(draggableEdges(tall, [], 0), ["top", "right"]);
+  assert.deepEqual(draggableEdges(tall, [1], 2), ["left"]);
+  assert.deepEqual(draggableEdges(resizeScreen(grid, [], 1, "bottom", 1), [], 1), ["left"], "outer edges stay still");
+  assert.deepEqual(plain(dragUnit(grid, [], 1, "bottom")), { panes: [0, 1], units: 1 });
+  // Unknown and repeated panes go, missing ones join the last row.
+  assert.equal(
+    shape(
+      normalizeLayout(
+        {
+          size: 1,
+          axis: "row",
+          children: [
+            { size: 1, pane: 5 },
+            { size: 2, pane: 1 },
+            { size: 1, pane: 1 },
+          ],
+        },
+        3,
+      ),
+    ),
+    "R(1 0 2)",
+  );
+  assert.equal(shape(normalizeLayout(grid, 5)), "C(R(0 1) R(2 3 4))");
+  assert.equal(custom.isCustomLayout(grid), true);
+  assert.equal(custom.isCustomLayout([{ height: 1, cells: [] }]), false);
+
+  // Fitted videos keep the layout and their shapes.
+  const sixteen = () => 16 / 9;
+  assert.deepEqual(plain(customRectangles(layoutFromLanes([[0], [1, 2]], [0, 1, 2]), [], 1600, 1350, 1, sixteen)), [
+    { left: 0, top: 0, width: 1600, height: 900 },
+    { left: 0, top: 900, width: 800, height: 450 },
+    { left: 800, top: 900, width: 800, height: 450 },
+  ]);
+  // A larger part makes its videos larger; the smaller part is centred.
+  const larger = { ...layoutFromLanes([[0], [1, 2]], [0, 1, 2]) };
+  larger.children = [larger.children[0], { ...larger.children[1], size: 2 }];
+  assert.deepEqual(plain(customRectangles(larger, [], 1600, 900, 1, sixteen)), [
+    { left: 400, top: 0, width: 800, height: 450 },
+    { left: 0, top: 450, width: 800, height: 450 },
+    { left: 800, top: 450, width: 800, height: 450 },
+  ]);
+  const reached = customRectangles(resizeScreen(grid, [], 1, "bottom", 1), [], 1600, 900, 1, sixteen);
+  for (const box of reached) assert.ok(Math.abs(box.width / box.height - 16 / 9) < 0.01, "every video keeps its shape");
+}
 async function main() {
   const { fitLayout, videoAspect, DEFAULT_ASPECT, FIT_COVERAGE_THRESHOLD } = feature("layout");
   assert.equal(FIT_COVERAGE_THRESHOLD, 0.9);
@@ -102,6 +290,7 @@ async function main() {
       );
   }
   assert.deepEqual(fitLayout([16 / 9], 1600, 900, 0), fitLayout([16 / 9], 1600, 900), "a missing ratio counts as 1");
+  customRows();
   const mixedLayout = verifyTiling([16 / 9, 9 / 16, 4 / 3, 16 / 9], 1601, 901);
   assert.ok(new Set(mixedLayout.map(rect => rect.width)).size > 1, "mixed videos have different widths");
   const columnLayout = verifyTiling([0.5, 1, 2, 0.5], 900, 1600);

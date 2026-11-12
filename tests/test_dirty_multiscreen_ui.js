@@ -2283,8 +2283,12 @@ async function editMode() {
   assert.equal(playing(h)[0], first);
   assert.equal(cells(h)[0], "ms-cell ms-fill ms-flip-x ms-flip-y", "the flip returns with its video");
 
-  // Leaving edit mode hides the controls and keeps the picture.
-  await press(h, "Finish editing screens");
+  // The × on any screen's controls leaves edit mode for all of them and keeps the picture.
+  const corners = h.nodes(node => node.props.className === "ms-finish-editing");
+  assert.equal(corners.length, 2, "every screen's controls carry the ×");
+  corners[1].props.onClick();
+  await h.flush();
+  assert.equal(button(h, "Edit screens").props.pressed, false);
   assert.equal(h.nodes(node => node.props.className === "ms-screen-controls").length, 0);
   assert.equal(cells(h)[0], "ms-cell ms-fill ms-flip-x ms-flip-y");
 
@@ -2701,6 +2705,256 @@ async function closeScreens() {
   assert.equal(players(h).length, 3);
   h.window.emit("pagehide");
   assert.equal(JSON.parse(h.localStorage.get("multiscreen.session")).closed, undefined);
+  await h.unmount();
+}
+async function customRows() {
+  const { text } = require("./ui_harness");
+  const { requireSource } = require("./plugin_paths");
+  const { customRectangles } = requireSource("DirtyMultiscreen", "src/domain/custom.ts");
+  // R(...) is a row, C(...) a column, a number a screen's pane; "*n" is a size other than 1.
+  const shape = node => {
+    const size = node.size === 1 ? "" : `*${node.size}`;
+    return node.children
+      ? `${node.axis === "row" ? "R" : "C"}${size}(${node.children.map(shape).join(" ")})`
+      : `${node.pane}${size}`;
+  };
+  const scenes = ["a", "b", "c", "d", "e", "f"].map((id, index) => ({
+    id,
+    title: id,
+    paths: { stream: "/" + id },
+    files: [{ duration: 100, width: index % 2 ? 1200 : 1600, height: 900 }],
+  }));
+  const settings = { rows: 2, columns: 2, sceneOrder: "list", randomStart: false, loopScenes: false, fitVideos: false };
+  const players = h => h.nodes(node => node.type === "native-player");
+  const playing = h => players(h).map(node => node.props.scene.id);
+  const cells = h => h.nodes(node => /^ms-cell\b/.test(node.props.className ?? ""));
+  // Each open screen's box as [left, top, width, height], by pane.
+  const boxes = h =>
+    cells(h).map(node => {
+      const { left, top, width, height } = node.props.style;
+      return [left, top, width, height].map(Math.round);
+    });
+  const handles = h => h.nodes(node => /^ms-resize-handle\b/.test(node.props.className ?? ""));
+  const handle = (h, screen, edge) =>
+    handles(h).find(
+      node => node.props.title === `Drag to resize screen ${screen}` && node.props.className.endsWith(edge),
+    );
+  const button = (h, label) => h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === label)[0];
+  const press = async (h, label) => {
+    button(h, label).props.onClick();
+    await h.flush();
+  };
+  const label = h => text(h.nodes(node => node.props.className === "ms-grid-size")[0]);
+  const squares = h => h.nodes(node => /^ms-grid-square\b/.test(node.props.className ?? ""));
+  const pane = (h, index) =>
+    [...h.media].find(([address, media]) => address.includes("ms-native-" + index) && media.video.isConnected)[1];
+  // Presses an edge, moves it by x and y, and returns the boxes on show before it is released.
+  // `after` is the screen's number once the drag has moved it in reading order.
+  const drag = async (h, screen, edge, x, y, after = screen) => {
+    const target = handle(h, screen, edge);
+    assert.ok(target, `screen ${screen} has a ${edge} edge`);
+    target.props.onPointerDown({
+      button: 0,
+      pointerId: 3,
+      clientX: 100,
+      clientY: 100,
+      preventDefault() {},
+      stopPropagation() {},
+      currentTarget: { setPointerCapture() {} },
+    });
+    // The first move can come before the press renders.
+    target.props.onPointerMove({
+      pointerId: 3,
+      clientX: 100 + x,
+      clientY: 100 + y,
+      currentTarget: { hasPointerCapture: () => true },
+    });
+    await h.flush();
+    const during = boxes(h);
+    // The edge stays under the pointer until it is released, whatever moved around it.
+    const held = handle(h, after, edge);
+    assert.ok(held, `screen ${after} still holds its ${edge} edge`);
+    // Handles keep one order, since moving the held one in the page would drop its pointer.
+    const order = handles(h)
+      .filter(node => node.props.title === held.props.title)
+      .map(node => ["top", "right", "bottom", "left"].findIndex(name => node.props.className.endsWith(name)));
+    assert.deepEqual(
+      order,
+      order.slice().sort((first, second) => first - second),
+    );
+    held.props.onPointerUp();
+    await h.flush();
+    return during;
+  };
+  // The window is 1600 x 900.
+  const h = await start({ scenes, settings });
+  assert.equal(handles(h).length, 0, "only edit mode drags edges");
+  await press(h, "Edit screens");
+  const [first, second, third, fourth] = playing(h);
+  assert.equal(label(h), "2 × 2");
+  assert.equal(handles(h).length, 8, "each screen of a 2 x 2 grid has two edges facing others");
+  assert.equal(handle(h, 1, "left"), undefined);
+
+  // Less than half a screen changes nothing.
+  await drag(h, 1, "right", 300, 0);
+  assert.equal(label(h), "2 × 2");
+  assert.equal(cells(h)[0].props.style.left, undefined);
+
+  // Screen 1 takes the top row and screen 2 goes down: three screens share the second row. Every screen plays on.
+  const videos = [0, 1, 2, 3].map(index => pane(h, index).video);
+  const during = await drag(h, 1, "right", 820, 30);
+  const twoRows = [
+    [0, 0, 1600, 450],
+    [0, 450, 533, 450],
+    [533, 450, 534, 450],
+    [1067, 450, 533, 450],
+  ];
+  assert.deepEqual(during, twoRows, "the screens move while the edge is dragged");
+  assert.deepEqual(boxes(h), twoRows);
+  assert.deepEqual(playing(h), [first, second, third, fourth]);
+  assert.deepEqual(
+    [0, 1, 2, 3].map(index => pane(h, index).video),
+    videos,
+  );
+  assert.equal(
+    videos.some(video => video.pauseCount),
+    false,
+  );
+  // The grid has become custom rows.
+  assert.equal(label(h), "Custom");
+  assert.equal(
+    squares(h).some(node => node.props["aria-pressed"]),
+    false,
+  );
+  assert.equal(handle(h, 1, "right"), undefined, "a screen alone in its row has no side edge");
+  assert.ok(handle(h, 1, "bottom") && handle(h, 2, "right") && handle(h, 3, "left"));
+
+  // Screen 2 takes its whole row, and screens 3 and 4 go down to a third row.
+  await drag(h, 2, "right", 1070, 0);
+  assert.deepEqual(boxes(h), [
+    [0, 0, 1600, 300],
+    [0, 300, 1600, 300],
+    [0, 600, 800, 300],
+    [800, 600, 800, 300],
+  ]);
+  // A bottom edge makes its row taller: one more unit of the three rows.
+  await drag(h, 1, "bottom", 0, 310);
+  assert.deepEqual(boxes(h), [
+    [0, 0, 1600, 450],
+    [0, 450, 1600, 225],
+    [0, 675, 800, 225],
+    [800, 675, 800, 225],
+  ]);
+  h.window.emit("pagehide");
+  const saved = JSON.parse(h.localStorage.get("multiscreen.session"));
+  assert.equal(shape(saved.layout), "C(0*2 1 R(2 3))");
+  const resumed = await start({ scenes, settings, localStorage: new Map(h.localStorage) });
+  assert.deepEqual(boxes(resumed), boxes(h), "a resumed session keeps its rows");
+  await press(resumed, "Edit screens");
+  assert.equal(label(resumed), "Custom");
+  await resumed.unmount();
+
+  // Swapping trades cells; closing a screen gives its room to the others and + puts it back in its cell.
+  await press(h, "Move screen 1");
+  await press(h, "Swap with screen 4");
+  assert.deepEqual(boxes(h), [
+    [800, 675, 800, 225],
+    [0, 450, 1600, 225],
+    [0, 675, 800, 225],
+    [0, 0, 1600, 450],
+  ]);
+  await press(h, "Close screen 2");
+  assert.deepEqual(playing(h), [first, third, fourth]);
+  assert.deepEqual(boxes(h), [
+    [800, 600, 800, 300],
+    [0, 600, 800, 300],
+    [0, 0, 1600, 600],
+  ]);
+  await press(h, "Add a screen");
+  assert.deepEqual(boxes(h), [
+    [800, 675, 800, 225],
+    [0, 450, 1600, 225],
+    [0, 675, 800, 225],
+    [0, 0, 1600, 450],
+  ]);
+
+  // Fitted videos keep the layout and their shapes; the larger first row makes its video larger.
+  h.nodes(node => node.props.className === "ms-fit-toggle")[0].props.onClick();
+  await h.flush();
+  const aspect = pane => [16 / 9, 4 / 3, 16 / 9, 4 / 3][pane];
+  const layoutOf = h => {
+    h.window.emit("pagehide");
+    return JSON.parse(h.localStorage.get("multiscreen.session")).layout;
+  };
+  const fitted = h =>
+    customRectangles(layoutOf(h), [], 1600, 900, 1, aspect).map(({ left, top, width, height }) =>
+      [left, top, width, height].map(Math.round),
+    );
+  const shapes = h =>
+    boxes(h).forEach(([, , width, height], index) => assert.ok(Math.abs(width / height - aspect(index)) < 0.02));
+  assert.deepEqual(boxes(h), fitted(h));
+  shapes(h);
+  assert.ok(boxes(h)[3][3] > boxes(h)[1][3], "the larger row is larger");
+  assert.ok(
+    handles(h).some(node => /bottom/.test(node.props.className)),
+    "fitted rows still drag up and down",
+  );
+  // A side edge still pushes screens down: screen 3 takes the bottom row and screen 4 gets a row of its own.
+  await drag(h, 3, "right", boxes(h)[2][2] + 10, 0);
+  assert.equal(shape(layoutOf(h)), "C(3*2 1 2 0)");
+  assert.deepEqual(boxes(h), fitted(h));
+  // A bottom edge makes its fitted row larger: screen 2's row grows to the first row's size.
+  await drag(h, 2, "bottom", 0, boxes(h)[1][3] + 2);
+  assert.equal(shape(layoutOf(h)), "C(3*2 1*2 2 0)");
+  assert.deepEqual(boxes(h), fitted(h));
+  shapes(h);
+  h.nodes(node => node.props.className === "ms-fit-toggle")[0].props.onClick();
+  await h.flush();
+
+  // The same grid's square brings the grid back without dealing again: the screens keep playing in reading order.
+  const before = [0, 1, 2, 3].map(index => pane(h, index).video);
+  squares(h)[7].props.onClick();
+  await h.flush();
+  assert.equal(h.nodes(node => node.type === "Dialog").length, 0);
+  assert.equal(label(h), "2 × 2");
+  assert.deepEqual(
+    [0, 1, 2, 3].map(index => pane(h, index).video),
+    before,
+  );
+  assert.deepEqual(
+    cells(h).map(node => node.props.style.order),
+    [3, 1, 2, 0],
+  );
+  h.window.emit("pagehide");
+  assert.equal(JSON.parse(h.localStorage.get("multiscreen.session")).layout, undefined);
+
+  // Screen 2 dragged down takes its column; screens 3 and 4 keep their row, beside screen 1's.
+  // It reads last now, so it becomes screen 4.
+  await drag(h, 2, "bottom", 0, 460, 4);
+  assert.equal(label(h), "Custom");
+  assert.deepEqual(boxes(h), [
+    [400, 450, 400, 450],
+    [800, 0, 800, 900],
+    [0, 450, 400, 450],
+    [0, 0, 800, 450],
+  ]);
+  assert.equal(handle(h, 4, "bottom"), undefined, "its bottom is now the window's edge");
+  assert.deepEqual(
+    [0, 1, 2, 3].map(index => pane(h, index).video),
+    before,
+  );
+
+  // Another grid asks first, deals again and starts from its own grid.
+  await drag(h, 1, "right", 820, 0);
+  assert.equal(label(h), "Custom");
+  squares(h)[8].props.onClick();
+  await h.flush();
+  h.nodes(node => node.type === "Button" && text(node) === "Change grid")[0].props.onClick();
+  await h.flush();
+  await h.flush();
+  assert.equal(label(h), "3 × 2");
+  assert.equal(players(h).length, 6);
+  assert.equal(cells(h)[0].props.style.left, undefined);
   await h.unmount();
 }
 async function addScreens() {
@@ -3369,6 +3623,7 @@ async function recentGrids() {
   await gridPickerAndSwap();
   await fitVideos();
   await closeScreens();
+  await customRows();
   await addScreens();
   await rotation();
   await savedGrids();

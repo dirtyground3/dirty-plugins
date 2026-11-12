@@ -1,5 +1,6 @@
 import type * as R from "react";
 import type { HubApi, SceneCondition } from "../../DirtyPlugins/src/types";
+import type { CustomLayout, Edge } from "./domain/custom";
 export type SceneOrder = "random" | "fresh" | "unwatched" | "favorites" | "newest" | "mix" | "list";
 export type Hub = Pick<HubApi, "graphql" | "react" | "native" | "getPluginSettings" | "captureEnabled" | "debugLog">;
 export interface Settings {
@@ -187,6 +188,8 @@ export interface SavedSession {
   order?: number[];
   /** Panes closed in edit mode, in the order they closed; absent when every screen plays. */
   closed?: number[];
+  /** The custom rows that dragging an edge made of the grid; absent while the grid is on show. */
+  layout?: CustomLayout;
   /** The grid the queue was dealt for, when + has grown the grid since; absent when it is the current grid. */
   deal?: GridSize;
   /** The autosave this session keeps up to date, once it has one. */
@@ -197,6 +200,7 @@ export interface GridSnapshot {
   panes: Array<SavedPane | null>;
   order: number[];
   closed?: number[];
+  layout?: CustomLayout;
 }
 /** The settings that deal a saved grid's queue; opening the grid makes them the current settings. */
 export type SavedGridSettings = Pick<
@@ -230,6 +234,14 @@ export interface SwapControls {
   /** Called once a drag has lifted its screen: the other screen under the pointer, if any. */
   dragOver(index: number | null): void;
   dragEnd(): void;
+  cancel(): void;
+}
+/** Resizes a screen in edit mode by dragging one of its edges that face another screen. */
+export interface ResizeControls {
+  start(index: number, edge: Edge): void;
+  /** How far the pointer has moved since the press, in CSS pixels. */
+  move(x: number, y: number): void;
+  end(): void;
   cancel(): void;
 }
 export interface NativePlayerProps {
@@ -277,9 +289,14 @@ export interface GridProps {
   avoidDuplicates: boolean;
   /** Panes closed in edit mode. They keep their place, queue and saved state while closed. */
   closed: number[];
+  /** The custom rows once an edge has been dragged; null while the grid is on show. */
+  layout: CustomLayout | null;
+  onLayoutChange(layout: CustomLayout): void;
   continuation?: { initialPage: number; pageCount: number; loadPage(page: number): Promise<Item[][]> };
   /** Edit mode shows every screen's own picture controls. */
   editing: boolean;
+  /** Leaves edit mode for every screen. */
+  onFinishEditing(): void;
   fitVideos: boolean;
   findPerformerItems: FindPerformerItems;
   columns: number;

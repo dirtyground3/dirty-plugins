@@ -24,6 +24,7 @@ export function ScreenControls({
   flipY,
   loop,
   onClose,
+  onFinishEditing,
   onFill,
   onFlip,
   onLoop,
@@ -41,6 +42,8 @@ export function ScreenControls({
   loop: boolean;
   /** Absent while this is the only open screen. */
   onClose?(): void;
+  /** Leaves edit mode for every screen. */
+  onFinishEditing(): void;
   onFill(fill: boolean): void;
   onFlip(x: boolean, y: boolean): void;
   onLoop(loop: boolean): void;
@@ -81,6 +84,15 @@ export function ScreenControls({
   };
   return (
     <div className="ms-screen-controls" role="group" aria-label={`Controls for ${screen}`}>
+      <button
+        type="button"
+        className="ms-finish-editing"
+        title="Finish editing screens"
+        aria-label="Finish editing screens"
+        onClick={onFinishEditing}
+      >
+        ×
+      </button>
       <span
         className="ms-move-handle"
         onPointerDown={event => {

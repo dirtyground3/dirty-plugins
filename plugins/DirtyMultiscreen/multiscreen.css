@@ -24,18 +24,21 @@
   background: #000;
 }
 
-.ms-grid.ms-fit {
+.ms-grid.ms-fit,
+.ms-grid.ms-custom {
   display: block;
   position: relative;
 }
 
-.ms-fit > .ms-cell {
+.ms-fit > .ms-cell,
+.ms-custom > .ms-cell {
   position: absolute;
   transition: left 200ms ease, top 200ms ease, width 200ms ease, height 200ms ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ms-fit > .ms-cell {
+  .ms-fit > .ms-cell,
+  .ms-custom > .ms-cell {
     transition: none;
   }
 }
@@ -107,6 +110,32 @@
   transform: translate(-50%, -50%);
 }
 
+/* A small × on the controls' corner leaves edit mode for every screen. */
+.ms-route .ms-finish-editing {
+  position: absolute;
+  top: -0.45rem;
+  right: -0.45rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.85);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ms-route .ms-finish-editing:hover,
+.ms-route .ms-finish-editing:focus-visible {
+  color: #000;
+  background: #fff;
+}
+
 /* The move button drags its screen onto another one. Touch must not scroll or select instead. */
 .ms-move-handle {
   display: flex;
@@ -141,6 +170,76 @@
 .ms-swap-target::after {
   border-style: dashed;
   background: rgba(255, 255, 255, 0.18);
+}
+
+/* Edit mode: a screen's edges that face another screen drag to resize it. */
+.ms-resize-handle {
+  position: absolute;
+  z-index: 5;
+  touch-action: none;
+  user-select: none;
+}
+
+/* The whole edge drags; a grip in its middle shows that it does. */
+.ms-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+  transform: translate(-50%, -50%);
+  transition: background 120ms ease;
+}
+
+.ms-resize-handle:hover::after,
+.ms-resize-handle:active::after {
+  background: #fff;
+}
+
+.ms-resize-left,
+.ms-resize-right {
+  top: 0;
+  bottom: 0;
+  width: 0.9rem;
+  cursor: col-resize;
+}
+
+.ms-resize-left::after,
+.ms-resize-right::after {
+  width: 5px;
+  height: 50px;
+}
+
+.ms-resize-top,
+.ms-resize-bottom {
+  left: 0;
+  right: 0;
+  height: 0.9rem;
+  cursor: row-resize;
+}
+
+.ms-resize-top::after,
+.ms-resize-bottom::after {
+  width: 50px;
+  height: 5px;
+}
+
+.ms-resize-left {
+  left: 0;
+}
+
+.ms-resize-right {
+  right: 0;
+}
+
+.ms-resize-top {
+  top: 0;
+}
+
+.ms-resize-bottom {
+  bottom: 0;
 }
 
 /* Edit mode: squares for every grid size, beside the column of main buttons. */
