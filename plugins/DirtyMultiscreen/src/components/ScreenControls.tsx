@@ -162,6 +162,7 @@ export function ScreenControls({
       />
       <PluginIconButton
         ariaLabel="Finish editing screens"
+        className="ms-finish-editing"
         fallback="×"
         icon={icon("close")}
         onClick={onFinishEditing}

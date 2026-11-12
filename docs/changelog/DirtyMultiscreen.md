@@ -13,6 +13,12 @@ Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names 
   - **Consistent controls:** the scene link and O counter sit on the right of
     each screen. Overlay buttons and performer portraits share one circular
     size, reshuffle has a matching border, and Remove screen uses a red minus.
+    The X that finishes editing stays at the upper-right corner of each
+    screen's control group.
+  - **Marker seeking:** dragging past a marker's end keeps playing from the
+    chosen time instead of looping or advancing immediately. Returning before
+    the end restores normal marker playback; saved positions beyond it resume
+    there too.
   - **Performer buttons:** smaller round portraits with the Next mark on their
     corner.
   - **Top right:** the button that adds an O to every visible scene shows

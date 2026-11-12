@@ -23,6 +23,8 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   Starting positions are applied once the native source is playable, including
   after transcoding fallback, and do not race Stash's saved resume position.
 - Marker playback with a configurable fallback duration.
+  Seeking past a marker's end continues from the chosen time. Seeking back
+  before its end restores normal looping or advancement at that boundary.
 - Optional pause when the browser tab is hidden.
 - Seek preview thumbnails are disabled in the grid to keep smaller panes clear.
 - The source/settings menu opens to the left of its button so it stays visible in right-hand panes, including with themes that override the native menu width.
@@ -42,7 +44,7 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - The grid button below the saved-grids button turns edit mode on and off. Videos
   keep playing, and every screen shows buttons to move, flip horizontally,
   flip vertically, rotate, loop, fill, remove the screen (a red minus), and
-  finish editing. A flip mirrors the picture
+  finish editing (the X at the group's upper-right corner). A flip mirrors the picture
   only, not the controls or captions, and belongs to its video: it leaves when
   the screen moves to another scene and returns if you go back. Loop and fill stay with the
   screen. Loop starts from the **Loop scenes** setting and overrides it for that

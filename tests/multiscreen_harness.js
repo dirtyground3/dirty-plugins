@@ -53,6 +53,7 @@ function createMultiscreenHarness(options = {}) {
       this.videoHeight = 0;
       this.paused = false;
       this.ended = false;
+      this.seeking = false;
       this.isConnected = true;
       this.playCount = 0;
       this.pauseCount = 0;
@@ -96,6 +97,7 @@ function createMultiscreenHarness(options = {}) {
         duration: () => video.duration,
         play: () => video.play(),
         readyState: () => options.readyState ?? 4,
+        seeking: () => video.seeking,
         isDisposed() {
           return this.disposed;
         },

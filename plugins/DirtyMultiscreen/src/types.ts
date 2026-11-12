@@ -141,6 +141,7 @@ export interface Player {
   duration(): number;
   play(): Promise<unknown> | undefined;
   readyState(): number;
+  seeking(): boolean;
   volume(): number;
   volume(value: number): void;
   muted(): boolean;

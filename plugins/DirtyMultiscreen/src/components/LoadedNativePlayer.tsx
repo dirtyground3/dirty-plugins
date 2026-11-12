@@ -82,6 +82,7 @@ export function LoadedNativePlayer({
     let player: Player | null = null;
     let initialSeekApplied = false;
     let initialSeekPending = false;
+    let seeking = false;
     const handleCanPlay = () => {
       if (!usable(player) || initialSeekApplied || initialSeekPending || player.readyState() < 3) return;
       initialSeekPending = true;
@@ -95,10 +96,20 @@ export function LoadedNativePlayer({
         initialSeekApplied = true;
         const duration = current.duration();
         const timestamp = Number.isFinite(initialTimestamp) ? Math.max(0, initialTimestamp) : 0;
-        current.currentTime(
-          Number.isFinite(duration) && duration > 0 ? Math.min(timestamp, Math.max(0, duration - 0.01)) : timestamp,
-        );
+        const target =
+          Number.isFinite(duration) && duration > 0 ? Math.min(timestamp, Math.max(0, duration - 0.01)) : timestamp;
+        // A saved position beyond the marker end continues there, just like a manual seek.
+        rangeEndHandledRef.current = rangeEnd !== undefined && target >= rangeEnd;
+        current.currentTime(target);
       });
+    };
+    const handleSeeking = () => {
+      seeking = true;
+    };
+    const handleSeeked = () => {
+      seeking = false;
+      if (usable(player) && initialSeekApplied && rangeEnd !== undefined)
+        rangeEndHandledRef.current = player.currentTime() >= rangeEnd;
     };
     const handleTimeUpdate = () => {
       if (!usable(player) || !initialSeekApplied) return;
@@ -106,6 +117,12 @@ export function LoadedNativePlayer({
       const time = player.currentTime();
       onPositionChangeRef.current(time);
       if (!playbackRange || rangeEnd === undefined || !Number.isFinite(rangeEnd)) return;
+      // The seek bar may emit timeupdate before seeking, or just before seeked. Respect the destination
+      // throughout the seek, then leave an end behind it alone until playback returns before that end.
+      if (seeking || player.seeking()) {
+        rangeEndHandledRef.current = time >= rangeEnd;
+        return;
+      }
       if (time < rangeEnd) {
         rangeEndHandledRef.current = false;
         return;
@@ -121,6 +138,8 @@ export function LoadedNativePlayer({
     const detachPlayer = () => {
       player?.off?.("canplay", handleCanPlay);
       player?.off?.("timeupdate", handleTimeUpdate);
+      player?.off?.("seeking", handleSeeking);
+      player?.off?.("seeked", handleSeeked);
       player = null;
     };
     const attachPlayer = () => {
@@ -130,11 +149,14 @@ export function LoadedNativePlayer({
       player = next;
       initialSeekApplied = false;
       initialSeekPending = false;
+      seeking = false;
       rangeEndHandledRef.current = false;
       if (!usable(player)) return;
       isolateNativePlayer(player, playerId);
       player.on("canplay", handleCanPlay);
       player.on("timeupdate", handleTimeUpdate);
+      player.on("seeking", handleSeeking);
+      player.on("seeked", handleSeeked);
       player.ready(() => {
         if (player === next && !next?.isDisposed?.()) handleCanPlay();
       });

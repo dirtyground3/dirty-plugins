@@ -58,7 +58,12 @@ export function DropsGlyph() {
   );
 }
 export function PluginIconButton(props: SharedProps) {
-  return <DirtyPlugins.react.IconButton {...props} className="ms-button" />;
+  return (
+    <DirtyPlugins.react.IconButton
+      {...props}
+      className={"ms-button" + (props.className ? " " + props.className : "")}
+    />
+  );
 }
 export function StateView({ detail, onRetry, title }: { detail?: string; onRetry?: () => void; title: string }) {
   return (

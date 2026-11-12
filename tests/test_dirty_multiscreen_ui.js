@@ -240,6 +240,95 @@ async function markersAndLoops() {
   );
   await advance.unmount();
 }
+async function markerSeeking() {
+  for (const loopScenes of [true, false]) {
+    for (const transcode of [false, true]) {
+      const scene = { id: "a", paths: { stream: "/a" }, files: [{ duration: 20 }] };
+      const markers = [
+        { id: "m", title: "First", seconds: 2, end_seconds: 4, primary_tag: { name: "Test" }, scene },
+        { id: "n", title: "Next", seconds: 10, end_seconds: 12, primary_tag: { name: "Test" }, scene },
+      ];
+      const options = {
+        scenes: [scene],
+        markers,
+        launch: { source: "marker-selection", selectedIds: ["m", "n"] },
+        settings: { rows: 1, columns: 1, sceneOrder: "list", randomStart: false, loopScenes },
+      };
+      const playerOptions = { ...options, readyState: 0 };
+      const h = await start(playerOptions);
+      const active = () => [...h.media.values()].find(pair => pair.video.isConnected);
+      const pair = active();
+      if (transcode) {
+        let offset = 0;
+        pair.player.currentTime = value => {
+          if (value === undefined) return offset + pair.video.currentTime;
+          offset = value;
+          pair.video.currentTime = 0;
+        };
+      }
+      playerOptions.readyState = 4;
+      pair.player.emit("canplay");
+      await h.flush();
+      assert.equal(pair.player.currentTime(), 2);
+      const seek = async seconds => {
+        pair.video.seeking = true;
+        pair.player.currentTime(seconds);
+        // The seek bar can publish timeupdate before the browser dispatches seeking.
+        pair.player.emit("timeupdate");
+        assert.equal(pair.player.currentTime(), seconds, "a seek must not be redirected before seeking fires");
+        pair.player.emit("seeking");
+        pair.video.seeking = false;
+        // The final timeupdate can precede seeked, after the native seeking flag has cleared.
+        pair.player.emit("timeupdate");
+        assert.equal(pair.player.currentTime(), seconds, "a seek must not be redirected before seeked fires");
+        pair.player.emit("seeked");
+        pair.player.emit("timeupdate");
+        await h.flush();
+        assert.equal(active(), pair, "seeking never advances the marker queue");
+        assert.equal(pair.player.currentTime(), seconds);
+      };
+      await seek(4);
+      pair.video.currentTime += 1;
+      pair.player.emit("timeupdate");
+      await h.flush();
+      assert.equal(pair.player.currentTime(), 5, "playback continues beyond a marker after seeking to its end");
+      await seek(6);
+      h.window.emit("pagehide");
+      const reopened = await start({ ...options, launch: undefined, localStorage: new Map(h.localStorage) });
+      const restored = [...reopened.media.values()].find(media => media.video.isConnected);
+      assert.equal(restored.player.currentTime(), 6, "saved positions beyond the marker end resume there");
+      restored.player.emit("timeupdate");
+      await reopened.flush();
+      assert.equal(restored.video.isConnected, true);
+      assert.equal(restored.player.currentTime(), 6, "restoring beyond the end does not loop or advance immediately");
+      await reopened.unmount();
+
+      await seek(3);
+      await seek(1);
+      pair.video.currentTime += 3;
+      pair.player.emit("timeupdate");
+      await h.flush();
+      assert.equal(
+        active().player.currentTime(),
+        loopScenes ? 2 : 10,
+        "playing across the end loops or advances again",
+      );
+      if (loopScenes) {
+        h.nodes(node => node.type === "native-player")[0].props.onNext();
+        await h.flush();
+      }
+      assert.equal(active().player.currentTime(), 10);
+      active().video.currentTime = 12;
+      active().player.emit("timeupdate");
+      await h.flush();
+      assert.equal(active().player.currentTime(), loopScenes ? 10 : 2, "the next marker retains its own boundary");
+      await h.unmount();
+      assert.equal(pair.player.handlers.get("seeking").size, 0);
+      assert.equal(pair.player.handlers.get("seeked").size, 0);
+    }
+  }
+}
+
 async function sceneHeaderActions() {
   const scenes = [
       { id: "a", title: "Alpha", paths: { stream: "/a" } },
@@ -3606,6 +3695,7 @@ async function recentGrids() {
   await navigationSetting();
   await playbackAndCleanup();
   await markersAndLoops();
+  await markerSeeking();
   await stablePaneSubscriptions();
   await counters();
   await sceneHeaderActions();
