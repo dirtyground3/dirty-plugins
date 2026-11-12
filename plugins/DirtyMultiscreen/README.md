@@ -34,16 +34,16 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   scope, continues through later queue pages and preserves all launch filters.
   Choosing a result moves that screen to its position in the session queue, so
   Previous/Next follows from there, including across pages.
-- The shuffle button beside the close button reshuffles every screen. Its menu
+- The shuffle button below the close button reshuffles every screen. Its menu
   lists the scene orders with the current one checked: choosing it loads a new
   random sample, and choosing another order reshuffles with that order and saves
   it as the **Scene order** setting. A list launched in its plugin's own order
   shows **Keep the list order** checked until you choose another.
-- The grid button beside the shuffle button turns edit mode on and off. Videos
-  keep playing, and every screen shows six buttons: move, flip horizontally,
-  flip vertically, rotate, loop, and fill. A flip mirrors the picture only, not the
-  controls or captions, and belongs to its video: it leaves when the screen
-  moves to another scene and returns if you go back. Loop and fill stay with the
+- The grid button below the saved-grids button turns edit mode on and off. Videos
+  keep playing, and every screen shows seven buttons: move, flip horizontally,
+  flip vertically, rotate, loop, fill, and close. A flip mirrors the picture
+  only, not the controls or captions, and belongs to its video: it leaves when
+  the screen moves to another scene and returns if you go back. Loop and fill stay with the
   screen. Loop starts from the **Loop scenes** setting and overrides it for that
   screen. Fill crops the picture to cover the screen instead of fitting inside
   it, including under themes that force the player to fit, such as Refract.
@@ -58,7 +58,20 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   Both keep playing: a screen
   takes its scene, queue, position, audio and picture to its new place. Screens
   are numbered by place, from the top left.
-- Edit mode also shows a square for every grid size under the main buttons.
+- Close stops a screen and removes it from the grid, so a 2 x 2 grid can play
+  three screens. The other screens keep playing and close up in place order,
+  and **Fit videos** packs them into the whole window. The last open screen
+  cannot close. Closed screens stay closed through reshuffles, reloads and
+  saved grids; choosing another grid opens every screen.
+- The + button below the grid button adds a screen, in or out of edit mode. It first
+  brings back the screen closed last, in its place and with the scene and
+  position it had. When every screen is open it grows the grid by a column, or
+  by a row once the grid is wider than tall, and opens one new screen at the
+  end; the rest of a new row or column waits as closed screens for the next +.
+  The playing screens go on undisturbed: the queue is not dealt again, and new
+  screens take further lanes of it. The grown grid becomes the default for
+  later sessions. At 6 x 6 with every screen open, + is unavailable.
+- Edit mode also shows a square for every grid size beside the main buttons.
   Click a square, or press and drag to it, to choose that many columns and rows.
   Another grid deals a new queue, so every screen restarts: a dialog asks first.
   The chosen grid is saved as the default for later sessions.
@@ -71,12 +84,12 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   covers at least 90% of the window, it fills the window with a small crop;
   otherwise the exact shapes form a centred block. Fill is controlled by this
   mode; each screen's own fill choice returns when you switch it off.
-- The bookmark button beside the grid button opens **Saved grids**. Name the
-  current screens to save them: the grid, and every screen's place, scene,
-  position, sound, flip, rotation, loop and fill, plus the Fit videos mode. Older saved
-  grids keep your current Fit videos choice. A name already in the list replaces that
-  grid after asking, and so does the overwrite button on a saved grid, which
-  keeps its name. Click a saved grid to open it in place of the current
+- The bookmark button above the grid button opens **Saved grids**. Name the
+  current screens to save them: the grid, the closed screens, and every
+  screen's place, scene, position, sound, flip, rotation, loop and fill, plus
+  the Fit videos mode. Older saved grids keep your current Fit videos choice.
+  A name already in the list replaces that grid after asking, and so does the
+  overwrite button on a saved grid, which keeps its name. Click a saved grid to open it in place of the current
   screens; Next then continues through the list it was saved from. Opening a
   grid also makes its rows, columns, scene order, spreading, duplicate avoidance
   and splitting the current settings, because they deal its queue. If a saved
@@ -130,9 +143,12 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - The O-counter button at the top right, drawn as several drops, adds one O to
   every visible scene and fades away after one click per playback session.
   Failed saves can be retried without incrementing scenes that already succeeded.
-- The buttons at the top right fade after three seconds without mouse movement
-  or key presses, and come back when you move the mouse. Hovering or keyboard
-  focus keeps them, and so does edit mode.
+- The main buttons stand in a column down from the top-right corner: close,
+  shuffle, saved grids, the grid button, +, and the O counter. They show while
+  the mouse is near them, and hide three seconds after it moves away, leaves
+  the window, or after the player opens; moving the mouse elsewhere does not
+  show them. Keyboard focus and an open shuffle menu keep them; a touch shows
+  them for three seconds. This holds in edit mode too.
 - Runs inside Stash and uses its existing scene and marker data.
 
 ## Screenshots

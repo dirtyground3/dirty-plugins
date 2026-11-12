@@ -87,6 +87,21 @@ async function main() {
     assert.ok(Math.abs(left - (width - right)) <= 1 && Math.abs(top - (height - bottom)) <= 1, "centred block");
     return rectangles;
   };
+  // Under display scaling every edge falls on a whole device pixel, and neighbours share it exactly.
+  for (const ratio of [1.25, 1.5, 1.75]) {
+    const scaled = fitLayout([16 / 9, 9 / 16, 4 / 3, 16 / 9, 9 / 16, 1], 1229, 691, ratio);
+    const edges = scaled.flatMap(rect => [rect.left, rect.top, rect.left + rect.width, rect.top + rect.height]);
+    for (const edge of edges)
+      assert.ok(Math.abs(edge * ratio - Math.round(edge * ratio)) < 1e-9, `${edge} at ${ratio}`);
+    const rights = new Set(scaled.map(rect => Math.round((rect.left + rect.width) * ratio)));
+    const outer = Math.min(...scaled.map(rect => Math.round(rect.left * ratio)));
+    for (const rect of scaled)
+      assert.ok(
+        Math.round(rect.left * ratio) === outer || rights.has(Math.round(rect.left * ratio)),
+        "each left edge is another screen's right edge",
+      );
+  }
+  assert.deepEqual(fitLayout([16 / 9], 1600, 900, 0), fitLayout([16 / 9], 1600, 900), "a missing ratio counts as 1");
   const mixedLayout = verifyTiling([16 / 9, 9 / 16, 4 / 3, 16 / 9], 1601, 901);
   assert.ok(new Set(mixedLayout.map(rect => rect.width)).size > 1, "mixed videos have different widths");
   const columnLayout = verifyTiling([0.5, 1, 2, 0.5], 900, 1600);

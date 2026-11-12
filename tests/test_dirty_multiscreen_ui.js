@@ -296,12 +296,39 @@ async function sceneHeaderActions() {
   const visible = h.nodes(node => node.type === "IconButton" && node.props.ariaLabel?.startsWith("Increase O"))[0];
   assert.equal(visible.props.icon, undefined, "the visible-scenes button draws its own drops");
   const floating = () => h.nodes(node => node.props.className?.startsWith("ms-floating"))[0].props.className;
+  const pointer = (clientX, clientY, pointerType = "mouse") =>
+    h.window.emit("pointermove", { clientX, clientY, pointerType });
   assert.equal(floating(), "ms-floating");
   await h.tick(3000);
-  assert.equal(floating(), "ms-floating ms-floating-idle", "the top-right buttons fade after a rest");
-  h.window.emit("pointermove");
+  assert.equal(floating(), "ms-floating ms-floating-idle", "the top-right buttons hide after the player opens");
+  pointer(400, 500);
+  await h.tick(3000);
+  assert.equal(floating(), "ms-floating ms-floating-idle", "moving elsewhere in the window does not show them");
+  pointer(1480, 300);
   await h.flush();
-  assert.equal(floating(), "ms-floating", "moving the pointer brings them back");
+  assert.equal(floating(), "ms-floating", "the mouse near them shows them");
+  await h.tick(5000);
+  assert.equal(floating(), "ms-floating", "they stay while the mouse rests near them");
+  pointer(1000, 500);
+  await h.tick(2900);
+  assert.equal(floating(), "ms-floating");
+  pointer(1560, 40);
+  await h.tick(3000);
+  assert.equal(floating(), "ms-floating", "coming back near them in time keeps them");
+  h.document.emit("pointerout", { relatedTarget: null });
+  await h.tick(3000);
+  assert.equal(floating(), "ms-floating ms-floating-idle", "the mouse leaving the window hides them");
+  h.window.emit("pointerdown", { pointerType: "touch" });
+  await h.flush();
+  assert.equal(floating(), "ms-floating", "a touch shows them for a while");
+  await h.tick(3000);
+  assert.equal(floating(), "ms-floating ms-floating-idle");
+  h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === "Edit screens")[0].props.onClick();
+  pointer(1500, 100);
+  await h.flush();
+  pointer(200, 200);
+  await h.tick(3000);
+  assert.equal(floating(), "ms-floating ms-floating-idle", "they hide in edit mode too");
   await h.unmount();
   pending[2].resolve({ sceneIncrementO: 8 });
   await h.flush();
@@ -732,12 +759,26 @@ async function sceneSearch() {
   assert.deepEqual(ids(), ["a", "a"], "searching leaves playback running");
   await search("second");
   assert(requests[0].signal.aborted, "changing search aborts the previous request");
-  requests[1].resolve({ findScenes: { count: 21, scenes: [scenes[2], { id: "missing", title: "Unavailable" }] } });
+  requests[1].resolve({
+    findScenes: {
+      count: 21,
+      scenes: [scenes[2], { id: "missing", title: "Unavailable" }, { id: "u", paths: { stream: "/u" } }],
+    },
+  });
   await h.flush();
-  assert.equal(resultButtons().length, 1, "unplayable scenes are excluded from the available session videos");
+  assert.deepEqual(
+    resultButtons().map(button =>
+      button.children
+        .flat(Infinity)
+        .filter(Boolean)
+        .map(line => require("./ui_harness").text(line)),
+    ),
+    [["Title c", "Scene c"], ["Scene u"]],
+    "unplayable scenes are left out, and an untitled scene is not named twice",
+  );
   requests[0].resolve({ findScenes: { count: 1, scenes: [scenes[1]] } });
   await h.flush();
-  assert.equal(resultButtons().length, 1, "late responses cannot replace the latest results");
+  assert.equal(resultButtons().length, 2, "late responses cannot replace the latest results");
   h.nodes(node => node.type === "Pagination")[0].props.onPageChange(2);
   await h.flush();
   assert.equal(resultButtons().length, 0, "old page cannot be selected while loading");
@@ -2576,6 +2617,210 @@ async function fitVideos() {
   assert.equal(failed.calls.length, count);
   await failed.unmount();
 }
+async function closeScreens() {
+  const { text } = require("./ui_harness");
+  const { requireSource } = require("./plugin_paths");
+  const { fitLayout } = requireSource("DirtyMultiscreen", "src/domain/layout.ts");
+  const scenes = ["a", "b", "c", "d", "e", "f", "g", "h"].map((id, index) => ({
+    id,
+    title: id,
+    paths: { stream: "/" + id },
+    files: [{ duration: 100, width: index % 2 ? 900 : 1600, height: 900 }],
+  }));
+  const settings = { rows: 2, columns: 2, sceneOrder: "list", randomStart: false, loopScenes: false, fitVideos: false };
+  const players = h => h.nodes(node => node.type === "native-player");
+  const playing = h => players(h).map(node => node.props.scene.id);
+  const cells = h => h.nodes(node => /^ms-cell\b/.test(node.props.className ?? ""));
+  const places = h => cells(h).map(node => node.props.style.order);
+  const button = (h, label) => h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === label)[0];
+  const press = async (h, label) => {
+    button(h, label).props.onClick();
+    await h.flush();
+  };
+  const pane = (h, index) =>
+    [...h.media].find(([address, media]) => address.includes("ms-native-" + index) && media.video.isConnected)[1];
+  const h = await start({ scenes, settings });
+  await press(h, "Edit screens");
+  const [first, second, third, fourth] = playing(h);
+  const kept = [0, 2, 3].map(index => pane(h, index).video);
+  pane(h, 1).video.currentTime = 7;
+
+  // Closing a screen stops only that one; the others keep playing and close up behind it.
+  await press(h, "Close screen 2");
+  assert.deepEqual(playing(h), [first, third, fourth]);
+  assert.deepEqual(places(h), [0, 1, 2], "the remaining screens fill the grid in place order");
+  assert.deepEqual(
+    [0, 2, 3].map(index => pane(h, index).video),
+    kept,
+    "the other screens keep their players",
+  );
+  assert.equal(
+    kept.some(video => video.pauseCount),
+    false,
+  );
+  assert.ok(button(h, "Move screen 3"), "screens are numbered among the open ones");
+  assert.equal(button(h, "Move screen 4"), undefined);
+
+  // With Fit videos the open screens pack the window by themselves.
+  h.nodes(node => node.props.className === "ms-fit-toggle")[0].props.onClick();
+  await h.flush();
+  const aspects = players(h).map(node => node.props.scene.files[0].width / node.props.scene.files[0].height);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(cells(h).map(node => node.props.style))),
+    fitLayout(aspects, h.window.innerWidth, h.window.innerHeight),
+  );
+  h.nodes(node => node.props.className === "ms-fit-toggle")[0].props.onClick();
+  await h.flush();
+
+  // The closed screen stays closed in the saved session, and + returns it to its scene and place.
+  h.window.emit("pagehide");
+  assert.deepEqual(JSON.parse(h.localStorage.get("multiscreen.session")).closed, [1]);
+  const resumed = await start({ scenes, settings: h.saved.at(-1).settings, localStorage: new Map(h.localStorage) });
+  assert.deepEqual(playing(resumed), [first, third, fourth]);
+  await press(resumed, "Edit screens");
+  await press(resumed, "Add a screen");
+  assert.deepEqual(playing(resumed), [first, second, third, fourth]);
+  assert.deepEqual(places(resumed), [0, 1, 2, 3]);
+  resumed.window.emit("pagehide");
+  assert.equal(JSON.parse(resumed.localStorage.get("multiscreen.session")).closed, undefined);
+  await resumed.unmount();
+
+  // The last open screen cannot close, + brings back the screen closed last, and another grid opens every screen.
+  await press(h, "Close screen 1");
+  await press(h, "Close screen 1");
+  assert.deepEqual(playing(h), [fourth]);
+  assert.equal(button(h, "Close screen 1 is unavailable: it is the only open screen").props.disabled, true);
+  await press(h, "Add a screen");
+  assert.deepEqual(playing(h), [third, fourth]);
+  const squares = h.nodes(node => /^ms-grid-square\b/.test(node.props.className ?? ""));
+  squares[2].props.onClick();
+  await h.flush();
+  h.nodes(node => node.type === "Button" && text(node) === "Change grid")[0].props.onClick();
+  await h.flush();
+  await h.flush();
+  assert.equal(players(h).length, 3);
+  h.window.emit("pagehide");
+  assert.equal(JSON.parse(h.localStorage.get("multiscreen.session")).closed, undefined);
+  await h.unmount();
+}
+async function addScreens() {
+  const { text } = require("./ui_harness");
+  const { requireSource } = require("./plugin_paths");
+  const { growGrid } = requireSource("DirtyMultiscreen", "src/domain/settings.ts");
+  // A column while the grid is no wider than tall, else a row, up to 6 x 6.
+  assert.deepEqual(growGrid({ columns: 1, rows: 1 }), { columns: 2, rows: 1 });
+  assert.deepEqual(growGrid({ columns: 2, rows: 1 }), { columns: 2, rows: 2 });
+  assert.deepEqual(growGrid({ columns: 2, rows: 2 }), { columns: 3, rows: 2 });
+  assert.deepEqual(growGrid({ columns: 6, rows: 3 }), { columns: 6, rows: 4 });
+  assert.deepEqual(growGrid({ columns: 1, rows: 6 }), { columns: 2, rows: 6 });
+  assert.equal(growGrid({ columns: 6, rows: 6 }), null);
+  const scenes = Array.from({ length: 12 }, (_, index) => ({
+    id: String.fromCharCode(97 + index),
+    title: String.fromCharCode(97 + index),
+    paths: { stream: "/" + index },
+    files: [{ duration: 100 }],
+  }));
+  const settings = {
+    rows: 1,
+    columns: 2,
+    sceneOrder: "random",
+    randomStart: false,
+    loopScenes: false,
+    fitVideos: false,
+  };
+  const players = h => h.nodes(node => node.type === "native-player");
+  const playing = h => players(h).map(node => node.props.scene.id);
+  const cells = h => h.nodes(node => /^ms-cell\b/.test(node.props.className ?? ""));
+  const places = h => cells(h).map(node => node.props.style.order);
+  const squares = h => h.nodes(node => /^ms-grid-square\b/.test(node.props.className ?? ""));
+  const button = (h, label) => h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === label)[0];
+  const press = async (h, label) => {
+    button(h, label).props.onClick();
+    await h.flush();
+  };
+  const pane = (h, index) =>
+    [...h.media].find(([address, media]) => address.includes("ms-native-" + index) && media.video.isConnected)[1];
+  const session = h => {
+    h.window.emit("pagehide");
+    return JSON.parse(h.localStorage.get("multiscreen.session"));
+  };
+  const h = await start({ scenes, settings });
+  assert.ok(button(h, "Add a screen"), "+ shows outside edit mode");
+  await press(h, "Edit screens");
+  const before = playing(h);
+  const videos = [0, 1].map(index => pane(h, index).video);
+  videos.forEach((video, index) => {
+    video.currentTime = 30 + index;
+  });
+  const queries = h.calls.length;
+
+  // A full grid grows by a row and opens one new screen; the playing screens go on and nothing is queried.
+  await press(h, "Add a screen");
+  assert.equal(players(h).length, 3);
+  assert.deepEqual(playing(h).slice(0, 2), before);
+  assert.deepEqual(
+    [0, 1].map(index => pane(h, index).video),
+    videos,
+    "the playing screens keep their players",
+  );
+  assert.deepEqual(
+    videos.map(video => [video.currentTime, video.pauseCount]),
+    [
+      [30, 0],
+      [31, 0],
+    ],
+  );
+  assert.equal(h.calls.length, queries, "growing deals no new queue");
+  assert.equal(before.includes(playing(h)[2]), false, "the new screen plays another scene");
+  assert.deepEqual(JSON.parse(JSON.stringify(h.saved.at(-1).settings)), { ...settings, rows: 2, columns: 2 });
+  assert.equal(squares(h)[7].props["aria-pressed"], true, "the picker shows the grown grid");
+
+  // The rest of the new row waits as a closed screen: + opens it, then grows the grid again.
+  assert.deepEqual(session(h).closed, [3]);
+  await press(h, "Add a screen");
+  assert.equal(players(h).length, 4);
+  await press(h, "Move screen 1");
+  await press(h, "Swap with screen 4");
+  const swapped = playing(h);
+  await press(h, "Add a screen");
+  assert.deepEqual(playing(h).slice(0, 4), swapped);
+  assert.deepEqual(places(h), [3, 1, 2, 0, 4], "added screens take places after the others");
+  assert.deepEqual(
+    [0, 1].map(index => pane(h, index).video),
+    videos,
+  );
+  assert.equal(h.calls.length, queries);
+  const grown = session(h);
+  assert.deepEqual(grown.deal, { rows: 1, columns: 2 }, "the session keeps the grid its queue was dealt for");
+  assert.deepEqual(grown.closed, [5]);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.saved.at(-1).settings)), { ...settings, rows: 2, columns: 3 });
+
+  // A reload resumes the same scenes under the same queue.
+  const resumed = await start({ scenes, settings: h.saved.at(-1).settings, localStorage: new Map(h.localStorage) });
+  assert.deepEqual(playing(resumed), playing(h));
+  const resumedScenes = playing(resumed);
+  await press(resumed, "Edit screens");
+  await press(resumed, "Add a screen");
+  assert.deepEqual(playing(resumed).slice(0, 5), resumedScenes);
+  assert.equal(players(resumed).length, 6);
+  await resumed.unmount();
+
+  // Choosing a grid in the picker deals a new queue for it.
+  squares(h)[0].props.onClick();
+  await h.flush();
+  h.nodes(node => node.type === "Button" && text(node) === "Change grid")[0].props.onClick();
+  await h.flush();
+  await h.flush();
+  assert.equal(players(h).length, 1);
+  assert.equal(session(h).deal, undefined);
+  await h.unmount();
+
+  // At 6 x 6 with every screen open there is nothing to add.
+  const full = await start({ scenes, settings: { ...settings, rows: 6, columns: 6 } });
+  await press(full, "Edit screens");
+  assert.equal(button(full, "Add a screen: the grid is at its largest").props.disabled, true);
+  await full.unmount();
+}
 async function rotation() {
   const { requireSource } = require("./plugin_paths");
   const { fitLayout } = requireSource("DirtyMultiscreen", "src/domain/layout.ts");
@@ -3123,6 +3368,8 @@ async function recentGrids() {
   await editMode();
   await gridPickerAndSwap();
   await fitVideos();
+  await closeScreens();
+  await addScreens();
   await rotation();
   await savedGrids();
   await recentGrids();

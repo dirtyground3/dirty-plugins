@@ -1,6 +1,7 @@
 import { defaults as DEFAULT_SETTINGS, limits as LIMITS, options as OPTIONS } from "@generated/multiscreen.settings";
 import { clampInteger, coerceBoolean } from "../../../DirtyPlugins/src/shared/values";
 import type {
+  GridSize,
   ListSettings,
   OtherPluginLists,
   Settings,
@@ -70,6 +71,16 @@ export function normalizeSettings(rawSettings: Record<string, unknown>): Setting
       DEFAULT_SETTINGS.showPerformerNavigation,
     ),
   };
+}
+/** The settings the queue was dealt under: a grid grown by + keeps the queue of the grid it grew from. */
+export const dealtSettings = (settings: Settings, deal: GridSize | null | undefined): Settings =>
+  deal ? { ...settings, rows: deal.rows, columns: deal.columns, totalScreens: deal.rows * deal.columns } : settings;
+/** The grid one screen larger: a column while it is no wider than tall, else a row; null at the largest grid. */
+export function growGrid({ columns, rows }: GridSize): GridSize | null {
+  const wider = columns < GRID_LIMITS.columns,
+    taller = rows < GRID_LIMITS.rows;
+  if (wider && (columns <= rows || !taller)) return { columns: columns + 1, rows };
+  return taller ? { columns, rows: rows + 1 } : null;
 }
 /** The settings a saved grid keeps: the grid itself and what deals its queue. */
 export function savedGridSettings(settings: Settings, fitVideos: boolean): SavedGridSettings {

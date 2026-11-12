@@ -143,11 +143,11 @@
   background: rgba(255, 255, 255, 0.18);
 }
 
-/* Edit mode: squares for every grid size, under the main buttons. */
+/* Edit mode: squares for every grid size, beside the column of main buttons. */
 .ms-grid-picker {
   position: fixed;
-  top: 3.3rem;
-  right: 0.85rem;
+  top: 0.85rem;
+  right: 3.25rem;
   z-index: 1060;
   padding: 0.45rem;
   border-radius: var(--dirty-ui-radius-small);
@@ -547,21 +547,25 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
   color: var(--dirty-ui-muted);
 }
 
+/* The main buttons stand in a column down from the top-right corner. */
 .ms-floating {
   position: fixed;
   top: 0.85rem;
   right: 0.85rem;
   z-index: 1060;
   display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 0.4rem;
 }
 
-/* They fade once nothing moves; a pointer over them or keyboard focus keeps them. */
+/* They fade once nothing moves; a pointer over them, keyboard focus or the open shuffle menu keeps them.
+   A clicked button keeps focus too, but not visible focus, so clicking one never pins them. */
 .ms-floating {
   transition: opacity 200ms ease;
 }
 
-.ms-floating.ms-floating-idle:not(:hover):not(:focus-within) {
+.ms-floating.ms-floating-idle:not(:hover):not(:has(:focus-visible)):not(:has(.show)) {
   opacity: 0;
   transition: opacity 1s ease;
 }

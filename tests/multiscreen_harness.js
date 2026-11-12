@@ -27,6 +27,16 @@ function createMultiscreenHarness(options = {}) {
         media.get(address).video.closest = () => ({ dataset: { msScreen: address.match(/ms-native-(\d+)/)?.[1] } });
       }
       if (node.props.ref && node.props.className?.includes("ms-native-grid")) node.props.ref.current = grid;
+      // The main buttons' column in the window's top-right corner.
+      if (node.props.ref && node.props.className?.startsWith("ms-floating"))
+        node.props.ref.current = {
+          getBoundingClientRect: () => ({
+            left: window.innerWidth - 46,
+            right: window.innerWidth - 14,
+            top: 14,
+            bottom: 220,
+          }),
+        };
     },
   });
   const React = {

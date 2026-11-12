@@ -1525,11 +1525,24 @@ body.dirty-ui-modal-open {
 :is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .filtered-list-toolbar {
   position: static !important;
   transform: none !important;
+  width: 100% !important;
   height: auto !important;
+  min-height: 0 !important;
   max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
   flex-wrap: wrap !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
   overflow: visible !important;
   gap: .5rem;
+}
+/* Themes such as Refract paint a pill behind the list toolbar on a pseudo-element placed against the nearest
+   positioned ancestor. The toolbar is static here, so the pill would cover the whole dialog backdrop. */
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .filtered-list-toolbar::before,
+:is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .filtered-list-toolbar::after {
+  content: none !important;
+  display: none !important;
 }
 :is(#dirty-ui-native-scene-filter, .dirty-ui-native-scene-filter) .search-term-input {
   display: flex !important;

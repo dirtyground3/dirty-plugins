@@ -75,6 +75,8 @@ const graphql = async (query, variables) => {
   return result.data;
 };
 const queries = requireSource('DirtyMultiscreen', 'src/queries.ts').createQueries({ graphql });
+// Stash's own search controls hand the session their find options and scene criteria.
+const find = q => ({ find: { q }, scene: {} });
 const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').normalizeSettings({ sceneOrder: 'random' });
 (async () => {
   const variables = await queries.getSceneQueryVariables(settings, { source: 'filter', filter: {}, sceneFilter: {} });
@@ -86,31 +88,40 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
   const repeat = await graphql(queries.findScenesQuery, { ...variables, filter: { ...variables.filter, per_page: 2 } });
   assert.deepEqual(repeat.findScenes.scenes, first.findScenes.scenes);
   const scope = { ...variables, scene_filter: { title: { value: 'Alpha', modifier: 'INCLUDES' } } };
-  const search = (await queries.searchSession(scope, false, '  Alpha  ', 1, new AbortController().signal)).findScenes;
+  const search = (await queries.searchSession(scope, false, find('  Alpha  '), 1, new AbortController().signal)).findScenes;
   assert.equal(search.count, 1);
   assert.equal(search.scenes[0].title, 'Alpha');
   assert(search.scenes[0].paths.stream);
   assert.equal(search.scenes[0].performers.length, 2);
   assert(search.scenes[0].performers.every(performer => performer.id && performer.name && performer.image_path), 'scene queues include each performer name and portrait URL');
-  const missing = (await queries.searchSession(scope, false, 'Beta', 1, new AbortController().signal)).findScenes;
+  const missing = (await queries.searchSession(scope, false, find('Beta'), 1, new AbortController().signal)).findScenes;
   assert.equal(missing.count, 0);
-  assert.throws(() => queries.searchSession({ filter: {}, ids: [search.scenes[0].id] }, false, 'Beta', 1, new AbortController().signal), /searched locally/);
+  const selected = { filter: {}, ids: [search.scenes[0].id] };
+  assert.equal((await queries.searchSession(selected, false, find('Beta'), 1, new AbortController().signal)).findScenes.count, 0, 'a selection is searched inside itself');
+  assert.equal((await queries.searchSession(selected, false, find('Alpha'), 1, new AbortController().signal)).findScenes.count, 1);
   const textScope = { filter: { q: 'Alpha' } };
-  assert.equal((await queries.searchSession(textScope, false, 'Beta', 1, new AbortController().signal)).findScenes.count, 0);
-  assert.equal((await queries.searchSession(textScope, false, 'Alpha', 1, new AbortController().signal)).findScenes.count, 1);
-  assert.equal((await queries.searchSession({ filter: {} }, false, 'Alpha Beta', 1, new AbortController().signal)).findScenes.count, 0, 'a phrase cannot match either word separately');
-  assert.equal((await queries.searchSession({ filter: {} }, false, 'aLpHa', 1, new AbortController().signal)).findScenes.count, 1, 'title search is case insensitive');
+  assert.equal((await queries.searchSession(textScope, false, find('Beta'), 1, new AbortController().signal)).findScenes.count, 0);
+  assert.equal((await queries.searchSession(textScope, false, find('Alpha'), 1, new AbortController().signal)).findScenes.count, 1);
+  // Without a session search term the text is Stash's own search, so the results are those of its scene list.
+  const native = async q => (await graphql('query($filter:FindFilterType){findScenes(filter:$filter){count}}', { filter: { q } })).findScenes.count;
+  for (const q of ['Alpha Beta', 'aLpHa', 'Alpha|Beta', 'Alpha.*', '.']) {
+    assert.equal((await queries.searchSession({ filter: {} }, false, find(q), 1, new AbortController().signal)).findScenes.count, await native(q), 'Stash search: ' + q);
+  }
+  assert.equal((await queries.searchSession({ filter: {} }, false, find('aLpHa'), 1, new AbortController().signal)).findScenes.count, 1, 'title search is case insensitive');
+  // A session with its own search term keeps it, and the searched text then matches titles literally.
+  assert.equal((await queries.searchSession(textScope, false, find('aLpHa'), 1, new AbortController().signal)).findScenes.count, 1, 'title matching is case insensitive');
+  assert.equal((await queries.searchSession(textScope, false, find('Alpha Beta'), 1, new AbortController().signal)).findScenes.count, 0, 'a phrase cannot match either word separately');
   for (const literal of ['Alpha|Beta', 'Alpha.*', 'Alpha(', '.', '[Alpha]']) {
-    assert.equal((await queries.searchSession({ filter: {} }, false, literal, 1, new AbortController().signal)).findScenes.count, 0, 'search punctuation is literal: ' + literal);
+    assert.equal((await queries.searchSession(textScope, false, find(literal), 1, new AbortController().signal)).findScenes.count, 0, 'search punctuation is literal: ' + literal);
   }
   const alphaId = search.scenes[0].id;
   const rename = title => graphql('mutation($input:SceneUpdateInput!){sceneUpdate(input:$input){id}}', { input: { id: alphaId, title } });
   try {
     await rename('Alpha Beta (fixture).mp4');
-    const phrase = (await queries.searchSession({ filter: {} }, false, 'alpha beta', 1, new AbortController().signal)).findScenes;
+    const phrase = (await queries.searchSession(textScope, false, find('alpha beta'), 1, new AbortController().signal)).findScenes;
     assert.equal(phrase.count, 1, 'the entire phrase matches one scene despite other scenes containing individual words');
     assert.equal(phrase.scenes[0].id, alphaId);
-    const punctuation = (await queries.searchSession({ filter: {} }, false, '(fixture).mp4', 1, new AbortController().signal)).findScenes;
+    const punctuation = (await queries.searchSession(textScope, false, find('(fixture).mp4'), 1, new AbortController().signal)).findScenes;
     assert.equal(punctuation.count, 1);
     assert.equal(punctuation.scenes[0].id, alphaId);
   } finally {
@@ -118,18 +129,18 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
   }
   for (const entity of ['performer', 'studio', 'tag']) {
     const related = await queries.getSceneQueryVariables(settings, { source: entity + '-detail', [entity + 'Id']: '1' });
-    assert.equal((await queries.searchSession(related, false, 'Delta', 1, new AbortController().signal)).findScenes.count, 0);
-    assert.equal((await queries.searchSession(related, false, 'Beta', 1, new AbortController().signal)).findScenes.count, 1);
+    assert.equal((await queries.searchSession(related, false, find('Delta'), 1, new AbortController().signal)).findScenes.count, 0);
+    assert.equal((await queries.searchSession(related, false, find('Beta'), 1, new AbortController().signal)).findScenes.count, 1);
     const listed = await queries.getSceneQueryVariables(settings, { source: entity + '-filter', filter: { q: 'Synthetic' }, [entity + 'Filter']: {} });
     assert.equal((await graphql(queries.findScenesQuery, listed)).findScenes.count, 2, entity + ' list filters resolve to their scenes');
   }
   const markerScope = queries.getMarkerQueryVariables(settings, { source: 'marker-filter', filter: { q: 'Explicit' }, markerFilter: { scene_filter: scope.scene_filter } });
-  const markerSearch = (await queries.searchSession(markerScope, true, 'Alpha', 1, new AbortController().signal)).findSceneMarkers;
+  const markerSearch = (await queries.searchSession(markerScope, true, find('Alpha'), 1, new AbortController().signal)).findSceneMarkers;
   assert.equal(markerSearch.count, 1);
   assert.equal(markerSearch.scene_markers[0].title, 'Explicit');
   assert.equal(markerSearch.scene_markers[0].seconds, 1);
-  assert.equal((await queries.searchSession(markerScope, true, 'Beta', 1, new AbortController().signal)).findSceneMarkers.count, 0);
-  assert.equal((await queries.searchSession(markerScope, true, 'Alpha Beta', 1, new AbortController().signal)).findSceneMarkers.count, 0, 'marker sessions match the full video-title phrase');
+  assert.equal((await queries.searchSession(markerScope, true, find('Beta'), 1, new AbortController().signal)).findSceneMarkers.count, 0);
+  assert.equal((await queries.searchSession(markerScope, true, find('Alpha Beta'), 1, new AbortController().signal)).findSceneMarkers.count, 0, 'marker sessions match the full video-title phrase');
   const titles = data => data.findScenes.scenes.map(scene => scene.title);
   const signal = new AbortController().signal;
   const sorted = { filter: { sort: 'title', direction: 'ASC' } };
@@ -147,7 +158,7 @@ const settings = requireSource('DirtyMultiscreen', 'src/domain/settings.ts').nor
   assert.deepEqual(listedMarkers.findSceneMarkers.scene_markers.map(marker => marker.id), [markerId]);
   const pluginList = { source: 'plugin-list', kind: 'scenes', ids: [all[2].id, all[1].id, all[0].id], keepOrder: true, label: '' };
   const pluginScope = await queries.getSceneQueryVariables(settings, pluginList);
-  const listSearch = await queries.searchSession(pluginScope, false, 'a', 1, signal);
+  const listSearch = await queries.searchSession(pluginScope, false, find('a'), 1, signal);
   assert.deepEqual(titles(listSearch), ['Delta', 'Beta', 'Alpha'], 'list search keeps the list order and leaves out the rest');
   assert.equal(listSearch.findScenes.count, 3);
   const playingBeta = { id: all[1].id, scene: { id: all[1].id } };

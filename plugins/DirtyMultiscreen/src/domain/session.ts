@@ -1,5 +1,5 @@
 import { isMultiscreenLaunchContext, isRecord } from "./context";
-import type { AudioState, PaneView, SavedPane, SavedSession, Settings } from "../types";
+import type { AudioState, GridSize, PaneView, SavedPane, SavedSession, Settings } from "../types";
 
 const SESSION_STORAGE_KEY = "multiscreen.session";
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
@@ -19,6 +19,12 @@ const isView = (value: unknown): value is PaneView =>
       typeof value.flip.itemId === "string" &&
       typeof value.flip.x === "boolean" &&
       typeof value.flip.y === "boolean"));
+const isGridSize = (value: unknown): value is GridSize =>
+  isRecord(value) &&
+  Number.isInteger(value.rows) &&
+  Number.isInteger(value.columns) &&
+  (value.rows as number) > 0 &&
+  (value.columns as number) > 0;
 const isPane = (value: unknown): value is SavedPane =>
   isRecord(value) &&
   typeof value.itemId === "string" &&
@@ -39,18 +45,32 @@ export const isSession = (value: unknown): value is SavedSession =>
   Array.isArray(value.panes) &&
   value.panes.every(pane => pane === null || isPane(pane)) &&
   (value.order === undefined || (Array.isArray(value.order) && value.order.every(isFiniteNumber))) &&
+  (value.closed === undefined || (Array.isArray(value.closed) && value.closed.every(isFiniteNumber))) &&
+  (value.deal === undefined || isGridSize(value.deal)) &&
   (value.recent === undefined || isFiniteNumber(value.recent));
 
-/** Every screen's place in the grid: the saved places while they still hold each screen once, else the dealt order. */
+/** The closed screens that exist among `count`, once each and in the order they closed. One screen stays open. */
+export function closedScreens(saved: readonly number[] | undefined, count: number) {
+  const closed = Array.from(new Set(saved ?? [])).filter(
+    index => Number.isInteger(index) && index >= 0 && index < count,
+  );
+  return closed.length < count ? closed : [];
+}
+
+/**
+ * Every screen's place in the grid: the saved places while they still hold each screen once, else the dealt order.
+ * Screens added to a grown grid take the new places after them.
+ */
 export function screenOrder(saved: number[] | undefined, count: number) {
-  if (
+  const known = saved?.length ?? 0;
+  const kept =
     saved &&
-    saved.length === count &&
-    new Set(saved).size === count &&
-    saved.every(place => Number.isInteger(place) && place >= 0 && place < count)
-  )
-    return saved.slice();
-  return Array.from({ length: count }, (_, index) => index);
+    known <= count &&
+    new Set(saved).size === known &&
+    saved.every(place => Number.isInteger(place) && place >= 0 && place < known);
+  return kept
+    ? [...saved, ...Array.from({ length: count - known }, (_, index) => known + index)]
+    : Array.from({ length: count }, (_, index) => index);
 }
 
 /** The settings that deal the queue. Under any others a saved page and seed name different scenes. */

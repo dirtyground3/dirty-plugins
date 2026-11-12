@@ -42,8 +42,11 @@ function partitions(aspects: number[]): number[][] {
   });
 }
 
-/** Justified rows, then justified columns, in place order. Panes never move in the DOM. */
-export function fitLayout(aspects: readonly number[], width: number, height: number): Rectangle[] {
+/**
+ * Justified rows, then justified columns, in place order. Panes never move in the DOM. Edges fall on whole device
+ * pixels for `pixelRatio`: an edge between two device pixels leaves a black seam between neighbouring videos.
+ */
+export function fitLayout(aspects: readonly number[], width: number, height: number, pixelRatio = 1): Rectangle[] {
   if (!aspects.length) return [];
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)
     return aspects.map(() => ({ left: 0, top: 0, width: 0, height: 0 }));
@@ -88,14 +91,14 @@ export function fitLayout(aspects: readonly number[], width: number, height: num
   const scaleY = stretch ? height / block.height : scale;
   const offsetX = (width - block.width * scaleX) / 2;
   const offsetY = (height - block.height * scaleY) / 2;
+  const ratio = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1;
+  // Whole device pixels, counted from the window's corner, so neighbours share each edge exactly.
+  const snap = (value: number) => Math.round(value * ratio);
   return block.rectangles.map(rectangle => {
-    const left = Math.round(offsetX + rectangle.left * scaleX);
-    const top = Math.round(offsetY + rectangle.top * scaleY);
-    return {
-      left,
-      top,
-      width: Math.round(offsetX + (rectangle.left + rectangle.width) * scaleX) - left,
-      height: Math.round(offsetY + (rectangle.top + rectangle.height) * scaleY) - top,
-    };
+    const left = snap(offsetX + rectangle.left * scaleX);
+    const top = snap(offsetY + rectangle.top * scaleY);
+    const right = snap(offsetX + (rectangle.left + rectangle.width) * scaleX);
+    const bottom = snap(offsetY + (rectangle.top + rectangle.height) * scaleY);
+    return { left: left / ratio, top: top / ratio, width: (right - left) / ratio, height: (bottom - top) / ratio };
   });
 }

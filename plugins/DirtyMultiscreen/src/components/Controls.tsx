@@ -2,6 +2,7 @@ import type { SharedProps } from "../../../DirtyPlugins/src/types";
 import { DirtyPlugins, PluginApi, React } from "../runtime";
 /** Current Font Awesome names first, then the names older Stash versions ship. */
 const ICON_NAMES = {
+  add: ["faPlus", "faPlus"],
   close: ["faXmark", "faTimes"],
   edit: ["faTableCellsLarge", "faThLarge"],
   error: ["faTriangleExclamation", "faExclamationTriangle"],

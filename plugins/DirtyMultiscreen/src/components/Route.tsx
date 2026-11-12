@@ -1,11 +1,15 @@
+import type * as R from "react";
 import { isMarkerLaunchContext } from "../domain/context";
 import { getMarkerItem, getSceneItem } from "../domain/items";
-import { pagePlaylists } from "../domain/playlists";
+import { growPlaylists, pagePlaylists } from "../domain/playlists";
 import { useMarkerQuery, useNativePlayerComponent, useSceneQuery } from "../hooks";
-import { queueKey, readSession, writeSession } from "../domain/session";
+import { closedScreens, queueKey, readSession, writeSession } from "../domain/session";
 import {
+  dealtSettings,
   getPlaybackSettings,
   getSceneLimit,
+  GRID_LIMITS,
+  growGrid,
   normalizeFitVideos,
   normalizeRecentGrids,
   normalizeSettings,
@@ -16,16 +20,16 @@ import { contexts, DirtyPlugins, PluginApi, React } from "../runtime";
 import { icon, PluginIconButton, StateView } from "./Controls";
 import { VisibleOCounterButton } from "./Counter";
 import { NativeMultiscreenGrid } from "./Grid";
-import { GridChangeDialog, GridPicker, type GridSize } from "./GridPicker";
+import { GridChangeDialog, GridPicker } from "./GridPicker";
 import { SavedGridsButton } from "./SavedGrids";
 import { ShuffleMenu } from "./ShuffleMenu";
 import type {
   FindPerformerItems,
+  GridSize,
   GridSnapshot,
   LaunchContext,
   SavedGrid,
   SavedGridSummary,
-  SavedPane,
   SavedSession,
   SceneOrder,
   SessionSearch,
@@ -40,24 +44,61 @@ const keepsOrder = (context: LaunchContext | null) => context?.source === "plugi
 const playSettings = (data: Record<string, unknown>, keepOrder: boolean) =>
   normalizeSettings(keepOrder ? { ...data, sceneOrder: "list" } : data);
 const CONTROLS_IDLE_MS = 3000;
-/** True once the pointer and keyboard have rested for `delay`; any movement, tap or key wakes it. */
-function useIdle(delay: number) {
+/** The most screens a grid holds: added screens take their lanes from a deal this wide. */
+const WIDEST_DEAL = GRID_LIMITS.rows * GRID_LIMITS.columns;
+/** How close the mouse must come to the main buttons to show them. */
+const NEAR_PX = 100;
+/**
+ * True while the main buttons rest hidden. They show while the mouse is within NEAR_PX of their box and hide
+ * `delay` after it leaves that area or the window, and after the player opens. Moving elsewhere never shows them;
+ * a touch, which cannot hover, shows them for `delay`.
+ */
+function useIdle(area: R.RefObject<HTMLElement | null>, delay: number) {
   const [idle, setIdle] = React.useState(false);
   React.useEffect(() => {
     let timer = 0;
-    const wake = () => {
-      setIdle(false);
+    const show = () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => setIdle(true), delay);
+      timer = 0;
+      setIdle(false);
     };
-    const events = ["pointermove", "pointerdown", "keydown"];
-    wake();
-    for (const event of events) window.addEventListener(event, wake, { passive: true });
+    const hideLater = () => {
+      if (!timer) timer = window.setTimeout(() => setIdle(true), delay);
+    };
+    const near = (x: number, y: number) => {
+      const box = area.current?.getBoundingClientRect();
+      return (
+        !!box &&
+        x >= box.left - NEAR_PX &&
+        x <= box.right + NEAR_PX &&
+        y >= box.top - NEAR_PX &&
+        y <= box.bottom + NEAR_PX
+      );
+    };
+    const move = (event: PointerEvent) => {
+      if (event.pointerType !== "touch" && near(event.clientX, event.clientY)) show();
+      else hideLater();
+    };
+    const tap = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      show();
+      hideLater();
+    };
+    // A pointer leaving the window goes out of the page with nowhere to go.
+    const out = (event: PointerEvent) => {
+      if (!event.relatedTarget) hideLater();
+    };
+    hideLater();
+    window.addEventListener("pointermove", move, { passive: true });
+    window.addEventListener("pointerdown", tap, { passive: true });
+    document.addEventListener("pointerout", out);
     return () => {
       window.clearTimeout(timer);
-      for (const event of events) window.removeEventListener(event, wake);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerdown", tap);
+      document.removeEventListener("pointerout", out);
     };
-  }, [delay]);
+  }, [area, delay]);
   return idle;
 }
 /** Opening a saved grid starts the player over, so it reads that grid as the session to resume. */
@@ -72,8 +113,9 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   const replaced = React.useRef(false);
   const [visibleNativeSceneIds, setVisibleNativeSceneIds] = React.useState<string[]>([]);
   const [editing, setEditing] = React.useState(false);
-  // The top-right buttons fade while nothing moves, like a player's controls.
-  const controlsIdle = useIdle(CONTROLS_IDLE_MS);
+  // The top-right buttons show only while the mouse is near them.
+  const floatingRef = React.useRef<HTMLDivElement | null>(null);
+  const controlsIdle = useIdle(floatingRef, CONTROLS_IDLE_MS);
   const [pendingGrid, setPendingGrid] = React.useState<GridSize | null>(null);
   // A launch context means the header button just chose a scope; without one the saved session continues.
   const [launch] = React.useState(() => {
@@ -87,6 +129,10 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   const [launchContext, setLaunchContext] = React.useState(launch.context);
   const keepOrder = keepsOrder(launchContext);
   const resume = React.useRef<SavedSession | null>(launch.saved);
+  // Screens closed in edit mode stay closed through reshuffles; another grid opens them all.
+  const [closed, setClosed] = React.useState<number[]>(() => launch.saved?.closed ?? []);
+  // The grid the queue was dealt for. + grows the grid without dealing again, so the playing screens go on.
+  const [dealtGrid, setDealtGrid] = React.useState<GridSize | null>(() => launch.saved?.deal ?? null);
   const markerMode = isMarkerLaunchContext(launchContext);
   const [settingsQuery, setSettingsQuery] = React.useState<{
     loading: boolean;
@@ -107,7 +153,11 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
       .then(data => {
         if (request.current !== revision) return;
         // The scope stays, but seeds and pages only name the same scenes under the same queue settings.
-        if (resume.current?.queue !== queueKey(playSettings(data, keepsOrder(launch.context)))) resume.current = null;
+        const queue = dealtSettings(playSettings(data, keepsOrder(launch.context)), launch.saved?.deal);
+        if (resume.current?.queue !== queueKey(queue)) {
+          resume.current = null;
+          setDealtGrid(null);
+        }
         setSettingsQuery({ loading: false, error: null, data });
       })
       .catch(error => {
@@ -132,10 +182,16 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
     if (stored) writeSession({ ...stored, recent: id });
   });
   const settings = React.useMemo(() => playSettings(rawSettings, keepOrder), [rawSettings, keepOrder]);
+  // Only a grid grown past its deal plays a queue dealt for fewer screens.
+  const deal = dealtGrid && dealtGrid.rows * dealtGrid.columns < settings.totalScreens ? dealtGrid : null;
+  const queue = React.useMemo(() => dealtSettings(settings, deal), [settings, deal]);
+  const grown = settings.totalScreens > queue.totalScreens;
+  const grownRef = React.useRef(grown);
+  grownRef.current = grown;
   const playbackSettings = React.useMemo(() => getPlaybackSettings(settings), [settings]);
   const nativePlayerQuery = useNativePlayerComponent();
-  const scenesQuery = useSceneQuery(settings, launchContext, !settingsQuery.loading && !markerMode, resume);
-  const markersQuery = useMarkerQuery(settings, launchContext, !settingsQuery.loading && markerMode, resume);
+  const scenesQuery = useSceneQuery(queue, launchContext, !settingsQuery.loading && !markerMode, resume);
+  const markersQuery = useMarkerQuery(queue, launchContext, !settingsQuery.loading && markerMode, resume);
   const sceneItems = React.useMemo(
     () => scenesQuery.result.scenes.map(getSceneItem).filter(item => item !== null),
     [scenesQuery.result.scenes],
@@ -188,7 +244,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
       settings.markerDuration,
     ],
   );
-  const pageSize = getSceneLimit(settings);
+  const pageSize = getSceneLimit(queue);
   const [seed, now] = React.useMemo(
     () =>
       resume.current ? [resume.current.seed, resume.current.now] : [Math.floor(Math.random() * 4294967296), Date.now()],
@@ -205,9 +261,15 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
     () => (explicitSelection ? items.slice(0, pageSize) : items),
     [items, explicitSelection, pageSize],
   );
+  const dealtPlaylists = React.useMemo(
+    () => pagePlaylists(initialItems, queue.totalScreens, ordering, settings.splitScenes, seed, initialPage),
+    [initialItems, queue.totalScreens, ordering, settings.splitScenes, seed, initialPage],
+  );
+  // Added screens take lanes of the widest deal, so growing again never changes a lane that is playing.
   const playlists = React.useMemo(
-    () => pagePlaylists(initialItems, settings.totalScreens, ordering, settings.splitScenes, seed, initialPage),
-    [initialItems, settings.totalScreens, ordering, settings.splitScenes, seed, initialPage],
+    () =>
+      grown ? growPlaylists(dealtPlaylists, initialItems, WIDEST_DEAL, ordering, seed, initialPage) : dealtPlaylists,
+    [grown, dealtPlaylists, initialItems, ordering, seed, initialPage],
   );
   // Seeded sorts keep pages disjoint, so every launch continues through its whole scope.
   const pageCount = Math.ceil((explicitSelection ? items.length : activeQuery.result.count) / pageSize);
@@ -230,7 +292,8 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
                 const data = await scenesQuery.loadPage(page);
                 nextItems = data.scenes.map(getSceneItem).filter(item => item !== null);
               }
-              return pagePlaylists(nextItems, settings.totalScreens, ordering, settings.splitScenes, seed, page);
+              const lanes = pagePlaylists(nextItems, queue.totalScreens, ordering, settings.splitScenes, seed, page);
+              return grownRef.current ? growPlaylists(lanes, nextItems, WIDEST_DEAL, ordering, seed, page) : lanes;
             },
           }
         : undefined,
@@ -243,7 +306,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
       markerMode,
       markersQuery.loadPage,
       scenesQuery.loadPage,
-      settings.totalScreens,
+      queue.totalScreens,
       ordering,
       settings.splitScenes,
       settings.markerDuration,
@@ -271,7 +334,31 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   const changeGrid = ({ columns, rows }: GridSize) => {
     setPendingGrid(null);
     resume.current = null;
+    setClosed([]);
+    setDealtGrid(null);
     const data = { ...rawSettings, rows, columns };
+    setSettingsQuery(current => ({ ...current, data }));
+    DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
+      DirtyPlugins.ui.notify("Could not save the grid. It applies to this session only.", "error"),
+    );
+  };
+  /**
+   * + brings back the screen closed last. With none closed it grows the grid by a row or a column and opens one
+   * new screen; the queue is not dealt again, so every playing screen goes on.
+   */
+  const addable = closedScreens(closed, settings.totalScreens);
+  const grownGrid = addable.length ? null : growGrid(settings);
+  const addScreen = () => {
+    if (addable.length) {
+      const last = addable[addable.length - 1];
+      setClosed(addable.filter(index => index !== last));
+      return;
+    }
+    if (!grownGrid) return;
+    const size = grownGrid.rows * grownGrid.columns;
+    setDealtGrid(deal ?? { rows: settings.rows, columns: settings.columns });
+    setClosed(Array.from({ length: size - settings.totalScreens - 1 }, (_, index) => size - 1 - index));
+    const data = { ...rawSettings, ...grownGrid };
     setSettingsQuery(current => ({ ...current, data }));
     DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
       DirtyPlugins.ui.notify("Could not save the grid. It applies to this session only.", "error"),
@@ -291,7 +378,15 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
     return {
       // The stored Scene order, not the order a list imposes: opening the grid must not change that setting.
       settings: savedGridSettings(normalizeSettings(rawSettings), fitVideos),
-      session: { context: launchContext, queue: queueKey(settings), sort: activeQuery.sort, seed, now, ...current },
+      session: {
+        context: launchContext,
+        queue: queueKey(queue),
+        sort: activeQuery.sort,
+        seed,
+        now,
+        ...current,
+        ...(deal ? { deal } : {}),
+      },
     };
   };
   /**
@@ -313,16 +408,16 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
     contexts.storeLaunchContext(null);
     onRestart();
   };
-  const saveSession = (panes: Array<SavedPane | null>, order: number[]) => {
+  const saveSession = (screens: GridSnapshot) => {
     if (replaced.current) return;
     const saved = writeSession({
       context: launchContext,
-      queue: queueKey(settings),
+      queue: queueKey(queue),
       sort: activeQuery.sort,
       seed,
       now,
-      panes,
-      order,
+      ...screens,
+      ...(deal ? { deal } : {}),
       recent: recent.id(),
     });
     // The launch has become this session, so a reload resumes it instead of dealing a new one.
@@ -363,6 +458,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           rows={settings.rows}
           columns={settings.columns}
           avoidDuplicates={avoidDuplicates}
+          closed={closed}
           editing={editing}
           fitVideos={fitVideos}
           totalScreens={settings.totalScreens}
@@ -373,6 +469,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           continuation={continuation}
           playback={playbackSettings}
           nativePlayer={nativePlayerQuery.component}
+          onCloseScreen={index => setClosed(current => [...current, index])}
           onSessionChange={saveSession}
           onVisibleSceneIdsChange={setVisibleNativeSceneIds}
           savedPanes={resume.current?.panes}
@@ -399,8 +496,13 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           onConfirm={() => changeGrid(pendingGrid)}
         />
       )}
-      <div className={"ms-floating" + (controlsIdle && !editing ? " ms-floating-idle" : "")}>
-        <VisibleOCounterButton sceneIds={visibleNativeSceneIds} />
+      {/* A column down from the corner. It shows only while the mouse is near it, in edit mode too. */}
+      <div className={"ms-floating" + (controlsIdle ? " ms-floating-idle" : "")} ref={floatingRef}>
+        <PluginIconButton ariaLabel="Close DirtyMultiscreen" fallback="x" icon={icon("close")} onClick={closeRoute} />
+        {!error && items.length > 0 && <ShuffleMenu order={settings.sceneOrder} onShuffle={reshuffle} />}
+        {!settingsQuery.loading && !settingsQuery.error && (
+          <SavedGridsButton capture={docsCapture} keepRecent={recentGrids} snapshot={snapshot} onOpen={openGrid} />
+        )}
         {!loading && !error && items.length > 0 && (
           <PluginIconButton
             ariaLabel={editing ? "Finish editing screens" : "Edit screens"}
@@ -410,11 +512,16 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
             onClick={() => setEditing(value => !value)}
           />
         )}
-        {!settingsQuery.loading && !settingsQuery.error && (
-          <SavedGridsButton capture={docsCapture} keepRecent={recentGrids} snapshot={snapshot} onOpen={openGrid} />
+        {!loading && !error && items.length > 0 && (
+          <PluginIconButton
+            ariaLabel={addable.length || grownGrid ? "Add a screen" : "Add a screen: the grid is at its largest"}
+            fallback="+"
+            icon={icon("add")}
+            disabled={!addable.length && !grownGrid}
+            onClick={addScreen}
+          />
         )}
-        {!error && items.length > 0 && <ShuffleMenu order={settings.sceneOrder} onShuffle={reshuffle} />}
-        <PluginIconButton ariaLabel="Close DirtyMultiscreen" fallback="x" icon={icon("close")} onClick={closeRoute} />
+        <VisibleOCounterButton sceneIds={visibleNativeSceneIds} />
       </div>
     </div>
   );

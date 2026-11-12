@@ -185,6 +185,10 @@ export interface SavedSession {
   panes: Array<SavedPane | null>;
   /** The grid place of each pane; absent is the dealt order. */
   order?: number[];
+  /** Panes closed in edit mode, in the order they closed; absent when every screen plays. */
+  closed?: number[];
+  /** The grid the queue was dealt for, when + has grown the grid since; absent when it is the current grid. */
+  deal?: GridSize;
   /** The autosave this session keeps up to date, once it has one. */
   recent?: number;
 }
@@ -192,6 +196,7 @@ export interface SavedSession {
 export interface GridSnapshot {
   panes: Array<SavedPane | null>;
   order: number[];
+  closed?: number[];
 }
 /** The settings that deal a saved grid's queue; opening the grid makes them the current settings. */
 export type SavedGridSettings = Pick<
@@ -212,6 +217,10 @@ export interface SavedGridSummary {
   updatedAt: number;
   /** Saved automatically while it played; only the newest few stay. */
   recent: boolean;
+}
+export interface GridSize {
+  columns: number;
+  rows: number;
 }
 /** Moves screens in the grid. A screen keeps its index, queue and player; only its place changes. */
 export interface SwapControls {
@@ -266,6 +275,8 @@ export interface TileProps {
 }
 export interface GridProps {
   avoidDuplicates: boolean;
+  /** Panes closed in edit mode. They keep their place, queue and saved state while closed. */
+  closed: number[];
   continuation?: { initialPage: number; pageCount: number; loadPage(page: number): Promise<Item[][]> };
   /** Edit mode shows every screen's own picture controls. */
   editing: boolean;
@@ -275,7 +286,9 @@ export interface GridProps {
   rows: number;
   totalScreens: number;
   nativePlayer: NativePlayer;
-  onSessionChange(panes: Array<SavedPane | null>, order: number[]): void;
+  /** Closes a pane in edit mode; the grid never closes its last open one. */
+  onCloseScreen(index: number): void;
+  onSessionChange(snapshot: GridSnapshot): void;
   onVisibleSceneIdsChange(ids: string[]): void;
   playback: PlaybackSettings;
   playlists: Item[][];

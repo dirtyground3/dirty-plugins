@@ -25,6 +25,8 @@ interface PaneProps
   /** Where the pane sits in the grid, which is the screen number people see. */
   position: number;
   rectangle?: Rectangle;
+  /** Closes the screen in edit mode; absent for the last open screen. */
+  onClose?(): void;
   swap: SwapControls;
   swapSource: number | null;
   swapTarget: number | null;
@@ -47,6 +49,7 @@ export function NativePlayerPane({
   fitVideos,
   findPerformerItems,
   onAudioChange,
+  onClose,
   onPositionChange,
   onSceneChange,
   onViewChange,
@@ -351,6 +354,7 @@ export function NativePlayerPane({
           onFill={fill => changeView({ ...view, fill })}
           onFlip={(x, y) => changeView({ ...view, flip: x || y ? { itemId: item.id, x, y } : undefined })}
           onLoop={value => changeView({ ...view, loop: value })}
+          onClose={onClose}
         />
       )}
       {state.busy && (

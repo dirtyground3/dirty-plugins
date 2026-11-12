@@ -1,4 +1,4 @@
-import { screenOrder } from "../domain/session";
+import { closedScreens, screenOrder } from "../domain/session";
 import { DEFAULT_ASPECT, fitLayout, videoAspect } from "../domain/layout";
 import { useSessionSaver } from "../hooks";
 import { React } from "../runtime";
@@ -6,12 +6,14 @@ import type { AudioState, GridProps, Item, PaneView, SavedPane, SwapControls } f
 import { NativePlayerPane } from "./PlayerPane";
 export function NativeMultiscreenGrid({
   avoidDuplicates,
+  closed: closedPanes,
   columns,
   continuation,
   editing,
   fitVideos,
   findPerformerItems,
   nativePlayer,
+  onCloseScreen,
   onSessionChange,
   onVisibleSceneIdsChange,
   playback,
@@ -55,9 +57,15 @@ export function NativeMultiscreenGrid({
       grid.removeEventListener("resize", readSize, true);
     };
   }, [updateAspect]);
-  const [size, setSize] = React.useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  // Browser zoom and display scaling change the device pixel ratio, and with it the window's size in CSS pixels.
+  const windowSize = () => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    ratio: window.devicePixelRatio || 1,
+  });
+  const [size, setSize] = React.useState(windowSize);
   React.useEffect(() => {
-    const resize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
+    const resize = () => setSize(windowSize());
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
   }, []);
@@ -70,17 +78,42 @@ export function NativeMultiscreenGrid({
   // Each screen's place in the layout. Moving one changes only its CSS, so its video is never touched.
   const [order, setOrder] = React.useState(() => screenOrder(savedOrder, totalScreens));
   const places = React.useRef(order);
-  places.current = order.length === totalScreens ? order : screenOrder(undefined, totalScreens);
+  places.current = order.length === totalScreens ? order : screenOrder(order, totalScreens);
+  const closedKey = closedScreens(closedPanes, totalScreens).join();
+  const closed = React.useMemo(() => (closedKey ? closedKey.split(",").map(Number) : []), [closedKey]);
+  const closedRef = React.useRef(closed);
+  closedRef.current = closed;
+  // The open panes in place order. A closed pane leaves no gap: the others close up behind it.
+  const open = places.current
+    .map((place, index) => ({ place, index }))
+    .filter(({ index }) => !closed.includes(index))
+    .sort((first, second) => first.place - second.place)
+    .map(({ index }) => index);
+  const shown = Array<number>(totalScreens).fill(-1);
+  open.forEach((index, rank) => {
+    shown[index] = rank;
+  });
   const rectangles = React.useMemo(() => {
     if (!fitVideos) return [];
-    const placed = Array<number>(totalScreens).fill(DEFAULT_ASPECT);
-    places.current.forEach((place, index) => {
+    const placed = open.map(index => {
       const aspect = aspects[index] ?? DEFAULT_ASPECT;
-      placed[place] = rotations[index] % 2 ? 1 / aspect : aspect;
+      return rotations[index] % 2 ? 1 / aspect : aspect;
     });
-    return fitLayout(placed, size.width, size.height);
-  }, [fitVideos, aspects, rotations, order, totalScreens, size]);
-  const scheduleSave = useSessionSaver(() => onSessionChange(panes.current.slice(0, totalScreens), places.current));
+    return fitLayout(placed, size.width, size.height, size.ratio);
+  }, [fitVideos, aspects, rotations, order, closed, totalScreens, size]);
+  const scheduleSave = useSessionSaver(() =>
+    onSessionChange({
+      panes: panes.current.slice(0, totalScreens),
+      order: places.current,
+      ...(closedRef.current.length ? { closed: closedRef.current } : {}),
+    }),
+  );
+  const savedClosed = React.useRef(closedKey);
+  React.useEffect(() => {
+    if (savedClosed.current === closedKey) return;
+    savedClosed.current = closedKey;
+    scheduleSave();
+  }, [closedKey, scheduleSave]);
   const [swapping, setSwapping] = React.useState<{ source: number; target: number | null } | null>(null);
   const swappingRef = React.useRef(swapping);
   swappingRef.current = swapping;
@@ -143,6 +176,7 @@ export function NativeMultiscreenGrid({
         return pane && item?.id === pane.itemId ? { ...pane, item: { ...item, outsidePage: true } } : pane;
       }),
       order: places.current,
+      ...(closedRef.current.length ? { closed: closedRef.current } : {}),
     });
     return () => {
       snapshotRef.current = null;
@@ -206,6 +240,19 @@ export function NativeMultiscreenGrid({
     [updatePane],
   );
   const onViewChange = React.useCallback((index: number, view: PaneView) => updatePane(index, { view }), [updatePane]);
+  /** A closed pane stops playing and counts as no scene, but keeps its saved state and item for reopening. */
+  const closeScreen = (index: number) => {
+    if (closedRef.current.includes(index) || closedRef.current.length + 1 >= totalScreens) return;
+    swap.cancel();
+    playingByPane.current[index] = null;
+    setVisibleByPane(current => {
+      if (!current[index]) return current;
+      const next = current.slice();
+      next[index] = null;
+      return next;
+    });
+    onCloseScreen(index);
+  };
   const playingElsewhere = React.useMemo(
     () =>
       avoidDuplicates
@@ -269,33 +316,37 @@ export function NativeMultiscreenGrid({
   };
   return (
     <div className={`ms-grid ms-native-grid${fitVideos ? " ms-fit" : ""}`} ref={gridRef} style={gridStyle}>
-      {Array.from({ length: totalScreens }, (_, screenIndex) => (
-        <NativePlayerPane
-          key={`ms-native-${screenIndex}`}
-          screenIndex={screenIndex}
-          position={places.current[screenIndex]}
-          rectangle={rectangles[places.current[screenIndex]]}
-          fitVideos={fitVideos}
-          swap={swap}
-          swapSource={swapping?.source ?? null}
-          swapTarget={swapping?.target ?? null}
-          playlist={playlists[screenIndex] ?? []}
-          continuation={continuation}
-          editing={editing}
-          findPerformerItems={findPerformerItems}
-          nativePlayer={nativePlayer}
-          playback={playback}
-          useFindScene={useFindScene}
-          onAudioChange={onAudioChange}
-          onPositionChange={onPositionChange}
-          onSceneChange={onSceneChange}
-          onViewChange={onViewChange}
-          playingElsewhere={playingElsewhere}
-          saved={savedPanes?.[screenIndex]}
-          searchSession={searchSession}
-          showPerformerNavigation={showPerformerNavigation}
-        />
-      ))}
+      {Array.from({ length: totalScreens }, (_, screenIndex) =>
+        shown[screenIndex] < 0 ? null : (
+          <NativePlayerPane
+            key={`ms-native-${screenIndex}`}
+            screenIndex={screenIndex}
+            position={shown[screenIndex]}
+            rectangle={rectangles[shown[screenIndex]]}
+            fitVideos={fitVideos}
+            onClose={open.length > 1 ? () => closeScreen(screenIndex) : undefined}
+            swap={swap}
+            swapSource={swapping?.source ?? null}
+            swapTarget={swapping?.target ?? null}
+            playlist={playlists[screenIndex] ?? []}
+            continuation={continuation}
+            editing={editing}
+            findPerformerItems={findPerformerItems}
+            nativePlayer={nativePlayer}
+            playback={playback}
+            useFindScene={useFindScene}
+            onAudioChange={onAudioChange}
+            onPositionChange={onPositionChange}
+            onSceneChange={onSceneChange}
+            onViewChange={onViewChange}
+            playingElsewhere={playingElsewhere}
+            // A reopened pane returns to what it played when it closed.
+            saved={panes.current[screenIndex]}
+            searchSession={searchSession}
+            showPerformerNavigation={showPerformerNavigation}
+          />
+        ),
+      )}
     </div>
   );
 }

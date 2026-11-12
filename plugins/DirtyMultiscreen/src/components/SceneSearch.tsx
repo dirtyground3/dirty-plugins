@@ -113,24 +113,27 @@ function SceneSearchDialog({
                 : "No scenes match your search."}
             </p>
             <ul className="ms-scene-search-list">
-              {current.data.items.map(item => (
-                <li key={item.id}>
-                  <DirtyPlugins.react.Button
-                    className="ms-scene-search-result"
-                    onClick={() => {
-                      onSelect(item);
-                    }}
-                  >
-                    <span>{item.title}</span>
-                    <small>
-                      Scene {item.scene.id}
-                      {item.playbackRange
-                        ? ` · ${getSceneTitle(item.scene)} @ ${Math.floor(item.playbackRange.start)}s`
-                        : ""}
-                    </small>
-                  </DirtyPlugins.react.Button>
-                </li>
-              ))}
+              {current.data.items.map(item => {
+                const detail =
+                  `Scene ${item.scene.id}` +
+                  (item.playbackRange
+                    ? ` · ${getSceneTitle(item.scene)} @ ${Math.floor(item.playbackRange.start)}s`
+                    : "");
+                return (
+                  <li key={item.id}>
+                    <DirtyPlugins.react.Button
+                      className="ms-scene-search-result"
+                      onClick={() => {
+                        onSelect(item);
+                      }}
+                    >
+                      <span>{item.title}</span>
+                      {/* An untitled scene is already named by its number. */}
+                      {detail !== item.title && <small>{detail}</small>}
+                    </DirtyPlugins.react.Button>
+                  </li>
+                );
+              })}
             </ul>
             <DirtyPlugins.react.Pagination
               ariaLabel="Scene search pages"

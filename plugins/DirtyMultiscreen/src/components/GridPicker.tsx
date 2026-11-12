@@ -1,10 +1,8 @@
 import { GRID_LIMITS } from "../domain/settings";
 import { DirtyPlugins, React } from "../runtime";
+import type { GridSize } from "../types";
 
-export interface GridSize {
-  columns: number;
-  rows: number;
-}
+export type { GridSize };
 const sizeLabel = ({ columns, rows }: GridSize) => `${columns} × ${rows}`;
 
 /** Squares for every grid size: click one, or press and drag to it, to choose that many columns and rows. */

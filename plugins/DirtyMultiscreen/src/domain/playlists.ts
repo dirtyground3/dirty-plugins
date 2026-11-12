@@ -66,6 +66,23 @@ export function createMultiscreenPlaylists<T extends { id: string; scene?: Scene
   return ordering.distinct ? distinctStarts(playlists) : playlists;
 }
 
+/**
+ * A grid grown by + keeps the lanes its queue was dealt and gives each added screen a lane of a wider deal of the
+ * same page. Unsplit lanes are dealt one after another, so a wider deal starts with the same lanes.
+ */
+export function growPlaylists<T extends { id: string; scene?: Scene }>(
+  lanes: T[][],
+  items: T[],
+  width: number,
+  ordering: Ordering,
+  seed: number,
+  page: number,
+) {
+  return width > lanes.length
+    ? [...lanes, ...pagePlaylists(items, width, ordering, false, seed, page).slice(lanes.length)]
+    : lanes;
+}
+
 /** Repeatable per-page permutations keep split assignments stable when panes advance independently. */
 export function pagePlaylists<T extends { id: string; scene?: Scene }>(
   items: T[],

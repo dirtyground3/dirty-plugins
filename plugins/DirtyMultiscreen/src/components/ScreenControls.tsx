@@ -23,6 +23,7 @@ export function ScreenControls({
   flipX,
   flipY,
   loop,
+  onClose,
   onFill,
   onFlip,
   onLoop,
@@ -38,6 +39,8 @@ export function ScreenControls({
   flipX: boolean;
   flipY: boolean;
   loop: boolean;
+  /** Absent while this is the only open screen. */
+  onClose?(): void;
   onFill(fill: boolean): void;
   onFlip(x: boolean, y: boolean): void;
   onLoop(loop: boolean): void;
@@ -145,6 +148,13 @@ export function ScreenControls({
         pressed={fitVideos || fill}
         disabled={fitVideos}
         onClick={() => onFill(!fill)}
+      />
+      <PluginIconButton
+        ariaLabel={onClose ? `Close ${screen}` : `Close ${screen} is unavailable: it is the only open screen`}
+        fallback="x"
+        icon={icon("close")}
+        disabled={!onClose}
+        onClick={() => onClose?.()}
       />
     </div>
   );
