@@ -1,8 +1,7 @@
 import type { Scene, Marker } from "../types";
-export const getSceneTitle = (scene: Scene) => {
-  const title = scene.title?.trim();
-  return title && title.length > 0 ? title : `Scene ${scene.id}`;
-};
+/** Like Stash, an untitled scene is named by its first file. */
+export const getSceneTitle = (scene: Scene) =>
+  scene.title?.trim() || scene.files?.[0]?.basename?.trim() || `Scene ${scene.id}`;
 export const getSceneStreamUrl = (scene: Scene) => {
   const directStream = scene.paths?.stream;
   if (directStream) return directStream;

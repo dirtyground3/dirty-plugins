@@ -14,7 +14,7 @@ import type {
 
 // Play history, ratings, dates, performers and studios feed the scene orders.
 const SCENE_FIELDS =
-  "id title paths{stream} files{width height} sceneStreams{url mime_type label} play_count last_played_at o_counter rating100 created_at performers{id name image_path} studio{id}";
+  "id title paths{stream} files{basename width height}sceneStreams{url mime_type label} play_count last_played_at o_counter rating100 created_at performers{id name image_path} studio{id}";
 const SCENES =
   "query MultiscreenScenes($filter:FindFilterType,$scene_filter:SceneFilterType,$ids:[ID!]){findScenes(filter:$filter,scene_filter:$scene_filter,ids:$ids){count scenes{" +
   SCENE_FIELDS +

@@ -111,7 +111,7 @@ export function snapEdges(edges: readonly Edges[], pixelRatio = 1): Rectangle[] 
 }
 
 /** How a block of this size goes into the window: stretched when it covers enough of it, else centred at its shape. */
-export function fitBlock(blockWidth: number, blockHeight: number, width: number, height: number) {
+function fitBlock(blockWidth: number, blockHeight: number, width: number, height: number) {
   const scale = Math.min(width / blockWidth, height / blockHeight);
   const coverage = (blockWidth * scale * blockHeight * scale) / (width * height);
   const stretch = coverage >= FIT_COVERAGE_THRESHOLD;
@@ -120,7 +120,8 @@ export function fitBlock(blockWidth: number, blockHeight: number, width: number,
   return { scaleX, scaleY, offsetX: (width - blockWidth * scaleX) / 2, offsetY: (height - blockHeight * scaleY) / 2 };
 }
 
-function placeBlock(block: Block, width: number, height: number, pixelRatio: number) {
+export function placeFitPlan({ block }: ReturnType<typeof fitPlan>, width: number, height: number, pixelRatio = 1) {
+  if (!usable(width, height)) return block.rectangles.map(() => ({ left: 0, top: 0, width: 0, height: 0 }));
   const { scaleX, scaleY, offsetX, offsetY } = fitBlock(block.width, block.height, width, height);
   return snapEdges(
     block.rectangles.map(rectangle => ({
@@ -154,6 +155,5 @@ export function fitPlan(aspects: readonly number[], width: number, height: numbe
  */
 export function fitLayout(aspects: readonly number[], width: number, height: number, pixelRatio = 1): Rectangle[] {
   if (!aspects.length) return [];
-  if (!usable(width, height)) return aspects.map(() => ({ left: 0, top: 0, width: 0, height: 0 }));
-  return placeBlock(fitPlan(aspects, width, height).block, width, height, pixelRatio);
+  return placeFitPlan(fitPlan(aspects, width, height), width, height, pixelRatio);
 }

@@ -53,41 +53,32 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - Rotate turns the picture 90° clockwise each time: 90°, 180°, 270°, then back
   to normal. It belongs to the video like a flip, keeps playback running, and
   leaves controls and captions upright. At 90° and 270° its width and height
-  swap, so **Fit videos** immediately repacks the screens using the turned
-  picture's shape. Flips work along the displayed horizontal and vertical axes.
-- Drag a screen's move button onto another screen to swap the two: the screen
-  shrinks and follows the pointer, still playing, and the screen it would swap
-  with is outlined. Or click the move button on one screen and then on another.
-  Both keep playing: a screen
-  takes its scene, queue, position, audio and picture to its new place. Screens
-  are numbered by place, from the top left.
-- Drag an edge of a screen that faces another screen to resize it. The grid
-  then becomes a custom layout, and the grid size in edit mode reads
-  **Custom**. Dragging a side edge past half a screen makes the screen wider
-  by that many units of its row; the screens it covers move to the start of
-  the next row, which a new row at the bottom holds if there is none. So in a
-  2 x 2 grid, widening screen 1 over screen 2 gives one wide screen above
-  three, and widening screen 2 over that whole row then moves screens 3 and 4
-  to a third row. Dragging back brings screens up again.
-- Dragging the bottom edge of a screen at either end of its row down (or its
-  top edge up) makes it reach across the next row, whose screens keep that row
-  beside it.
-  In a 2 x 2 grid, dragging screen 2 down gives it the right half; screen 1
-  stays above, with screens 3 and 4 side by side below it. A screen at the top
-  or bottom of a column reaches across the next column from its side edge in
-  the same way, and dragging back gives the row or column back. Any other edge
-  makes its row or column larger. Every screen keeps playing, swapping trades
-  places, closed screens return beside their neighbour, and the layout stays
-  through reloads and saved grids. Click the current grid's square to get the
-  grid back with the same screens playing, or choose another grid to deal
-  again.
-- With **Fit videos** on, a custom layout keeps where each screen is and the
-  videos decide the sizes, so each keeps its shape. Only edges that move
-  screens or rows appear there, and a drag with nothing to move changes
-  nothing; sizes dragged with Fit videos off apply again once it is off.
+  swap, so **Fit videos** repacks a preset using the turned picture's shape.
+  In a custom layout it fills the same pane with the turned picture. Flips
+  work along the displayed horizontal and vertical axes.
+- Drag a screen's move button over another screen to show its docking guide.
+  Drop on the swap icon to trade places, or on an arrow to dock beside that
+  screen; an arrow that would only trade places is left out. Drop on an arrow
+  at the window's edge to create a row or column along it.
+  The preview names the action and shows where the screen will land. Release
+  between targets to cancel. Clicking two move buttons still swaps their screens.
+- Drag a divider between screens to resize the two parts it separates.
+  A divider spanning several screens moves them together, and shorter
+  dividers resize parts within a row or column. Dividers work with **Fit
+  videos** on or off and snap gently at eighths of their split, including
+  the quarter and halfway points. Hold **Shift** to resize freely.
+- Resizing or docking makes the grid **Custom**. Each screen keeps playing
+  with its scene, queue, position, audio and picture. Custom layouts stay
+  through reloads and saved grids. Click the current grid's square to
+  restore its preset with the same screens playing.
+- With **Move and resize screens without edit mode** on, dividers and screens
+  drag outside edit mode too. Drag a screen's picture to show the same docking
+  guide; a plain click still reaches the player, and the player's controls and
+  the screen's top buttons never start a drag. Dividers show no line or grip:
+  only the pointer changes over them.
 - Close stops a screen and removes it from the grid, so a 2 x 2 grid can play
   three screens. The other screens keep playing and close up in place order,
-  and **Fit videos** packs them into the whole window. The last open screen
+  and **Fit videos** repacks a preset around them. The last open screen
   cannot close. Closed screens stay closed through reshuffles, reloads and
   saved grids; choosing another grid opens every screen.
 - The + button below the grid button adds a screen, in or out of edit mode. It first
@@ -102,15 +93,14 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   Click a square, or press and drag to it, to choose that many columns and rows.
   Another grid deals a new queue, so every screen restarts: a dialog asks first.
   The chosen grid is saved as the default for later sessions.
-- **Fit videos**, below the grid size, fits screens to their videos and packs
-  them into rows or columns. It is on by default; switching it here also
-  changes **Fit screens to videos** in the settings. The picker still chooses
-  how many screens play.
-  Toggling, swapping and resizing keep the same players running. The layout
-  follows each new video's shape, using 16:9 until its size is known. If it
-  covers at least 90% of the window, it fills the window with a small crop;
-  otherwise the exact shapes form a centred block. Fill is controlled by this
-  mode; each screen's own fill choice returns when you switch it off.
+- **Fit videos**, below the grid size, packs a preset into rows or columns
+  based on the videos' shapes. It uses 16:9 until a video's size is known.
+  If the layout covers at least 90% of the window, it fills the window with
+  a small crop; otherwise the exact shapes form a centred block. In a custom
+  grid, Fit videos keeps your pane positions and sizes and fills each pane,
+  cropping when needed without stretching. Your per-screen Fill choice
+  returns when you switch it off. The toggle is on by default and also
+  updates the **Fit screens to videos** setting.
 - The bookmark button above the grid button opens **Saved grids**. Name the
   current screens to save them: the grid, the closed screens, and every
   screen's place, custom row, scene, position, sound, flip, rotation, loop and fill, plus
@@ -229,7 +219,8 @@ Rows and columns are chosen in the player's edit mode, not on the settings
 page. The DirtyMultiscreen tab of the Dirty Plugins settings has six groups:
 
 - **Grid:** **Fit screens to videos** (enabled by default), the same choice as
-  the Fit videos button in edit mode.
+  the Fit videos button in edit mode, and **Move and resize screens without
+  edit mode** (disabled by default).
 - **Scenes:** scene order, **Spread performers and studios**, **Split scenes
   between panes** and **Avoid the same scene on several screens**.
 - **Playback:** **Start muted**, **Random start**, **Loop scenes**, **Pause when

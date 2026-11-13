@@ -1,19 +1,109 @@
 import type * as R from "react";
+import type { DropPointer } from "../domain/dropGuide";
 import { React } from "../runtime";
 import type { SwapControls } from "../types";
 import { icon, PluginIconButton } from "./Controls";
 
 /** How far a press travels before it lifts its screen, so a click never moves one. */
 const LIFT_AFTER_PX = 6;
-/** A lifted screen shrinks around the pointer, so the screen it would swap with shows around it. */
-const LIFTED_SCALE = 0.6;
-/** The other screen under a point of the window, by the index its cell carries. The lifted screen is on top, so it is skipped. */
-function screenAt(x: number, y: number, lifted: Element | null) {
+const movedFarEnough = (start: { x: number; y: number }, event: R.PointerEvent) =>
+  Math.hypot(event.clientX - start.x, event.clientY - start.y) >= LIFT_AFTER_PX;
+
+function dropPointer(x: number, y: number, grid: HTMLElement, source: number): DropPointer {
+  const bounds = grid.getBoundingClientRect();
+  const pointer: DropPointer = {
+    x: x - bounds.left,
+    y: y - bounds.top,
+    width: bounds.width,
+    height: bounds.height,
+    pane: null,
+  };
   for (const element of document.elementsFromPoint(x, y)) {
     const cell = element.closest<HTMLElement>("[data-ms-screen]");
-    if (cell && cell !== lifted) return Number(cell.dataset.msScreen);
+    if (!cell || cell.parentElement !== grid) continue;
+    const index = Number(cell.dataset.msScreen);
+    if (index === source) break;
+    const { left, top, width, height } = cell.getBoundingClientRect();
+    if (width && height)
+      pointer.pane = { index, box: { left: left - bounds.left, top: top - bounds.top, width, height } };
+    break;
   }
-  return null;
+  return pointer;
+}
+
+/**
+ * Lifts a screen once a press travels far enough and drops it where it is released. The edit-mode handle
+ * holds the pointer from the press; a picture holds it only once it lifts, so a plain click still reaches the player.
+ */
+export function useScreenDrag(paneIndex: number, swap: SwapControls) {
+  const lift = React.useRef<{
+    id: number;
+    x: number;
+    y: number;
+    grid: HTMLElement;
+    lifted: boolean;
+    held: boolean;
+  } | null>(null);
+  const dropped = React.useRef(false);
+  return React.useMemo(() => {
+    const cancel = (event: R.PointerEvent<HTMLElement>) => {
+      if (lift.current?.id !== event.pointerId) return;
+      lift.current = null;
+      swap.cancel();
+    };
+    return {
+      press(event: R.PointerEvent<HTMLElement>, capture?: Element) {
+        // A picture's press released elsewhere before lifting reports no release here, so a new press replaces it.
+        if (event.button !== 0 || event.isPrimary === false || lift.current?.held) return;
+        const grid = event.currentTarget.closest<HTMLElement>(".ms-native-grid");
+        if (!grid) return;
+        capture?.setPointerCapture(event.pointerId);
+        lift.current = {
+          id: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          grid,
+          lifted: false,
+          held: !!capture,
+        };
+        swap.dragStart(paneIndex);
+      },
+      move(event: R.PointerEvent<HTMLElement>) {
+        const current = lift.current;
+        if (current?.id !== event.pointerId) return;
+        if (!current.held && event.buttons === 0) {
+          lift.current = null;
+          swap.cancel();
+          return;
+        }
+        if (!current.lifted && !movedFarEnough(current, event)) return;
+        if (!current.held) {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          current.held = true;
+        }
+        current.lifted = true;
+        swap.dragOver(dropPointer(event.clientX, event.clientY, current.grid, paneIndex));
+      },
+      release(event: R.PointerEvent<HTMLElement>) {
+        const current = lift.current;
+        if (current?.id !== event.pointerId) return;
+        lift.current = null;
+        const moved = current.lifted || movedFarEnough(current, event);
+        dropped.current = moved;
+        window.setTimeout(() => {
+          dropped.current = false;
+        }, 0);
+        swap.dragEnd(moved ? dropPointer(event.clientX, event.clientY, current.grid, paneIndex) : null);
+      },
+      cancel,
+      /** The click that ends a drag never reaches the player. */
+      click(event: R.MouseEvent<HTMLElement>) {
+        if (!dropped.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+      },
+    };
+  }, [paneIndex, swap]);
 }
 
 /** One screen's picture and move controls, shown in edit mode while the video keeps playing. */
@@ -59,52 +149,17 @@ export function ScreenControls({
 }) {
   const screen = `screen ${position + 1}`;
   const picked = swapSource === paneIndex;
-  // The press a drag starts from and the screen it lifts. The cell follows the pointer through its own style, so
-  // carrying it never renders the grid again or touches its video.
-  const lift = React.useRef<{ x: number; y: number; cell: HTMLElement | null; lifted: boolean } | null>(null);
-  const putDown = () => {
-    const cell = lift.current?.cell;
-    lift.current = null;
-    if (!cell) return;
-    cell.style.transform = "";
-    cell.style.zIndex = "";
-  };
-  const pointerMove = (event: R.PointerEvent<HTMLSpanElement>) => {
-    const current = lift.current;
-    if (!current || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
-    const x = event.clientX - current.x,
-      y = event.clientY - current.y;
-    if (!current.lifted && Math.hypot(x, y) < LIFT_AFTER_PX) return;
-    current.lifted = true;
-    if (current.cell) {
-      current.cell.style.transform = `translate(${x}px, ${y}px) scale(${LIFTED_SCALE})`;
-      current.cell.style.zIndex = "6";
-    }
-    swap.dragOver(screenAt(event.clientX, event.clientY, current.cell));
-  };
+  const drag = useScreenDrag(paneIndex, swap);
   return (
     <div className="ms-screen-controls" role="group" aria-label={`Controls for ${screen}`}>
       <span
         className="ms-move-handle"
-        onPointerDown={event => {
-          event.currentTarget.setPointerCapture(event.pointerId);
-          lift.current = {
-            x: event.clientX,
-            y: event.clientY,
-            cell: event.currentTarget.closest<HTMLElement>("[data-ms-screen]"),
-            lifted: false,
-          };
-          swap.dragStart(paneIndex);
-        }}
-        onPointerMove={pointerMove}
-        onPointerUp={() => {
-          putDown();
-          swap.dragEnd();
-        }}
-        onPointerCancel={() => {
-          putDown();
-          swap.cancel();
-        }}
+        // Keep a plain click on its button even though the wrapper handles the drag.
+        onPointerDown={event => drag.press(event, (event.target as Element).closest("button") ?? event.currentTarget)}
+        onPointerMove={drag.move}
+        onPointerUp={drag.release}
+        onPointerCancel={drag.cancel}
+        onLostPointerCapture={drag.cancel}
       >
         <PluginIconButton
           ariaLabel={

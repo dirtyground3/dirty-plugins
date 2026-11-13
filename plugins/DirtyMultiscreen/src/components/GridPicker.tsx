@@ -14,7 +14,7 @@ export function GridPicker({
   onPick,
   onToggleFit,
 }: GridSize & {
-  /** Dragged edges have replaced the grid with custom rows; any square brings a grid back. */
+  /** Resizing or docking has replaced the preset grid. */
   custom: boolean;
   fitVideos: boolean;
   onPick(size: GridSize): void;
@@ -70,7 +70,7 @@ export function GridPicker({
         type="button"
         className="ms-fit-toggle"
         aria-pressed={fitVideos}
-        title="Fit screens to videos"
+        title={custom ? "Fill each pane without stretching the picture" : "Pack screens by video shape"}
         onClick={onToggleFit}
       >
         Fit videos

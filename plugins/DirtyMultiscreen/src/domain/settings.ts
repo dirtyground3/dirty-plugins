@@ -70,6 +70,7 @@ export function normalizeSettings(rawSettings: Record<string, unknown>): Setting
       rawSettings.showPerformerNavigation,
       DEFAULT_SETTINGS.showPerformerNavigation,
     ),
+    moveWithoutEditing: coerceBoolean(rawSettings.moveWithoutEditing, DEFAULT_SETTINGS.moveWithoutEditing),
   };
 }
 /** The settings the queue was dealt under: a grid grown by + keeps the queue of the grid it grew from. */

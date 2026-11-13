@@ -1,4 +1,4 @@
-import { fitBlock, snapEdges } from "./layout";
+import { snapEdges } from "./layout";
 import type { Edges, Rectangle } from "./layout";
 
 /**
@@ -19,7 +19,17 @@ export interface CustomSplit {
 export type CustomNode = CustomLeaf | CustomSplit;
 export type CustomLayout = CustomNode;
 export type Edge = "top" | "right" | "bottom" | "left";
-export const EDGES: readonly Edge[] = ["top", "right", "bottom", "left"];
+export interface Divider {
+  /** Child indexes in the tree with closed screens removed. */
+  path: number[];
+  at: number;
+  axis: Axis;
+  x: number;
+  y: number;
+  length: number;
+  /** Size of the split along its axis, for converting a pointer delta to a share of the split. */
+  extent: number;
+}
 
 const isSplit = (node: CustomNode): node is CustomSplit => "children" in node;
 const isSize = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -147,16 +157,66 @@ export function layoutFromLanes(
 ): CustomLayout {
   const inner: Axis = axis === "column" ? "row" : "column";
   const kept = lanes.filter(lane => lane.length);
-  const open = new Set(kept.flat());
-  const closed = placeOrder.filter(pane => !open.has(pane));
-  const lanesOrAll = kept.length ? kept : [closed.slice(0, 1)];
-  let root = tidy({
-    size: 1,
-    axis,
-    children: lanesOrAll.map(lane => ({ size: 1, axis: inner, children: lane.map(pane => ({ size: 1, pane })) })),
-  })!;
+  const lanesOrAll = kept.length ? kept : [placeOrder.slice(0, 1)];
+  return placeClosedLanes(
+    {
+      size: 1,
+      axis,
+      children: lanesOrAll.map(lane => ({ size: 1, axis: inner, children: lane.map(pane => ({ size: 1, pane })) })),
+    },
+    placeOrder,
+  );
+}
+
+/** Sized lanes keep every interior boundary of the automatic fit, extending the outside panes into the margins. */
+export function layoutFromFitted(
+  panes: readonly number[],
+  placeOrder: readonly number[],
+  ends: readonly number[],
+  transposed: boolean,
+  boxes: readonly Rectangle[],
+  width: number,
+  height: number,
+): CustomLayout {
+  const starts = ends.map((_, index) => (index ? ends[index - 1] : 0));
+  const across = transposed ? "left" : "top";
+  const along = transposed ? "top" : "left";
+  const span = (from: number, to: number) => Math.max(1e-6, to - from);
+  return placeClosedLanes(
+    {
+      size: 1,
+      axis: transposed ? "row" : "column",
+      children: starts.map((first, lane) => {
+        const end = ends[lane];
+        return {
+          size: span(
+            lane ? boxes[first][across] : 0,
+            end < panes.length ? boxes[end][across] : transposed ? width : height,
+          ),
+          axis: transposed ? "column" : "row",
+          children: panes.slice(first, end).map((pane, offset) => {
+            const index = first + offset;
+            return {
+              pane,
+              size: span(
+                offset ? boxes[index][along] : 0,
+                index + 1 < end ? boxes[index + 1][along] : transposed ? height : width,
+              ),
+            };
+          }),
+        };
+      }),
+    },
+    placeOrder,
+  );
+}
+
+function placeClosedLanes(tree: CustomSplit, placeOrder: readonly number[]): CustomLayout {
+  let root = tidy(tree)!;
+  const open = leaves(root);
+  const closed = placeOrder.filter(pane => !open.includes(pane));
+  const inner = tree.axis === "column" ? "row" : "column";
   for (const pane of closed) {
-    if (leaves(root).includes(pane)) continue;
     const placed = leaves(root);
     const previous =
       placeOrder
@@ -202,77 +262,60 @@ export function normalizeLayout(layout: CustomLayout, count: number): CustomLayo
 export const readingOrder = (layout: CustomLayout, closed: readonly number[]) =>
   leaves(layout).filter(pane => !closed.includes(pane));
 
-/** Each part's natural box when every video keeps its shape; the videos, not the sizes, decide it. */
-function naturalBox(node: CustomNode, aspectOf: (pane: number) => number): { width: number; height: number } {
-  if (!isSplit(node)) return { width: aspectOf(node.pane), height: 1 };
-  const boxes = node.children.map(child => scaledBox(child, node.axis, aspectOf));
-  return node.axis === "row"
-    ? { width: boxes.reduce((sum, box) => sum + box.width, 0), height: Math.max(...boxes.map(box => box.height)) }
-    : { width: Math.max(...boxes.map(box => box.width)), height: boxes.reduce((sum, box) => sum + box.height, 0) };
-}
-/** A part's box in its split: as tall as the row, or as wide as the column. */
-function scaledBox(node: CustomNode, axis: Axis, aspectOf: (pane: number) => number) {
-  const box = naturalBox(node, aspectOf);
-  return axis === "row" ? { width: box.width / box.height, height: 1 } : { width: 1, height: box.height / box.width };
+/** Visits the boxes of a sized layout and the line after each part that has a neighbour. */
+function shareBoxes(
+  node: CustomNode,
+  box: Edges,
+  place: (pane: number, box: Edges) => void,
+  boundary?: (path: number[], at: number, axis: Axis, line: Edges, extent: number) => void,
+  path: number[] = [],
+) {
+  if (!isSplit(node)) {
+    place(node.pane, box);
+    return;
+  }
+  const sum = total(node.children);
+  const row = node.axis === "row";
+  const start = row ? box.left : box.top;
+  const end = row ? box.right : box.bottom;
+  const extent = end - start;
+  let used = 0;
+  node.children.forEach((child, index) => {
+    const from = start + (used / sum) * extent;
+    used += child.size;
+    const last = index === node.children.length - 1;
+    const to = last ? end : start + (used / sum) * extent;
+    if (!last)
+      boundary?.(
+        path,
+        index,
+        node.axis,
+        row ? { ...box, left: to, right: to } : { ...box, top: to, bottom: to },
+        extent,
+      );
+    shareBoxes(child, row ? { ...box, left: from, right: to } : { ...box, top: from, bottom: to }, place, boundary, [
+      ...path,
+      index,
+    ]);
+  });
 }
 
-/**
- * Where each open screen sits, by pane index. Without `aspectOf`, parts share their split by size. With it, every
- * video keeps its shape and sizes do not count.
- */
+/** Where each open screen sits, by pane index. Parts share their split by size. */
 export function customRectangles(
   layout: CustomLayout,
   closed: readonly number[],
   width: number,
   height: number,
   pixelRatio = 1,
-  aspectOf?: (pane: number) => number,
 ): Array<Rectangle | undefined> {
   const tree = without(layout, closed);
   const placed: Array<Rectangle | undefined> = [];
   if (!tree) return placed;
   const panes: number[] = [];
   const edges: Edges[] = [];
-  const share = (node: CustomNode, box: Edges) => {
-    if (!isSplit(node)) {
-      panes.push(node.pane);
-      edges.push(box);
-      return;
-    }
-    const sum = total(node.children);
-    const row = node.axis === "row";
-    const start = row ? box.left : box.top;
-    const extent = (row ? box.right : box.bottom) - start;
-    let used = 0;
-    node.children.forEach((child, index) => {
-      const from = start + (used / sum) * extent;
-      used += child.size;
-      const to = index === node.children.length - 1 ? start + extent : start + (used / sum) * extent;
-      share(child, row ? { ...box, left: from, right: to } : { ...box, top: from, bottom: to });
-    });
-  };
-  const fit = (node: CustomNode, box: Edges) => {
-    if (!isSplit(node) || !aspectOf) return share(node, box);
-    const row = node.axis === "row";
-    const parts = node.children.map(child => scaledBox(child, node.axis, aspectOf));
-    const natural = naturalBox(node, aspectOf);
-    const scaleX = (box.right - box.left) / natural.width;
-    const scaleY = (box.bottom - box.top) / natural.height;
-    let used = 0;
-    node.children.forEach((child, index) => {
-      const part = parts[index];
-      if (row) {
-        const left = box.left + used * scaleX;
-        used += part.width;
-        const top = box.top + ((natural.height - part.height) / 2) * scaleY;
-        fit(child, { left, right: box.left + used * scaleX, top, bottom: top + part.height * scaleY });
-      } else {
-        const top = box.top + used * scaleY;
-        used += part.height;
-        const left = box.left + ((natural.width - part.width) / 2) * scaleX;
-        fit(child, { top, bottom: box.top + used * scaleY, left, right: left + part.width * scaleX });
-      }
-    });
+  const place = (pane: number, box: Edges) => {
+    panes.push(pane);
+    edges.push(box);
   };
   if (!(width > 0 && height > 0)) {
     leaves(tree).forEach(pane => {
@@ -280,261 +323,158 @@ export function customRectangles(
     });
     return Array.from(placed);
   }
-  if (aspectOf) {
-    const natural = naturalBox(tree, aspectOf);
-    const block = fitBlock(natural.width, natural.height, width, height);
-    fit(tree, {
-      left: block.offsetX,
-      top: block.offsetY,
-      right: block.offsetX + natural.width * block.scaleX,
-      bottom: block.offsetY + natural.height * block.scaleY,
-    });
-  } else share(tree, { left: 0, top: 0, right: width, bottom: height });
+  shareBoxes(tree, { left: 0, top: 0, right: width, bottom: height }, place);
   snapEdges(edges, pixelRatio).forEach((rectangle, index) => {
     placed[panes[index]] = rectangle;
   });
   return Array.from(placed);
 }
 
-type Kind = "push" | "extend" | "resize";
-interface Found {
-  kind: Kind;
-  path: Step[];
-  /** Where in the path the split that the edge crosses is. */
-  depth: number;
-  main: Axis;
-  dir: 1 | -1;
-}
-/**
- * What dragging an edge does. A side edge between screens of one row pushes and pulls them ("push"). An edge that a
- * screen at the end of its row or column shares with the next lane lets it reach across that lane while the screens
- * there keep their own row or column ("extend"). Any other edge between parts resizes the part ("resize"), which fitted
- * videos ignore, so it is not an edge there.
- */
-function classify(holder: CustomSplit, pane: number, edge: Edge, fit: boolean): Found | null {
-  const path = pathTo(holder, pane);
-  if (!path) return null;
-  const main: Axis = edge === "left" || edge === "right" ? "row" : "column";
-  const dir = edge === "right" || edge === "bottom" ? 1 : -1;
-  for (let depth = path.length - 1; depth >= 0; depth--) {
-    const { node, index } = path[depth];
-    if (node.axis !== main || index + dir < 0 || index + dir >= node.children.length) continue;
-    const inner = path[depth + 1];
-    const kind: Kind =
-      depth === path.length - 1
-        ? main === "row"
-          ? "push"
-          : "resize"
-        : depth === path.length - 2 && (inner.index === 0 || inner.index === inner.node.children.length - 1)
-          ? "extend"
-          : "resize";
-    return fit && kind === "resize" ? null : { kind, path, depth, main, dir };
-  }
-  return null;
-}
-
-/** The edges of an open screen that face another screen and move when dragged. */
-export function draggableEdges(layout: CustomLayout, closed: readonly number[], pane: number, fit = false): Edge[] {
-  const tree = without(layout, closed);
-  if (!tree) return [];
-  const holder: CustomSplit = { size: 1, axis: "column", children: [tree] };
-  return EDGES.filter(edge => !!classify(holder, pane, edge, fit));
-}
-
-/**
- * The screens a drag of this edge measures and how many units they hold: one unit of the drag is their extent along
- * the drag divided by `units`. Fitted videos count whole screens and lanes, so a unit is the part itself.
- */
-export function dragUnit(layout: CustomLayout, closed: readonly number[], pane: number, edge: Edge, fit = false) {
-  const tree = without(layout, closed);
-  if (!tree) return null;
-  const found = classify({ size: 1, axis: "column", children: [tree] }, pane, edge, fit);
-  if (!found) return null;
-  const { node, index } = found.path[found.depth];
-  const part = node.children[index];
-  return { panes: leaves(part), units: fit ? 1 : part.size };
-}
-
-/**
- * Grows a screen by `units` (shrinks it when negative) at one edge.
- * - A side edge between screens of a row takes room from the screens beside it: those it covers whole go to the start
- *   of the next row (a new row at the end), one it covers in part gets narrower. Shrinking brings screens up from the
- *   start of the next row.
- * - A screen at the end of its row reaches down (or up) across the next rows, which keep their screens beside it; at
- *   the end of its column it reaches across the next columns in the same way. Shrinking gives the last of them back.
- * - Any other edge makes its part larger, or the part beside it larger once it is as small as it gets.
- * With `fit`, sizes do not count: drags move whole screens and lanes, and a drag with none to move changes nothing.
- */
-export function resizeScreen(
+/** One handle per boundary, snapped to the same device pixels as the screens. */
+export function customDividers(
   layout: CustomLayout,
   closed: readonly number[],
-  pane: number,
-  edge: Edge,
-  units: number,
-  fit = false,
-): CustomLayout {
-  const step = Math.round(units) || 0;
-  if (!step || closed.includes(pane)) return layout;
+  width: number,
+  height: number,
+  pixelRatio = 1,
+): Divider[] {
+  if (!(width > 0 && height > 0)) return [];
   const tree = without(layout, closed);
-  if (!tree) return layout;
-  const holder: CustomSplit = { size: 1, axis: "column", children: [copy(tree)] };
-  const found = classify(holder, pane, edge, fit);
-  if (!found) return layout;
-  const { path, depth, main, dir } = found;
-  const { node: split, index } = path[depth];
-  // What a part counts for: its size, or one whole screen or lane when the videos decide the sizes.
-  const cost = (part: CustomNode) => (fit ? 1 : part.size);
-  const changed =
-    found.kind === "push"
-      ? step > 0
-        ? push(path, step, dir, fit)
-        : pull(path, -step, dir, fit)
-      : found.kind === "extend"
-        ? step > 0
-          ? extend(split, index, path[depth + 1].index, main, step, dir, cost)
-          : release(split, index, path[depth + 1].index, main, -step, dir, fit) ||
-            (!fit && resize(split, index, step, dir))
-        : resize(split, index, step, dir);
-  if (!changed) return layout;
-  return restoreClosed(tidy(holder)!, layout, closed);
+  if (!tree) return [];
+  const dividers: Divider[] = [];
+  const lines: Edges[] = [];
+  shareBoxes(
+    tree,
+    { left: 0, top: 0, right: width, bottom: height },
+    () => {},
+    (path, at, axis, line, extent) => {
+      dividers.push({ path, at, axis, extent, x: 0, y: 0, length: 0 });
+      lines.push(line);
+    },
+  );
+  return snapEdges(lines, pixelRatio).map(({ left, top, width, height }, index) => ({
+    ...dividers[index],
+    x: left,
+    y: top,
+    length: dividers[index].axis === "row" ? height : width,
+  }));
 }
 
-/** A part gets larger, or when it shrinks below one unit, the part beside it gets larger. */
-function resize(split: CustomSplit, index: number, step: number, dir: number) {
-  const part = split.children[index];
-  const beside = split.children[index + dir];
-  if (step > 0) part.size += step;
-  else {
-    const less = Math.min(-step, Math.max(0, part.size - 1));
-    part.size -= less;
-    beside.size += -step - less;
-  }
-  return true;
-}
-
-/** The screen widens over the screens beside it in its row; those covered whole go to the start of the next row. */
-function push(path: Step[], step: number, dir: number, fit: boolean) {
-  const { node: row, index } = path[path.length - 1];
-  const screen = row.children[index];
-  const beside = dir > 0 ? row.children.slice(index + 1) : row.children.slice(0, index).reverse();
-  let left = step;
-  const covered: CustomNode[] = [];
-  for (const neighbour of beside) {
-    if (left <= 1e-9) break;
-    if (fit || neighbour.size <= left + 1e-9) {
-      left -= fit ? 1 : neighbour.size;
-      covered.push(neighbour);
-    } else {
-      neighbour.size -= left;
-      left = 0;
-    }
-  }
-  screen.size += fit ? total(covered) : step - left;
-  if (!covered.length) return !fit;
-  row.children = row.children.filter(child => !covered.includes(child));
-  // They keep reading order in the next row.
-  const moved = dir > 0 ? covered : covered.reverse();
-  const { node: column, index: at } = path[path.length - 2];
-  const next = column.children[at + 1];
-  if (!next)
-    column.children.push(
-      moved.length === 1 ? { ...moved[0], size: row.size } : { size: row.size, axis: "row", children: moved },
-    );
-  else if (isSplit(next) && next.axis === "row") next.children.unshift(...moved);
-  else column.children[at + 1] = { size: next.size, axis: "row", children: [...moved, { ...next, size: 1 }] };
-  return true;
-}
-
-/** The screen narrows and screens from the start of the next row come up into the room it leaves. */
-function pull(path: Step[], step: number, dir: number, fit: boolean) {
-  const { node: row, index } = path[path.length - 1];
-  const screen = row.children[index];
-  const { node: column, index: at } = path[path.length - 2];
-  const next = column.children[at + 1];
-  // Fitted screens have no width of their own to give: only screens to bring up.
-  if (fit && !next) return false;
-  let room = fit ? step : Math.min(step, screen.size - 1);
-  if (room <= 1e-9) return false;
-  if (!fit) screen.size -= room;
-  if (!next) return true;
-  const source = isSplit(next) && next.axis === "row" ? next.children : [{ ...next, size: 1 }];
-  const pulled: CustomNode[] = [];
-  while (room > 1e-9 && source.length) {
-    const part = source.shift()!;
-    const size = fit ? part.size : Math.min(part.size, room);
-    room -= fit ? 1 : size;
-    pulled.push({ ...part, size });
-  }
-  if (!isSplit(next) || next.axis !== "row" || !source.length) column.children.splice(at + 1, 1);
-  row.children.splice(dir > 0 ? index + 1 : index, 0, ...pulled);
-  return true;
-}
-
-/**
- * A screen at the end of its lane (a row inside a column, or a column inside a row) reaches across the next lanes;
- * they keep their screens, beside it.
- */
-function extend(
-  split: CustomSplit,
-  index: number,
+/** Trades size between two neighbours. The signed delta is a fraction of their split's full extent. */
+export function moveDivider(
+  layout: CustomLayout,
+  closed: readonly number[],
+  path: readonly number[],
   at: number,
-  main: Axis,
-  step: number,
-  dir: number,
-  cost: (part: CustomNode) => number,
-) {
-  const lane = split.children[index] as CustomSplit;
-  const beside = dir > 0 ? split.children.slice(index + 1) : split.children.slice(0, index).reverse();
-  let left = step;
-  const covered: CustomNode[] = [];
-  for (const neighbour of beside) {
-    if (left <= 1e-9) break;
-    covered.push(neighbour);
-    left -= cost(neighbour);
+  fraction: number,
+  extent = Infinity,
+  snap = true,
+): CustomLayout {
+  if (!Number.isFinite(fraction) || !fraction || !(extent > 0)) return layout;
+  const open = without(layout, closed);
+  if (!open) return layout;
+  const tree = copy(open);
+  let split = tree;
+  for (const index of path) {
+    if (!isSplit(split) || !split.children[index]) return layout;
+    split = split.children[index];
   }
-  if (!covered.length) return false;
-  const screen = lane.children[at];
-  const others = lane.children.filter((_, position) => position !== at);
-  const rest: CustomNode =
-    others.length === 1 ? { ...others[0], size: lane.size } : { size: lane.size, axis: lane.axis, children: others };
-  const inOrder = dir > 0 ? covered : covered.slice().reverse();
-  const across: CustomSplit = {
-    size: total(lane.children) - screen.size,
-    axis: main,
-    children: dir > 0 ? [rest, ...inOrder] : [...inOrder, rest],
-  };
-  const reached: CustomSplit = {
-    size: lane.size + total(covered),
-    axis: lane.axis,
-    children: at === 0 ? [screen, across] : [across, screen],
-  };
-  const first = Math.min(index, ...covered.map(part => split.children.indexOf(part)));
-  const kept = split.children.filter(part => part !== lane && !covered.includes(part));
-  kept.splice(first, 0, reached);
-  split.children = kept;
-  return true;
+  if (!isSplit(split)) return layout;
+  const before = split.children[at];
+  const after = split.children[at + 1];
+  if (!before || !after) return layout;
+  const sum = total(split.children);
+  const minimum = Math.min((before.size + after.size) / 2, sum * Math.max(0.1, 80 / extent));
+  // A part already below the minimum may grow, but cannot get any smaller.
+  const lower = Math.min(0, minimum - before.size);
+  const upper = Math.max(0, after.size - minimum);
+  let delta = fraction * sum;
+  if (snap && Number.isFinite(extent)) {
+    const start = total(split.children.slice(0, at + 1)) / sum;
+    const aim = start + fraction;
+    const eighth = Math.round(aim * 8) / 8;
+    const snapped = (eighth - start) * sum;
+    // A short magnetic band around each eighth; there is still room to stop between marks in narrow panes.
+    if (Math.abs(eighth - aim) * extent <= Math.min(10, extent / 32) && snapped >= lower && snapped <= upper)
+      delta = snapped;
+  }
+  delta = Math.max(lower, Math.min(upper, delta));
+  if (Math.abs(delta) < 1e-9) return layout;
+  before.size += delta;
+  after.size -= delta;
+  return restoreClosed(tidy(tree)!, layout, closed);
 }
 
-/** A screen that reaches across lanes gives the last of them back. */
-function release(split: CustomSplit, index: number, at: number, main: Axis, step: number, dir: number, fit: boolean) {
-  const lane = split.children[index] as CustomSplit;
-  const across = lane.children[1 - at];
-  if (lane.children.length !== 2 || !across || !isSplit(across) || across.axis !== main) return false;
-  // Each lane across it had this share of its size.
-  const sum = total(across.children);
-  const whole = lane.size;
-  const released: CustomNode[] = [];
-  let left = step;
-  while (left > 1e-9 && across.children.length > 1) {
-    const part = (dir > 0 ? across.children.pop() : across.children.shift())!;
-    const size = (part.size / sum) * whole;
-    released.push({ ...part, size });
-    left -= fit ? 1 : size;
+/** Moves an open screen beside another one or to an outer edge of the grid. */
+export function dockScreen(
+  layout: CustomLayout,
+  pane: number,
+  target: number | "grid",
+  side: Edge,
+  closed: readonly number[] = [],
+): CustomLayout {
+  if (target === pane || closed.includes(pane) || (target !== "grid" && closed.includes(target))) return layout;
+  const open = without(layout, closed);
+  if (!open) return layout;
+  const origin = pathTo(open, pane);
+  if (!origin?.length) return layout;
+  const axis: Axis = side === "left" || side === "right" ? "row" : "column";
+  const leading = side === "left" || side === "top";
+  const { node, index } = origin[origin.length - 1];
+  if (target === "grid") {
+    if (origin.length === 1 && node.axis === axis && index === (leading ? 0 : node.children.length - 1)) return layout;
+  } else if (node.axis === axis) {
+    const beside = node.children[index + (leading ? 1 : -1)];
+    if (beside && !isSplit(beside) && beside.pane === target) return layout;
   }
-  lane.size = whole - total(released);
-  // In reading order, after it or before it.
-  split.children.splice(dir > 0 ? index + 1 : index, 0, ...(dir > 0 ? released.reverse() : released));
-  return true;
+
+  // Remove only the moving screen. Closed screens stay anchored in their old branches.
+  const root = copy(without(layout, [pane])!);
+  const leaf = { size: 1, pane };
+  if (target === "grid") {
+    const openRoot = without(root, closed)!;
+    if (isSplit(openRoot) && openRoot.axis === axis) {
+      // Hidden lanes can leave the visible root nested inside the saved root.
+      const hasOpen = (part: CustomNode) => leaves(part).some(index => !closed.includes(index));
+      let split = root;
+      while (isSplit(split)) {
+        const visible = split.children.filter(hasOpen);
+        if (visible.length > 1) {
+          leaf.size = total(visible) / openRoot.children.length;
+          split.children.splice(leading ? 0 : split.children.length, 0, leaf);
+          return tidy(root)!;
+        }
+        split = visible[0];
+      }
+    }
+    const rest = { ...root, size: 2 };
+    return tidy({ size: root.size, axis, children: leading ? [leaf, rest] : [rest, leaf] })!;
+  }
+
+  const path = pathTo(root, target);
+  if (!path) return layout;
+  const ordered = (part: CustomNode) => (leading ? [leaf, part] : [part, leaf]);
+  if (!path.length) return { size: root.size, axis, children: ordered({ ...root, size: 1 }) };
+  const { node: parent, index: at } = path[path.length - 1];
+  const part = parent.children[at];
+  if (parent.axis === axis) {
+    leaf.size = part.size / 2;
+    parent.children.splice(at, 1, ...ordered({ ...part, size: leaf.size }));
+  } else {
+    parent.children[at] = { size: part.size, axis, children: ordered({ ...part, size: 1 }) };
+  }
+  return tidy(root)!;
+}
+
+/** The open screens' rows and columns, without their sizes. */
+function arrangement(node: CustomNode): string {
+  return isSplit(node) ? `${node.axis}(${node.children.map(arrangement).join(",")})` : String(node.pane);
+}
+/** Whether two layouts place the open screens the same way, whatever their sizes. */
+export function sameArrangement(first: CustomLayout, second: CustomLayout, closed: readonly number[] = []) {
+  const a = without(first, closed),
+    b = without(second, closed);
+  return !!a && !!b && arrangement(a) === arrangement(b);
 }
 
 /** Two screens trade places. */

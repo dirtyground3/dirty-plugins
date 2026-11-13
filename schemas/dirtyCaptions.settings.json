@@ -27,7 +27,7 @@
     "refreshAfterScan": {
       "type": "BOOLEAN",
       "displayName": "Refresh caption index after Scan",
-      "description": "When automatic index maintenance is on, index new or changed files after a successful Scan. Known unchanged media are skipped. Keep a Stash tab open until Scan finishes. Off by default.",
+      "description": "When automatic index maintenance is on, index new or changed files after a successful Scan. Known unchanged media are skipped. Keep a Stash tab open until Scan finishes.",
       "default": false
     }
   }

@@ -2,6 +2,10 @@
 
 Newest first. Each GitHub Release of DirtyStats uses the entry that names its version.
 
+- **DirtyCaptions 1.0.10, DirtyRank 1.1.2, DirtyStats 1.0.15, DirtyFileExtractor
+  1.0.7, DirtyMultiscreen 1.0.29 and DirtyPlugins 1.0.22:** setting descriptions
+  no longer say whether a toggle is enabled or disabled by default.
+
 - **DirtyRank 1.1.1 and DirtyStats 1.0.14:** setting descriptions no longer end
   with "Enabled by default."
 

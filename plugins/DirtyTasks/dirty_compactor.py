@@ -21,6 +21,7 @@ for folder in ("dirtyPlugins", "DirtyPlugins"):
         break
 import dirty_plugins_storage as storage
 from dirty_plugins_client import StashClient as BaseClient, contain_child_process
+from dirty_plugins_protocol import StashReporter
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dirty_compactor_rules import (
     ENCODERS, PluginError, Cancelled, Paused, Skipped, digest, file_hash, identity, validate_settings, dimensions, target_mbps,
@@ -317,18 +318,24 @@ def report(run_id, stage, progress=0):
         print("\x01p\x02" + str(max(0, min(1, progress))), file=sys.stderr, flush=True)
 
 
-def hash_file(run_id, path, stage):
-    report(run_id, stage, 0)
+def hash_with_progress(path, update):
+    update(0)
     last = time.monotonic()
+
     def progress(fraction):
         nonlocal last
         now = time.monotonic()
         if now - last >= 1 and fraction < 1:
-            report(run_id, stage, fraction)
+            update(fraction)
             last = now
+
     result = file_hash(path, progress=progress)
-    report(run_id, stage, 1)
+    update(1)
     return result
+
+
+def hash_file(run_id, path, stage):
+    return hash_with_progress(path, lambda fraction: report(run_id, stage, fraction))
 
 
 def check_cancel(run_id):
@@ -1130,6 +1137,11 @@ def finalize_handler(client, args):
 def get_run(client, args):
     run = get("run", args["id"])
     result = public_record(run, args.get("page", 1))
+    action = run.get("fileAction") or {}
+    if action.get("mode") == "deleteOriginals" and action.get("status") == "running":
+        progress = records.get("fileActionProgress", run["id"])
+        if progress and progress["actionId"] == action["id"]:
+            result["fileAction"] = dict(action, progress=progress["detail"])
     try:
         result["fileActions"] = available_file_actions(client, run)
     except Exception:
@@ -1251,7 +1263,7 @@ def queue_file_action(client, args):
     return public_record(run)
 
 
-def encoded_file(scene, op, *, verify=False):
+def encoded_file(scene, op, *, verify_hash=None):
     file = next((f for f in scene["files"] if str(f["id"]) == str(op["outputFileId"])), None)
     if not file or str(file["id"]) == str(op["fileId"]):
         raise PluginError("Encoded replacement is no longer attached")
@@ -1259,8 +1271,8 @@ def encoded_file(scene, op, *, verify=False):
     try:
         current = identity(file["path"])
         valid = current["size"] == op.get("outputSize") and current != op.get("invalidOutputIdentity")
-        if verify:
-            if valid and op.get("outputHash") and file_hash(file["path"]) != op["outputHash"]:
+        if verify_hash:
+            if valid and op.get("outputHash") and verify_hash(file["path"]) != op["outputHash"]:
                 # Remember a failed content check without rereading the file on
                 # every UI poll. A changed file identity allows another attempt.
                 op["invalidOutputIdentity"] = identity(file["path"])
@@ -1348,6 +1360,20 @@ def run_file_action(client, args):
     groups = file_action_groups(run)
     reasons = {}
 
+    total = sum(map(len, groups.values())) if deleting else 0
+    reporter = StashReporter()
+
+    def deletion_progress(stage, progress=None, within_file=0):
+        # The journal can be large. Update this small record independently,
+        # and only use it for the matching action in get_run.
+        processed = action["changed"] + action["skipped"] + action["failed"]
+        records.put("fileActionProgress", run["id"], {"actionId": action["id"], "detail": {
+            "current": processed + 1, "total": total, "stage": stage, "progress": progress}})
+        reporter.progress((processed + within_file) / total)
+
+    def verify_contents(path, stage, offset):
+        return hash_with_progress(path, lambda fraction: deletion_progress(stage, fraction, offset + .45 * fraction))
+
     def note(reason, failed=False):
         action["failed" if failed else "skipped"] += 1
         reasons[reason] = reasons.get(reason, 0) + 1
@@ -1358,15 +1384,17 @@ def run_file_action(client, args):
             if deleting:
                 for op in operations:
                     try:
+                        deletion_progress("Checking scene files")
                         scene = client.scene(scene_id)
                         if not scene:
                             raise PluginError("Scene no longer exists")
                         source = original_file(scene, op, {str(o["outputFileId"]) for o in operations})
-                        replacement = encoded_file(scene, op, verify=True)
+                        replacement = encoded_file(scene, op, verify_hash=lambda path: verify_contents(
+                            path, "Checking encoded replacement", 0))
                         try:
                             unchanged = (bool(op.get("sourceHash"))
                                          and identity(source["path"])["size"] == op["identity"]["size"]
-                                         and file_hash(source["path"]) == op["sourceHash"])
+                                         and verify_contents(source["path"], "Checking original file", .45) == op["sourceHash"])
                         except OSError:
                             raise PluginError("Original could not be read; retained")
                         if not unchanged:
@@ -1375,6 +1403,7 @@ def run_file_action(client, args):
                             except (OSError, PluginError):
                                 pass
                             raise PluginError("Original is missing or changed; retained")
+                        deletion_progress("Finishing deletion in Stash", within_file=.9)
                         if client.has_shared_files(scene_id, [str(f["id"]) for f in scene["files"]]):
                             raise PluginError("Scene has shared files; originals retained")
                         if str(scene["files"][0]["id"]) == str(source["id"]):
@@ -1404,6 +1433,8 @@ def run_file_action(client, args):
             save("run", run)
         action["status"] = "completed"
         save("run", run)
+        if deleting:
+            reporter.progress(1)
     finally:
         reservation.release("encoding", run["id"] + ":" + action["id"])
         reservation.queue_pending(client)

@@ -75,25 +75,25 @@
     "showRatingsBeforeVote": {
       "type": "BOOLEAN",
       "displayName": "Show ratings before voting",
-      "description": "Reveal ratings and ranks before choosing a performer. Disabled by default to reduce bias.",
+      "description": "Reveal ratings and ranks before choosing a performer. Keeping them hidden reduces bias.",
       "default": false
     },
     "hidePerformerImages": {
       "type": "BOOLEAN",
       "displayName": "Hide performer images in battles",
-      "description": "Remove performer profile images from battle cards. Disabled by default.",
+      "description": "Remove performer profile images from battle cards.",
       "default": false
     },
     "hideBattleStandings": {
       "type": "BOOLEAN",
       "displayName": "Hide standings during battles",
-      "description": "Hide the right-hand standings and expand standard and Gauntlet battles. King of the hill always hides standings. Disabled by default.",
+      "description": "Hide the right-hand standings and expand standard and Gauntlet battles. King of the hill always hides standings.",
       "default": false
     },
     "autoPlayTopScenes": {
       "type": "BOOLEAN",
       "displayName": "Automatically play top scenes",
-      "description": "Open each performer's highest-rated full scene in battles, muted, at a random point between 30% and 70%. Disabled by default. Photos remain clickable for voting unless hidden.",
+      "description": "Open each performer's highest-rated full scene in battles, muted, at a random point between 30% and 70%. Photos remain clickable for voting unless hidden.",
       "default": false
     },
     "includePerformersWithoutImages": {

@@ -29,13 +29,13 @@
     "createSceneFolders": {
       "type": "BOOLEAN",
       "displayName": "Create a folder for each item",
-      "description": "Put scenes and marker clips in scene-title folders, and images in image-title folders. Disabled by default.",
+      "description": "Put scenes and marker clips in scene-title folders, and images in image-title folders.",
       "default": false
     },
     "dryRun": {
       "type": "BOOLEAN",
       "displayName": "Dry run",
-      "description": "Report what would be copied without writing any files. Disabled by default.",
+      "description": "Report what would be copied without writing any files.",
       "default": false
     },
     "maxCopySpeedMBps": {

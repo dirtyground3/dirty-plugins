@@ -2,6 +2,10 @@
 
 Newest first. Each GitHub Release of DirtyFileExtractor uses the entry that names its version.
 
+- **DirtyCaptions 1.0.10, DirtyRank 1.1.2, DirtyStats 1.0.15, DirtyFileExtractor
+  1.0.7, DirtyMultiscreen 1.0.29 and DirtyPlugins 1.0.22:** setting descriptions
+  no longer say whether a toggle is enabled or disabled by default.
+
 - **DirtyFileExtractor 1.0.6:** **Browse…** beside **Destination folder** opens
   the shared DirtyPlugins folder picker and works as before.
 

@@ -63,8 +63,12 @@ async function main() {
       if (stated) assert.equal(String(setting.default), stated[1], label + " description states its default");
       const named = text.match(/(\w+) \(default\)|(-?[0-9.]*[0-9]) is the default/);
       if (named) assert.equal(String(setting.default), named[1] || named[2], label + " description names its default");
-      if (/\bEnabled by default\b/.test(text)) assert.equal(setting.default, true, label);
-      if (/\b(Disabled|Off) by default\b/.test(text)) assert.equal(setting.default, false, label);
+      // A toggle already shows whether it is on.
+      assert.doesNotMatch(
+        text,
+        /\b(Enabled|Disabled|On|Off) by default\b/i,
+        label + " description restates its toggle",
+      );
     }
   }
   for (const plugin of lib.registry) {

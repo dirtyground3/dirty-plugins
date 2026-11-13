@@ -134,7 +134,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   const resume = React.useRef<SavedSession | null>(launch.saved);
   // Screens closed in edit mode stay closed through reshuffles; another grid opens them all.
   const [closed, setClosed] = React.useState<number[]>(() => launch.saved?.closed ?? []);
-  // The custom rows that dragging an edge made of the grid. They stay until a grid is chosen again.
+  // Resizing a divider or docking a screen makes a custom grid until a preset is chosen again.
   const [layout, setLayout] = React.useState<CustomLayout | null>(() => launch.saved?.layout ?? null);
   // The grid the queue was dealt for. + grows the grid without dealing again, so the playing screens go on.
   const [dealtGrid, setDealtGrid] = React.useState<GridSize | null>(() => launch.saved?.deal ?? null);
@@ -469,6 +469,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           onLayoutChange={setLayout}
           editing={editing}
           onFinishEditing={() => setEditing(false)}
+          moveWithoutEditing={settings.moveWithoutEditing}
           fitVideos={fitVideos}
           totalScreens={settings.totalScreens}
           playlists={playlists}

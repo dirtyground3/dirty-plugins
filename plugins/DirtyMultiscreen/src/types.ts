@@ -1,6 +1,7 @@
 import type * as R from "react";
 import type { HubApi, SceneCondition } from "../../DirtyPlugins/src/types";
 import type { CustomLayout, Edge } from "./domain/custom";
+import type { DropPointer } from "./domain/dropGuide";
 export type SceneOrder = "random" | "fresh" | "unwatched" | "favorites" | "newest" | "mix" | "list";
 export type Hub = Pick<HubApi, "graphql" | "react" | "native" | "getPluginSettings" | "captureEnabled" | "debugLog">;
 export interface Settings {
@@ -17,6 +18,7 @@ export interface Settings {
   markerDuration: number;
   pauseWhenHidden: boolean;
   showPerformerNavigation: boolean;
+  moveWithoutEditing: boolean;
 }
 export interface PlaybackSettings {
   startMuted: boolean;
@@ -35,7 +37,7 @@ export interface Scene {
   resume_time?: number | null;
   paths?: { stream?: string | null; vtt?: string | null };
   sceneStreams?: { url: string; mime_type?: string; label?: string }[];
-  files?: { duration?: number; width?: number | null; height?: number | null }[];
+  files?: { basename?: string; duration?: number; width?: number | null; height?: number | null }[];
   play_count?: number | null;
   last_played_at?: string | null;
   o_counter?: number | null;
@@ -189,7 +191,7 @@ export interface SavedSession {
   order?: number[];
   /** Panes closed in edit mode, in the order they closed; absent when every screen plays. */
   closed?: number[];
-  /** The custom rows that dragging an edge made of the grid; absent while the grid is on show. */
+  /** The layout made by resizing or docking; absent when the preset grid is on show. */
   layout?: CustomLayout;
   /** The grid the queue was dealt for, when + has grown the grid since; absent when it is the current grid. */
   deal?: GridSize;
@@ -227,22 +229,16 @@ export interface GridSize {
   columns: number;
   rows: number;
 }
+export type DropZone = { target: number; side: "center" } | { target: number | "grid"; side: Edge };
+
 /** Moves screens in the grid. A screen keeps its index, queue and player; only its place changes. */
 export interface SwapControls {
   /** A click picks the screen up, or swaps it with the one picked up before. */
   toggle(index: number): void;
   dragStart(index: number): void;
-  /** Called once a drag has lifted its screen: the other screen under the pointer, if any. */
-  dragOver(index: number | null): void;
-  dragEnd(): void;
-  cancel(): void;
-}
-/** Resizes a screen in edit mode by dragging one of its edges that face another screen. */
-export interface ResizeControls {
-  start(index: number, edge: Edge): void;
-  /** How far the pointer has moved since the press, in CSS pixels. */
-  move(x: number, y: number): void;
-  end(): void;
+  /** Called once a drag has lifted its screen. The grid resolves the visible target under the pointer. */
+  dragOver(pointer: DropPointer): void;
+  dragEnd(pointer: DropPointer | null): void;
   cancel(): void;
 }
 export interface NativePlayerProps {
@@ -298,6 +294,8 @@ export interface GridProps {
   editing: boolean;
   /** Leaves edit mode for every screen. */
   onFinishEditing(): void;
+  /** Outside edit mode, pictures and edges still drag; only the pointer shows it. */
+  moveWithoutEditing: boolean;
   fitVideos: boolean;
   findPerformerItems: FindPerformerItems;
   columns: number;

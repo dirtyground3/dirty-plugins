@@ -2,6 +2,7 @@ from plugin_paths import runtime_path
 import copy
 import hashlib
 import importlib.util
+import io
 import os
 from pathlib import Path
 import shutil
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from contextlib import redirect_stderr
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,6 +110,52 @@ class FakeClient:
         if "jobQueue" in query:
             return {"jobQueue": []}
         raise AssertionError(query)
+
+
+class CompactorFileActionTests(unittest.TestCase):
+    def test_deletion_reports_progress_while_verifying_both_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            original, replacement = folder / "original.mp4", folder / "replacement.mp4"
+            original.write_bytes(b"original")
+            replacement.write_bytes(b"replacement")
+            client = FakeClient(original)
+            client.data[0]["files"].append({"id": "8", "path": str(replacement)})
+            hash_contents = compactor.file_hash
+            candidate = {"status": "completed", "sceneId": "1", "fileId": "7", "outputFileId": "8",
+                         "identity": compactor.identity(original), "outputSize": replacement.stat().st_size,
+                         "sourceHash": hash_contents(original), "outputHash": hash_contents(replacement)}
+            run = {"id": "run", "status": "completed", "operations": [dict(candidate, fileId="6"), candidate]}
+            args = {"id": "run"}
+            snapshots = []
+
+            def read_contents(path, progress):
+                progress(.5)
+                snapshots.append((Path(path), compactor.get_run(client, args)["fileAction"]["progress"]))
+                return hash_contents(path)
+
+            stderr = io.StringIO()
+            with patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(folder / "settings.sqlite3")}):
+                compactor.save("run", run)
+                queued = compactor.queue_file_action(client, dict(args, mode="deleteOriginals", confirmed=True))
+                with patch.object(compactor, "file_hash", side_effect=read_contents), \
+                        patch.object(compactor.time, "monotonic", side_effect=[0, 2, 2, 4]), redirect_stderr(stderr):
+                    result = compactor.run_file_action(client, dict(args, actionId=queued["fileAction"]["id"]))
+                self.assertNotIn("progress", compactor.get_run(client, args)["fileAction"])
+
+            self.assertEqual(snapshots, [
+                (replacement, {"current": 2, "total": 2, "stage": "Checking encoded replacement", "progress": .5}),
+                (original, {"current": 2, "total": 2, "stage": "Checking original file", "progress": .5}),
+            ])
+            action = result["fileAction"]
+            self.assertEqual((action["status"], action["changed"], action["skipped"], action["failed"]),
+                             ("completed", 1, 1, 0))
+            self.assertEqual(client.deleted, ["7"])
+            self.assertEqual(replacement.read_bytes(), b"replacement")
+            stash_progress = [float(line.removeprefix("\x01p\x02")) for line in stderr.getvalue().splitlines()]
+            self.assertEqual(stash_progress, sorted(stash_progress))
+            self.assertGreater(len({value for value in stash_progress if 0 < value < 1}), 2)
+            self.assertEqual(stash_progress[-1], 1)
 
 
 class CompactorRulesTests(unittest.TestCase):

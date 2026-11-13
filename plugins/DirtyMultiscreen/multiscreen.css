@@ -10,6 +10,7 @@
 
 .ms-grid {
   display: grid;
+  position: relative;
   width: 100vw;
   height: 100vh;
   gap: 0;
@@ -28,13 +29,16 @@
 .ms-grid.ms-fit,
 .ms-grid.ms-custom {
   display: block;
-  position: relative;
 }
 
 .ms-fit > .ms-cell,
 .ms-custom > .ms-cell {
   position: absolute;
   transition: left 200ms ease, top 200ms ease, width 200ms ease, height 200ms ease;
+}
+
+.ms-resizing > .ms-cell {
+  transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -44,8 +48,8 @@
   }
 }
 
-/* Fill crops the picture to the screen. Flips mirror the picture only, never the controls or captions.
-   Themes such as Refract force the player's video to contain, so fill has to outrank them. */
+/* Fill and Fit videos cover the pane without stretching the picture.
+   Override themes such as Refract that set object-fit. */
 #root .ms-fill .ms-native-tile .video-js video,
 #root .ms-fit .ms-native-tile .video-js video {
   object-fit: cover !important;
@@ -132,9 +136,8 @@
   cursor: grab;
 }
 
-/* A screen moves by its CSS order. These mark the one picked up and the one it would swap with. */
-.ms-swap-source::after,
-.ms-swap-target::after {
+/* Mark the picked screen while leaving it in place until the drop. */
+.ms-swap-source::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -143,30 +146,115 @@
   pointer-events: none;
 }
 
-/* A lifted screen follows the pointer above the others; its own style carries the position. */
-.ms-swap-source {
-  box-shadow: 0 0.6rem 2rem rgba(0, 0, 0, 0.7);
-}
-
 .ms-route .ms-swap-source .ms-move-handle .ms-button {
   cursor: grabbing;
 }
 
-.ms-swap-target::after {
-  border-style: dashed;
-  background: rgba(255, 255, 255, 0.18);
+.ms-docking-guide {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
 }
 
-/* Edit mode: a screen's edges that face another screen drag to resize it. */
-.ms-resize-handle {
+.ms-drop-preview {
   position: absolute;
+  box-sizing: border-box;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.25);
+}
+
+.ms-drop-status,
+.ms-drop-target {
+  position: absolute;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* While a screen is carried, every screen's edit controls make way for its drop targets.
+   They stay in place, so the carried screen's handle keeps the pointer. */
+.ms-moving .ms-screen-controls {
+  opacity: 0;
+}
+
+.ms-drop-status {
+  top: 54px;
+  left: 50%;
+  max-width: calc(100% - 1rem);
+  padding: 0.35rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: var(--dirty-ui-surface-raised, #202b33);
+  color: var(--dirty-ui-text, #fff);
+  transform: translateX(-50%);
+}
+
+/* Every target is a white button with an orange mark; the one under the pointer turns orange. */
+.ms-drop-target {
+  --ms-drop-orange: #f28a1e;
+  display: flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid rgba(242, 138, 30, 0.35);
+  background: #fff;
+  color: var(--ms-drop-orange);
+  line-height: 1;
+}
+
+.ms-drop-target[data-ms-drop-active] {
+  border-color: var(--ms-drop-orange);
+  background: var(--ms-drop-orange);
+  color: #fff;
+}
+
+.ms-dividers {
+  position: absolute;
+  inset: 0;
   z-index: 5;
+  pointer-events: none;
+}
+
+.ms-divider {
+  position: absolute;
+  pointer-events: auto;
   touch-action: none;
   user-select: none;
 }
 
-/* The whole edge drags; a grip in its middle shows that it does. */
-.ms-resize-handle::after {
+.ms-divider-vertical {
+  width: 10px;
+  cursor: col-resize;
+  transform: translateX(-50%);
+}
+
+.ms-divider-horizontal {
+  height: 10px;
+  cursor: row-resize;
+  transform: translateY(-50%);
+}
+
+.ms-divider:hover::before,
+.ms-divider:active::before {
+  content: "";
+  position: absolute;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.ms-divider-vertical::before {
+  inset: 0 calc(50% - 0.5px);
+}
+
+.ms-divider-horizontal::before {
+  inset: calc(50% - 0.5px) 0;
+}
+
+/* The whole divider drags; a grip in its middle shows that it does. */
+.ms-divider::after {
   content: "";
   position: absolute;
   top: 50%;
@@ -175,56 +263,34 @@
   background: rgba(255, 255, 255, 0.8);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
   transform: translate(-50%, -50%);
-  transition: background 120ms ease;
 }
 
-.ms-resize-handle:hover::after,
-.ms-resize-handle:active::after {
+.ms-divider:hover::after,
+.ms-divider:active::after {
   background: #fff;
 }
 
-.ms-resize-left,
-.ms-resize-right {
-  top: 0;
-  bottom: 0;
-  width: 0.9rem;
-  cursor: col-resize;
-}
-
-.ms-resize-left::after,
-.ms-resize-right::after {
+.ms-divider-vertical::after {
   width: 5px;
-  height: 50px;
+  height: min(50px, 100%);
 }
 
-.ms-resize-top,
-.ms-resize-bottom {
-  left: 0;
-  right: 0;
-  height: 0.9rem;
-  cursor: row-resize;
-}
-
-.ms-resize-top::after,
-.ms-resize-bottom::after {
-  width: 50px;
+.ms-divider-horizontal::after {
+  width: min(50px, 100%);
   height: 5px;
 }
 
-.ms-resize-left {
-  left: 0;
+/* Outside edit mode a divider shows only its resize pointer. */
+.ms-dividers-quiet .ms-divider::before,
+.ms-dividers-quiet .ms-divider::after {
+  content: none;
 }
 
-.ms-resize-right {
-  right: 0;
-}
-
-.ms-resize-top {
-  top: 0;
-}
-
-.ms-resize-bottom {
-  bottom: 0;
+/* A lifted screen keeps the grabbing pointer wherever it is carried. */
+.ms-route .ms-moving,
+.ms-route .ms-moving * {
+  cursor: grabbing !important;
+  user-select: none;
 }
 
 /* Edit mode: squares for every grid size, beside the column of main buttons. */

@@ -25,6 +25,7 @@ const ICON_NAMES = {
   search: ["faMagnifyingGlass", "faSearch"],
   shuffle: ["faShuffle", "faRandom"],
   success: ["faCheck", "faCheck"],
+  swap: ["faRightLeft", "faExchangeAlt"],
 };
 export function icon(name: keyof typeof ICON_NAMES) {
   const icons = PluginApi.libraries.FontAwesomeSolid ?? {},

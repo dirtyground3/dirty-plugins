@@ -98,6 +98,7 @@ export interface WorkflowRecord {
     skipped: number;
     failed: number;
     reasons: [string, number][];
+    progress?: { current: number; total: number; stage: string; progress: number | null };
   };
 }
 export type FileActionMode = "makePrimary" | "deleteOriginals";

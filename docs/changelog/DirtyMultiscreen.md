@@ -2,6 +2,27 @@
 
 Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names its version.
 
+- **DirtyMultiscreen 1.0.29:** dividers, a docking guide and moving screens
+  without edit mode.
+  - **Dividers.** Drag the line between screens to resize the two parts it
+    separates. Long dividers move several screens together, the line snaps
+    gently at eighths of its split, and **Shift** resizes freely.
+  - **Docking guide.** Dragging a screen shows a swap icon and arrows on the
+    screen under the pointer and at the window's edges. Drop on the swap icon
+    to trade places, or on an arrow to dock beside a screen or along an edge.
+    A preview shows where the screen lands, and arrows that would only trade
+    places are left out. The edit controls make way while a screen is carried.
+  - **Move and resize screens without edit mode.** A new Grid setting lets
+    you drag a screen's picture and the edges between screens at any time.
+    Only the pointer changes over an edge, and a plain click still reaches the
+    player.
+  - **Fit videos** keeps a custom layout's panes and fills each one, cropping
+    without stretching.
+  - **Untitled scenes** are named by their file, as in Stash, in the search
+    and on each screen.
+  - Setting descriptions no longer say whether a toggle is enabled or disabled
+    by default.
+
 - **DirtyMultiscreen 1.0.28:** the X at the upper-right corner of each screen's
   edit controls is smaller.
 

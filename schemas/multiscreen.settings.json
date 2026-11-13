@@ -25,8 +25,14 @@
     "fitVideos": {
       "type": "BOOLEAN",
       "displayName": "Fit screens to videos",
-      "description": "Fit each screen to its video and pack the screens into the window. The Fit videos button in edit mode switches it too. Enabled by default.",
+      "description": "Pack preset grids by video shape. In a custom grid, fill each pane, cropping as needed without stretching. Also available in edit mode.",
       "default": true
+    },
+    "moveWithoutEditing": {
+      "type": "BOOLEAN",
+      "displayName": "Move and resize screens without edit mode",
+      "description": "Drag a screen's picture onto another screen to swap or dock it, and drag the edges between screens to resize them, without opening edit mode. Only the mouse pointer changes over an edge.",
+      "default": false
     },
     "sceneOrder": {
       "type": "STRING",
@@ -77,7 +83,7 @@
     "splitScenes": {
       "type": "BOOLEAN",
       "displayName": "Split scenes between panes",
-      "description": "Give each pane its own share of the scenes instead of every pane drawing from the whole list. Disabled by default.",
+      "description": "Give each pane its own share of the scenes instead of every pane drawing from the whole list.",
       "default": false
     },
     "avoidDuplicates": {
@@ -188,7 +194,8 @@
       "settings": [
         "rows",
         "columns",
-        "fitVideos"
+        "fitVideos",
+        "moveWithoutEditing"
       ]
     },
     {

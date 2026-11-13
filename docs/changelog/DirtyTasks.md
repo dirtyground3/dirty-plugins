@@ -2,6 +2,9 @@
 
 Newest first. Each GitHub Release of DirtyTasks uses the entry that names its version.
 
+- **DirtyTasks 1.0.13:** deletion shows progress while reading originals and
+  encoded replacements for verification, and updates the Stash task queue.
+
 - **DirtyTasks 1.0.12:** time schedules and library backups.
   - **Schedules:** Move, Rename, Update tags, each encoding rule and the backup
     can **Run on a schedule** at a time on chosen weekdays, in the Stash

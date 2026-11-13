@@ -1,11 +1,10 @@
+import type * as R from "react";
 import { React } from "../runtime";
 import type { Rectangle } from "../domain/layout";
-import type { Edge } from "../domain/custom";
 import { locatePlaylistItem, nextFreeIndex, nextItemAfter } from "../domain/playlists";
-import type { AudioState, GridProps, Item, PaneView, ResizeControls, SavedPane, SwapControls } from "../types";
+import type { AudioState, GridProps, Item, PaneView, SavedPane, SwapControls } from "../types";
 import { NativePlayerTile } from "./NativePlayerTile";
-import { ResizeHandles } from "./ResizeHandles";
-import { ScreenControls } from "./ScreenControls";
+import { ScreenControls, useScreenDrag } from "./ScreenControls";
 import { PaneHeader } from "./SceneSearch";
 
 interface PaneProps
@@ -17,6 +16,7 @@ interface PaneProps
     | "continuation"
     | "editing"
     | "onFinishEditing"
+    | "moveWithoutEditing"
     | "fitVideos"
     | "searchSession"
     | "findPerformerItems"
@@ -27,16 +27,13 @@ interface PaneProps
   screenIndex: number;
   /** Where the pane sits in the grid, which is the screen number people see. */
   position: number;
+  columnSpan?: number;
   /** Where the screen sits in the window when the videos are fitted or the rows are custom. */
   rectangle?: Rectangle;
-  /** The edges edit mode lets a drag move: those facing another screen. */
-  edges: Edge[];
-  resize: ResizeControls;
   /** Closes the screen in edit mode; absent for the last open screen. */
   onClose?(): void;
   swap: SwapControls;
   swapSource: number | null;
-  swapTarget: number | null;
   onAudioChange(index: number, audio: AudioState): void;
   onPositionChange(index: number, seconds: number): void;
   onSceneChange(index: number, item: Item | null, page: number, rotation: number): void;
@@ -47,15 +44,18 @@ interface PaneProps
   saved?: SavedPane | null;
 }
 type QueueStep = { direction: 1 | -1 } | { performerId: string };
+/** Presses that belong to the player's controls or the pane's own buttons never move the screen. */
+const PANE_CONTROLS =
+  "button, a, input, select, textarea, [role='slider'], .vjs-control-bar, .vjs-menu, .vjs-modal-dialog, .ms-pane-header, .ms-queue-status";
 const NOTICE_MS = 1000;
 export function NativePlayerPane({
-  edges,
   playlist,
   screenIndex,
   continuation,
   editing,
   fitVideos,
   findPerformerItems,
+  moveWithoutEditing,
   onAudioChange,
   onClose,
   onFinishEditing,
@@ -65,14 +65,13 @@ export function NativePlayerPane({
   playback: defaultPlayback,
   playingElsewhere,
   position,
+  columnSpan,
   rectangle,
-  resize,
   saved,
   searchSession,
   showPerformerNavigation,
   swap,
   swapSource,
-  swapTarget,
   ...player
 }: PaneProps) {
   // A restoring pane shows no scene until its page is back, so the queue's first scene never starts.
@@ -306,10 +305,29 @@ export function NativePlayerPane({
     (flip?.x ? " ms-flip-x" : "") +
     (flip?.y ? " ms-flip-y" : "") +
     (rotation ? ` ms-rotate-${rotation * 90}` : "") +
-    (swapSource === screenIndex ? " ms-swap-source" : "") +
-    (swapTarget === screenIndex ? " ms-swap-target" : "");
+    (swapSource === screenIndex ? " ms-swap-source" : "");
+  const drag = useScreenDrag(screenIndex, swap);
+  // Outside edit mode the picture itself drags its screen.
+  const pictureDrag =
+    moveWithoutEditing && !editing
+      ? {
+          onPointerDown(event: R.PointerEvent<HTMLDivElement>) {
+            if (!(event.target as Element).closest(PANE_CONTROLS)) drag.press(event);
+          },
+          onPointerMove: drag.move,
+          onPointerUp: drag.release,
+          onPointerCancel: drag.cancel,
+          onLostPointerCapture: drag.cancel,
+          onClickCapture: drag.click,
+        }
+      : {};
   return (
-    <div className={cellClass} style={rectangle ?? { order: position }} data-ms-screen={screenIndex}>
+    <div
+      className={cellClass}
+      style={rectangle ?? { order: position, ...(columnSpan ? { gridColumn: `span ${columnSpan}` } : {}) }}
+      data-ms-screen={screenIndex}
+      {...pictureDrag}
+    >
       <PaneHeader
         item={item}
         screenIndex={position}
@@ -367,9 +385,6 @@ export function NativePlayerPane({
           onClose={onClose}
           onFinishEditing={onFinishEditing}
         />
-      )}
-      {editing && item && edges.length > 0 && (
-        <ResizeHandles edges={edges} paneIndex={screenIndex} position={position} resize={resize} />
       )}
       {state.busy && (
         <div className="ms-queue-status" role="status">

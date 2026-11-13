@@ -102,8 +102,9 @@ their recorded content, and skips shared, changed or missing files. It makes
 the replacement primary first when needed, then removes the original through
 Stash, respecting Stash's trash setting. Other scene files and metadata stay
 intact. Both actions run in Stash's task queue and report changed, skipped and
-failed counts. Use **Recover interrupted file action** in the details' file
-action menu if its Stash task stopped before finishing.
+failed counts. During deletion, job details show the current file and verification
+progress, and the Stash queue shows overall progress. Use **Recover interrupted file action**
+in the details' file action menu if its Stash task stopped before finishing.
 
 Pause stops the encoder at once and discards its unfinished temporary output;
 Resume revalidates and encodes that file again, then continues with the rest.

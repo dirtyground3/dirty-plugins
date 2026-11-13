@@ -5,6 +5,7 @@ export function RunFileActions({ record, busy, onAction }: { record: WorkflowRec
   const [confirm, setConfirm] = React.useState(false);
   const [retry, setRetry] = React.useState(false);
   const action = record.fileAction;
+  const progress = action?.progress;
   const pending = action?.status === "queued" || action?.status === "running";
   const available = record.fileActions;
   function start(mode: FileActionMode, recover = false) {
@@ -69,6 +70,15 @@ export function RunFileActions({ record, busy, onAction }: { record: WorkflowRec
           )}
         </div>
       )}
+      {progress && (
+        <div className="dirty-compactor-progress">
+          <span>
+            File {progress.current} of {progress.total}: {progress.stage}
+          </span>
+          <progress aria-label={progress.stage} max="1" value={progress.progress ?? undefined} />
+          {progress.progress != null && <span>{Math.floor(progress.progress * 100)}%</span>}
+        </div>
+      )}
       <ui.Dialog
         open={confirm}
         ariaLabel="Delete this job's original files"
@@ -77,8 +87,8 @@ export function RunFileActions({ record, busy, onAction }: { record: WorkflowRec
       >
         <h2>Delete all old files from this job?</h2>
         <p>
-          Deletes originals with successful encodes from Stash and disk, using Stash’s configured trash setting. Each
-          replacement is checked first. Shared or changed files are skipped.
+          Deletes originals with successful encodes from Stash and disk, using Stash’s configured trash setting.
+          DirtyTasks reads both files in full before deleting an original. Shared or changed files are skipped.
         </p>
         <p>If an old file is still primary, its new version is made primary before deletion.</p>
         <div className="dirty-ui-control-row">

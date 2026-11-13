@@ -2,6 +2,10 @@
 
 Newest first. Each GitHub Release of DirtyCaptions uses the entry that names its version.
 
+- **DirtyCaptions 1.0.10, DirtyRank 1.1.2, DirtyStats 1.0.15, DirtyFileExtractor
+  1.0.7, DirtyMultiscreen 1.0.29 and DirtyPlugins 1.0.22:** setting descriptions
+  no longer say whether a toggle is enabled or disabled by default.
+
 - **DirtyTasks 1.0.11 and DirtyCaptions 1.0.9:** an encoding run that no Stash
   task is running any more, for example after Stash restarted, no longer blocks
   file organization. Organization pauses it and goes ahead, **Pause** and
