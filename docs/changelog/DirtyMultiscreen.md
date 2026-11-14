@@ -2,11 +2,14 @@
 
 Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names its version.
 
-- **DirtyMultiscreen 1.0.29:** dividers, a docking guide and moving screens
-  without edit mode.
+- **DirtyMultiscreen 1.0.29:** dividers, a docking guide, moving screens
+  without edit mode, cropped pictures you can move, and controls that always
+  fit their screen.
   - **Dividers.** Drag the line between screens to resize the two parts it
-    separates. Long dividers move several screens together, the line snaps
-    gently at eighths of its split, and **Shift** resizes freely.
+    separates. Long dividers move several screens together, and the line snaps
+    at eighths of its split; once snapped it takes a longer pull to leave.
+    **Shift** resizes freely, and the new Grid setting **Snap edges when
+    resizing** turns snapping off.
   - **Docking guide.** Dragging a screen shows a swap icon and arrows on the
     screen under the pointer and at the window's edges. Drop on the swap icon
     to trade places, or on an arrow to dock beside a screen or along an edge.
@@ -18,6 +21,16 @@ Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names 
     player.
   - **Fit videos** keeps a custom layout's panes and fills each one, cropping
     without stretching.
+  - **Move a cropped picture.** When Fill or Fit videos crops a picture, drag
+    it with the middle mouse button to choose the part on show; a middle click
+    centres it again. The choice belongs to the video and is kept in the
+    session and saved grids.
+  - **Controls stay visible.** The player always takes its screen's shape, so
+    the control bar no longer slips below wide screens where Refract gives
+    smaller windows a 16:9 player. Narrow screens get slimmer buttons, and the
+    bar wraps onto another row only when the buttons do not fit.
+  - **Saved grids** is a compact list with one line per grid: its name, size
+    and date.
   - **Untitled scenes** are named by their file, as in Stash, in the search
     and on each screen.
   - Setting descriptions no longer say whether a toggle is enabled or disabled

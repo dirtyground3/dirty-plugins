@@ -157,3 +157,29 @@ export function fitLayout(aspects: readonly number[], width: number, height: num
   if (!aspects.length) return [];
   return placeFitPlan(fitPlan(aspects, width, height), width, height, pixelRatio);
 }
+
+/**
+ * Moves a covered picture's crop so the picture follows a pointer moved by (dx, dy) screen pixels. The crop is
+ * object-position percentages; `box` is the video element's own size, before its flips and quarter turns.
+ */
+export function panCrop(
+  crop: { x: number; y: number },
+  dx: number,
+  dy: number,
+  picture: { width: number; height: number },
+  box: { width: number; height: number },
+  flip: { x: boolean; y: boolean },
+  turns: number,
+) {
+  if (!(picture.width > 0 && picture.height > 0 && box.width > 0 && box.height > 0)) return crop;
+  // The screen shows the turned picture flipped, so undo the flip first, then each clockwise turn.
+  let x = flip.x ? -dx : dx;
+  let y = flip.y ? -dy : dy;
+  for (let turn = 0; turn < turns % 4; turn++) [x, y] = [y, -x];
+  const scale = Math.max(box.width / picture.width, box.height / picture.height);
+  const spareX = picture.width * scale - box.width;
+  const spareY = picture.height * scale - box.height;
+  const move = (value: number, by: number, spare: number) =>
+    spare >= 1 ? Math.max(0, Math.min(100, value - (by / spare) * 100)) : value;
+  return { x: move(crop.x, x, spareX), y: move(crop.y, y, spareY) };
+}

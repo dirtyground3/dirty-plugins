@@ -29,6 +29,8 @@ export interface Divider {
   length: number;
   /** Size of the split along its axis, for converting a pointer delta to a share of the split. */
   extent: number;
+  /** Where the line sits, as a share of its split. */
+  share: number;
 }
 
 const isSplit = (node: CustomNode): node is CustomSplit => "children" in node;
@@ -267,7 +269,7 @@ function shareBoxes(
   node: CustomNode,
   box: Edges,
   place: (pane: number, box: Edges) => void,
-  boundary?: (path: number[], at: number, axis: Axis, line: Edges, extent: number) => void,
+  boundary?: (path: number[], at: number, axis: Axis, line: Edges, extent: number, share: number) => void,
   path: number[] = [],
 ) {
   if (!isSplit(node)) {
@@ -292,6 +294,7 @@ function shareBoxes(
         node.axis,
         row ? { ...box, left: to, right: to } : { ...box, top: to, bottom: to },
         extent,
+        used / sum,
       );
     shareBoxes(child, row ? { ...box, left: from, right: to } : { ...box, top: from, bottom: to }, place, boundary, [
       ...path,
@@ -347,8 +350,8 @@ export function customDividers(
     tree,
     { left: 0, top: 0, right: width, bottom: height },
     () => {},
-    (path, at, axis, line, extent) => {
-      dividers.push({ path, at, axis, extent, x: 0, y: 0, length: 0 });
+    (path, at, axis, line, extent, share) => {
+      dividers.push({ path, at, axis, extent, share, x: 0, y: 0, length: 0 });
       lines.push(line);
     },
   );
@@ -360,7 +363,20 @@ export function customDividers(
   }));
 }
 
-/** Trades size between two neighbours. The signed delta is a fraction of their split's full extent. */
+/**
+ * The eighth of its split that a line aimed at `aim` (a share of the split) sticks to, if any. A line reaches an
+ * eighth within a short distance, but leaves the eighth it holds only after a much longer pull.
+ */
+export function dividerSnap(aim: number, extent: number, held: number | null = null): number | null {
+  if (held !== null && Math.abs(held - aim) * extent <= Math.min(36, extent / 20)) return held;
+  const eighth = Math.round(aim * 8) / 8;
+  return Math.abs(eighth - aim) * extent <= Math.min(12, extent / 32) ? eighth : null;
+}
+
+/**
+ * Trades size between two neighbours. The signed delta is a fraction of their split's full extent; `held` is the
+ * eighth the line already sticks to during this drag.
+ */
 export function moveDivider(
   layout: CustomLayout,
   closed: readonly number[],
@@ -369,6 +385,7 @@ export function moveDivider(
   fraction: number,
   extent = Infinity,
   snap = true,
+  held: number | null = null,
 ): CustomLayout {
   if (!Number.isFinite(fraction) || !fraction || !(extent > 0)) return layout;
   const open = without(layout, closed);
@@ -391,12 +408,9 @@ export function moveDivider(
   let delta = fraction * sum;
   if (snap && Number.isFinite(extent)) {
     const start = total(split.children.slice(0, at + 1)) / sum;
-    const aim = start + fraction;
-    const eighth = Math.round(aim * 8) / 8;
-    const snapped = (eighth - start) * sum;
-    // A short magnetic band around each eighth; there is still room to stop between marks in narrow panes.
-    if (Math.abs(eighth - aim) * extent <= Math.min(10, extent / 32) && snapped >= lower && snapped <= upper)
-      delta = snapped;
+    const eighth = dividerSnap(start + fraction, extent, held);
+    const snapped = eighth === null ? NaN : (eighth - start) * sum;
+    if (snapped >= lower && snapped <= upper) delta = snapped;
   }
   delta = Math.max(lower, Math.min(upper, delta));
   if (Math.abs(delta) < 1e-9) return layout;

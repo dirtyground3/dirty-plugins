@@ -114,15 +114,14 @@ function SavedGridsDialog({
         <DirtyPlugins.react.Button
           className="ms-saved-open"
           ariaLabel={`Open ${label}`}
+          title={(grid.recent ? "Played " : "Saved ") + played(grid.updatedAt)}
           disabled={busy}
           onClick={() => void act(async () => onOpen(await loadGrid(grid.id), grid), false)}
         >
           <span className="ms-saved-name">{label}</span>
           <small>
             {grid.columns} × {grid.rows} ·{" "}
-            {grid.recent
-              ? "played " + played(grid.updatedAt)
-              : "saved " + new Date(grid.updatedAt * 1000).toLocaleDateString()}
+            {grid.recent ? played(grid.updatedAt) : new Date(grid.updatedAt * 1000).toLocaleDateString()}
           </small>
         </DirtyPlugins.react.Button>
         {grid.recent ? (
@@ -182,26 +181,20 @@ function SavedGridsDialog({
         />
       </div>
       {canSave && (
-        <form onSubmit={save}>
-          <DirtyPlugins.react.Field
-            id="ms-saved-grid-name"
-            label="Save the current screens"
-            help="Keeps the grid and every screen's place, scene, position, sound and picture."
-            action={
-              <DirtyPlugins.react.Button tone="primary" type="submit" disabled={busy || !name.trim()}>
-                {existing ? "Replace" : "Save"}
-              </DirtyPlugins.react.Button>
-            }
-          >
-            <input
-              type="text"
-              className="form-control"
-              value={name}
-              maxLength={80}
-              placeholder="Name for this grid"
-              onChange={event => setName(event.target.value)}
-            />
-          </DirtyPlugins.react.Field>
+        <form className="ms-saved-form" onSubmit={save}>
+          <input
+            type="text"
+            className="form-control"
+            aria-label="Save the current screens as"
+            title="Keeps the grid and every screen's place, scene, position, sound and picture."
+            value={name}
+            maxLength={80}
+            placeholder="Name for this grid"
+            onChange={event => setName(event.target.value)}
+          />
+          <DirtyPlugins.react.Button tone="primary" type="submit" disabled={busy || !name.trim()}>
+            {existing ? "Replace" : "Save"}
+          </DirtyPlugins.react.Button>
         </form>
       )}
       <div className="ms-saved-results" aria-busy={busy}>

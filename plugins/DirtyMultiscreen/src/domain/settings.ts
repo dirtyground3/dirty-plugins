@@ -41,6 +41,9 @@ export const normalizeRecentGrids = (rawSettings: Record<string, unknown>) =>
 /** Layout is independent of query settings: toggling it must never reload the playing queues. */
 export const normalizeFitVideos = (rawSettings: Record<string, unknown>) =>
   coerceBoolean(rawSettings.fitVideos, DEFAULT_SETTINGS.fitVideos);
+/** Whether dragged dividers stick at eighths, chosen in the grid picker. */
+export const normalizeSnapDividers = (rawSettings: Record<string, unknown>) =>
+  coerceBoolean(rawSettings.snapDividers, DEFAULT_SETTINGS.snapDividers);
 
 export function normalizeSettings(rawSettings: Record<string, unknown>): Settings {
   const rows = clampInteger(rawSettings.rows, DEFAULT_SETTINGS.rows, LIMITS.rows.min, LIMITS.rows.max);

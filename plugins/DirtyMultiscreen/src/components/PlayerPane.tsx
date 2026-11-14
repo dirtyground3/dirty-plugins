@@ -1,8 +1,9 @@
 import type * as R from "react";
 import { React } from "../runtime";
+import { panCrop } from "../domain/layout";
 import type { Rectangle } from "../domain/layout";
 import { locatePlaylistItem, nextFreeIndex, nextItemAfter } from "../domain/playlists";
-import type { AudioState, GridProps, Item, PaneView, SavedPane, SwapControls } from "../types";
+import type { AudioState, CropPosition, GridProps, Item, PaneView, SavedPane, SwapControls } from "../types";
 import { NativePlayerTile } from "./NativePlayerTile";
 import { ScreenControls, useScreenDrag } from "./ScreenControls";
 import { PaneHeader } from "./SceneSearch";
@@ -308,25 +309,35 @@ export function NativePlayerPane({
     (swapSource === screenIndex ? " ms-swap-source" : "");
   const drag = useScreenDrag(screenIndex, swap);
   // Outside edit mode the picture itself drags its screen.
-  const pictureDrag =
-    moveWithoutEditing && !editing
-      ? {
-          onPointerDown(event: R.PointerEvent<HTMLDivElement>) {
-            if (!(event.target as Element).closest(PANE_CONTROLS)) drag.press(event);
-          },
-          onPointerMove: drag.move,
-          onPointerUp: drag.release,
-          onPointerCancel: drag.cancel,
-          onLostPointerCapture: drag.cancel,
-          onClickCapture: drag.click,
-        }
-      : {};
+  const dragsScreen = moveWithoutEditing && !editing;
+  const pan = useCropPan({
+    view,
+    item,
+    cropped: fitVideos || !!view.fill,
+    flip: { x: !!flip?.x, y: !!flip?.y },
+    rotation,
+    onDraft: setView,
+    onCommit: changeView,
+  });
+  const box: R.CSSProperties = rectangle ?? {
+    order: position,
+    ...(columnSpan ? { gridColumn: `span ${columnSpan}` } : {}),
+  };
   return (
     <div
-      className={cellClass}
-      style={rectangle ?? { order: position, ...(columnSpan ? { gridColumn: `span ${columnSpan}` } : {}) }}
+      className={cellClass + (pan.active ? " ms-panning" : "")}
+      style={pan.crop ? ({ ...box, "--ms-crop": `${pan.crop.x}% ${pan.crop.y}%` } as R.CSSProperties) : box}
       data-ms-screen={screenIndex}
-      {...pictureDrag}
+      onPointerDown={event => {
+        if (pan.press(event) || !dragsScreen) return;
+        if (!(event.target as Element).closest(PANE_CONTROLS)) drag.press(event);
+      }}
+      onPointerMove={event => pan.move(event) || (dragsScreen && drag.move(event))}
+      onPointerUp={event => pan.release(event) || (dragsScreen && drag.release(event))}
+      onPointerCancel={event => pan.cancel(event) || (dragsScreen && drag.cancel(event))}
+      onLostPointerCapture={event => pan.cancel(event) || (dragsScreen && drag.cancel(event))}
+      onClickCapture={dragsScreen ? drag.click : undefined}
+      onMouseDown={pan.mouseDown}
     >
       <PaneHeader
         item={item}
@@ -420,4 +431,104 @@ export function NativePlayerPane({
       )}
     </div>
   );
+}
+
+/**
+ * A middle-button drag moves a cropped picture inside its screen; a middle click without a drag shows its centre
+ * again. Each handler returns whether it handled the event, so the screen's own drag gets the rest.
+ */
+function useCropPan({
+  view,
+  item,
+  cropped,
+  flip,
+  rotation,
+  onDraft,
+  onCommit,
+}: {
+  view: PaneView;
+  item: Item | undefined;
+  /** Fill or Fit videos covers the screen, so part of the picture may be hidden. */
+  cropped: boolean;
+  flip: { x: boolean; y: boolean };
+  rotation: number;
+  onDraft(view: PaneView): void;
+  onCommit(view: PaneView): void;
+}) {
+  const crop = item && view.crop?.itemId === item.id ? view.crop : undefined;
+  const press = React.useRef<{
+    id: number;
+    x: number;
+    y: number;
+    from: CropPosition;
+    before: PaneView;
+    moved: boolean;
+  } | null>(null);
+  const [active, setActive] = React.useState(false);
+  const target = (event: R.PointerEvent<HTMLDivElement>) => {
+    const start = press.current;
+    const video = event.currentTarget.querySelector("video");
+    if (!start || !item || !video) return undefined;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (!start.moved && Math.hypot(dx, dy) < 4) return undefined;
+    start.moved = true;
+    const picture = { width: video.videoWidth, height: video.videoHeight };
+    const box = { width: video.clientWidth, height: video.clientHeight };
+    return { itemId: item.id, ...panCrop(start.from, dx, dy, picture, box, flip, rotation) };
+  };
+  const end = () => {
+    press.current = null;
+    setActive(false);
+  };
+  return {
+    crop,
+    active,
+    press(event: R.PointerEvent<HTMLDivElement>) {
+      if (event.button !== 1 || event.isPrimary === false || press.current || !cropped || !item) return false;
+      if ((event.target as Element).closest(PANE_CONTROLS)) return false;
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      press.current = {
+        id: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        from: crop ?? { x: 50, y: 50 },
+        before: view,
+        moved: false,
+      };
+      setActive(true);
+      return true;
+    },
+    move(event: R.PointerEvent<HTMLDivElement>) {
+      if (press.current?.id !== event.pointerId) return false;
+      const next = target(event);
+      if (next) onDraft({ ...view, crop: next });
+      return true;
+    },
+    release(event: R.PointerEvent<HTMLDivElement>) {
+      const start = press.current;
+      if (start?.id !== event.pointerId) return false;
+      const next = target(event);
+      end();
+      if (!start.moved) {
+        if (crop) onCommit({ ...start.before, crop: undefined });
+      } else if (next && (next.x !== start.from.x || next.y !== start.from.y)) {
+        onCommit({ ...start.before, crop: next });
+      } else onDraft(start.before);
+      return true;
+    },
+    cancel(event: R.PointerEvent<HTMLDivElement>) {
+      const start = press.current;
+      if (start?.id !== event.pointerId) return false;
+      end();
+      onDraft(start.before);
+      return true;
+    },
+    /** Keeps the browser from starting its middle-button autoscroll over a cropped picture. */
+    mouseDown(event: R.MouseEvent<HTMLDivElement>) {
+      if (event.button === 1 && cropped && item && !(event.target as Element).closest(PANE_CONTROLS))
+        event.preventDefault();
+    },
+  };
 }

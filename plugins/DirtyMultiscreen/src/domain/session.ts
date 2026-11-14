@@ -7,6 +7,7 @@ const isFiniteNumber = (value: unknown): value is number => typeof value === "nu
 const isAudio = (value: unknown): value is AudioState =>
   isRecord(value) && typeof value.muted === "boolean" && isFiniteNumber(value.volume);
 const isOptionalBoolean = (value: unknown) => value === undefined || typeof value === "boolean";
+const isPercent = (value: unknown) => isFiniteNumber(value) && value >= 0 && value <= 100;
 const isView = (value: unknown): value is PaneView =>
   isRecord(value) &&
   isOptionalBoolean(value.fill) &&
@@ -19,7 +20,12 @@ const isView = (value: unknown): value is PaneView =>
     (isRecord(value.flip) &&
       typeof value.flip.itemId === "string" &&
       typeof value.flip.x === "boolean" &&
-      typeof value.flip.y === "boolean"));
+      typeof value.flip.y === "boolean")) &&
+  (value.crop === undefined ||
+    (isRecord(value.crop) &&
+      typeof value.crop.itemId === "string" &&
+      isPercent(value.crop.x) &&
+      isPercent(value.crop.y)));
 const isGridSize = (value: unknown): value is GridSize =>
   isRecord(value) &&
   Number.isInteger(value.rows) &&

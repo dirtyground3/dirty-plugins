@@ -40,6 +40,7 @@ export function NativeMultiscreenGrid({
   findPerformerItems,
   layout,
   moveWithoutEditing,
+  snapDividers,
   nativePlayer,
   onCloseScreen,
   onFinishEditing,
@@ -523,6 +524,7 @@ export function NativeMultiscreenGrid({
       {arranging && (
         <Dividers
           quiet={!editing}
+          snap={snapDividers}
           base={structure}
           shown={shownLayout ?? structure}
           closed={closed}

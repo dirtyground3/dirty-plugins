@@ -29,6 +29,10 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - Seek preview thumbnails are disabled in the grid to keep smaller panes clear.
 - The source/settings menu opens to the left of its button so it stays visible in right-hand panes, including with themes that override the native menu width.
 - With Refract, every pane uses the same native source menu and its own speed and projection controls. Refract's single-player replacement panel is hidden inside the grid; its ordinary player styling is preserved.
+- The player always takes its screen's shape, so its control bar sits at the
+  screen's bottom even where Refract gives smaller windows a 16:9 player. In a
+  narrow screen the bar uses slimmer buttons and wraps onto more rows, so no
+  control is hidden.
 - Search each screen's session with Stash's own search box, saved filters,
   Filter dialog and sort, without interrupting the others. Results stay inside
   the session: selections and lists keep only their own videos, and every
@@ -50,6 +54,10 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   screen. Loop starts from the **Loop scenes** setting and overrides it for that
   screen. Fill crops the picture to cover the screen instead of fitting inside
   it, including under themes that force the player to fit, such as Refract.
+- When Fill or **Fit videos** crops a picture, drag it with the middle mouse
+  button to choose the part on show; a middle click shows its centre again.
+  This works in and out of edit mode, belongs to the video like a flip, and is
+  kept with the session and saved grids.
 - Rotate turns the picture 90° clockwise each time: 90°, 180°, 270°, then back
   to normal. It belongs to the video like a flip, keeps playback running, and
   leaves controls and captions upright. At 90° and 270° its width and height
@@ -65,8 +73,10 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - Drag a divider between screens to resize the two parts it separates.
   A divider spanning several screens moves them together, and shorter
   dividers resize parts within a row or column. Dividers work with **Fit
-  videos** on or off and snap gently at eighths of their split, including
-  the quarter and halfway points. Hold **Shift** to resize freely.
+  videos** on or off and snap at eighths of their split, including the
+  quarter and halfway points. A snapped divider takes a longer pull to leave
+  its mark. Hold **Shift** to resize freely, or turn **Snap edges when
+  resizing** off in the Grid settings.
 - Resizing or docking makes the grid **Custom**. Each screen keeps playing
   with its scene, queue, position, audio and picture. Custom layouts stay
   through reloads and saved grids. Click the current grid's square to
@@ -101,9 +111,10 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   cropping when needed without stretching. Your per-screen Fill choice
   returns when you switch it off. The toggle is on by default and also
   updates the **Fit screens to videos** setting.
-- The bookmark button above the grid button opens **Saved grids**. Name the
+- The bookmark button above the grid button opens **Saved grids**, a compact
+  list with one line per grid: its name, size and date. Name the
   current screens to save them: the grid, the closed screens, and every
-  screen's place, custom row, scene, position, sound, flip, rotation, loop and fill, plus
+  screen's place, custom row, scene, position, sound, flip, rotation, crop, loop and fill, plus
   the Fit videos mode. Older saved grids keep your current Fit videos choice.
   A name already in the list replaces that grid after asking, and so does the
   overwrite button on a saved grid, which keeps its name. Click a saved grid to open it in place of the current
@@ -219,8 +230,9 @@ Rows and columns are chosen in the player's edit mode, not on the settings
 page. The DirtyMultiscreen tab of the Dirty Plugins settings has six groups:
 
 - **Grid:** **Fit screens to videos** (enabled by default), the same choice as
-  the Fit videos button in edit mode, and **Move and resize screens without
-  edit mode** (disabled by default).
+  the Fit videos button in edit mode, **Move and resize screens without
+  edit mode** (disabled by default), and **Snap edges when resizing**
+  (enabled by default).
 - **Scenes:** scene order, **Spread performers and studios**, **Split scenes
   between panes** and **Avoid the same scene on several screens**.
 - **Playback:** **Start muted**, **Random start**, **Loop scenes**, **Pause when

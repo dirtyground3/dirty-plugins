@@ -48,11 +48,17 @@
   }
 }
 
-/* Fill and Fit videos cover the pane without stretching the picture.
+/* Fill and Fit videos cover the pane without stretching the picture, showing the part chosen by a middle-button drag.
    Override themes such as Refract that set object-fit. */
 #root .ms-fill .ms-native-tile .video-js video,
 #root .ms-fit .ms-native-tile .video-js video {
   object-fit: cover !important;
+  object-position: var(--ms-crop, 50% 50%) !important;
+}
+
+.ms-panning,
+.ms-panning * {
+  cursor: grabbing !important;
 }
 
 .ms-flip-x {
@@ -587,11 +593,19 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
 }
 
 .ms-saved-grids {
-  width: min(34rem, 100%);
+  width: min(30rem, 100%);
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
-  padding: 1rem;
+  padding: 0.75rem;
   color: var(--dirty-ui-text);
+}
+
+.ms-saved-grids .ms-scene-search-heading {
+  margin-bottom: var(--dirty-ui-space-2);
+}
+
+.ms-saved-grids .ms-scene-search-heading h2 {
+  font-size: 1.1rem;
 }
 
 .ms-saved-form {
@@ -606,22 +620,13 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
   min-width: 0;
 }
 
-/* The Save button shares the name box's row; the help text sits under both. */
-.ms-saved-grids .dirty-ui-field-control .form-control {
-  flex: 1;
-}
-
-.ms-saved-grids .dirty-ui-field-control .dirty-ui-button {
-  flex-shrink: 0;
-}
-
 .ms-saved-results {
-  margin-top: var(--dirty-ui-space-3);
+  margin-top: var(--dirty-ui-space-2);
 }
 
 .ms-saved-heading {
-  margin: var(--dirty-ui-space-3) 0 var(--dirty-ui-space-2);
-  font-size: 0.85rem;
+  margin: var(--dirty-ui-space-2) 0 0.15rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: var(--dirty-ui-muted);
   text-transform: uppercase;
@@ -636,39 +641,50 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
   margin-top: var(--dirty-ui-space-2);
 }
 
+/* One line per grid: its name, its size and time, then small round actions. */
 .ms-saved-list {
   display: grid;
-  gap: var(--dirty-ui-space-2);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.15rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .ms-saved-list li {
+  --ms-button-size: 1.6rem;
   display: flex;
   align-items: center;
-  gap: var(--dirty-ui-space-2);
+  gap: 0.2rem;
+  font-size: 0.85rem;
 }
 
 #root .ms-saved-open,
 .ms-saved-grids .ms-saved-open {
   display: flex;
   flex: 1;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: baseline;
+  gap: var(--dirty-ui-space-2);
   min-width: 0;
+  min-height: 0;
+  padding: 0.2rem 0.5rem;
+  font-size: inherit;
   text-align: left;
 }
 
 .ms-saved-name {
-  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .ms-saved-open small {
+  flex-shrink: 0;
+  margin-left: auto;
   color: var(--dirty-ui-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 /* Grid names are the user's own words, so documentation captures blur them like titles. */
@@ -874,6 +890,49 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
 
 #root .ms-native-tile .video-js .vjs-control-bar {
   border-radius: 0 !important;
+}
+
+/* The player takes its screen's shape, so the control bar sits at the screen's bottom. In windows under 1200 px
+   Refract gives the player a 16:9 box, which runs past the bottom of a wide screen and hides the controls there. */
+#root .ms-native-tile .VideoPlayer,
+#root .ms-native-tile .video-wrapper,
+#root .ms-native-tile .video-js {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+}
+
+/* A narrow screen wraps the native control bar onto more rows instead of hiding buttons under its neighbour.
+   Rows keep the theme's button height. */
+#root .ms-native-tile .video-js .vjs-control-bar {
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  height: auto !important;
+}
+
+#root .ms-native-tile .video-js .vjs-control-bar > .vjs-control:not(.vjs-progress-control) {
+  height: 3em;
+}
+
+/* Stash's progress bar stays above the first row. Themes such as Refract keep it inline between the buttons; there it
+   wraps to the next row, with the buttons after it, only when it would be shorter than 4rem (Refract asks 140 px). */
+#root .ms-native-tile .video-js .vjs-control-bar > .vjs-progress-control {
+  bottom: calc(100% - 0.5em);
+  min-width: 4rem !important;
+}
+
+/* Narrow screens use slimmer buttons and side padding, so fewer rows cover the picture. */
+@container (max-width: 48rem) {
+  #root .ms-native-tile .video-js .vjs-control-bar {
+    padding-right: 0.5rem !important;
+    padding-left: 0.5rem !important;
+  }
+
+  #root .ms-native-tile .video-js .vjs-control-bar > .vjs-button {
+    width: 2.4rem !important;
+    min-width: 0 !important;
+  }
 }
 
 /* Keep the source/settings menu inside the pane, including themes with auto width. */

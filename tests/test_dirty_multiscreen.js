@@ -43,6 +43,7 @@ function customRows() {
     customRectangles,
     customDividers,
     moveDivider,
+    dividerSnap,
     dockScreen,
   } = custom;
   // R(...) is a row, C(...) a column, a number a screen's pane; "*n" is a size other than 1.
@@ -187,6 +188,15 @@ function customRows() {
     assert.deepEqual(widths(moved, 1200), [expected, 1200 - expected], `divider aimed at ${aim}`);
   }
   assert.deepEqual(widths(moveDivider(pair, [], [], 0, 157 / 1200, 1200, false), 1200), [757, 443]);
+  // A held eighth lets go only after a longer pull.
+  assert.deepEqual(widths(moveDivider(pair, [], [], 0, 30 / 1200, 1200), 1200), [630, 570]);
+  assert.deepEqual(widths(moveDivider(pair, [], [], 0, 30 / 1200, 1200, true, 0.5), 1200), [600, 600]);
+  assert.deepEqual(widths(moveDivider(pair, [], [], 0, 40 / 1200, 1200, true, 0.5), 1200), [640, 560]);
+  assert.equal(dividerSnap(0.505, 1200), 0.5);
+  assert.equal(dividerSnap(0.53, 1200), null);
+  assert.equal(dividerSnap(0.525, 1200, 0.5), 0.5);
+  assert.equal(dividerSnap(0.62, 1200, 0.5), 0.625, "a pull past the hold may reach the next eighth");
+  assert.equal(customDividers(pair, [], 1200, 900)[0].share, 0.5);
   assert.deepEqual(
     widths(moveDivider(pair, [], [], 0, -152 / 400, 400), 400),
     [80, 320],
@@ -272,7 +282,7 @@ function customRows() {
   ]);
 }
 async function main() {
-  const { fitLayout, videoAspect, DEFAULT_ASPECT, FIT_COVERAGE_THRESHOLD } = feature("layout");
+  const { fitLayout, videoAspect, panCrop, DEFAULT_ASPECT, FIT_COVERAGE_THRESHOLD } = feature("layout");
   assert.equal(FIT_COVERAGE_THRESHOLD, 0.9);
   assert.deepEqual(fitLayout(Array(4).fill(16 / 9), 1600, 900), [
     { left: 0, top: 0, width: 800, height: 450 },
@@ -299,6 +309,20 @@ async function main() {
   ])
     assert.equal(videoAspect(...size), DEFAULT_ASPECT);
   assert.equal(videoAspect(108, 192), 9 / 16);
+  // A 16:9 picture in a square box hides 700 of its 1600 px of width; flips and turns map the drag onto it.
+  const wide = (dx, dy, flip = { x: false, y: false }, turns = 0) =>
+    panCrop({ x: 50, y: 50 }, dx, dy, { width: 1600, height: 900 }, { width: 900, height: 900 }, flip, turns);
+  assert.deepEqual(wide(70, 0), { x: 40, y: 50 }, "dragging right shows more of the left");
+  assert.deepEqual(wide(0, 70), { x: 50, y: 50 }, "an axis that is not cropped stays");
+  assert.deepEqual(wide(-7000, 0), { x: 100, y: 50 });
+  assert.deepEqual(wide(70, 0, { x: true, y: false }), { x: 60, y: 50 });
+  assert.deepEqual(wide(0, 70, { x: false, y: false }, 1), { x: 40, y: 50 }, "a quarter turn moves along the width");
+  assert.deepEqual(wide(0, 70, { x: false, y: false }, 3), { x: 60, y: 50 });
+  assert.deepEqual(wide(70, 0, { x: false, y: false }, 2), { x: 60, y: 50 });
+  assert.deepEqual(
+    panCrop({ x: 20, y: 30 }, 50, 50, { width: 0, height: 0 }, { width: 900, height: 900 }, { x: false, y: false }, 0),
+    { x: 20, y: 30 },
+  );
   assert.deepEqual(fitLayout([0, NaN, -2, Infinity], 1600, 900), fitLayout(Array(4).fill(DEFAULT_ASPECT), 1600, 900));
   const verifyTiling = (aspects, width, height) => {
     const rectangles = fitLayout(aspects, width, height);
@@ -385,6 +409,8 @@ async function main() {
   });
   assert.equal(a.normalizeSettings({ showPerformerNavigation: false }).showPerformerNavigation, false);
   assert.equal(a.normalizeSettings({ moveWithoutEditing: "true" }).moveWithoutEditing, true);
+  assert.equal(a.normalizeSnapDividers({}), true, "edges snap by default");
+  assert.equal(a.normalizeSnapDividers({ snapDividers: "false" }), false);
   // Every cell of the grid plays.
   assert.equal(a.normalizeSettings({ rows: 3, columns: 4 }).totalScreens, 12);
   assert.equal(a.normalizeSettings({ rows: 0, columns: 0 }).totalScreens, 1);

@@ -34,6 +34,12 @@
       "description": "Drag a screen's picture onto another screen to swap or dock it, and drag the edges between screens to resize them, without opening edit mode. Only the mouse pointer changes over an edge.",
       "default": false
     },
+    "snapDividers": {
+      "type": "BOOLEAN",
+      "displayName": "Snap edges when resizing",
+      "description": "Edges dragged between screens stick at eighths of their row or column, including quarters and halves. Hold Shift while dragging to resize freely.",
+      "default": true
+    },
     "sceneOrder": {
       "type": "STRING",
       "displayName": "Scene order",
@@ -195,7 +201,8 @@
         "rows",
         "columns",
         "fitVideos",
-        "moveWithoutEditing"
+        "moveWithoutEditing",
+        "snapDividers"
       ]
     },
     {

@@ -161,13 +161,19 @@ export interface AudioState {
   muted: boolean;
   volume: number;
 }
-/** Fill and loop stay with the screen; flips and rotation belong to the item they name. */
+/** Fill and loop stay with the screen; flips, rotation and crop belong to the item they name. */
 export interface PaneView {
   fill?: boolean;
   /** Absent follows the Loop scenes setting. */
   loop?: boolean;
   flip?: { itemId: string; x: boolean; y: boolean };
   rotation?: { itemId: string; turns: 1 | 2 | 3 };
+  /** The part of a cropped picture on show, as percentages of the video; absent shows its centre. */
+  crop?: { itemId: string } & CropPosition;
+}
+export interface CropPosition {
+  x: number;
+  y: number;
 }
 /** Where one pane was; absent time and audio fall back to the pane's normal start. */
 export interface SavedPane {
@@ -296,6 +302,8 @@ export interface GridProps {
   onFinishEditing(): void;
   /** Outside edit mode, pictures and edges still drag; only the pointer shows it. */
   moveWithoutEditing: boolean;
+  /** Dragged dividers stick at eighths of their split; Shift resizes freely. */
+  snapDividers: boolean;
   fitVideos: boolean;
   findPerformerItems: FindPerformerItems;
   columns: number;

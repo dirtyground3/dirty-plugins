@@ -1,5 +1,5 @@
 import type * as R from "react";
-import { customDividers, moveDivider } from "../domain/custom";
+import { customDividers, dividerSnap, moveDivider } from "../domain/custom";
 import type { CustomLayout, Divider } from "../domain/custom";
 import type { Edges } from "../domain/layout";
 import { React } from "../runtime";
@@ -12,6 +12,7 @@ export function Dividers({
   size,
   bounds,
   quiet,
+  snap: snapping,
   onDraft,
   onCommit,
 }: {
@@ -23,6 +24,8 @@ export function Dividers({
   bounds?: Edges;
   /** Outside edit mode only the pointer shows a divider. */
   quiet?: boolean;
+  /** Lines stick at eighths of their split unless Shift is held. */
+  snap: boolean;
   onDraft(layout: CustomLayout | null): void;
   onCommit(layout: CustomLayout): void;
 }) {
@@ -30,13 +33,22 @@ export function Dividers({
     () => customDividers(shown, closed, size.width, size.height, size.ratio),
     [shown, closed, size],
   );
-  const press = React.useRef<{ id: number; origin: number; divider: Divider; base: CustomLayout } | null>(null);
+  const press = React.useRef<{
+    id: number;
+    origin: number;
+    divider: Divider;
+    base: CustomLayout;
+    /** The eighth the line sticks to, which takes a longer pull to leave. */
+    held: number | null;
+  } | null>(null);
   const deltaLayout = (event: R.PointerEvent<HTMLSpanElement>) => {
     const start = press.current;
     if (!start || start.base !== base) return base;
-    const { axis, path, at, extent } = start.divider;
-    const position = axis === "row" ? event.clientX : event.clientY;
-    return moveDivider(base, closed, path, at, (position - start.origin) / extent, extent, !event.shiftKey);
+    const { axis, path, at, extent, share } = start.divider;
+    const fraction = ((axis === "row" ? event.clientX : event.clientY) - start.origin) / extent;
+    const snap = snapping && !event.shiftKey;
+    start.held = snap ? dividerSnap(share + fraction, extent, start.held) : null;
+    return moveDivider(base, closed, path, at, fraction, extent, snap, start.held);
   };
   const stop = (event: R.PointerEvent<HTMLSpanElement>, commit = false) => {
     if (press.current?.id !== event.pointerId) return;
@@ -59,13 +71,21 @@ export function Dividers({
             key={`${path.join(".")}:${at}`}
             className={`ms-divider ms-divider-${vertical ? "vertical" : "horizontal"}`}
             style={vertical ? { left: x, top: from, height: to - from } : { left: from, top: y, width: to - from }}
-            title={quiet ? undefined : "Drag to resize. Hold Shift to move without snapping."}
+            title={
+              quiet ? undefined : snapping ? "Drag to resize. Hold Shift to move without snapping." : "Drag to resize."
+            }
             onPointerDown={event => {
               if (event.button !== 0 || event.isPrimary === false || press.current) return;
               event.preventDefault();
               event.stopPropagation();
               event.currentTarget.setPointerCapture(event.pointerId);
-              press.current = { id: event.pointerId, origin: vertical ? event.clientX : event.clientY, divider, base };
+              press.current = {
+                id: event.pointerId,
+                origin: vertical ? event.clientX : event.clientY,
+                divider,
+                base,
+                held: null,
+              };
             }}
             onPointerMove={event => {
               if (press.current?.id !== event.pointerId) return;

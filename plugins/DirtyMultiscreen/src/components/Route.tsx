@@ -11,6 +11,7 @@ import {
   GRID_LIMITS,
   growGrid,
   normalizeFitVideos,
+  normalizeSnapDividers,
   normalizeRecentGrids,
   normalizeSettings,
   savedGridSettings,
@@ -179,6 +180,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   }, [reloadSettings]);
   const rawSettings = settingsQuery.data;
   const fitVideos = normalizeFitVideos(rawSettings);
+  const snapDividers = normalizeSnapDividers(rawSettings);
   // Nothing is saved before the settings say how many autosaves to keep.
   const recentGrids = settingsQuery.loading ? 0 : normalizeRecentGrids(rawSettings);
   // A launch is a new autosave; a resumed session goes on updating its own.
@@ -470,6 +472,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           editing={editing}
           onFinishEditing={() => setEditing(false)}
           moveWithoutEditing={settings.moveWithoutEditing}
+          snapDividers={snapDividers}
           fitVideos={fitVideos}
           totalScreens={settings.totalScreens}
           playlists={playlists}

@@ -3,8 +3,9 @@
 Newest first. Each GitHub Release of DirtyPlugins uses the entry that names its version.
 
 - **DirtyPlugins 1.0.22:** the settings page shows DirtyMultiscreen's new
-  **Move and resize screens without edit mode** under Grid. Setting
-  descriptions no longer say whether a toggle is enabled or disabled by default.
+  **Move and resize screens without edit mode** and **Snap edges when
+  resizing** under Grid. Setting descriptions no longer say whether a toggle is
+  enabled or disabled by default.
 
 - **DirtyPlugins 1.0.21:** fixed the native scene search toolbar under themes
   such as Refract. The controls wrap inside the search dialog and the theme's

@@ -2456,6 +2456,98 @@ async function editMode() {
   await h.unmount();
   await reopened.unmount();
 }
+async function cropPan() {
+  const scenes = ["a", "b"].map(id => ({ id, title: id, paths: { stream: "/" + id }, files: [{ duration: 10 }] }));
+  const settings = { rows: 1, columns: 2, sceneOrder: "list", randomStart: false, loopScenes: false, fitVideos: false };
+  const h = await start({ scenes, settings });
+  const cell = () => h.nodes(node => /^ms-cell\b/.test(node.props.className ?? ""))[0];
+  // A square picture filling a screen twice as wide as tall: only its height is cropped, by 100 px.
+  const video = { videoWidth: 100, videoHeight: 100, clientWidth: 200, clientHeight: 100 };
+  const pointer = (name, clientX, clientY, button = 1) => {
+    const event = {
+      pointerId: 7,
+      isPrimary: true,
+      button,
+      clientX,
+      clientY,
+      defaultPrevented: false,
+      preventDefault() {
+        event.defaultPrevented = true;
+      },
+      target: { closest: () => null },
+      currentTarget: { setPointerCapture() {}, querySelector: selector => (selector === "video" ? video : null) },
+    };
+    cell().props[name](event);
+    return event;
+  };
+  const drag = async (dx, dy) => {
+    pointer("onPointerDown", 100, 50);
+    pointer("onPointerMove", 100 + dx, 50 + dy);
+    await h.flush();
+    pointer("onPointerUp", 100 + dx, 50 + dy);
+    await h.flush();
+  };
+  const crop = () => cell().props.style["--ms-crop"];
+
+  // A picture that is not cropped has nothing to move.
+  assert.equal(pointer("onPointerDown", 100, 50).defaultPrevented, false);
+  pointer("onPointerUp", 100, 50);
+  await drag(0, 25);
+  assert.equal(crop(), undefined);
+
+  h.button("Edit screens").props.onClick();
+  await h.flush();
+  h.nodes(
+    node => node.type === "IconButton" && node.props.ariaLabel === "Fill screen 1 with the picture",
+  )[0].props.onClick();
+  await h.flush();
+  h.button("Finish editing screens").props.onClick();
+  await h.flush();
+  assert.equal(pointer("onPointerDown", 100, 50, 0).defaultPrevented, false, "a left press is not a pan");
+  pointer("onPointerUp", 100, 50, 0);
+
+  // The picture follows the pointer: dragging down shows more of its top, and its edges stop it.
+  pointer("onPointerDown", 100, 50);
+  pointer("onPointerMove", 100, 75);
+  await h.flush();
+  assert.equal(crop(), "50% 25%");
+  assert.match(cell().props.className, /ms-panning/);
+  pointer("onPointerMove", 100, 500);
+  await h.flush();
+  assert.equal(crop(), "50% 0%");
+  pointer("onPointerUp", 100, 75);
+  await h.flush();
+  assert.equal(crop(), "50% 25%");
+  assert.doesNotMatch(cell().props.className, /ms-panning/);
+  h.window.emit("pagehide");
+  assert.deepEqual(JSON.parse(h.localStorage.get("multiscreen.session")).panes[0].view, {
+    fill: true,
+    crop: { itemId: "a", x: 50, y: 25 },
+  });
+
+  // A cancelled drag returns to where it started; a middle click shows the centre again.
+  pointer("onPointerDown", 100, 50);
+  pointer("onPointerMove", 100, 10);
+  await h.flush();
+  pointer("onPointerCancel", 100, 10);
+  await h.flush();
+  assert.equal(crop(), "50% 25%");
+  pointer("onPointerDown", 100, 50);
+  pointer("onPointerUp", 101, 51);
+  await h.flush();
+  assert.equal(crop(), undefined);
+
+  // The crop belongs to its video and returns with it.
+  await drag(0, -25);
+  assert.equal(crop(), "50% 75%");
+  h.nodes(node => node.type === "native-player")[0].props.onNext();
+  await h.flush();
+  assert.equal(crop(), undefined);
+  h.nodes(node => node.type === "native-player")[0].props.onPrevious();
+  await h.flush();
+  assert.equal(crop(), "50% 75%");
+  await h.unmount();
+}
 async function gridPickerAndSwap() {
   const { text } = require("./ui_harness");
   const scenes = ["a", "b", "c", "d", "e", "f", "g", "h"].map(id => ({
@@ -3062,6 +3154,23 @@ async function fittedDivider() {
   assert.deepEqual(widths(), [600, 1000], "releasing preserves the snapped split");
   assert.ok(h.nodes(node => node.props.className === "ms-grid ms-native-grid ms-fit ms-custom")[0]);
   await h.unmount();
+
+  // With Snap edges when resizing off in the Grid settings, the divider follows the pointer.
+  const free = await start({ scenes, settings: { rows: 1, columns: 2, fitVideos: true, snapDividers: false } });
+  free.button("Edit screens").props.onClick();
+  await free.flush();
+  const freeDivider = () => free.nodes(node => node.props.className === "ms-divider ms-divider-vertical")[0];
+  assert.equal(freeDivider().props.title, "Drag to resize.");
+  const drag = dividerPointer(freeDivider, 800, 450);
+  drag("onPointerMove", 606, 450);
+  await free.flush();
+  drag("onPointerUp", 606, 450);
+  await free.flush();
+  assert.deepEqual(
+    free.nodes(node => /^ms-cell\b/.test(node.props.className ?? "")).map(node => node.props.style.width),
+    [606, 994],
+  );
+  await free.unmount();
 }
 
 async function moveWithoutEditing() {
@@ -3076,7 +3185,18 @@ async function moveWithoutEditing() {
   const dividers = h => h.nodes(node => /^ms-divider\b/.test(node.props.className ?? ""));
   const off = await start({ scenes, settings });
   assert.equal(dividers(off).length, 0, "without the setting nothing drags outside edit mode");
-  assert.equal(cells(off)[0].props.onPointerDown, undefined);
+  let pressed = 0;
+  cells(off)[0].props.onPointerDown({
+    pointerId: 1,
+    isPrimary: true,
+    button: 0,
+    clientX: 10,
+    clientY: 10,
+    preventDefault() {},
+    target: { closest: () => null },
+    currentTarget: { setPointerCapture: () => pressed++ },
+  });
+  assert.equal(pressed, 0, "the picture does not start a drag");
   await off.unmount();
 
   const h = await start({ scenes, settings: { ...settings, moveWithoutEditing: true } });
@@ -3392,6 +3512,13 @@ async function rotation() {
       saved.panes[0].view.rotation.turns = invalid;
       assert.equal(isSession(saved), false, "invalid saved rotations are rejected");
     }
+    saved.panes[0].view.rotation.turns = 1;
+    saved.panes[0].view.crop = { itemId: "0", x: 0, y: 100 };
+    assert.equal(isSession(saved), true);
+    for (const invalid of [-1, 101, NaN, "50", null]) {
+      saved.panes[0].view.crop.x = invalid;
+      assert.equal(isSession(saved), false, "invalid saved crops are rejected");
+    }
     const reopened = await start({ scenes, settings, localStorage: new Map(h.localStorage), width: 901, height: 1201 });
     assert.deepEqual(rectangles(reopened), rectangles(h));
     assert.equal(cells(reopened)[0].props.className, cells(h)[0].props.className);
@@ -3496,7 +3623,7 @@ async function savedGrids() {
     assert.equal(entry.item.id, entry.itemId, "every screen keeps its item, whatever queue comes later");
     assert.equal(entry.item.outsidePage, true);
   }
-  assert.match(text(dialog(h)), /Evening mix.*2 × 1 · saved/);
+  assert.match(text(dialog(h)), /Evening mix2 × 1 · \d/, "each grid is one line: name, size and date");
   assert.equal(h.nodes(nameField)[0].props.value, "", "the name clears after a save");
 
   // Opening it replaces changed screens, and the replaced session's last save does not overwrite it.
@@ -3754,7 +3881,7 @@ async function recentGrids() {
   // The dialog numbers autosaves newest first, before the named grids; keeping one names it and stops updating it.
   const byAge = () => recentRows().sort((a, b) => b.updatedAt - a.updatedAt);
   await press(third, "Saved grids");
-  assert.match(text(dialog(third)), /Autosaves.*Autosave 1.*played.*Autosave 2.*played/);
+  assert.match(text(dialog(third)), /Autosaves.*Autosave 1.*\d:\d\d.*Autosave 2.*\d:\d\d/);
   const [newest, oldest] = byAge();
   assert.equal(third.button("Overwrite Autosave 1 with the current screens"), undefined);
   await press(third, "Keep Autosave 1 as a saved grid");
@@ -3848,6 +3975,7 @@ async function recentGrids() {
   await unscopedLibraryPaging();
   await sessionRestore();
   await editMode();
+  await cropPan();
   await gridPickerAndSwap();
   await fitVideos();
   await closeScreens();
