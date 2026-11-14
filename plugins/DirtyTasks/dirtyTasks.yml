@@ -1,6 +1,6 @@
 name: DirtyTasks
 description: Organize scene files, create additional encoded versions, update tags from a selected tagger, and back up library data.
-version: 1.0.13-rc
+version: 1.0.13
 ui:
   requires:
     - dirtyPlugins
