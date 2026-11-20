@@ -1,7 +1,27 @@
 """Standard-library Stash transport for Dirty plugin backends."""
 import json
+import os
+import shutil
 import urllib.error
 import urllib.request
+
+
+def stash_tools(client):
+    """Find ffmpeg and ffprobe where Stash does when their settings are empty.
+
+    Stash reports only configured paths. Without one it searches its configuration
+    folder, then PATH, then ~/.stash; the copies it downloads are usually not on PATH.
+    Returns {"ffmpeg": path or None, "ffprobe": path or None}.
+    """
+    general = client.call("{configuration{general{ffmpegPath ffprobePath configFilePath}}}")["configuration"]["general"]
+    config_file = str(general.get("configFilePath") or "").strip()
+    folders = [os.path.dirname(config_file)] if config_file else []
+    folders += [None, os.path.join(os.path.expanduser("~"), ".stash")]  # None searches PATH
+    tools = {}
+    for name in ("ffmpeg", "ffprobe"):
+        configured = str(general.get(name + "Path") or "").strip()
+        tools[name] = configured or next(filter(None, (shutil.which(name, path=folder) for folder in folders)), None)
+    return tools
 
 
 def contain_child_process(process):

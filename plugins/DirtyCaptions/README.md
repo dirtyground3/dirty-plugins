@@ -90,9 +90,10 @@ shared hub:
 | **Maintain caption index automatically** | On | Queue checks for new or updated scenes and reuse subtitle metadata discovered during playback. Playback skips files the index found without subtitles. The first Stash tab opened starts the initial library check. |
 | **Refresh caption index after Scan** | Off | With automatic index maintenance enabled, index new or changed files after each successful Scan. Skip known unchanged media. Keep a Stash tab open until Scan finishes, as with DirtyTidy automation. |
 
-FFmpeg and ffprobe use the paths configured in Stash's General settings, or
-executables available on the Stash server's PATH. Extraction happens on that
-server, including when viewing Stash from another computer.
+FFmpeg and ffprobe use the paths configured in Stash or, when those are empty,
+the copies Stash itself finds: in its configuration folder, on the server's
+PATH, or in `~/.stash`. Extraction happens on that server, including when
+viewing Stash from another computer.
 
 ## Filtering scenes by embedded captions
 

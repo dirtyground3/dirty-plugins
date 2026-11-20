@@ -33,7 +33,6 @@ class ExtractionPlan:
     skipped: list[dict[str, str]]
     missing: list[dict[str, str]]
     destinations: set[str]
-    folders: list[Path]
 
 
 class ExtractionProgress:

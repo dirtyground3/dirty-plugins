@@ -1,6 +1,6 @@
 name: DirtyMultiscreen
 description: Immersive multiscreen scene playback grid for Stash.
-version: 1.0.29-rc
+version: 1.0.29
 exec:
   - python
   - "{pluginDir}/dirty_multiscreen.py"

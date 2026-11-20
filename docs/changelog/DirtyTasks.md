@@ -2,6 +2,12 @@
 
 Newest first. Each GitHub Release of DirtyTasks uses the entry that names its version.
 
+- **DirtyCaptions 1.0.11, DirtyFileExtractor 1.0.8, DirtyPlugins 1.0.23 and
+  DirtyTasks 1.0.14:** when Stash's FFmpeg and FFprobe paths are empty, the
+  plugins find the same programs Stash uses: in its configuration folder, on
+  PATH, or in `~/.stash`. Captions, encoding and marker clips no longer fail
+  when Stash relies on the FFmpeg it downloaded itself.
+
 - **DirtyTasks 1.0.13:** deletion shows progress while reading originals and
   encoded replacements for verification, and updates the Stash task queue.
 
