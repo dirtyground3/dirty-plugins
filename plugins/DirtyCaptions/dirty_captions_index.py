@@ -5,11 +5,11 @@ import hashlib
 import json
 from contextlib import closing
 from pathlib import Path
-import shutil
 import sys
 import time
 import uuid
 
+from dirty_plugins_client import stash_tools
 import dirty_plugins_storage as storage
 from dirty_captions_media import CaptionError, TEXT_CODECS, file_identity, probe_subtitles
 
@@ -116,8 +116,7 @@ def save_failed_file(file):
 
 
 def tool_path(client):
-    general = client.call("{configuration{general{ffprobePath}}}")["configuration"]["general"]
-    tool = general.get("ffprobePath") or shutil.which("ffprobe")
+    tool = stash_tools(client)["ffprobe"]
     if not tool:
         raise CaptionError("ffprobe is unavailable. Configure its path in Stash.")
     return tool

@@ -25,8 +25,9 @@ the originals.
   component, preserving Stash's existing controls and selected items across pages.
 - Copy speed defaults to 20 MiB/s to avoid monopolizing the disk used by Stash;
   set **Maximum copy speed** to `0` for unlimited throughput.
-- Uses only the Python standard library and Stash's configured FFmpeg; no
-  additional packages need to be installed.
+- Uses only the Python standard library and the FFmpeg Stash uses: its
+  configured path or, when that is empty, the copy in Stash's configuration
+  folder, on PATH, or in `~/.stash`. No additional packages need to be installed.
 
 ## Screenshot
 
@@ -66,6 +67,12 @@ items using the normal checkboxes. Open the **…** actions menu and choose
 **Extract selected…**.
 Stash runs copying as a background job; progress and errors appear
 under **Tasks** and in the Stash log.
+
+If a run produces fewer files than expected, open **Settings → Logs**. The log
+names each selected item that produced no file and why, for example a marker
+without an end time or a source file the server cannot read. Folders are
+created only for files that are written, so a run that writes nothing leaves
+no empty folders behind.
 
 For scenes, the plugin copies every attached media file. For markers, it writes
 one MP4 containing only the selected marker interval. For images, it copies the

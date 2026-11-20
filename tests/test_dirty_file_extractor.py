@@ -1,5 +1,6 @@
 from plugin_paths import runtime_path
 import importlib.util
+import os
 import shutil
 import subprocess
 import tempfile
@@ -44,6 +45,17 @@ class FakeClient:
         content = f"{start_seconds:g}-{end_seconds:g}".encode()
         destination.write_bytes(content)
         on_progress(1)
+
+
+class RecordingReporter(extractor.Reporter):
+    def __init__(self):
+        self.lines = []
+
+    def info(self, message):
+        self.lines.append(("info", message))
+
+    def error(self, message):
+        self.lines.append(("error", message))
 
 
 class DirtyFileExtractorTests(unittest.TestCase):
@@ -125,6 +137,46 @@ class DirtyFileExtractorTests(unittest.TestCase):
                     {"destinationFolder": str(Path(folder) / "output"), "dryRun": True})
             self.assertEqual(result["marker_clips_extracted"], 1)
             self.assertFalse((Path(folder) / "output").exists())
+
+    def test_ffmpeg_is_found_in_the_stash_configuration_folder(self):
+        # Stash reports an empty path for the FFmpeg it downloaded next to config.yml.
+        with tempfile.TemporaryDirectory() as folder:
+            config = Path(folder) / "config"
+            config.mkdir()
+            tool = config / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+            tool.write_bytes(b"")
+            tool.chmod(0o755)
+            general = {"ffmpegPath": "", "configFilePath": str(config / "config.yml")}
+            def resolved(general, environment=None):
+                client = extractor.StashClient({})
+                with mock.patch.object(client, "call", return_value={"configuration": {"general": general}}), \
+                     mock.patch.dict(os.environ, environment or {}):
+                    return client.ffmpeg_path()
+            self.assertEqual(os.path.normcase(resolved(general)), os.path.normcase(str(tool)))
+            self.assertEqual(resolved(dict(general, ffmpegPath="configured")), "configured")
+            home = str(Path(folder) / "home")
+            with self.assertRaisesRegex(extractor.PluginError, "FFmpeg Executable Path"):
+                resolved({"ffmpegPath": ""}, {"PATH": "", "HOME": home, "USERPROFILE": home})
+
+    def test_items_without_output_are_logged_and_leave_no_folders(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "scene.mp4"
+            source.write_bytes(b"source")
+            scene = {"id": "1", "title": "Scene", "files": [{"path": str(source), "basename": source.name}]}
+            client = FakeClient(markers=[{"id": "7", "scene": scene, "seconds": 5, "end_seconds": None},
+                                         {"id": "8", "scene": scene, "seconds": 1, "end_seconds": 2}])
+            def fail(*_args):
+                raise extractor.PluginError("synthetic FFmpeg failure")
+            client.extract_marker_clip = fail
+            logs = RecordingReporter()
+            result = extractor.copy_selected(client, {"marker": ["7", "8", "9"]},
+                {"destinationFolder": str(root / "output" / "nested"), "createSceneFolders": True}, logs)
+            self.assertEqual((result["files_missing"], result["files_failed"], result["files_copied"]), (2, 1, 0))
+            self.assertIn(("error", "Missing marker 9: marker not found"), logs.lines)
+            self.assertIn(("error", "Missing marker 7: marker has no end time; set one in Stash to extract a clip"), logs.lines)
+            self.assertTrue(any(level == "error" and "synthetic FFmpeg failure" in text for level, text in logs.lines))
+            self.assertFalse((root / "output").exists(), "A run that wrote nothing must not leave folders")
 
 
     def test_parses_and_deduplicates_all_selection_types(self):
@@ -506,6 +558,7 @@ class DirtyFileExtractorTests(unittest.TestCase):
             self.assertIn("disk full", result["failed"][0]["error"])
             self.assertEqual((destination / "good.mp4").read_bytes(), b"good")
             self.assertFalse((destination / "bad.mp4").exists())
+            self.assertEqual([path.name for path in destination.iterdir()], ["good.mp4"])
 
 
 if __name__ == "__main__":

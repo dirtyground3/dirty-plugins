@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import shutil
 import sys
 
 for folder in ("dirtyPlugins", "DirtyPlugins"):
@@ -10,7 +9,7 @@ for folder in ("dirtyPlugins", "DirtyPlugins"):
     if (shared / "dirty_plugins_client.py").is_file():
         sys.path.insert(0, str(shared))
         break
-from dirty_plugins_client import StashClient
+from dirty_plugins_client import StashClient, stash_tools
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dirty_captions_media import CaptionError, read_captions
 import dirty_captions_index as caption_index
@@ -39,10 +38,8 @@ def captions(client, args):
     path = Path(file["path"])
     if not path.is_file():
         raise CaptionError("The scene file is unavailable on the Stash server.")
-    general = client.call("{configuration{general{ffmpegPath ffprobePath}}}")["configuration"]["general"]
-    tools = {}
+    tools = stash_tools(client)
     for name in ("ffprobe", "ffmpeg"):
-        tools[name] = general.get(name + "Path") or shutil.which(name)
         if not tools[name]:
             raise CaptionError(name + " is unavailable. Configure its path in Stash.")
     # Resolve paths only from Stash. UI callers cannot request arbitrary files.

@@ -20,7 +20,7 @@ for folder in ("dirtyPlugins", "DirtyPlugins"):
         sys.path.insert(0, str(shared))
         break
 import dirty_plugins_storage as storage
-from dirty_plugins_client import StashClient as BaseClient, contain_child_process
+from dirty_plugins_client import StashClient as BaseClient, contain_child_process, stash_tools
 from dirty_plugins_protocol import StashReporter
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dirty_compactor_rules import (
@@ -128,8 +128,7 @@ class Client(BaseClient):
         return result["count"] > 0
 
     def tool(self, name):
-        general = self.call("{configuration{general{ffmpegPath ffprobePath}}}")["configuration"]["general"]
-        path = general.get(name + "Path") or shutil.which(name)
+        path = stash_tools(self)[name]
         if not path:
             raise PluginError(name + " is unavailable. Configure its path in Stash.")
         return path

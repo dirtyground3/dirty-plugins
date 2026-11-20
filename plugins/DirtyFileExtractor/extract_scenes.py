@@ -45,7 +45,7 @@ for folder in ("dirtyPlugins", "DirtyPlugins"):  # installed plugin ID, then sou
 else:
     raise RuntimeError("DirtyPlugins shared storage is not installed")
 import dirty_plugins_storage as shared_storage
-from dirty_plugins_client import StashClient as BaseClient, contain_child_process
+from dirty_plugins_client import StashClient as BaseClient, contain_child_process, stash_tools
 from dirty_plugins_protocol import Reporter
 import dirty_plugins_protocol as protocol
 
@@ -121,12 +121,11 @@ class StashClient(BaseClient):
             raise PluginError(self._ffmpeg_error)
         if self._ffmpeg_path is None:
             try:
-                data = self.call("query DirtyFileExtractorFFmpegPath { configuration { general { ffmpegPath } } }")
-                configured = str(((data.get("configuration") or {}).get("general") or {}).get("ffmpegPath") or "").strip()
-                self._ffmpeg_path = configured or shutil.which("ffmpeg")
+                self._ffmpeg_path = stash_tools(self)["ffmpeg"]
                 if not self._ffmpeg_path:
                     raise PluginError(
-                        "FFmpeg is required to extract markers but was not found in Stash's configuration or PATH"
+                        "FFmpeg is required to extract markers but was not found. Set FFmpeg Executable Path "
+                        "in Stash's settings"
                     )
             except Exception as error:
                 # Every failed marker keeps its own result, without repeating
@@ -383,8 +382,52 @@ def _normalize_extraction_settings(settings: dict[str, Any]) -> ExtractionOption
                              as_nonnegative_float(settings.get("maxCopySpeedMBps"), 20.0))
 
 
+SKIP_REASONS = {
+    "skip": "a file with that name already exists and the collision policy is skip",
+    "same-file": "the destination is the source file itself",
+}
+
+
+def _item_label(entry: dict[str, str]) -> str:
+    kind = next((kind for kind in ("marker", "scene", "image") if entry.get(f"{kind}_id")), None)
+    label = f"{kind} {entry[f'{kind}_id']}" if kind else "file"
+    return label + (f" ({entry['source']})" if entry.get("source") else "")
+
+
+def _skip_message(entry: dict[str, str]) -> str:
+    return f"Skipped {_item_label(entry)}: {SKIP_REASONS.get(entry.get('reason'), entry.get('reason'))}"
+
+
+def _log_unprocessed(plan: ExtractionPlan, reporter) -> None:
+    """Name each item that will produce no file, so the log explains a short result."""
+    for entry in plan.missing:
+        reporter.error(f"Missing {_item_label(entry)}: {entry.get('reason')}")
+    for entry in plan.skipped:
+        reporter.info(_skip_message(entry))
+
+
+def _create_folder(folder: Path, created: list[Path]) -> None:
+    """Create folder and remember each level this run added."""
+    new_levels = []
+    while not folder.exists() and folder.parent != folder:
+        new_levels.append(folder)
+        folder = folder.parent
+    for level in reversed(new_levels):
+        level.mkdir(exist_ok=True)
+        created.append(level)
+
+
+def _remove_empty_folders(created: list[Path]) -> None:
+    """A run that wrote nothing into a folder it created leaves no empty folder behind."""
+    for folder in reversed(created):
+        try:
+            folder.rmdir()
+        except OSError:
+            pass  # It holds output, or something else uses it.
+
+
 def _plan_extraction_items(items, options: ExtractionOptions, initial_missing=()) -> ExtractionPlan:
-    plan = ExtractionPlan(operations=[], skipped=[], missing=list(initial_missing), destinations=set(), folders=[options.destination_root])
+    plan = ExtractionPlan(operations=[], skipped=[], missing=list(initial_missing), destinations=set())
     seen_sources: set[str] = set()
     for item in items:
         _plan_extraction_item(item, options, plan, seen_sources)
@@ -400,7 +443,6 @@ def _plan_extraction_item(item, options: ExtractionOptions, plan: ExtractionPlan
     if options.create_item_folders:
         folder_name = sanitize_folder_name(item.get("title"), str(item.get("folder_id") or item_id), str(item.get("folder_kind") or kind))
         item_destination = options.destination_root / folder_name
-        plan.folders.append(item_destination)
 
     files = item.get("files") or []
     if not files:
@@ -412,10 +454,10 @@ def _plan_extraction_item(item, options: ExtractionOptions, plan: ExtractionPlan
             start_seconds = float(item.get("seconds"))
             end_seconds = float(item.get("end_seconds"))
         except (TypeError, ValueError):
-            missing.append({"marker_id": item_id, "reason": "marker has no valid end time"})
+            missing.append({"marker_id": item_id, "reason": "marker has no end time; set one in Stash to extract a clip"})
             return
         if start_seconds < 0 or end_seconds <= start_seconds:
-            missing.append({"marker_id": item_id, "reason": "marker interval is invalid"})
+            missing.append({"marker_id": item_id, "reason": "marker end time is not after its start time"})
             return
         source_info = files[0]
         source = Path(str(source_info.get("path") or ""))
@@ -463,15 +505,15 @@ def _execute_extraction_plan(plan: ExtractionPlan, options: ExtractionOptions, r
     policy, dry_run = options.policy, options.dry_run
     copied: list[dict[str, str]] = []
     failed: list[dict[str, str]] = []
-    if not dry_run:
-        for folder in plan.folders:
-            folder.mkdir(parents=True, exist_ok=True)
+    created_folders: list[Path] = []
     progress = ExtractionProgress(pending, reporter, PROGRESS_INTERVAL_SECONDS)
     for index, item in enumerate(pending, start=1):
         source = item["source_path"]
         final_destination = item["destination_path"]
         file_size = int(item["size"])
 
+        if not dry_run:
+            _create_folder(final_destination.parent, created_folders)
         claimed = False
         if not dry_run and policy != "overwrite":
             claimed = reserve_destination(final_destination)
@@ -485,6 +527,7 @@ def _execute_extraction_plan(plan: ExtractionPlan, options: ExtractionOptions, r
                     final_destination, action = resolve_destination(source, final_destination, policy, planned_destinations)
                 if action in {"skip", "same-file"}:
                     skipped.append({"source": str(source), "reason": action})
+                    reporter.info(_skip_message(skipped[-1]))
                     continue
                 if not reserve_destination(final_destination):
                     raise PluginError(
@@ -536,6 +579,7 @@ def _execute_extraction_plan(plan: ExtractionPlan, options: ExtractionOptions, r
         reporter.info(f"[{index}/{len(pending)}] Finished {final_destination}")
         copied.append({"source": str(source), "destination": str(final_destination), "action": str(item["action"]), "kind": str(item["kind"])})
 
+    _remove_empty_folders(created_folders)
     return copied, failed
 
 
@@ -582,6 +626,7 @@ def _copy_resolved_items(
         reporter.info(f"Copy speed limited to {options.max_copy_speed_mib:g} MiB/s")
     else:
         reporter.info("Copy speed is unlimited")
+    _log_unprocessed(plan, reporter)
 
     copied, failed = _execute_extraction_plan(plan, options, reporter, marker_clip_extractor)
     reporter.progress(1.0)

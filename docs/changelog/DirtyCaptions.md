@@ -2,6 +2,12 @@
 
 Newest first. Each GitHub Release of DirtyCaptions uses the entry that names its version.
 
+- **DirtyCaptions 1.0.11, DirtyFileExtractor 1.0.8, DirtyPlugins 1.0.23 and
+  DirtyTasks 1.0.14:** when Stash's FFmpeg and FFprobe paths are empty, the
+  plugins find the same programs Stash uses: in its configuration folder, on
+  PATH, or in `~/.stash`. Captions, encoding and marker clips no longer fail
+  when Stash relies on the FFmpeg it downloaded itself.
+
 - **DirtyCaptions 1.0.10, DirtyRank 1.1.2, DirtyStats 1.0.15, DirtyFileExtractor
   1.0.7, DirtyMultiscreen 1.0.29 and DirtyPlugins 1.0.22:** setting descriptions
   no longer say whether a toggle is enabled or disabled by default.

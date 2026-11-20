@@ -2,6 +2,19 @@
 
 Newest first. Each GitHub Release of DirtyFileExtractor uses the entry that names its version.
 
+- **DirtyFileExtractor 1.0.8:** a run that writes no file says why.
+  - The Stash log names each selected item that produced no file and the
+    reason, for example a marker without an end time or a source file the
+    server cannot read. Skipped items are listed with their reason too.
+  - Folders are created only for files that are written, so a run that writes
+    nothing no longer leaves empty folders behind.
+
+- **DirtyCaptions 1.0.11, DirtyFileExtractor 1.0.8, DirtyPlugins 1.0.23 and
+  DirtyTasks 1.0.14:** when Stash's FFmpeg and FFprobe paths are empty, the
+  plugins find the same programs Stash uses: in its configuration folder, on
+  PATH, or in `~/.stash`. Captions, encoding and marker clips no longer fail
+  when Stash relies on the FFmpeg it downloaded itself.
+
 - **DirtyCaptions 1.0.10, DirtyRank 1.1.2, DirtyStats 1.0.15, DirtyFileExtractor
   1.0.7, DirtyMultiscreen 1.0.29 and DirtyPlugins 1.0.22:** setting descriptions
   no longer say whether a toggle is enabled or disabled by default.
