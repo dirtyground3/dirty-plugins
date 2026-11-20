@@ -86,6 +86,14 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   guide; a plain click still reaches the player, and the player's controls and
   the screen's top buttons never start a drag. Dividers show no line or grip:
   only the pointer changes over them.
+- With **Right-click a screen for its edit options** on, right-clicking a
+  screen opens a menu at the pointer with its flip, rotate, loop, fill and
+  close options, without opening edit mode. Ticks mark the options that are
+  on, and Rotate shows the current angle. Choosing an option closes the menu,
+  like the browser's own; click elsewhere or press Escape to close it without
+  choosing, and that click never reaches the player. Move stays in edit mode.
+  Links and the search field keep the browser's menu, and with the setting off
+  right-click works as before.
 - Close stops a screen and removes it from the grid, so a 2 x 2 grid can play
   three screens. The other screens keep playing and close up in place order,
   and **Fit videos** repacks a preset around them. The last open screen
@@ -231,8 +239,9 @@ page. The DirtyMultiscreen tab of the Dirty Plugins settings has six groups:
 
 - **Grid:** **Fit screens to videos** (enabled by default), the same choice as
   the Fit videos button in edit mode, **Move and resize screens without
-  edit mode** (disabled by default), and **Snap edges when resizing**
-  (enabled by default).
+  edit mode** (disabled by default), **Right-click a screen for its edit
+  options** (disabled by default) and **Snap edges when resizing** (enabled
+  by default).
 - **Scenes:** scene order, **Spread performers and studios**, **Split scenes
   between panes** and **Avoid the same scene on several screens**.
 - **Playback:** **Start muted**, **Random start**, **Loop scenes**, **Pause when

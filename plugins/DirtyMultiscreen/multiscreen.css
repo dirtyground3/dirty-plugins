@@ -131,6 +131,86 @@
   font-size: 0.65rem;
 }
 
+/* The right-click menu opens at the pointer inside its screen, in the theme's menu colours over a see-through panel. */
+.ms-screen-menu {
+  position: absolute;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 11rem;
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 0.3rem;
+  border: 1px solid var(--dirty-ui-border);
+  border-radius: var(--dirty-ui-radius);
+  color: var(--dirty-ui-text);
+  background: rgba(44, 52, 59, 0.82);
+  background: color-mix(in srgb, var(--dirty-theme-panel) 82%, transparent);
+  box-shadow: var(--dirty-ui-shadow);
+  backdrop-filter: blur(6px);
+  font-size: 0.875rem;
+  outline: none;
+}
+
+#root .ms-route .ms-screen-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  min-height: 0;
+  padding: 0.35rem 0.6rem;
+  border: 0;
+  border-radius: var(--dirty-ui-radius-small);
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+#root .ms-route .ms-screen-menu-item:hover:not(:disabled),
+#root .ms-route .ms-screen-menu-item:focus-visible {
+  color: var(--dirty-ui-accent);
+  background: var(--dirty-theme-soft);
+  outline: none;
+}
+
+#root .ms-route .ms-screen-menu-item:disabled {
+  color: var(--dirty-ui-muted);
+  cursor: default;
+  opacity: 0.6;
+}
+
+#root .ms-route .ms-screen-menu-item.ms-screen-menu-danger:not(:disabled) {
+  color: var(--dirty-ui-danger);
+}
+
+.ms-screen-menu-icon {
+  flex: 0 0 1.1rem;
+  text-align: center;
+}
+
+.ms-screen-menu-label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ms-screen-menu-hint {
+  margin-left: 1rem;
+  color: var(--dirty-ui-muted);
+}
+
+.ms-screen-menu-separator {
+  flex: 0 0 auto;
+  height: 1px;
+  margin: 0.25rem 0.35rem;
+  background: var(--dirty-ui-border);
+}
+
 /* The move button drags its screen onto another one. Touch must not scroll or select instead. */
 .ms-move-handle {
   display: flex;

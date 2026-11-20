@@ -40,6 +40,7 @@ export function NativeMultiscreenGrid({
   findPerformerItems,
   layout,
   moveWithoutEditing,
+  rightClickOptions,
   snapDividers,
   nativePlayer,
   onCloseScreen,
@@ -505,6 +506,7 @@ export function NativeMultiscreenGrid({
             editing={editing}
             onFinishEditing={onFinishEditing}
             moveWithoutEditing={moveWithoutEditing}
+            rightClickOptions={rightClickOptions}
             findPerformerItems={findPerformerItems}
             nativePlayer={nativePlayer}
             playback={playback}

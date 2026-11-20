@@ -34,6 +34,12 @@
       "description": "Drag a screen's picture onto another screen to swap or dock it, and drag the edges between screens to resize them, without opening edit mode. Only the mouse pointer changes over an edge.",
       "default": false
     },
+    "rightClickOptions": {
+      "type": "BOOLEAN",
+      "displayName": "Right-click a screen for its edit options",
+      "description": "Right-click a screen to open a menu with its flip, rotate, loop, fill and close options without opening edit mode. When off, right-click opens the browser's menu.",
+      "default": false
+    },
     "snapDividers": {
       "type": "BOOLEAN",
       "displayName": "Snap edges when resizing",
@@ -202,6 +208,7 @@
         "columns",
         "fitVideos",
         "moveWithoutEditing",
+        "rightClickOptions",
         "snapDividers"
       ]
     },

@@ -247,6 +247,21 @@ export interface SwapControls {
   dragEnd(pointer: DropPointer | null): void;
   cancel(): void;
 }
+/** One screen's picture choices, shown by edit mode's controls and by the right-click menu. */
+export interface PictureControls {
+  fill: boolean;
+  fitVideos: boolean;
+  flipX: boolean;
+  flipY: boolean;
+  loop: boolean;
+  rotation: number;
+  /** Absent while this is the only open screen. */
+  onClose?(): void;
+  onFill(fill: boolean): void;
+  onFlip(x: boolean, y: boolean): void;
+  onLoop(loop: boolean): void;
+  onRotate(): void;
+}
 export interface NativePlayerProps {
   scene: Scene;
   autoplay: boolean;
@@ -302,6 +317,8 @@ export interface GridProps {
   onFinishEditing(): void;
   /** Outside edit mode, pictures and edges still drag; only the pointer shows it. */
   moveWithoutEditing: boolean;
+  /** Outside edit mode, a right-click opens that screen's picture options as a menu. */
+  rightClickOptions: boolean;
   /** Dragged dividers stick at eighths of their split; Shift resizes freely. */
   snapDividers: boolean;
   fitVideos: boolean;

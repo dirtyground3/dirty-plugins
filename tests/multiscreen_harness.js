@@ -16,7 +16,16 @@ function createMultiscreenHarness(options = {}) {
     timers = new Map(),
     observers = [],
     media = new Map(),
-    nativeCalls = [];
+    nativeCalls = [],
+    screenMenu = {
+      offsetWidth: 180,
+      offsetHeight: 200,
+      offsetParent: { clientWidth: 400, clientHeight: 300 },
+      focused: 0,
+      focus() {
+        this.focused++;
+      },
+    };
   const renderer = createRenderer({
     keyedAddress: true,
     host(node, address) {
@@ -27,6 +36,8 @@ function createMultiscreenHarness(options = {}) {
         media.get(address).video.closest = () => ({ dataset: { msScreen: address.match(/ms-native-(\d+)/)?.[1] } });
       }
       if (node.props.ref && node.props.className?.includes("ms-native-grid")) node.props.ref.current = grid;
+      // The right-click menu measures itself against its screen.
+      if (node.props.ref && node.props.className === "ms-screen-menu") node.props.ref.current = screenMenu;
       // The main buttons' column in the window's top-right corner.
       if (node.props.ref && node.props.className?.startsWith("ms-floating"))
         node.props.ref.current = {
@@ -449,6 +460,7 @@ function createMultiscreenHarness(options = {}) {
     observers,
     media,
     nativeCalls,
+    screenMenu,
     storage,
     localStorage,
     load,

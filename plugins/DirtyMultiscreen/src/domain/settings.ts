@@ -44,6 +44,9 @@ export const normalizeFitVideos = (rawSettings: Record<string, unknown>) =>
 /** Whether dragged dividers stick at eighths, chosen in the grid picker. */
 export const normalizeSnapDividers = (rawSettings: Record<string, unknown>) =>
   coerceBoolean(rawSettings.snapDividers, DEFAULT_SETTINGS.snapDividers);
+/** Whether a right-click shows a screen's edit controls outside edit mode. */
+export const normalizeRightClickOptions = (rawSettings: Record<string, unknown>) =>
+  coerceBoolean(rawSettings.rightClickOptions, DEFAULT_SETTINGS.rightClickOptions);
 
 export function normalizeSettings(rawSettings: Record<string, unknown>): Settings {
   const rows = clampInteger(rawSettings.rows, DEFAULT_SETTINGS.rows, LIMITS.rows.min, LIMITS.rows.max);

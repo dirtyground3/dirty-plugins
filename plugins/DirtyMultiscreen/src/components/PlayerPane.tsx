@@ -3,9 +3,20 @@ import { React } from "../runtime";
 import { panCrop } from "../domain/layout";
 import type { Rectangle } from "../domain/layout";
 import { locatePlaylistItem, nextFreeIndex, nextItemAfter } from "../domain/playlists";
-import type { AudioState, CropPosition, GridProps, Item, PaneView, SavedPane, SwapControls } from "../types";
+import type {
+  AudioState,
+  CropPosition,
+  GridProps,
+  Item,
+  PaneView,
+  PictureControls,
+  SavedPane,
+  SwapControls,
+} from "../types";
 import { NativePlayerTile } from "./NativePlayerTile";
 import { ScreenControls, useScreenDrag } from "./ScreenControls";
+import { ScreenMenu } from "./ScreenMenu";
+import type { MenuPoint } from "./ScreenMenu";
 import { PaneHeader } from "./SceneSearch";
 
 interface PaneProps
@@ -18,6 +29,7 @@ interface PaneProps
     | "editing"
     | "onFinishEditing"
     | "moveWithoutEditing"
+    | "rightClickOptions"
     | "fitVideos"
     | "searchSession"
     | "findPerformerItems"
@@ -47,7 +59,9 @@ interface PaneProps
 type QueueStep = { direction: 1 | -1 } | { performerId: string };
 /** Presses that belong to the player's controls or the pane's own buttons never move the screen. */
 const PANE_CONTROLS =
-  "button, a, input, select, textarea, [role='slider'], .vjs-control-bar, .vjs-menu, .vjs-modal-dialog, .ms-pane-header, .ms-queue-status";
+  "button, a, input, select, textarea, [role='slider'], .vjs-control-bar, .vjs-menu, .vjs-modal-dialog, .ms-pane-header, .ms-queue-status, .ms-screen-menu";
+/** Links and text fields keep the browser's own menu, for opening a scene or pasting a search. */
+const BROWSER_MENU = "a, input, select, textarea";
 const NOTICE_MS = 1000;
 export function NativePlayerPane({
   playlist,
@@ -57,6 +71,7 @@ export function NativePlayerPane({
   fitVideos,
   findPerformerItems,
   moveWithoutEditing,
+  rightClickOptions,
   onAudioChange,
   onClose,
   onFinishEditing,
@@ -308,6 +323,7 @@ export function NativePlayerPane({
     (rotation ? ` ms-rotate-${rotation * 90}` : "") +
     (swapSource === screenIndex ? " ms-swap-source" : "");
   const drag = useScreenDrag(screenIndex, swap);
+  const options = useRightClickOptions(screenIndex, rightClickOptions && !!item, editing);
   // Outside edit mode the picture itself drags its screen.
   const dragsScreen = moveWithoutEditing && !editing;
   const pan = useCropPan({
@@ -319,6 +335,25 @@ export function NativePlayerPane({
     onDraft: setView,
     onCommit: changeView,
   });
+  const picture: PictureControls | null = item
+    ? {
+        fill: !!view.fill,
+        fitVideos,
+        flipX: !!flip?.x,
+        flipY: !!flip?.y,
+        loop,
+        rotation,
+        onRotate: () =>
+          changeView({
+            ...view,
+            rotation: rotation === 3 ? undefined : { itemId: item.id, turns: (rotation + 1) as 1 | 2 | 3 },
+          }),
+        onFill: fill => changeView({ ...view, fill }),
+        onFlip: (x, y) => changeView({ ...view, flip: x || y ? { itemId: item.id, x, y } : undefined }),
+        onLoop: value => changeView({ ...view, loop: value }),
+        onClose,
+      }
+    : null;
   const box: R.CSSProperties = rectangle ?? {
     order: position,
     ...(columnSpan ? { gridColumn: `span ${columnSpan}` } : {}),
@@ -338,6 +373,7 @@ export function NativePlayerPane({
       onLostPointerCapture={event => pan.cancel(event) || (dragsScreen && drag.cancel(event))}
       onClickCapture={dragsScreen ? drag.click : undefined}
       onMouseDown={pan.mouseDown}
+      onContextMenu={options.contextMenu}
     >
       <PaneHeader
         item={item}
@@ -372,29 +408,24 @@ export function NativePlayerPane({
           resumeTime={resumeAt.current?.itemId === item.id ? resumeAt.current.time : undefined}
         />
       )}
-      {editing && item && (
+      {editing && picture && (
         <ScreenControls
+          {...picture}
           paneIndex={screenIndex}
           position={position}
           swap={swap}
           swapSource={swapSource}
-          fill={!!view.fill}
-          fitVideos={fitVideos}
-          flipX={!!flip?.x}
-          flipY={!!flip?.y}
-          loop={loop}
-          rotation={rotation}
-          onRotate={() =>
-            changeView({
-              ...view,
-              rotation: rotation === 3 ? undefined : { itemId: item.id, turns: (rotation + 1) as 1 | 2 | 3 },
-            })
-          }
-          onFill={fill => changeView({ ...view, fill })}
-          onFlip={(x, y) => changeView({ ...view, flip: x || y ? { itemId: item.id, x, y } : undefined })}
-          onLoop={value => changeView({ ...view, loop: value })}
-          onClose={onClose}
           onFinishEditing={onFinishEditing}
+        />
+      )}
+      {options.at && picture && (
+        // A new right-click remounts the menu at the new point, like the browser's own.
+        <ScreenMenu
+          key={`${options.at.x},${options.at.y}`}
+          {...picture}
+          at={options.at}
+          position={position}
+          onDone={options.hide}
         />
       )}
       {state.busy && (
@@ -431,6 +462,94 @@ export function NativePlayerPane({
       )}
     </div>
   );
+}
+
+/**
+ * With the setting on, a right-click opens the screen's picture options as a menu at the pointer outside edit mode:
+ * a press anywhere else or Escape closes it. In edit mode the controls are already shown, so a right-click only
+ * keeps the browser's menu away.
+ */
+function useRightClickOptions(screenIndex: number, enabled: boolean, editing: boolean) {
+  const [at, setAt] = React.useState<MenuPoint | null>(null);
+  const cancelClick = React.useRef<() => void>();
+  React.useEffect(() => () => cancelClick.current?.(), []);
+  React.useEffect(() => setAt(null), [enabled, editing]);
+  const shown = !!at;
+  React.useEffect(() => {
+    if (!shown) return undefined;
+    const cell = `[data-ms-screen="${screenIndex}"]`;
+    const press = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      // Another right-click on this screen moves the menu there instead of closing it.
+      if (target?.closest?.(event.button === 2 ? cell : `${cell} .ms-screen-menu`)) return;
+      setAt(null);
+      // The click that hides them never reaches the picture beneath, so it cannot pause a video.
+      if (
+        event.button === 0 &&
+        event.isPrimary &&
+        target?.closest?.("[data-ms-screen]") &&
+        !target.closest(PANE_CONTROLS)
+      ) {
+        cancelClick.current?.();
+        cancelClick.current = swallowDismissalClick(event.pointerId);
+      }
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAt(null);
+    };
+    document.addEventListener("pointerdown", press, true);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", press, true);
+      document.removeEventListener("keydown", key);
+    };
+  }, [shown, screenIndex]);
+  return {
+    at: enabled && !editing ? at : null,
+    hide: () => setAt(null),
+    contextMenu(event: R.MouseEvent<HTMLDivElement>) {
+      const target = event.target as Element;
+      // React also bubbles events from the pane's search dialog, which is rendered in a portal.
+      if (!enabled || !event.currentTarget.contains(target) || target.closest?.(BROWSER_MENU)) return;
+      event.preventDefault();
+      // A right-click on the open menu leaves it where it is.
+      if (editing || target.closest?.(".ms-screen-menu")) return;
+      const screen = event.currentTarget.getBoundingClientRect();
+      setAt({ x: event.clientX - screen.left, y: event.clientY - screen.top });
+    },
+  };
+}
+
+/** Swallow the click from this pointer's release, preserving keyboard activation and other pointers. */
+function swallowDismissalClick(pointerId: number) {
+  let timer = 0;
+  const stop = (event: MouseEvent) => {
+    if (event.detail === 0 || ("pointerId" in event && event.pointerId !== pointerId)) return;
+    cleanup();
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const release = (event: PointerEvent) => {
+    if (event.pointerId !== pointerId) return;
+    document.removeEventListener("pointerup", release, true);
+    document.addEventListener("click", stop, true);
+    // A drag may produce no click. Let the guard expire after the release.
+    timer = window.setTimeout(cleanup, 0);
+  };
+  const cancel = (event: PointerEvent) => {
+    if (event.pointerId === pointerId) cleanup();
+  };
+  const cleanup = () => {
+    window.clearTimeout(timer);
+    document.removeEventListener("pointerup", release, true);
+    document.removeEventListener("pointercancel", cancel, true);
+    document.removeEventListener("click", stop, true);
+    window.removeEventListener("blur", cleanup);
+  };
+  document.addEventListener("pointerup", release, true);
+  document.addEventListener("pointercancel", cancel, true);
+  window.addEventListener("blur", cleanup);
+  return cleanup;
 }
 
 /**

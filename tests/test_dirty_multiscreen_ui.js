@@ -1,6 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict"),
-  { createMultiscreenHarness } = require("./multiscreen_harness");
+  { createMultiscreenHarness } = require("./multiscreen_harness"),
+  { text } = require("./ui_harness");
 const deferred = () => {
   let resolve, reject;
   const promise = new Promise((yes, no) => {
@@ -2456,6 +2457,208 @@ async function editMode() {
   await h.unmount();
   await reopened.unmount();
 }
+async function rightClickOptions() {
+  const settings = { rows: 1, columns: 2, sceneOrder: "list", randomStart: false, fitVideos: false };
+  const paneTarget = (index, ...selectors) => {
+    const cell = `[data-ms-screen="${index}"]`;
+    const matches = ["[data-ms-screen]", cell, ...selectors];
+    const target = { closest: query => (query.split(",").some(part => matches.includes(part.trim())) ? target : null) };
+    return target;
+  };
+  const inMenu = index => paneTarget(index, "button", ".ms-screen-menu", `[data-ms-screen="${index}"] .ms-screen-menu`);
+  const pointer = (target, button = 0) => ({ target, button, pointerId: 1, isPrimary: true });
+  const event = props => ({
+    ...props,
+    defaultPrevented: false,
+    propagationStopped: false,
+    preventDefault() {
+      this.defaultPrevented = true;
+    },
+    stopPropagation() {
+      this.propagationStopped = true;
+    },
+  });
+  const cell = (h, index) => h.nodes(node => node.props["data-ms-screen"] === index)[0];
+  // Every screen sits at (100, 50) in the window; x and y are the point inside it.
+  const rightClick = async (h, index, target = paneTarget(index), x = 20, y = 30) => {
+    const context = event({
+      ...pointer(target, 2),
+      clientX: 100 + x,
+      clientY: 50 + y,
+      currentTarget: {
+        contains: element => Boolean(element.closest(`[data-ms-screen="${index}"]`)),
+        getBoundingClientRect: () => ({ left: 100, top: 50 }),
+      },
+    });
+    h.document.emit("pointerdown", context);
+    cell(h, index).props.onContextMenu(context);
+    await h.flush();
+    return context.defaultPrevented;
+  };
+  const menu = h => h.nodes(node => node.props.className === "ms-screen-menu")[0];
+  const shown = h => h.nodes(node => node.props.className === "ms-screen-menu").map(node => node.props["aria-label"]);
+  // Copied out of the plugin's context, so it compares as a plain object.
+  const place = h => ({ ...menu(h).props.style });
+  const controls = h =>
+    h.nodes(node => node.props.className === "ms-screen-controls").map(node => node.props["aria-label"]);
+  const option = (h, label) =>
+    h.nodes(node => node.props.className?.startsWith("ms-screen-menu-item") && text(node).startsWith(label))[0];
+  const choose = async (h, label) => {
+    option(h, label).props.onClick();
+    await h.flush();
+  };
+  const press = async (h, label) => {
+    h.button(label).props.onClick();
+    await h.flush();
+  };
+  const off = await start({ settings });
+  assert.equal(await rightClick(off, 0), false, "the browser menu is the default");
+  assert.deepEqual(shown(off), []);
+  await off.unmount();
+
+  const enabled = { ...settings, rightClickOptions: true };
+  const h = await start({ settings: enabled });
+  for (const tag of ["a", "input"]) {
+    assert.equal(await rightClick(h, 0, paneTarget(0, tag)), false, `${tag} keeps its browser menu`);
+    assert.deepEqual(shown(h), []);
+  }
+  await press(h, "Search scenes for screen 1");
+  assert.equal(await rightClick(h, 0, { closest: () => null }), false, "the portaled dialog keeps its browser menu");
+  assert.deepEqual(shown(h), []);
+  await press(h, "Close scene search");
+  assert.equal(await rightClick(h, 0), true, "the picture opens its menu instead of the browser's");
+  assert.deepEqual(shown(h), ["Options for screen 1"]);
+  assert.deepEqual(controls(h), [], "the menu replaces the edit-mode controls");
+  assert.equal(h.button("Edit screens").props.pressed, false);
+  assert.deepEqual(
+    h.nodes(node => node.props.className === "ms-screen-menu-label").map(node => text(node)),
+    ["Flip horizontally", "Flip vertically", "Rotate clockwise", "Loop scene", "Fill screen", "Close screen"],
+    "the menu lists the picture options without Move",
+  );
+  assert.equal(option(h, "Flip horizontally").props.role, "menuitemcheckbox");
+  assert.equal(option(h, "Flip horizontally").props["aria-checked"], false);
+  assert.equal(option(h, "Rotate clockwise").props.role, "menuitem");
+  assert.deepEqual(place(h), { left: 20, top: 30 }, "the menu opens at the pointer");
+  assert.equal(h.screenMenu.focused, 1, "the menu takes the keyboard from the player");
+
+  h.document.emit("pointerdown", pointer(inMenu(0)));
+  await h.flush();
+  assert.deepEqual(shown(h), ["Options for screen 1"], "a press inside the menu keeps it open");
+  await choose(h, "Flip horizontally");
+  assert.match(cell(h, 0).props.className, /ms-flip-x/);
+  assert.doesNotMatch(cell(h, 1).props.className, /ms-flip-x/);
+  assert.deepEqual(shown(h), [], "choosing an option closes the menu");
+  await rightClick(h, 0);
+  assert.equal(option(h, "Flip horizontally").props["aria-checked"], true);
+  assert.equal(text(option(h, "Flip horizontally")), "Flip horizontally✓");
+  await choose(h, "Rotate clockwise");
+  await rightClick(h, 0);
+  assert.match(cell(h, 0).props.className, /ms-rotate-90/);
+  assert.equal(text(option(h, "Rotate clockwise")), "Rotate clockwise90°", "the menu shows the current rotation");
+
+  // Near the right and bottom edges the menu opens toward the left and up, and it never leaves its screen.
+  const opened = h.screenMenu.focused;
+  await rightClick(h, 0, paneTarget(0), 390, 280);
+  assert.deepEqual(place(h), { left: 210, top: 80 });
+  assert.equal(h.screenMenu.focused, opened + 1, "another right-click opens the menu again at the new point");
+  h.screenMenu.offsetParent = { clientWidth: 150, clientHeight: 120 };
+  await rightClick(h, 0, paneTarget(0), 100, 100);
+  assert.deepEqual(place(h), { left: 0, top: 0 }, "a small screen keeps the menu's top-left corner");
+  h.screenMenu.offsetParent = { clientWidth: 400, clientHeight: 300 };
+  await rightClick(h, 0);
+  assert.equal(await rightClick(h, 0, inMenu(0), 60, 60), true, "the menu never shows the browser's own");
+  assert.deepEqual(place(h), { left: 20, top: 30 }, "a right-click on the menu leaves it in place");
+
+  // Arrow keys, Home and End move through the available options and wrap at either end.
+  const items = ["flip", "rotate", "close"].map(name => ({
+    name,
+    focus() {
+      h.document.activeElement = this;
+    },
+  }));
+  const key = name => {
+    const keyDown = event({ key: name, currentTarget: { querySelectorAll: () => items } });
+    menu(h).props.onKeyDown(keyDown);
+    return [h.document.activeElement?.name, keyDown.defaultPrevented];
+  };
+  h.document.activeElement = null;
+  assert.deepEqual(key("ArrowDown"), ["flip", true]);
+  assert.deepEqual(key("ArrowUp"), ["close", true]);
+  assert.deepEqual(key("ArrowDown"), ["flip", true]);
+  assert.deepEqual(key("End"), ["close", true]);
+  assert.deepEqual(key("Home"), ["flip", true]);
+  assert.deepEqual(key("Tab"), ["flip", false], "other keys keep their meaning");
+  h.document.activeElement = null;
+
+  await rightClick(h, 1);
+  assert.deepEqual(shown(h), ["Options for screen 2"], "right-clicking another pane moves the menu there");
+  h.document.emit("keydown", { key: "Escape" });
+  await h.flush();
+  assert.deepEqual(shown(h), []);
+  await rightClick(h, 0);
+  await press(h, "Edit screens");
+  assert.deepEqual(shown(h), []);
+  assert.deepEqual(controls(h), ["Controls for screen 1", "Controls for screen 2"]);
+  assert.ok(h.button("Move screen 1"));
+  assert.equal(await rightClick(h, 1), true, "right-click in edit mode leaves the existing controls in place");
+  assert.deepEqual(shown(h), []);
+  await press(h, "Finish editing screens");
+  assert.deepEqual(shown(h), [], "leaving edit mode does not reopen the menu");
+
+  const picture = pointer(paneTarget(1));
+  const click = (props = picture) => {
+    const result = event({ detail: 1, ...props });
+    h.document.emit("click", result);
+    return [result.defaultPrevented, result.propagationStopped];
+  };
+  await rightClick(h, 0);
+  h.document.emit("pointerdown", picture);
+  await h.flush();
+  assert.deepEqual(shown(h), []);
+  assert.deepEqual(click({ detail: 0, pointerId: -1 }), [false, false], "keyboard activation still works");
+  h.document.emit("pointerup", picture);
+  assert.deepEqual(click({ ...picture, pointerId: 2 }), [false, false], "another pointer's click still works");
+  assert.deepEqual(click(), [true, true], "the dismissing click cannot reach the other player");
+  assert.deepEqual(click(), [false, false], "the guard consumes only one click");
+
+  for (const end of ["pointercancel", "blur", "pointerup"]) {
+    await rightClick(h, 0);
+    h.document.emit("pointerdown", picture);
+    if (end === "blur") h.window.emit(end);
+    else h.document.emit(end, picture);
+    await h.tick(0);
+    assert.deepEqual(shown(h), []);
+    assert.deepEqual(click(), [false, false], `a ${end} without a click leaves the next click alone`);
+  }
+  await rightClick(h, 0);
+  h.document.emit("pointerdown", picture);
+  await h.unmount();
+  assert.deepEqual(click(), [false, false], "unmounting during a press releases the click guard");
+  for (const name of ["pointerdown", "pointerup", "pointercancel", "click", "keydown"]) {
+    assert.equal(h.document.handlers.get(name)?.size ?? 0, 0, `${name} listeners are removed`);
+  }
+
+  // Close screen closes the screen; the last open one keeps the option but cannot use it, and Fit videos owns Fill.
+  const closing = await start({ settings: { ...enabled, fitVideos: true } });
+  await rightClick(closing, 1);
+  assert.equal(option(closing, "Fill screen").props.disabled, true);
+  assert.equal(option(closing, "Fill screen").props["aria-checked"], true);
+  await choose(closing, "Close screen");
+  assert.deepEqual(shown(closing), []);
+  assert.equal(closing.nodes(node => node.props["data-ms-screen"] !== undefined).length, 1);
+  await rightClick(closing, 0);
+  assert.equal(option(closing, "Close screen").props.disabled, true);
+  await closing.unmount();
+
+  const empty = await start({
+    scenes: [{ id: "a", title: "A", paths: { stream: "/a" } }],
+    settings: { ...enabled, splitScenes: true },
+  });
+  assert.equal(empty.nodes(node => node.type === "native-player").length, 1);
+  assert.equal(await rightClick(empty, 1), false, "an empty pane keeps the browser menu");
+  assert.deepEqual(shown(empty), []);
+  await empty.unmount();
+}
 async function cropPan() {
   const scenes = ["a", "b"].map(id => ({ id, title: id, paths: { stream: "/" + id }, files: [{ duration: 10 }] }));
   const settings = { rows: 1, columns: 2, sceneOrder: "list", randomStart: false, loopScenes: false, fitVideos: false };
@@ -3975,6 +4178,7 @@ async function recentGrids() {
   await unscopedLibraryPaging();
   await sessionRestore();
   await editMode();
+  await rightClickOptions();
   await cropPan();
   await gridPickerAndSwap();
   await fitVideos();

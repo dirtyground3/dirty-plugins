@@ -1,7 +1,7 @@
 import type * as R from "react";
 import type { DropPointer } from "../domain/dropGuide";
 import { React } from "../runtime";
-import type { SwapControls } from "../types";
+import type { PictureControls, SwapControls } from "../types";
 import { icon, PluginIconButton } from "./Controls";
 
 /** How far a press travels before it lifts its screen, so a click never moves one. */
@@ -124,21 +124,9 @@ export function ScreenControls({
   position,
   swap,
   swapSource,
-}: {
-  fill: boolean;
-  fitVideos: boolean;
-  flipX: boolean;
-  flipY: boolean;
-  loop: boolean;
-  /** Absent while this is the only open screen. */
-  onClose?(): void;
+}: PictureControls & {
   /** Leaves edit mode for every screen. */
   onFinishEditing(): void;
-  onFill(fill: boolean): void;
-  onFlip(x: boolean, y: boolean): void;
-  onLoop(loop: boolean): void;
-  onRotate(): void;
-  rotation: number;
   /** The screen's own index, which follows it when it moves. */
   paneIndex: number;
   /** Where the screen sits in the grid, for its labels. */

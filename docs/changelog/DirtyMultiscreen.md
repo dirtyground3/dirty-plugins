@@ -19,6 +19,9 @@ Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names 
     you drag a screen's picture and the edges between screens at any time.
     Only the pointer changes over an edge, and a plain click still reaches the
     player.
+  - **Right-click a screen for its edit options.** Enable this Grid setting
+    to open a menu of one screen's picture options at the pointer during
+    playback: flip, rotate, loop, fill and close, each with its icon and name.
   - **Fit videos** keeps a custom layout's panes and fills each one, cropping
     without stretching.
   - **Move a cropped picture.** When Fill or Fit videos crops a picture, drag

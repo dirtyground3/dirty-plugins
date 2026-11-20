@@ -411,6 +411,10 @@ async function main() {
   assert.equal(a.normalizeSettings({ moveWithoutEditing: "true" }).moveWithoutEditing, true);
   assert.equal(a.normalizeSnapDividers({}), true, "edges snap by default");
   assert.equal(a.normalizeSnapDividers({ snapDividers: "false" }), false);
+  assert.equal(a.normalizeRightClickOptions({}), false, "right-click controls are opt-in");
+  assert.equal(a.normalizeRightClickOptions({ rightClickOptions: " true " }), true);
+  assert.equal(a.normalizeRightClickOptions({ rightClickOptions: "false" }), false);
+  assert.equal(a.normalizeRightClickOptions({ rightClickOptions: "invalid" }), false);
   // Every cell of the grid plays.
   assert.equal(a.normalizeSettings({ rows: 3, columns: 4 }).totalScreens, 12);
   assert.equal(a.normalizeSettings({ rows: 0, columns: 0 }).totalScreens, 1);
