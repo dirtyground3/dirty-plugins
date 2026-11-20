@@ -1,7 +1,7 @@
 import type { Item, Scene } from "../types";
 import { orderMultiscreenItems, type Ordering } from "./order";
 
-/** Keep searched items from another split lane between this lane's neighbors. */
+/** Keep a restored item from another split lane between this lane's neighbors. */
 export function locatePlaylistItem(playlists: Item[][], screen: number, selected: Item) {
   const own = playlists[screen] || [];
   let cursor = own.findIndex(item => item.id === selected.id);

@@ -38,6 +38,14 @@ function createMultiscreenHarness(options = {}) {
       if (node.props.ref && node.props.className?.includes("ms-native-grid")) node.props.ref.current = grid;
       // The right-click menu measures itself against its screen.
       if (node.props.ref && node.props.className === "ms-screen-menu") node.props.ref.current = screenMenu;
+      // A screen's header groups: search and portraits at its top left, the link and O button further right.
+      if (node.props.ref && /^ms-pane-(navigation|actions)/.test(node.props.className || ""))
+        node.props.ref.current = {
+          getBoundingClientRect: () =>
+            node.props.className.startsWith("ms-pane-navigation")
+              ? { left: 10, right: 120, top: 8, bottom: 40 }
+              : { left: 640, right: 700, top: 8, bottom: 40 },
+        };
       // The main buttons' column in the window's top-right corner.
       if (node.props.ref && node.props.className?.startsWith("ms-floating"))
         node.props.ref.current = {

@@ -1,8 +1,7 @@
-import type * as R from "react";
 import { isMarkerLaunchContext } from "../domain/context";
 import { getMarkerItem, getSceneItem } from "../domain/items";
 import { growPlaylists, pagePlaylists } from "../domain/playlists";
-import { useMarkerQuery, useNativePlayerComponent, useSceneQuery } from "../hooks";
+import { CONTROLS_IDLE_MS, useIdle, useMarkerQuery, useNativePlayerComponent, useSceneQuery } from "../hooks";
 import { closedScreens, queueKey, readSession, writeSession } from "../domain/session";
 import {
   dealtSettings,
@@ -46,66 +45,8 @@ const keepsOrder = (context: LaunchContext | null) => context?.source === "plugi
 /** A list launched with keepOrder plays in its own order whatever the Scene order setting says. */
 const playSettings = (data: Record<string, unknown>, keepOrder: boolean) =>
   normalizeSettings(keepOrder ? { ...data, sceneOrder: "list" } : data);
-const CONTROLS_IDLE_MS = 3000;
 /** The most screens a grid holds: added screens take their lanes from a deal this wide. */
 const WIDEST_DEAL = GRID_LIMITS.rows * GRID_LIMITS.columns;
-/** How close the mouse must come to the main buttons to show them. */
-const NEAR_PX = 100;
-/**
- * True while the main buttons rest hidden. They show while the mouse is within NEAR_PX of their box and hide
- * `delay` after it leaves that area or the window, and after the player opens. Moving elsewhere never shows them;
- * a touch, which cannot hover, shows them for `delay`. Edit mode keeps them visible without an idle timer.
- */
-function useIdle(area: R.RefObject<HTMLElement | null>, delay: number, keepVisible: boolean) {
-  const [idle, setIdle] = React.useState(false);
-  React.useEffect(() => {
-    setIdle(false);
-    if (keepVisible) return undefined;
-    let timer = 0;
-    const show = () => {
-      window.clearTimeout(timer);
-      timer = 0;
-      setIdle(false);
-    };
-    const hideLater = () => {
-      if (!timer) timer = window.setTimeout(() => setIdle(true), delay);
-    };
-    const near = (x: number, y: number) => {
-      const box = area.current?.getBoundingClientRect();
-      return (
-        !!box &&
-        x >= box.left - NEAR_PX &&
-        x <= box.right + NEAR_PX &&
-        y >= box.top - NEAR_PX &&
-        y <= box.bottom + NEAR_PX
-      );
-    };
-    const move = (event: PointerEvent) => {
-      if (event.pointerType !== "touch" && near(event.clientX, event.clientY)) show();
-      else hideLater();
-    };
-    const tap = (event: PointerEvent) => {
-      if (event.pointerType !== "touch") return;
-      show();
-      hideLater();
-    };
-    // A pointer leaving the window goes out of the page with nowhere to go.
-    const out = (event: PointerEvent) => {
-      if (!event.relatedTarget) hideLater();
-    };
-    hideLater();
-    window.addEventListener("pointermove", move, { passive: true });
-    window.addEventListener("pointerdown", tap, { passive: true });
-    document.addEventListener("pointerout", out);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerdown", tap);
-      document.removeEventListener("pointerout", out);
-    };
-  }, [area, delay, keepVisible]);
-  return !keepVisible && idle;
-}
 /** Opening a saved grid starts the player over, so it reads that grid as the session to resume. */
 export function MultiscreenRoute() {
   const [generation, setGeneration] = React.useState(0);

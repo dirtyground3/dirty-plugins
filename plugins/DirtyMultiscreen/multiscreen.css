@@ -518,13 +518,26 @@
   display: flex;
   align-items: flex-start;
   gap: 0.4rem;
-  opacity: 0.65;
-  transition: opacity 140ms ease;
+  /* Only the two button groups take the pointer; the strip between them reaches the video. */
+  pointer-events: none;
 }
 
+.ms-pane-navigation,
+.ms-pane-actions {
+  pointer-events: auto;
+  transition: opacity 200ms ease;
+}
+
+/* Like the main buttons, each group shows while the mouse is near it and fades out a while after it leaves. */
+:is(.ms-pane-navigation, .ms-pane-actions).ms-idle:not(:hover):not(:has(:focus-visible)) {
+  opacity: 0;
+  transition: opacity 1s ease;
+}
+
+/* Search and the performer portraits; their box ends at the last portrait, which is where "near" is measured. */
 .ms-pane-navigation {
   display: flex;
-  flex: 1;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
@@ -546,18 +559,6 @@
 .ms-route .ms-pane-header .ms-button:hover:not(:disabled),
 .ms-route .ms-pane-header .ms-button:focus-visible {
   background: rgba(0, 0, 0, 0.82);
-}
-
-.ms-cell:hover .ms-pane-header,
-.ms-cell:focus-within .ms-pane-header {
-  opacity: 1;
-}
-
-/* Hides with Video.js's control bar. A pointer or keyboard focus already on the header keeps it open. */
-.ms-cell:has(.vjs-has-started.vjs-user-inactive.vjs-playing) .ms-pane-header:not(:hover):not(:has(:focus-visible)) {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 1s ease;
 }
 
 .ms-performer-navigation {

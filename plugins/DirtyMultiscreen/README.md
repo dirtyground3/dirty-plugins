@@ -1,6 +1,6 @@
 # DirtyMultiscreen
 
-DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can launch from Stash scene, marker, performer, studio, and tag contexts while preserving the active list order when appropriate, and from lists other plugins announce, such as Cherry Pick's For you.
+DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can launch from Stash scene, marker, performer, studio, tag, and group contexts while preserving the active list order when appropriate, and from lists other plugins announce, such as Cherry Pick's For you.
 
 ## Features
 
@@ -144,11 +144,13 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - Closing the tab keeps the session. Reloading, reopening the plugin page or
   clicking the header button on a page without a list returns every screen to
   its place, scene, position, audio and picture. The header button on a scene, marker, performer,
-  studio or tag list, on a performer, studio or tag page, or on a page another
+  studio, tag or group list, on a performer, studio, tag or group page, or on a page another
   plugin announced a list for, starts a new session, and so does the shuffle
   button; either replaces the saved one. An announced empty list shows its
   message, such as "No scenes in For you", and keeps the saved session. A tag list or
-  page plays the scenes tagged with those tags themselves, not their sub-tags. Changing the scene
+  page plays the scenes tagged with those tags themselves, not their sub-tags, and a
+  group list or page plays the groups' own scenes, not their sub-groups'. With
+  **Keep the list order**, one group plays in its own scene order. Changing the scene
   order, spreading, duplicate avoidance, splitting or the number of screens keeps
   the launch scope but deals a new queue. If the library changed, a screen whose
   scene left its page starts at the top of that page. A browser that blocks sound
@@ -159,9 +161,11 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - Each screen's header has search and performer portraits on the left, with
   the scene link and O button on the right. The link opens the scene page in a
   new tab (the scene title is its tooltip). The header buttons and portraits
-  share the same circular size. They use translucent backgrounds over the video and show and
-  hide with the player's control bar, so they fade out on a playing screen you
-  are not hovering.
+  share the same circular size and use translucent backgrounds over the video.
+  Like the main buttons, each side shows while the mouse is near it and hides
+  three seconds after it moves away, leaves the window, or after the player
+  opens. Keyboard focus keeps them, a touch shows them for three seconds, and
+  edit mode keeps them visible.
 - Each performer has a small round portrait button with a Next badge on its
   corner. Click a portrait to move to another scene featuring that
   performer anywhere in its cast. When the scene list was filtered by performer,
@@ -225,7 +229,8 @@ own controls, and choose a result. Search results are paginated, follow the sort
 you choose and are limited to the session's playable videos. When the session
 was itself launched with a search term, the text you type matches titles, since
 Stash keeps one search term per query. During marker playback, results keep the
-original marker ranges.
+original marker ranges. The chosen result plays at once, after the scene the
+screen was playing, and Next and Previous then continue the screen's own queue.
 
 The authored source directory requires a build before installation. Back up
 replaced files, copy runtime files before the manifest, reload plugins, then
@@ -277,7 +282,7 @@ Each pane gets its own playback list. **Scene order** decides how it is built:
 | Favour high ratings and O counts | A weighted shuffle. Every 20 rating points multiply the weight by about 2.7, unrated scenes count as 50, and each O count adds the base weight once more. |
 | Favour recently added scenes | Loads the newest scenes first, then shuffles them with a weight that halves every 30 days since a scene was added. |
 | Mix favourites with unwatched scenes | Like a smart shuffle: two scenes from the favourites order, then one from the unwatched order, never repeating a scene. |
-| Keep the list order | The launching list's own sort, or title order when launched without a list. |
+| Keep the list order | The launching list's own sort, a single group's own scene order, or title order when launched without a list. |
 
 Every order except Favour recently added scenes and Keep the list order loads
 the launching list (or the whole library) in a random order, one page at a time,

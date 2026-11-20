@@ -19,12 +19,12 @@ async function start(options) {
 async function registration() {
   const h = await start();
   assert.equal(h.routes.length, 1);
-  assert.equal(h.patchNames.length, 9);
+  assert.equal(h.patchNames.length, 11);
   assert.equal(h.window.__dirtyMultiscreenSettings, undefined);
   assert.equal(h.window.__dirtyMultiscreenPlaylists, undefined);
   h.load();
   assert.equal(h.routes.length, 1, "a reloaded bundle never registers twice");
-  assert.equal(h.patchNames.length, 9);
+  assert.equal(h.patchNames.length, 11);
   // A failed registration is logged once and never retried.
   const partial = await start({
     patch: name => {
@@ -50,6 +50,7 @@ async function contextsAndCounts() {
     ["PerformerList", "/performers", "performer-selection"],
     ["StudioList", "/studios", "studio-selection"],
     ["TagList", "/tags", "tag-selection"],
+    ["GroupList", "/groups", "group-selection"],
   ]) {
     await h.path(path);
     h.patches.get(name)({ filter, selectedIds: new Set(["off-page", "2"]) });
@@ -66,6 +67,7 @@ async function contextsAndCounts() {
     ["PerformerPage", "/performers/5", "performer"],
     ["StudioPage", "/studios/6", "studio"],
     ["TagPage", "/tags/7/scenes", "tag"],
+    ["GroupPage", "/groups/8/scenes", "group"],
   ]) {
     await h.path(path);
     h.patches.get(name)({ [key]: { id: path.split("/")[2] } });
@@ -426,6 +428,31 @@ async function sceneHeaderActions() {
   assert.equal(floating(), "ms-floating", "leaving edit mode starts a fresh idle delay");
   await h.tick(3000);
   assert.equal(floating(), "ms-floating ms-floating-idle", "the toolbar hides normally after editing");
+  // Each screen's header groups follow the same rule, each measured from its own buttons.
+  const group = name => h.nodes(node => node.props.className?.startsWith(name))[0].props.className;
+  assert.equal(group("ms-pane-navigation"), "ms-pane-navigation ms-idle", "search and portraits hide after a while");
+  assert.equal(group("ms-pane-actions"), "ms-pane-actions ms-idle", "the scene link and O button hide too");
+  pointer(400, 500);
+  await h.flush();
+  assert.equal(group("ms-pane-navigation"), "ms-pane-navigation ms-idle", "moving elsewhere does not show them");
+  pointer(60, 30);
+  await h.flush();
+  assert.equal(group("ms-pane-navigation"), "ms-pane-navigation", "the mouse near search and the portraits shows them");
+  assert.equal(group("ms-pane-actions"), "ms-pane-actions ms-idle", "each group shows only near itself");
+  pointer(680, 30);
+  await h.tick(3000);
+  assert.equal(group("ms-pane-actions"), "ms-pane-actions", "the mouse near the link and O button shows them");
+  assert.equal(group("ms-pane-navigation"), "ms-pane-navigation ms-idle", "the other group hides after the delay");
+  h.document.emit("pointerout", { relatedTarget: null });
+  await h.tick(3000);
+  assert.equal(group("ms-pane-actions"), "ms-pane-actions ms-idle", "the mouse leaving the window hides them");
+  h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === "Edit screens")[0].props.onClick();
+  await h.flush();
+  await h.tick(3000);
+  assert.equal(group("ms-pane-navigation"), "ms-pane-navigation", "edit mode keeps the header visible");
+  assert.equal(group("ms-pane-actions"), "ms-pane-actions");
+  h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === "Finish editing screens")[0].props.onClick();
+  await h.flush();
   await h.unmount();
   pending[2].resolve({ sceneIncrementO: 8 });
   await h.flush();
@@ -901,7 +928,7 @@ async function sceneSearch() {
   );
   players()[0].props.onNext();
   await h.flush();
-  assert.deepEqual(ids(), ["a", "a"], "next wraps from the selected scene's final page");
+  assert.deepEqual(ids(), ["b", "a"], "next continues the screen's own page after a result from another page");
   h.button("Search scenes for screen 2").props.onClick();
   await h.flush();
   await search("nothing");
@@ -913,10 +940,10 @@ async function sceneSearch() {
   await h.flush();
   resultButtons()[0].props.onClick();
   await h.flush();
-  assert.deepEqual(ids(), ["a", "c"], "each screen has its own target");
+  assert.deepEqual(ids(), ["b", "c"], "each screen has its own target");
   players()[1].props.onPrevious();
   await h.flush();
-  assert.deepEqual(ids(), ["a", "b"], "previous reaches the selected scene's preceding page");
+  assert.deepEqual(ids(), ["b", "a"], "previous returns to the scene the screen played before");
   h.button("Search scenes for screen 1").props.onClick();
   await h.flush();
   filter().props.onChange({ find: { q: "cancel debounce" }, scene: {} });
@@ -980,13 +1007,13 @@ async function fixedSessionSearch() {
   const players = () => h.nodes(node => node.type === "native-player");
   players()[0].props.onPrevious();
   await h.flush();
-  assert.equal(players()[0].props.scene.id, "43", "previous follows the searched scene's split queue");
+  assert.equal(players()[0].props.scene.id, "1", "previous returns to the scene the screen played before");
   players()[0].props.onNext();
   await h.flush();
   assert.equal(players()[0].props.scene.id, "45");
   players()[0].props.onNext();
   await h.flush();
-  assert.equal(players()[0].props.scene.id, "1", "the searched final page wraps correctly");
+  assert.equal(players()[0].props.scene.id, "3", "next continues the screen's own split lane");
   players()[1].props.onPrevious();
   await h.flush();
   assert.equal(players()[1].props.scene.id, "44", "the other screen retains its independent position");
@@ -995,16 +1022,16 @@ async function fixedSessionSearch() {
   await search("Available 33");
   results()[0].props.onClick();
   await h.flush();
-  assert.equal(players()[1].props.scene.id, "33", "a scene from another split lane is inserted in order");
+  assert.equal(players()[1].props.scene.id, "33", "a scene from another split lane plays at once");
   players()[1].props.onPrevious();
   await h.flush();
-  assert.equal(players()[1].props.scene.id, "32");
+  assert.equal(players()[1].props.scene.id, "44");
   players()[1].props.onNext();
   await h.flush();
-  assert.equal(players()[1].props.scene.id, "33", "returning across a page boundary retains the inserted scene");
+  assert.equal(players()[1].props.scene.id, "33");
   players()[1].props.onNext();
   await h.flush();
-  assert.equal(players()[1].props.scene.id, "34");
+  assert.equal(players()[1].props.scene.id, "2", "after the last page the screen's own lane wraps to the first");
   await h.unmount();
 
   const library = await start({
@@ -1103,8 +1130,12 @@ async function searchDuringMarkersAndPaging() {
   await paged.tick(300);
   paged.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result")[0].props.onClick();
   await paged.flush();
-  assert.match(paged.text(), /Finding scene in session/);
-  assert.equal(paged.nodes(node => node.type === "native-player")[0].props.scene.id, "a");
+  assert.equal(
+    paged.nodes(node => node.type === "native-player")[0].props.scene.id,
+    "b",
+    "a chosen scene plays at once while a queue page is still loading",
+  );
+  assert.doesNotMatch(paged.text(), /Loading next page/);
   pending.resolve({ findScenes: { count: 25, scenes: [scenes[1]] } });
   await paged.flush();
   assert.equal(
@@ -1122,11 +1153,9 @@ async function searchedQueueNavigation() {
     title: `Video (${index})`,
     paths: { stream: `/${index}` },
   }));
-  let fail = true,
-    hold;
-  const h = await start({
+  let pageRequests = 0;
+  const options = {
     scenes,
-    launch: { source: "filter", filter: { sort: "title" }, sceneFilter: {} },
     graphql: async (query, variables) => {
       if (query.includes("MultiscreenSceneSearch")) {
         const term = variables.filter.q;
@@ -1134,13 +1163,11 @@ async function searchedQueueNavigation() {
         return { findScenes: { count: matches.length, scenes: matches } };
       }
       const { page, per_page: size } = variables.filter;
-      if (page > 1) {
-        if (hold) await hold.promise;
-        if (fail) throw Error("Cannot locate scene");
-      }
+      if (page > 1) pageRequests++;
       return { findScenes: { count: scenes.length, scenes: scenes.slice((page - 1) * size, page * size) } };
     },
-  });
+  };
+  const h = await start({ ...options, launch: { source: "filter", filter: { sort: "title" }, sceneFilter: {} } });
   const players = () => h.nodes(node => node.type === "native-player");
   const choose = async id => {
     h.button("Search scenes for screen 1").props.onClick();
@@ -1151,33 +1178,38 @@ async function searchedQueueNavigation() {
     h.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result")[0].props.onClick();
     await h.flush();
   };
+  const step = async direction => {
+    players()[0].props[direction === 1 ? "onNext" : "onPrevious"]();
+    await h.flush();
+    return players()[0].props.scene.id;
+  };
+  const other = players()[1].props.scene.id;
+  // Two screens load 24 scenes a page, so Video (24) is on the second page.
   await choose(24);
-  assert.match(h.text(), /Cannot locate scene/);
-  assert.equal(players()[0].props.scene.id, "0", "a failed lookup preserves the playing scene and position");
-  fail = false;
-  h.nodes(node => node.type === "button" && node.props.className?.includes("dirty-ui-button"))[0].props.onClick();
-  await h.flush();
-  assert.equal(players()[0].props.scene.id, "24", "retry locates the original search result");
-  players()[0].props.onPrevious();
-  await h.flush();
-  assert.equal(players()[0].props.scene.id, "23");
-  players()[0].props.onNext();
-  await h.flush();
-  assert.equal(players()[0].props.scene.id, "24");
+  assert.equal(players()[0].props.scene.id, "24", "a result beyond the loaded page plays at once");
+  assert.equal(pageRequests, 0, "choosing a result loads no queue page to find it");
+  assert.doesNotMatch(h.text(), /Loading next page|Finding/);
+  assert.equal(await step(-1), "0", "previous returns to the scene the screen was playing");
+  assert.equal(await step(1), "24");
+  assert.equal(await step(1), "1", "next continues the screen's own queue after the chosen scene");
   await choose(4);
-  hold = deferred();
+  assert.equal(players()[0].props.scene.id, "4", "a result already in the queue plays where it stands");
+  assert.equal(await step(-1), "3");
   await choose(31);
-  assert.match(h.text(), /Finding scene in session/);
   await choose(7);
-  hold.resolve();
-  hold = null;
-  await h.flush();
-  assert.equal(players()[0].props.scene.id, "7", "an older location lookup cannot replace a newer choice");
-  players()[0].props.onPrevious();
-  await h.flush();
-  assert.equal(players()[0].props.scene.id, "6");
-  assert.equal(players()[1].props.scene.id, "0", "locating and navigation leave other panes alone");
+  assert.equal(players()[0].props.scene.id, "7", "the newest choice plays");
+  assert.equal(await step(-1), "6");
+  assert.equal(pageRequests, 0);
+  assert.equal(players()[1].props.scene.id, other, "choosing and navigation leave other panes alone");
+  await choose(30);
   await h.unmount();
+  const reopened = await start({ ...options, localStorage: new Map(h.localStorage) });
+  assert.equal(
+    reopened.nodes(node => node.type === "native-player")[0].props.scene.id,
+    "30",
+    "reopening returns to a searched scene from beyond the saved page",
+  );
+  await reopened.unmount();
 
   const random = await start({
     scenes: scenes.slice(0, 20),

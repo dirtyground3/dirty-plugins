@@ -104,7 +104,7 @@ export function NativePlayerPane({
   const current = React.useRef(state),
     request = React.useRef(0),
     inserted = React.useRef<{ page: number; item: Item } | null>(null),
-    retry = React.useRef<QueueStep | Item>({ direction: 1 }),
+    retry = React.useRef<QueueStep>({ direction: 1 }),
     performerLookup = React.useRef<AbortController | null>(null);
   const [notice, setNotice] = React.useState("");
   const [view, setView] = React.useState<PaneView>(() => saved?.view ?? {});
@@ -274,40 +274,31 @@ export function NativePlayerPane({
       if (revision === request.current) finish(start);
     }
   };
-  const select = async (selected: Item) => {
+  /**
+   * A search result plays at once. Like a performer's next scene, one outside the queue goes after the playing one, so
+   * no page is loaded to find it; Next and Previous then continue the screen's own queue around it.
+   */
+  const select = (selected: Item) => {
     restoring.current = null;
-    const previous = current.current;
-    const revision = ++request.current;
-    retry.current = selected;
+    // A newer choice wins over any page, performer or restore lookup still in flight.
+    request.current++;
+    performerLookup.current?.abort();
     setNotice("");
-    const publish = (next: typeof state) => {
-      if (revision !== request.current) return;
-      current.current = next;
-      setState(next);
-    };
-    const cursor = previous.items.findIndex(item => item.id === selected.id);
-    if (cursor >= 0) {
-      publish({ ...previous, cursor, busy: false, error: "" });
-      return;
-    }
-    publish({ ...previous, busy: true, error: "" });
-    try {
-      if (continuation) {
-        for (let offset = 0; offset < continuation.pageCount; offset++) {
-          const page = ((previous.page - 1 + offset) % continuation.pageCount) + 1;
-          const playlists = await continuation.loadPage(page);
-          if (revision !== request.current) return;
-          const position = locatePlaylistItem(playlists, screenIndex, selected);
-          if (!position) continue;
-          inserted.current = { page, item: selected };
-          publish({ ...position, page, busy: false, error: "" });
-          return;
-        }
-      }
-      throw new Error("This scene is no longer available in the session.");
-    } catch (error) {
-      publish({ ...previous, busy: false, error: error instanceof Error ? error.message : String(error) });
-    }
+    const previous = current.current;
+    const found = previous.items.findIndex(item => item.id === selected.id);
+    const at = Math.min(previous.cursor + 1, previous.items.length);
+    const next =
+      found >= 0
+        ? { ...previous, cursor: found, busy: false, error: "" }
+        : {
+            ...previous,
+            items: [...previous.items.slice(0, at), { ...selected, outsidePage: true }, ...previous.items.slice(at)],
+            cursor: at,
+            busy: false,
+            error: "",
+          };
+    current.current = next;
+    setState(next);
   };
   React.useEffect(() => {
     if (restoring.current && continuation) void restore(restoring.current, continuation);
@@ -376,10 +367,11 @@ export function NativePlayerPane({
       onContextMenu={options.contextMenu}
     >
       <PaneHeader
+        editing={editing}
         item={item}
         screenIndex={position}
         searchSession={searchSession}
-        onSelect={selected => void select(selected)}
+        onSelect={select}
         busy={state.busy}
         showPerformerNavigation={showPerformerNavigation}
         onNavigatePerformer={performerId => {
@@ -434,9 +426,7 @@ export function NativePlayerPane({
             ? "Restoring session…"
             : "performerId" in retry.current
               ? "Finding next scene featuring this performer…"
-              : "direction" in retry.current
-                ? "Loading next page…"
-                : "Finding scene in session…"}
+              : "Loading next page…"}
         </div>
       )}
       {notice && (
@@ -452,8 +442,7 @@ export function NativePlayerPane({
             onClick={() => {
               const step = retry.current;
               if ("performerId" in step) void nextFeaturing(step.performerId);
-              else if ("direction" in step) void navigate(step.direction);
-              else void select(step);
+              else void navigate(step.direction);
             }}
           >
             Retry

@@ -9,7 +9,7 @@ function captureList(component: string, path: string, key: string) {
     return [props];
   });
 }
-function captureDetail(component: string, prefix: string, entity: "performer" | "studio" | "tag") {
+function captureDetail(component: string, prefix: string, entity: "performer" | "studio" | "tag" | "group") {
   PluginApi.patch.before(component, props => {
     if (window.location.pathname.startsWith(prefix) && props[entity]?.id)
       contexts.captureDetail(entity + "-detail", props[entity].id);
@@ -29,6 +29,8 @@ DirtyPlugins?.registerPlugin(PLUGIN_ID, () => {
   captureDetail("StudioPage", "/studios/", "studio");
   captureList("TagList", "/tags", "tag-list");
   captureDetail("TagPage", "/tags/", "tag");
+  captureList("GroupList", "/groups", "group-list");
+  captureDetail("GroupPage", "/groups/", "group");
   PluginApi.patch.before("MainNavBar.UtilityItems", props => [
     {
       children: (

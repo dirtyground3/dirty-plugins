@@ -52,8 +52,12 @@ const STUDIO_IDS =
   "query MultiscreenStudios($filter:FindFilterType,$studio_filter:StudioFilterType){findStudios(filter:$filter,studio_filter:$studio_filter){studios{id}}}";
 const TAG_IDS =
   "query MultiscreenTags($filter:FindFilterType,$tag_filter:TagFilterType){findTags(filter:$filter,tag_filter:$tag_filter){tags{id}}}";
-type Entity = "performer" | "studio" | "tag";
-/** How a list of each entity resolves to IDs, and the scene criterion those IDs become. Studios and tags match only themselves. */
+const GROUP_IDS =
+  "query MultiscreenGroups($filter:FindFilterType,$group_filter:GroupFilterType){findGroups(filter:$filter,group_filter:$group_filter){groups{id}}}";
+/** Stash's own order of a group's scenes, as its Scenes tab sorts them. */
+const GROUP_SCENE_SORT = "group_scene_number";
+type Entity = "performer" | "studio" | "tag" | "group";
+/** How a list of each entity resolves to IDs, and the scene criterion those IDs become. Studios, tags and groups match only themselves. */
 const RELATED: Record<
   Entity,
   { query: string; rows(data: QueryResult): { id: string }[]; criterion(ids: string[]): Record<string, unknown> }
@@ -72,6 +76,11 @@ const RELATED: Record<
     query: TAG_IDS,
     rows: data => data.findTags.tags,
     criterion: ids => ({ tags: { value: ids, modifier: "INCLUDES", depth: 0 } }),
+  },
+  group: {
+    query: GROUP_IDS,
+    rows: data => data.findGroups.groups,
+    criterion: ids => ({ groups: { value: ids, modifier: "INCLUDES", depth: 0 } }),
   },
 };
 const INCREMENT_O = "mutation MultiscreenIncrementSceneO($id:ID!){sceneIncrementO(id:$id)}";
@@ -220,17 +229,21 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
     else if (context.source === "performer-detail") ids = [context.performerId];
     else if (context.source === "studio-detail") ids = [context.studioId];
     else if (context.source === "tag-detail") ids = [context.tagId];
+    else if (context.source === "group-detail") ids = [context.groupId];
     else if (
       context.source === "performer-filter" ||
       context.source === "studio-filter" ||
-      context.source === "tag-filter"
+      context.source === "tag-filter" ||
+      context.source === "group-filter"
     ) {
       const objectFilter =
         context.source === "performer-filter"
           ? context.performerFilter
           : context.source === "studio-filter"
             ? context.studioFilter
-            : context.tagFilter;
+            : context.source === "tag-filter"
+              ? context.tagFilter
+              : context.groupFilter;
       const data = await graphqlRequest<QueryResult>(related.query, {
         filter: { ...context.filter, page: 1, per_page: -1 },
         [entity + "_filter"]: objectFilter,
@@ -238,8 +251,10 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
       ids = related.rows(data).map(item => item.id);
     } else return null;
     if (!ids.length) return null;
+    // List order plays one group in its own scene order; several groups have no shared one.
+    const listSort = entity === "group" && ids.length === 1 ? GROUP_SCENE_SORT : NON_RANDOM_SCENE_SORT;
     return {
-      filter: { page: 1, per_page: getSceneLimit(settings), ...sortFor(settings, NON_RANDOM_SCENE_SORT) },
+      filter: { page: 1, per_page: getSceneLimit(settings), ...sortFor(settings, listSort) },
       scene_filter: related.criterion(ids),
     };
   }
@@ -255,6 +270,7 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
     if (source.startsWith("performer-")) return relatedSceneVariables(settings, launchContext!, "performer");
     if (source.startsWith("studio-")) return relatedSceneVariables(settings, launchContext!, "studio");
     if (source.startsWith("tag-")) return relatedSceneVariables(settings, launchContext!, "tag");
+    if (source.startsWith("group-")) return relatedSceneVariables(settings, launchContext!, "group");
     return { filter: { page: 1, per_page: getSceneLimit(settings), ...sortFor(settings, NON_RANDOM_SCENE_SORT) } };
   }
   function getMarkerQueryVariables(settings: Settings, launchContext: MarkerContext): QueryVariables | null {

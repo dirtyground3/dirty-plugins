@@ -1,3 +1,4 @@
+import type * as R from "react";
 import { isMarkerLaunchContext } from "./domain/context";
 import { getSceneStreamUrl, orderSelected } from "./domain/items";
 import { DirtyPlugins, PluginApi, queries, React } from "./runtime";
@@ -172,6 +173,66 @@ export function useSceneQuery(settings: Settings, context: LaunchContext | null,
 }
 export function useMarkerQuery(settings: Settings, context: LaunchContext | null, enabled: boolean, resume: ResumeRef) {
   return useItems(settings, context, enabled, true, { count: 0, scene_markers: [] as Marker[] }, resume);
+}
+/** How long buttons that show near the mouse stay after it leaves. */
+export const CONTROLS_IDLE_MS = 3000;
+/** How close the mouse must come to such buttons to show them. */
+const NEAR_PX = 100;
+/**
+ * True while a group of buttons rests hidden: the main buttons, or a screen's header groups. They show while the mouse
+ * is within NEAR_PX of their box and hide `delay` after it leaves that area or the window, and after the player
+ * opens. Moving elsewhere never shows them; a touch, which cannot hover, shows them for `delay`. Edit mode keeps
+ * them visible without an idle timer.
+ */
+export function useIdle(area: R.RefObject<HTMLElement | null>, delay: number, keepVisible: boolean) {
+  const [idle, setIdle] = React.useState(false);
+  React.useEffect(() => {
+    setIdle(false);
+    if (keepVisible) return undefined;
+    let timer = 0;
+    const show = () => {
+      window.clearTimeout(timer);
+      timer = 0;
+      setIdle(false);
+    };
+    const hideLater = () => {
+      if (!timer) timer = window.setTimeout(() => setIdle(true), delay);
+    };
+    const near = (x: number, y: number) => {
+      const box = area.current?.getBoundingClientRect();
+      return (
+        !!box &&
+        x >= box.left - NEAR_PX &&
+        x <= box.right + NEAR_PX &&
+        y >= box.top - NEAR_PX &&
+        y <= box.bottom + NEAR_PX
+      );
+    };
+    const move = (event: PointerEvent) => {
+      if (event.pointerType !== "touch" && near(event.clientX, event.clientY)) show();
+      else hideLater();
+    };
+    const tap = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      show();
+      hideLater();
+    };
+    // A pointer leaving the window goes out of the page with nowhere to go.
+    const out = (event: PointerEvent) => {
+      if (!event.relatedTarget) hideLater();
+    };
+    hideLater();
+    window.addEventListener("pointermove", move, { passive: true });
+    window.addEventListener("pointerdown", tap, { passive: true });
+    document.addEventListener("pointerout", out);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerdown", tap);
+      document.removeEventListener("pointerout", out);
+    };
+  }, [area, delay, keepVisible]);
+  return !keepVisible && idle;
 }
 /** Saves at most once per interval, and before the page goes away, when a timer would never fire. */
 export function useSessionSaver(save: () => void) {

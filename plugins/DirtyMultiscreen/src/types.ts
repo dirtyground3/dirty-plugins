@@ -102,7 +102,13 @@ export interface PluginList {
   keepOrder: boolean;
   label: string;
 }
-type SelectionSource = "selection" | "marker-selection" | "performer-selection" | "studio-selection" | "tag-selection";
+type SelectionSource =
+  | "selection"
+  | "marker-selection"
+  | "performer-selection"
+  | "studio-selection"
+  | "tag-selection"
+  | "group-selection";
 export type LaunchContext =
   | PluginList
   | { source: SelectionSource; selectedIds: string[] }
@@ -111,9 +117,11 @@ export type LaunchContext =
   | { source: "performer-filter"; filter: Record<string, unknown>; performerFilter: Record<string, unknown> }
   | { source: "studio-filter"; filter: Record<string, unknown>; studioFilter: Record<string, unknown> }
   | { source: "tag-filter"; filter: Record<string, unknown>; tagFilter: Record<string, unknown> }
+  | { source: "group-filter"; filter: Record<string, unknown>; groupFilter: Record<string, unknown> }
   | { source: "performer-detail"; performerId: string }
   | { source: "studio-detail"; studioId: string }
-  | { source: "tag-detail"; tagId: string };
+  | { source: "tag-detail"; tagId: string }
+  | { source: "group-detail"; groupId: string };
 export type MarkerContext =
   | Extract<LaunchContext, { source: "marker-filter" }>
   | { source: "marker-selection"; selectedIds: string[] }
@@ -136,6 +144,7 @@ export interface QueryResult {
   findPerformers: { performers: { id: string }[] };
   findStudios: { studios: { id: string }[] };
   findTags: { tags: { id: string }[] };
+  findGroups: { groups: { id: string }[] };
 }
 export interface Player {
   currentTime(): number;

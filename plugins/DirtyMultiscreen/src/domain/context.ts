@@ -6,6 +6,7 @@ const SELECTION_SOURCES = new Set([
   "performer-selection",
   "studio-selection",
   "tag-selection",
+  "group-selection",
   "marker-selection",
 ]);
 const FILTER_KEYS = new Map([
@@ -13,12 +14,14 @@ const FILTER_KEYS = new Map([
   ["performer-filter", "performerFilter"],
   ["studio-filter", "studioFilter"],
   ["tag-filter", "tagFilter"],
+  ["group-filter", "groupFilter"],
   ["marker-filter", "markerFilter"],
 ]);
 const DETAIL_KEYS = new Map([
   ["performer-detail", "performerId"],
   ["studio-detail", "studioId"],
   ["tag-detail", "tagId"],
+  ["group-detail", "groupId"],
 ]);
 /** The highest List size limit: lists are kept whole up to it, so a raised limit applies to lists already held. */
 export const MAX_LIST_IDS = 100000;

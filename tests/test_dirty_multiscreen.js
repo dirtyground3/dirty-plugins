@@ -864,6 +864,19 @@ async function main() {
     selectedIds: ["11", "12"],
   });
   assert.deepEqual(plain(tagSelectionVariables.scene_filter.tags.value), ["11", "12"]);
+  const groupVariables = await a.getSceneQueryVariables(nonRandom, { source: "group-detail", groupId: "21" });
+  assert.equal(groupVariables.filter.sort, "group_scene_number", "list order plays one group in its own order");
+  assert.deepEqual(plain(groupVariables.scene_filter), {
+    groups: { value: ["21"], modifier: "INCLUDES", depth: 0 },
+  });
+  const groupSelectionVariables = await a.getSceneQueryVariables(nonRandom, {
+    source: "group-selection",
+    selectedIds: ["21", "22"],
+  });
+  assert.equal(groupSelectionVariables.filter.sort, "title", "several groups have no shared scene order");
+  assert.deepEqual(plain(groupSelectionVariables.scene_filter.groups.value), ["21", "22"]);
+  const randomGroup = await a.getSceneQueryVariables(defaults, { source: "group-detail", groupId: "21" });
+  assert.match(randomGroup.filter.sort, /^random_\d+$/, "other orders still shuffle a group");
   const performerFilterVariables = await a.getSceneQueryVariables(nonRandom, {
     source: "performer-filter",
     filter: { sort: "title" },
@@ -890,6 +903,27 @@ async function main() {
   assert.deepEqual(plain(tagFilterVariables.scene_filter), {
     tags: { value: ["t1", "t2"], modifier: "INCLUDES", depth: 0 },
   });
+  const groupRequests = [];
+  const groupQueries = feature("queries").createQueries({
+    graphql: async (query, variables) => {
+      groupRequests.push({ query, variables });
+      return { findGroups: { groups: [{ id: "g1" }] } };
+    },
+  });
+  const groupFilterVariables = await groupQueries.getSceneQueryVariables(nonRandom, {
+    source: "group-filter",
+    filter: { q: "saga", sort: "name" },
+    groupFilter: { rating100: { value: 60, modifier: "GREATER_THAN" } },
+  });
+  assert.match(groupRequests[0].query, /MultiscreenGroups/);
+  assert.deepEqual(plain(groupRequests[0].variables), {
+    filter: { q: "saga", sort: "name", page: 1, per_page: -1 },
+    group_filter: { rating100: { value: 60, modifier: "GREATER_THAN" } },
+  });
+  assert.deepEqual(plain(groupFilterVariables), {
+    filter: { page: 1, per_page: a.getSceneLimit(nonRandom), sort: "group_scene_number" },
+    scene_filter: { groups: { value: ["g1"], modifier: "INCLUDES", depth: 0 } },
+  });
 
   const launchContext = { source: "selection", selectedIds: ["1", "2"] };
   contexts.storeLaunchContext(launchContext);
@@ -907,6 +941,7 @@ async function main() {
     ["performer-list", "/performers", "performer-selection"],
     ["studio-list", "/studios", "studio-selection"],
     ["tag-list", "/tags", "tag-selection"],
+    ["group-list", "/groups", "group-selection"],
   ]) {
     contexts.captureList(key, {
       filter: {
@@ -944,6 +979,13 @@ async function main() {
     tagId: "789",
   });
   assert.equal(contexts.getLaunchContextForPath("/tags/new"), null);
+  assert.equal(contexts.getLaunchContextForPath("/groups/31"), null);
+  contexts.captureDetail("group-detail", "31");
+  assert.deepEqual(plain(contexts.getLaunchContextForPath("/groups/31/scenes")), {
+    source: "group-detail",
+    groupId: "31",
+  });
+  assert.equal(contexts.getLaunchContextForPath("/groups/new"), null);
 
   // Lists announced by other plugins.
   assert.deepEqual(plain(a.normalizeListSettings({})), { allow: "known", limit: 10000 });
@@ -1225,12 +1267,18 @@ async function main() {
     ["c", "a"],
   );
   const emptyQueries = feature("queries").createQueries({
-    graphql: async () => ({ findPerformers: { performers: [] }, findStudios: { studios: [] }, findTags: { tags: [] } }),
+    graphql: async () => ({
+      findPerformers: { performers: [] },
+      findStudios: { studios: [] },
+      findTags: { tags: [] },
+      findGroups: { groups: [] },
+    }),
   });
   for (const [source, key] of [
     ["performer-filter", "performerFilter"],
     ["studio-filter", "studioFilter"],
     ["tag-filter", "tagFilter"],
+    ["group-filter", "groupFilter"],
   ]) {
     const context = { source, filter: {}, [key]: {} };
     assert.equal(await emptyQueries.getSceneQueryVariables(defaults, context), null);
