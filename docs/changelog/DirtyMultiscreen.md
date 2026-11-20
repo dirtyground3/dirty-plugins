@@ -2,6 +2,26 @@
 
 Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names its version.
 
+- **DirtyMultiscreen 1.0.30:** a right-click menu of screen options, search
+  choices that play at once, screen headers that hide like the main buttons,
+  and launches from groups.
+  - **Right-click a screen for its edit options.** Enable this Grid setting
+    to open a menu of one screen's picture options at the pointer during
+    playback: flip, rotate, loop, fill and close, each with its icon and name.
+  - **Search choices play at once.** A chosen result plays right after the
+    screen's current scene, like a performer's next scene, instead of being
+    looked up in the session page by page. That lookup could stay on "Finding
+    scene in session…" while the other screens' videos held the browser's
+    connections to Stash. Next and Previous then continue the screen's own
+    queue.
+  - **Screen headers hide like the main buttons.** Search and the performer
+    portraits, and the scene link and O button, each show while the mouse is
+    near them and hide three seconds after it leaves. Keyboard focus and edit
+    mode keep them, and a touch shows them for three seconds.
+  - **Groups.** The header button launches from a group page, the groups list
+    and selected groups, and plays the groups' own scenes. With **Keep the
+    list order**, one group plays in its own scene order.
+
 - **DirtyMultiscreen 1.0.29:** dividers, a docking guide, moving screens
   without edit mode, cropped pictures you can move, and controls that always
   fit their screen.
@@ -19,9 +39,6 @@ Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names 
     you drag a screen's picture and the edges between screens at any time.
     Only the pointer changes over an edge, and a plain click still reaches the
     player.
-  - **Right-click a screen for its edit options.** Enable this Grid setting
-    to open a menu of one screen's picture options at the pointer during
-    playback: flip, rotate, loop, fill and close, each with its icon and name.
   - **Fit videos** keeps a custom layout's panes and fills each one, cropping
     without stretching.
   - **Move a cropped picture.** When Fill or Fit videos crops a picture, drag
