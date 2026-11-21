@@ -2,6 +2,21 @@
 
 Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names its version.
 
+- **DirtyMultiscreen 1.1.1:** saved A/B loops, a usable saved-filter menu in
+  search, and launches from DirtyRank battles.
+  - **A/B loops are saved.** An A/B loop set with the player's own controls or
+    its L key stays with the scene the screen is playing, in the session,
+    autosaves and saved grids, and returns when they open. Like the position,
+    it is forgotten when the screen moves to another scene.
+  - **Saved filters in search.** Stash's saved-filter menu opens above the
+    scene search instead of behind its shade, also with themes such as Refract.
+  - **Clearer search help.** The search says that its filter narrows the
+    results only: the scene you choose plays on that screen, which then
+    continues its own queue.
+  - **Launch from DirtyRank battles.** The header button opens scenes from
+    current DirtyRank battle previews in left-to-right order. DirtyRank is
+    accepted under the default **Known plugins only** setting.
+
 - **DirtyMultiscreen 1.1.0:** wheel zoom on cropped pictures, Fit videos
   without margins, and a see-through Saved grids with a search.
   - **Zoom with the wheel.** When Fill or Fit videos crops a picture, scroll

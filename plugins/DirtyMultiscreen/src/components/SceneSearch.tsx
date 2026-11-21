@@ -91,7 +91,8 @@ function SceneSearchDialog({
         />
       </div>
       <p className="ms-scene-search-help">
-        Search and filter this session with Stash&apos;s own controls. Choosing a result changes only this screen.
+        Find a scene in this session with Stash&apos;s own search, filter and sort. The filter narrows these results
+        only: the scene you choose plays on this screen, which then continues its own queue.
       </p>
       <div ref={filterRef}>
         <DirtyPlugins.react.NativeSceneFilter className="ms-scene-search-filter" onChange={changeCondition} />

@@ -2,7 +2,7 @@ import { isMultiscreenLaunchContext, parseAnnouncement } from "./domain/context"
 import type { Announcement, LaunchContext, ListContext, ListSettings } from "./types";
 const LAUNCH_CONTEXT_STORAGE_KEY = "multiscreen.launchContext";
 /** The `source` of plugins whose lists Known plugins only accepts, lower case. */
-const KNOWN_LIST_SOURCES = new Set(["cherrypick"]);
+const KNOWN_LIST_SOURCES = new Set(["cherrypick", "dirtyrank"]);
 type HeldList = Announcement & { ids: string[] };
 /** Each native list route, its captured context, and the launch sources it produces. */
 const LISTS = new Map([

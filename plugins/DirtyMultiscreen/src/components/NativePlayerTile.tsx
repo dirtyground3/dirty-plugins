@@ -7,10 +7,12 @@ export function NativePlayerTile({
   item,
   nativePlayer,
   nextItem,
+  onAbLoopChange,
   onAudioChange,
   onPositionChange,
   playback,
   previousItem,
+  resumeAbLoop,
   resumeTime,
   useFindScene,
 }: TileProps) {
@@ -67,8 +69,10 @@ export function NativePlayerTile({
         onAudioChange(value);
       }}
       onPositionChange={onPositionChange}
+      onAbLoopChange={onAbLoopChange}
       playback={playback}
       previousItem={previousItem}
+      resumeAbLoop={resumeAbLoop}
       resumeTime={resumeTime}
       scene={sceneQuery.data.findScene}
     />

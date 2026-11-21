@@ -167,7 +167,7 @@
     "otherPluginLists": {
       "type": "STRING",
       "displayName": "Lists from other plugins",
-      "description": "Let another plugin's page tell the header button which scenes or markers it shows, such as Cherry Pick's For you. Defaults to known plugins only.",
+      "description": "Let another plugin tell the header button which scenes or markers it shows, such as Cherry Pick's For you or DirtyRank's open battle previews. Defaults to known plugins only.",
       "default": "known",
       "options": [
         {
@@ -176,7 +176,7 @@
         },
         {
           "value": "known",
-          "label": "Known plugins only (Cherry Pick)"
+          "label": "Known plugins only (Cherry Pick and DirtyRank)"
         },
         {
           "value": "any",

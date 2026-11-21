@@ -14,9 +14,26 @@ import { boxGendersLabel, boxOptions, categoriesForPerformer } from "../domain/s
 import { React, Router, ui } from "../runtime";
 import type * as R from "react";
 import type { NativeProps } from "../../../DirtyPlugins/src/types";
-import { LEADERBOARDS_ROUTE_PATH } from "../constants";
+import { LEADERBOARDS_ROUTE_PATH, PLUGIN_ID } from "../constants";
 import { linkedBox } from "../domain/navigation";
 import type { BattleProps } from "../types";
+
+function useArenaScene(cardKey: string | null) {
+  const [scene, setScene] = React.useState<{ cardKey: string; id: string } | null>(null);
+  const onSceneChange = React.useCallback(
+    (id: string | null) => {
+      if (cardKey === null) return;
+      setScene(current => {
+        if (id !== null) return { cardKey, id };
+        return current?.cardKey === cardKey ? null : current;
+      });
+    },
+    [cardKey],
+  );
+  // A replacement card can render before the previous card cleans up its preview.
+  return [scene?.cardKey === cardKey ? scene.id : null, onSceneChange] as const;
+}
+
 export function DirtyRankRoute(props: NativeProps): R.JSX.Element | null {
   const routeTargetId =
     props && props.match && props.match.params && props.match.params.performerId
@@ -60,6 +77,52 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
     undo,
     restartKings,
   } = session;
+  const ready = !loading && settings && category;
+  const pair = ready ? pairInfo?.pair : null;
+  const hillWinner =
+    ready && kingsMode && pairInfo?.incumbentId && !pair
+      ? performers.find(performer => String(performer.id) === pairInfo!.incumbentId)
+      : null;
+  const arenaLeft = pair ? pair[0] : hillWinner && pairInfo!.incumbentSide === "left" ? hillWinner : null;
+  const arenaRight = pair ? pair[1] : hillWinner && pairInfo!.incumbentSide === "right" ? hillWinner : null;
+  // Keep the same mounted card and player when this performer wins.
+  const arenaLeftKey = arenaLeft
+    ? gauntletMode
+      ? "gauntlet:" + arenaLeft.id
+      : kingsMode
+        ? "kings:" + cohort + ":" + category!.id + ":" + arenaLeft.id
+        : pairInfo!.instanceId + ":left"
+    : null;
+  const arenaRightKey = arenaRight
+    ? kingsMode
+      ? "kings:" + cohort + ":" + category!.id + ":" + arenaRight.id
+      : pairInfo!.instanceId + ":right"
+    : null;
+  const [leftSceneId, onLeftSceneChange] = useArenaScene(arenaLeftKey);
+  const [rightSceneId, onRightSceneChange] = useArenaScene(arenaRightKey);
+  const { pathname } = Router.useLocation();
+  React.useEffect(() => {
+    const ids = [leftSceneId, rightSceneId].filter(id => id !== null);
+    if (!ids.length) return;
+    function announce(ids: string[] | null) {
+      document.dispatchEvent(
+        new CustomEvent("stash-scenes:context", {
+          detail: {
+            version: 1,
+            source: PLUGIN_ID,
+            path: pathname,
+            kind: "scenes",
+            keepOrder: true,
+            label: "DirtyRank battle",
+            ids,
+          },
+        }),
+      );
+    }
+    announce(ids);
+    return () => announce(null);
+  }, [pathname, leftSceneId, rightSceneId]);
+
   if (loading)
     return (
       <main className="dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide">
@@ -79,21 +142,6 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
   }
   if (!settings || !category) return null;
 
-  const pair = pairInfo && pairInfo!.pair;
-  const hillWinner =
-    kingsMode && pairInfo && pairInfo!.incumbentId && !pair
-      ? performers.find(performer => String(performer.id) === pairInfo!.incumbentId)
-      : null;
-  const arenaLeft = pair ? pair[0] : hillWinner && pairInfo!.incumbentSide === "left" ? hillWinner : null;
-  const arenaRight = pair ? pair[1] : hillWinner && pairInfo!.incumbentSide === "right" ? hillWinner : null;
-  // Keep the same mounted card and player when this performer wins.
-  const arenaLeftKey =
-    arenaLeft &&
-    (gauntletMode
-      ? "gauntlet:" + arenaLeft.id
-      : kingsMode
-        ? "kings:" + cohort + ":" + category.id + ":" + arenaLeft.id
-        : pairInfo!.instanceId + ":left");
   const reveal = settings.showRatingsBeforeVote;
   const hillDefeated = kingsMode ? session.defeatedCount : 0;
   const hillTotal = kingsMode && pairInfo ? Math.max(0, pairInfo!.eligible - 1) : 0;
@@ -308,6 +356,7 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
                       onChoose={() => {
                         submit("left");
                       }}
+                      onSceneChange={onLeftSceneChange}
                       performer={arenaLeft}
                       pool={poolFor(arenaLeft, category.id, cohort, settings)}
                       rank={pairInfo!.ranks[arenaLeft.id]}
@@ -320,17 +369,14 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
                     <PerformerCard
                       crowned={Boolean(hillWinner)}
                       disabled={false}
-                      key={
-                        kingsMode
-                          ? "kings:" + cohort + ":" + category.id + ":" + arenaRight.id
-                          : pairInfo!.instanceId + ":right"
-                      }
+                      key={arenaRightKey}
                       hillMode={kingsMode}
                       hillOpening={kingsMode && !pairInfo!.incumbentId}
                       kingTarget={kingsMode && pairInfo!.incumbentId === String(arenaRight.id)}
                       onChoose={() => {
                         submit("right");
                       }}
+                      onSceneChange={onRightSceneChange}
                       performer={arenaRight}
                       pool={poolFor(arenaRight, category.id, cohort, settings)}
                       rank={pairInfo!.ranks[arenaRight.id]}

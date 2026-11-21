@@ -5,7 +5,7 @@ import { PluginApi, React, Router } from "../runtime";
 import type * as R from "react";
 import type { PerformerCardProps, PreviewMedia } from "../types";
 export function PerformerCard(props: PerformerCardProps): R.JSX.Element | null {
-  const { performer, pool, reveal } = props;
+  const { performer, pool, reveal, onSceneChange } = props;
   const showImages = !props.settings.hidePerformerImages;
   const NativePerformerCard = showImages && PluginApi.components && PluginApi.components.PerformerCard;
   const [imageReady, setImageReady] = React.useState(!showImages || !performer.image_path);
@@ -23,6 +23,12 @@ export function PerformerCard(props: PerformerCardProps): R.JSX.Element | null {
   }, []);
   const playbackStartRef = React.useRef<number | null>(null);
   const showMedia = showImages || Boolean(scene) || sceneLoading;
+  const sceneId = scene?.id;
+  React.useEffect(() => {
+    if (!sceneId || !onSceneChange) return;
+    onSceneChange(sceneId);
+    return () => onSceneChange(null);
+  }, [sceneId, onSceneChange]);
   React.useEffect(() => {
     cardMountedRef.current = true;
     return () => {

@@ -160,9 +160,28 @@ export interface Player {
   muted(value: boolean): void;
   isDisposed?(): boolean;
   persistVolume?(): { enabled: boolean; ready(): void };
+  abLoopPlugin?: AbLoopPlugin;
   on(event: string, listener: () => void): void;
   off?(event: string, listener: () => void): void;
   ready(listener: () => void): void;
+}
+/** The native player's A/B loop. An unset start is 0 and an unset end is false. */
+export interface AbLoopOptions {
+  start: number | false;
+  end: number | false;
+  enabled: boolean;
+}
+/** Stash's A/B loop plugin (videojs-abloop), which calls `onOptionsChange` after every change. */
+export interface AbLoopPlugin {
+  getOptions(): AbLoopOptions;
+  setOptions(options: Partial<AbLoopOptions>): void;
+  onOptionsChange?: () => void;
+}
+/** A screen's A/B loop: its start, its end once set, and whether it plays. */
+export interface AbLoop {
+  start: number;
+  end?: number;
+  enabled: boolean;
 }
 export interface VideoPlayerElement extends Element {
   player?: Player;
@@ -188,6 +207,8 @@ export interface SavedPane {
   /** The scene itself when no page of the session holds it for this pane. */
   item?: Item;
   time?: number;
+  /** Like the time, it belongs to this visit of the item. */
+  abLoop?: AbLoop;
   audio?: AudioState;
   view?: PaneView;
 }
@@ -291,9 +312,11 @@ export interface LoadedPlayerProps {
   previousItem(): void;
   onAudioStateChange(value: AudioState): void;
   onPositionChange(seconds: number): void;
+  onAbLoopChange(value: AbLoop | undefined): void;
   playback: PlaybackSettings;
   /** Takes precedence over every other start of this item. */
   resumeTime?: number;
+  resumeAbLoop?: AbLoop;
   scene: Scene;
 }
 export interface TileProps {
@@ -304,9 +327,11 @@ export interface TileProps {
   nextItem(): void;
   onAudioChange(value: AudioState): void;
   onPositionChange(seconds: number): void;
+  onAbLoopChange(value: AbLoop | undefined): void;
   previousItem(): void;
   playback: PlaybackSettings;
   resumeTime?: number;
+  resumeAbLoop?: AbLoop;
   useFindScene: UseFindScene;
 }
 export interface GridProps {

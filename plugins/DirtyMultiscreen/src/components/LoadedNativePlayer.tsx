@@ -1,6 +1,7 @@
 import { React } from "../runtime";
 import { isolateNativePlayer } from "../domain/playerIdentity";
-import type { AudioState, LoadedPlayerProps, Player, VideoPlayerElement } from "../types";
+import { savedAbLoop } from "../domain/session";
+import type { AbLoop, AudioState, LoadedPlayerProps, Player, VideoPlayerElement } from "../types";
 let nextPlayerId = 0;
 const usable = (player: Player | null | undefined): player is Player => !!player && !player.isDisposed?.();
 /** Each pane keeps its own audio: stop video.js persisting volume across players. */
@@ -27,10 +28,12 @@ export function LoadedNativePlayer({
   item,
   nativePlayer: NativePlayer,
   nextItem,
+  onAbLoopChange,
   onAudioStateChange,
   onPositionChange,
   playback,
   previousItem,
+  resumeAbLoop,
   resumeTime,
   scene,
 }: LoadedPlayerProps) {
@@ -48,6 +51,10 @@ export function LoadedNativePlayer({
   onAudioStateChangeRef.current = onAudioStateChange;
   const onPositionChangeRef = React.useRef(onPositionChange);
   onPositionChangeRef.current = onPositionChange;
+  const onAbLoopChangeRef = React.useRef(onAbLoopChange);
+  onAbLoopChangeRef.current = onAbLoopChange;
+  // The A/B loop set on this scene, so a replacement native player gets it back.
+  const abLoopRef = React.useRef<AbLoop | undefined>(resumeAbLoop);
   // Read when the video ends, so switching a screen's loop never reattaches the player or seeks it.
   const loopRef = React.useRef(playback.loop);
   loopRef.current = playback.loop;
@@ -100,6 +107,9 @@ export function LoadedNativePlayer({
           Number.isFinite(duration) && duration > 0 ? Math.min(timestamp, Math.max(0, duration - 0.01)) : timestamp;
         // A saved position beyond the marker end continues there, just like a manual seek.
         rangeEndHandledRef.current = rangeEnd !== undefined && target >= rangeEnd;
+        const loop = abLoopRef.current;
+        if (loop)
+          current.abLoopPlugin?.setOptions({ start: loop.start, end: loop.end ?? false, enabled: loop.enabled });
         current.currentTime(target);
       });
     };
@@ -135,11 +145,19 @@ export function LoadedNativePlayer({
         advance();
       }
     };
+    // Stash's A/B loop controls and its L key report here after every change.
+    const handleAbLoopChange = () => {
+      const options = usable(player) ? player.abLoopPlugin?.getOptions() : undefined;
+      if (!options) return;
+      abLoopRef.current = savedAbLoop(options);
+      onAbLoopChangeRef.current(abLoopRef.current);
+    };
     const detachPlayer = () => {
       player?.off?.("canplay", handleCanPlay);
       player?.off?.("timeupdate", handleTimeUpdate);
       player?.off?.("seeking", handleSeeking);
       player?.off?.("seeked", handleSeeked);
+      if (player?.abLoopPlugin?.onOptionsChange === handleAbLoopChange) player.abLoopPlugin.onOptionsChange = undefined;
       player = null;
     };
     const attachPlayer = () => {
@@ -153,6 +171,7 @@ export function LoadedNativePlayer({
       rangeEndHandledRef.current = false;
       if (!usable(player)) return;
       isolateNativePlayer(player, playerId);
+      if (player.abLoopPlugin) player.abLoopPlugin.onOptionsChange = handleAbLoopChange;
       player.on("canplay", handleCanPlay);
       player.on("timeupdate", handleTimeUpdate);
       player.on("seeking", handleSeeking);

@@ -113,6 +113,17 @@ function createMultiscreenHarness(options = {}) {
     const video = new Video(),
       element = { id: "VideoJsPlayer", playerId: "VideoJsPlayer" },
       persist = { enabled: true, ready() {} },
+      // Stash's A/B loop plugin: merged options, then its change callback.
+      abLoopPlugin = {
+        options: { start: 0, end: false, enabled: false },
+        getOptions() {
+          return { ...this.options };
+        },
+        setOptions(change) {
+          this.options = { ...this.options, ...change };
+          this.onOptionsChange?.();
+        },
+      },
       player = events({
         constructor: FakePlayer,
         id_: "VideoJsPlayer",
@@ -141,6 +152,7 @@ function createMultiscreenHarness(options = {}) {
           return this.disposed;
         },
         persistVolume: () => persist,
+        abLoopPlugin,
         ready(fn) {
           this.readyCallback = fn;
           (this.readyCallbacks ||= []).push(fn);

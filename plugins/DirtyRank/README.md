@@ -70,6 +70,9 @@ volatility instead of relying on a capped integer score.
 - Previews appear in separate panels below the photos. Photos stay visible and
   clickable for voting unless explicitly hidden in settings. Player controls
   do not cast votes, and each preview can be closed independently.
+- With DirtyMultiscreen installed, open one or both battle previews, then use
+  its Stash header button to play their scenes from left to right. A marker
+  preview supplies its full scene to the grid.
 - Converted streams use Stash's native scene player for the full duration and
   seeking throughout the scene, including formats such as WMV.
 - Automatic previews wait briefly for a battle to settle before loading. Leaving

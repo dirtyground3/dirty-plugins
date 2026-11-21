@@ -5,6 +5,7 @@ const assert = require("assert");
 const fs = require("fs");
 const vm = require("vm");
 const { element, find, findAll, text, createHooks } = require("./ui_harness");
+const { createMultiscreenHarness } = require("./multiscreen_harness");
 
 // Exercise the actual component and asynchronous handlers without a Stash server.
 const noop = function () {};
@@ -67,6 +68,7 @@ const runtime = {
 const context = vm.createContext({
   console,
   AbortController,
+  CustomEvent,
   URLSearchParams,
   Math: Object.create(Math),
   document: {
@@ -316,18 +318,23 @@ async function main() {
   response = () => Promise.resolve(data);
   calls.length = 0; // Ignore the initial full-cohort query used by overall sorting.
   const manual = card(false);
+  const previewIds = [];
+  manual.props.onSceneChange = id => previewIds.push(id);
   let tree = manual.render();
   assert.strictEqual(calls.length, 0, "default mode must not request media");
   toggle(tree);
   await flush();
   tree = manual.render();
   assert.strictEqual(video(tree).props.src, "/curated.mp4", "manual playback retains curated markers");
+  assert.deepStrictEqual(previewIds, [markerScene.id], "a marker preview reports its underlying scene");
   const clip = attachPlayer(tree, { currentTime: 0, play: () => Promise.resolve() });
   video(tree).props.onLoadedMetadata({ currentTarget: clip });
   assert.strictEqual(clip.currentTime, 12);
   clip.currentTime = 18;
   video(tree).props.onTimeUpdate({ currentTarget: clip });
   assert(clip.paused);
+  manual.unmount();
+  assert.deepStrictEqual(previewIds, [markerScene.id, null], "unmounting withdraws the preview");
 
   for (const random of [0, 0.5, 0.999999]) {
     context.Math.random = () => random;
@@ -1486,6 +1493,80 @@ async function verifyNavigationSettings() {
   }
 }
 
+async function verifyMultiscreenContext(cards, render) {
+  const [rightScene, leftScene, unrelatedScene] = ["42", "7", "12"].map(id => ({ id, paths: { stream: "/" + id } }));
+  const multiscreen = createMultiscreenHarness({
+    mode: "nav",
+    path: context.window.location.pathname,
+    scenes: [rightScene, leftScene, unrelatedScene],
+    settings: { rows: 1, columns: 2, sceneOrder: "random" },
+  });
+  const [left, right] = cards.map(({ props }) => {
+    const preview = card(false);
+    preview.props.onSceneChange = props.onSceneChange;
+    return preview;
+  });
+  const previousResponse = response;
+  const previousDispatch = context.document.dispatchEvent;
+  context.document.dispatchEvent = event => multiscreen.document.dispatchEvent(event);
+  response = (query, variables, signal) => {
+    if (!query.includes("DirtyRankPreferredMedia")) return previousResponse(query, variables, signal);
+    const selected = variables.sceneFilter.performers.value[0] === left.props.performer.id ? leftScene : rightScene;
+    return Promise.resolve({ top: { scenes: [selected] } });
+  };
+  multiscreen.load();
+  await multiscreen.flush();
+  const link = () => multiscreen.nodes(node => node.type === "NavAction")[0];
+  const settle = async () => {
+    render();
+    for (let round = 0; round < 3; round++) await multiscreen.tick();
+  };
+  try {
+    assert.strictEqual(link().props.label, "DirtyMultiscreen", "closed previews leave the header unscoped");
+    for (const [preview, count] of [
+      [right, 1],
+      [left, 2],
+    ]) {
+      toggle(preview.render());
+      await flush();
+      assert(video(preview.render()), "the Rank preview has loaded");
+      await settle();
+      assert.strictEqual(link().props.label, `DirtyMultiscreen (${count} scenes)`);
+    }
+    link().props.onClick();
+    assert.deepStrictEqual(JSON.parse(multiscreen.storage.get("multiscreen.launchContext")), {
+      source: "plugin-list",
+      kind: "scenes",
+      ids: ["7", "42"],
+      keepOrder: true,
+      label: "DirtyRank battle",
+    });
+    toggle(left.render());
+    left.render();
+    await settle();
+    assert.strictEqual(link().props.label, "DirtyMultiscreen (1 scenes)", "closing a preview removes that scene");
+    toggle(right.render());
+    right.render();
+    await settle();
+    assert.strictEqual(link().props.label, "DirtyMultiscreen", "removing the last preview withdraws the list");
+
+    await multiscreen.path("/plugins/multiscreen");
+    await multiscreen.mode("route");
+    for (let round = 0; round < 3; round++) await multiscreen.tick();
+    assert.deepStrictEqual(
+      multiscreen.nodes(node => node.type === "native-player").map(node => node.props.scene.id),
+      ["7", "42"],
+      "the header opens the battle videos in left-to-right order regardless of Multiscreen's sort",
+    );
+  } finally {
+    left.unmount();
+    right.unmount();
+    response = previousResponse;
+    context.document.dispatchEvent = previousDispatch;
+    await multiscreen.unmount();
+  }
+}
+
 async function verifyKingsMode() {
   const originalSettings = runtime.getPluginSettings;
   const originalOperation = runtime.runPluginOperation;
@@ -1628,6 +1709,7 @@ async function verifyKingsMode() {
   );
   assert(!byClass(tree, "dirty-rank-hill-crest"), "standard battles have no royal mode identity");
   assert(!byClass(tree, "dirty-rank-hill-progress"));
+  await verifyMultiscreenContext(battleCards(tree), render);
   const mode = find(tree, node => node.props.id === "dirty-rank-battle-mode");
   assert(mode && mode.type !== "select", "hill mode is entered through a button");
   assert.strictEqual(visibleText(mode), "King of the hill");

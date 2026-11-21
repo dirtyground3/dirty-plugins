@@ -297,6 +297,7 @@ export interface PerformerCardProps {
   hillMode?: boolean;
   hillOpening?: boolean;
   onChoose?(): void;
+  onSceneChange?(id: string | null): void;
 }
 export interface Feedback {
   text: string;

@@ -17,7 +17,7 @@ import type { DropPointer, DropTarget } from "../domain/dropGuide";
 import type { Rectangle } from "../domain/layout";
 import { useSessionSaver } from "../hooks";
 import { React } from "../runtime";
-import type { AudioState, GridProps, Item, PaneView, SavedPane, SwapControls } from "../types";
+import type { AbLoop, AudioState, GridProps, Item, PaneView, SavedPane, SwapControls } from "../types";
 import { Dividers } from "./Dividers";
 import { DockingGuide } from "./DockingGuide";
 import type { DockingGuideState } from "./DockingGuide";
@@ -353,6 +353,7 @@ export function NativeMultiscreenGrid({
           itemId: item.id,
           item: item.outsidePage ? item : undefined,
           time: previous?.itemId === item.id ? previous.time : undefined,
+          abLoop: previous?.itemId === item.id ? previous.abLoop : undefined,
         };
         scheduleSave();
       }
@@ -377,6 +378,10 @@ export function NativeMultiscreenGrid({
   );
   const onPositionChange = React.useCallback(
     (index: number, time: number) => updatePane(index, { time }),
+    [updatePane],
+  );
+  const onAbLoopChange = React.useCallback(
+    (index: number, abLoop: AbLoop | undefined) => updatePane(index, { abLoop }),
     [updatePane],
   );
   const onAudioChange = React.useCallback(
@@ -491,6 +496,7 @@ export function NativeMultiscreenGrid({
             nativePlayer={nativePlayer}
             playback={playback}
             useFindScene={useFindScene}
+            onAbLoopChange={onAbLoopChange}
             onAudioChange={onAudioChange}
             onPositionChange={onPositionChange}
             onSceneChange={onSceneChange}

@@ -2,6 +2,10 @@
 
 Newest first. Each GitHub Release of DirtyRank uses the entry that names its version.
 
+- **DirtyRank 1.1.3:** the DirtyMultiscreen header button opens the scenes in
+  the current battle previews in left-to-right order. A marker preview opens
+  its full scene in the grid.
+
 - **DirtyCaptions 1.0.10, DirtyRank 1.1.2, DirtyStats 1.0.15, DirtyFileExtractor
   1.0.7, DirtyMultiscreen 1.0.29 and DirtyPlugins 1.0.22:** setting descriptions
   no longer say whether a toggle is enabled or disabled by default.

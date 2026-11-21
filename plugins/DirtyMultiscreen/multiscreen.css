@@ -675,6 +675,11 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
   z-index: calc(var(--dirty-ui-layer-standalone-dialog) + 20);
 }
 
+/* Stash puts the saved-filter menu on the page itself, and themes such as Refract fix its layer with !important. */
+:root body:has(.ms-scene-search-backdrop) > .dropdown-menu {
+  z-index: calc(var(--dirty-ui-layer-standalone-dialog) + 20) !important;
+}
+
 /* Saved grids lets the playing screens show through, blurred, under a light shade. Themes paint dialogs in their
    panel colour, some with !important; this one keeps that colour, partly clear. */
 .dirty-ui-backdrop.ms-saved-grids-backdrop {

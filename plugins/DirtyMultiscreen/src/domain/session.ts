@@ -1,7 +1,16 @@
 import { isMultiscreenLaunchContext, isRecord } from "./context";
 import { isCustomLayout } from "./custom";
 import { MAX_ZOOM } from "./layout";
-import type { AudioState, GridSize, PaneView, SavedPane, SavedSession, Settings } from "../types";
+import type {
+  AbLoop,
+  AbLoopOptions,
+  AudioState,
+  GridSize,
+  PaneView,
+  SavedPane,
+  SavedSession,
+  Settings,
+} from "../types";
 
 const SESSION_STORAGE_KEY = "multiscreen.session";
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
@@ -29,6 +38,19 @@ const isView = (value: unknown): value is PaneView =>
       isPercent(value.crop.y) &&
       (value.crop.zoom === undefined ||
         (isFiniteNumber(value.crop.zoom) && value.crop.zoom > 1 && value.crop.zoom <= MAX_ZOOM))));
+const isAbLoop = (value: unknown): value is AbLoop =>
+  isRecord(value) &&
+  isFiniteNumber(value.start) &&
+  value.start >= 0 &&
+  (value.end === undefined || (isFiniteNumber(value.end) && value.end > value.start)) &&
+  typeof value.enabled === "boolean";
+/** The native A/B loop worth keeping: one with its start or end set. */
+export function savedAbLoop(options: AbLoopOptions): AbLoop | undefined {
+  const start = isFiniteNumber(options.start) && options.start > 0 ? options.start : 0;
+  const end = isFiniteNumber(options.end) && options.end > start ? options.end : undefined;
+  if (!start && end === undefined) return undefined;
+  return { start, ...(end === undefined ? {} : { end }), enabled: !!options.enabled };
+}
 const isGridSize = (value: unknown): value is GridSize =>
   isRecord(value) &&
   Number.isInteger(value.rows) &&
@@ -43,6 +65,7 @@ const isPane = (value: unknown): value is SavedPane =>
   isFiniteNumber(value.page) &&
   value.page >= 1 &&
   (value.time === undefined || (isFiniteNumber(value.time) && value.time >= 0)) &&
+  (value.abLoop === undefined || isAbLoop(value.abLoop)) &&
   (value.audio === undefined || isAudio(value.audio)) &&
   (value.view === undefined || isView(value.view));
 export const isSession = (value: unknown): value is SavedSession =>

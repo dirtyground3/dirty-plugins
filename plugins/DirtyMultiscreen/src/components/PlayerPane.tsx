@@ -3,7 +3,7 @@ import { React } from "../runtime";
 import { panCrop, zoomCrop } from "../domain/layout";
 import type { Crop, Rectangle } from "../domain/layout";
 import { locatePlaylistItem, nextFreeIndex, nextItemAfter } from "../domain/playlists";
-import type { AudioState, GridProps, Item, PaneView, PictureControls, SavedPane, SwapControls } from "../types";
+import type { AbLoop, AudioState, GridProps, Item, PaneView, PictureControls, SavedPane, SwapControls } from "../types";
 import { NativePlayerTile } from "./NativePlayerTile";
 import { ScreenControls, useScreenDrag } from "./ScreenControls";
 import { ScreenMenu } from "./ScreenMenu";
@@ -40,6 +40,7 @@ interface PaneProps
   swapSource: number | null;
   onAudioChange(index: number, audio: AudioState): void;
   onPositionChange(index: number, seconds: number): void;
+  onAbLoopChange(index: number, abLoop: AbLoop | undefined): void;
   onSceneChange(index: number, item: Item | null, page: number, rotation: number): void;
   onViewChange(index: number, view: PaneView): void;
   /** Items the other panes are playing; absent when duplicates are allowed. */
@@ -65,6 +66,7 @@ export function NativePlayerPane({
   findPerformerItems,
   moveWithoutEditing,
   rightClickOptions,
+  onAbLoopChange,
   onAudioChange,
   onClose,
   onFinishEditing,
@@ -388,9 +390,11 @@ export function NativePlayerPane({
           }}
           onAudioChange={audio => onAudioChange(screenIndex, audio)}
           onPositionChange={seconds => onPositionChange(screenIndex, seconds)}
+          onAbLoopChange={abLoop => onAbLoopChange(screenIndex, abLoop)}
           previousItem={() => {
             void navigate(-1);
           }}
+          resumeAbLoop={resumeAt.current?.itemId === item.id ? resumeAt.current.abLoop : undefined}
           resumeTime={resumeAt.current?.itemId === item.id ? resumeAt.current.time : undefined}
         />
       )}

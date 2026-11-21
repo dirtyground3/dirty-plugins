@@ -1,6 +1,6 @@
 # DirtyMultiscreen
 
-DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can launch from Stash scene, marker, performer, studio, tag, and group contexts while preserving the active list order when appropriate, and from lists other plugins announce, such as Cherry Pick's For you.
+DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can launch from Stash scene, marker, performer, studio, tag, and group contexts while preserving the active list order when appropriate, and from lists other plugins announce, such as Cherry Pick's For you and DirtyRank's open battle previews.
 
 ## Features
 
@@ -16,12 +16,14 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   The header button then counts that list and plays it, in the plugin's own
   order when it asks for one; scenes load 240 at a time, and search and the
   performer buttons stay inside the list. **Lists from other plugins** accepts
-  known plugins only (Cherry Pick) by default.
+  known plugins only (Cherry Pick and DirtyRank) by default.
 - Random starting positions, looping, and start-muted behavior.
   Each native player has its own identity, keeping durations and streaming
   controls independent between screens.
   Starting positions are applied once the native source is playable, including
   after transcoding fallback, and do not race Stash's saved resume position.
+  An A/B loop set with Stash's own controls or its **L** key stays with the
+  scene the screen is playing, in the session and in saved grids.
 - Marker playback with a configurable fallback duration.
   Seeking past a marker's end continues from the chosen time. Seeking back
   before its end restores normal looping or advancement at that boundary.
@@ -39,7 +41,8 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   other session, including one opened without a list, searches its whole
   scope, continues through later queue pages and preserves all launch filters.
   Choosing a result moves that screen to its position in the session queue, so
-  Previous/Next follows from there, including across pages.
+  Previous/Next follows from there, including across pages. The filter narrows
+  the results only; it does not change what the screen plays next.
 - The shuffle button below the close button reshuffles every screen. Its menu
   lists the scene orders with the current one checked: choosing it loads a new
   random sample, and choosing another order reshuffles with that order and saves
@@ -127,7 +130,7 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   than five, a search field above them, below the autosaves, shows only those
   whose name holds every word you type, in any order. Name the
   current screens to save them: the grid, the closed screens, and every
-  screen's place, custom row, scene, position, sound, flip, rotation, crop, loop and fill, plus
+  screen's place, custom row, scene, position, A/B loop, sound, flip, rotation, crop, loop and fill, plus
   the Fit videos mode. Older saved grids keep your current Fit videos choice.
   A name already in the list replaces that grid after asking, and so does the
   overwrite button on a saved grid, which keeps its name. Click a saved grid to open it in place of the current
@@ -148,7 +151,7 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   is never overwritten automatically.
 - Closing the tab keeps the session. Reloading, reopening the plugin page or
   clicking the header button on a page without a list returns every screen to
-  its place, scene, position, audio and picture. The header button on a scene, marker, performer,
+  its place, scene, position, A/B loop, audio and picture. The header button on a scene, marker, performer,
   studio, tag or group list, on a performer, studio, tag or group page, or on a page another
   plugin announced a list for, starts a new session, and so does the shuffle
   button; either replaces the saved one. An announced empty list shows its

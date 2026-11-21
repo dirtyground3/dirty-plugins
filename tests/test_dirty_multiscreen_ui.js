@@ -1962,6 +1962,10 @@ async function sessionRestore() {
   pane(first, 0).player.emit("timeupdate");
   pane(first, 1).player.volume(0.25);
   pane(first, 1).player.muted(false);
+  // Stash's L key sets A, then B, which turns the loop on.
+  pane(first, 0).player.abLoopPlugin.setOptions({ start: 2 });
+  pane(first, 0).player.abLoopPlugin.setOptions({ end: 8.5, enabled: true });
+  pane(first, 1).player.abLoopPlugin.setOptions({ start: 4 });
   assert.equal(saved(first).panes[0].time, undefined, "playback does not write on every timeupdate");
   assert.equal(sessionTimers(first), 1, "one save is pending however many panes changed");
   first.window.emit("pagehide");
@@ -1972,8 +1976,10 @@ async function sessionRestore() {
   );
   assert.equal(saved(first).panes[0].time, 7);
   assert.deepEqual(saved(first).panes[1].audio, { muted: false, volume: 0.25 });
+  assert.deepEqual(saved(first).panes[0].abLoop, { start: 2, end: 8.5, enabled: true });
+  assert.deepEqual(saved(first).panes[1].abLoop, { start: 4, enabled: false }, "an A without a B is kept too");
 
-  // A reopened tab deals the same queue and returns each pane to its scene, time and audio.
+  // A reopened tab deals the same queue and returns each pane to its scene, time, loop and audio.
   const second = await reopen(first);
   const secondQuery = second.calls.find(call => call.query.includes("MultiscreenScenes")).variables;
   assert.equal(secondQuery.filter.sort, sort(first), "Stash is asked for the original random order");
@@ -1985,6 +1991,8 @@ async function sessionRestore() {
     "the queue's first scene never starts on the way back",
   );
   assert.equal(pane(second, 0).video.currentTime, 7);
+  assert.deepEqual(pane(second, 0).player.abLoopPlugin.getOptions(), { start: 2, end: 8.5, enabled: true });
+  assert.deepEqual(pane(second, 1).player.abLoopPlugin.getOptions(), { start: 4, end: false, enabled: false });
   assert.equal(pane(second, 1).player.volume(), 0.25);
   assert.equal(pane(second, 1).player.muted(), false, "the pane's own audio beats the start-muted setting");
   assert.equal(pane(second, 0).player.muted(), true, "a pane nobody unmuted follows the setting");
@@ -2001,21 +2009,29 @@ async function sessionRestore() {
   await second.flush();
   assert.equal(playing(second)[0], restored);
   assert.equal(pane(second, 0).video.currentTime, 0, "coming back later is an ordinary start");
+  assert.deepEqual(pane(second, 0).player.abLoopPlugin.getOptions(), { start: 0, end: false, enabled: false });
   assert.equal(pane(second, 1).player.volume(), 0.25, "the pane keeps its audio across scenes");
 
   // Leaving the route saves too, so the header button can return to it.
   pane(second, 0).video.currentTime = 9;
   pane(second, 0).player.emit("timeupdate");
+  pane(second, 0).player.abLoopPlugin.setOptions({ start: 3, end: 6, enabled: true });
+  // A third L clears the loop.
+  pane(second, 1).player.abLoopPlugin.setOptions({ start: 0, end: 0, enabled: false });
   await second.unmount();
   assert.equal(saved(second).panes[0].time, 9);
+  assert.deepEqual(saved(second).panes[0].abLoop, { start: 3, end: 6, enabled: true });
+  assert.equal(saved(second).panes[1].abLoop, undefined);
 
-  // Moving to another scene forgets the time until the new one reports.
+  // Moving to another scene forgets the time and loop until the new one reports.
   const third = await reopen(second);
   assert.equal(pane(third, 0).video.currentTime, 9);
+  assert.deepEqual(pane(third, 0).player.abLoopPlugin.getOptions(), { start: 3, end: 6, enabled: true });
   players(third)[0].props.onNext();
   await third.flush();
   await third.tick(5000);
   assert.equal(saved(third).panes[0].time, undefined);
+  assert.equal(saved(third).panes[0].abLoop, undefined);
   await third.unmount();
 
   // The header button replaces the saved session; its scope wins over the saved one.
@@ -2204,6 +2220,8 @@ async function sessionRestore() {
     JSON.stringify({ ...record, seed: "1" }),
     JSON.stringify({ ...record, panes: [{ page: 0, itemId: "1" }] }),
     JSON.stringify({ ...record, panes: [{ page: 1, itemId: "1", time: -1 }] }),
+    JSON.stringify({ ...record, panes: [{ page: 1, itemId: "1", abLoop: { start: 5, end: 2, enabled: true } }] }),
+    JSON.stringify({ ...record, panes: [{ page: 1, itemId: "1", abLoop: { start: 1 } }] }),
     JSON.stringify({ ...record, panes: [{ page: 1, itemId: "1", audio: { muted: "no", volume: 1 } }] }),
   ]) {
     const unusable = await start({ ...options, localStorage: new Map([[SESSION, value]]) });
