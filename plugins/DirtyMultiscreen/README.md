@@ -55,7 +55,8 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   screen. Fill crops the picture to cover the screen instead of fitting inside
   it, including under themes that force the player to fit, such as Refract.
 - When Fill or **Fit videos** crops a picture, drag it with the middle mouse
-  button to choose the part on show; a middle click shows its centre again.
+  button to choose the part on show, and scroll over it to zoom in toward the
+  pointer, up to 8×, and back out. A middle click shows the whole centre again.
   This works in and out of edit mode, belongs to the video like a flip, and is
   kept with the session and saved grids.
 - Rotate turns the picture 90° clockwise each time: 90°, 180°, 270°, then back
@@ -113,14 +114,18 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   The chosen grid is saved as the default for later sessions.
 - **Fit videos**, below the grid size, packs a preset into rows or columns
   based on the videos' shapes. It uses 16:9 until a video's size is known.
-  If the layout covers at least 90% of the window, it fills the window with
-  a small crop; otherwise the exact shapes form a centred block. In a custom
+  The screens always fill the window without margins: it picks the rows or
+  columns whose shapes match the window best, and each picture is cropped to
+  cover its screen. In a custom
   grid, Fit videos keeps your pane positions and sizes and fills each pane,
   cropping when needed without stretching. Your per-screen Fill choice
   returns when you switch it off. The toggle is on by default and also
   updates the **Fit screens to videos** setting.
 - The bookmark button above the grid button opens **Saved grids**, a compact
-  list with one line per grid: its name, size and date. Name the
+  list with one line per grid: its name, size and date. It is see-through, so
+  the screens show behind it, blurred. Only the saved grids scroll; with more
+  than five, a search field above them, below the autosaves, shows only those
+  whose name holds every word you type, in any order. Name the
   current screens to save them: the grid, the closed screens, and every
   screen's place, custom row, scene, position, sound, flip, rotation, crop, loop and fill, plus
   the Fit videos mode. Older saved grids keep your current Fit videos choice.

@@ -1,5 +1,3 @@
-/** Fill the last small margin by cropping, but keep exact shapes for larger mismatches. */
-export const FIT_COVERAGE_THRESHOLD = 0.9;
 export const DEFAULT_ASPECT = 16 / 9;
 export interface Rectangle {
   left: number;
@@ -110,25 +108,17 @@ export function snapEdges(edges: readonly Edges[], pixelRatio = 1): Rectangle[] 
   });
 }
 
-/** How a block of this size goes into the window: stretched when it covers enough of it, else centred at its shape. */
-function fitBlock(blockWidth: number, blockHeight: number, width: number, height: number) {
-  const scale = Math.min(width / blockWidth, height / blockHeight);
-  const coverage = (blockWidth * scale * blockHeight * scale) / (width * height);
-  const stretch = coverage >= FIT_COVERAGE_THRESHOLD;
-  const scaleX = stretch ? width / blockWidth : scale;
-  const scaleY = stretch ? height / blockHeight : scale;
-  return { scaleX, scaleY, offsetX: (width - blockWidth * scaleX) / 2, offsetY: (height - blockHeight * scaleY) / 2 };
-}
-
+/** The block stretches over the whole window; each screen then crops its picture to cover it, never leaving margins. */
 export function placeFitPlan({ block }: ReturnType<typeof fitPlan>, width: number, height: number, pixelRatio = 1) {
   if (!usable(width, height)) return block.rectangles.map(() => ({ left: 0, top: 0, width: 0, height: 0 }));
-  const { scaleX, scaleY, offsetX, offsetY } = fitBlock(block.width, block.height, width, height);
+  const scaleX = width / block.width;
+  const scaleY = height / block.height;
   return snapEdges(
     block.rectangles.map(rectangle => ({
-      left: offsetX + rectangle.left * scaleX,
-      top: offsetY + rectangle.top * scaleY,
-      right: offsetX + (rectangle.left + rectangle.width) * scaleX,
-      bottom: offsetY + (rectangle.top + rectangle.height) * scaleY,
+      left: rectangle.left * scaleX,
+      top: rectangle.top * scaleY,
+      right: (rectangle.left + rectangle.width) * scaleX,
+      bottom: (rectangle.top + rectangle.height) * scaleY,
     })),
     pixelRatio,
   );
@@ -158,28 +148,83 @@ export function fitLayout(aspects: readonly number[], width: number, height: num
   return placeFitPlan(fitPlan(aspects, width, height), width, height, pixelRatio);
 }
 
+/** How far the wheel magnifies a covered picture beyond covering its screen. */
+export const MAX_ZOOM = 8;
 /**
- * Moves a covered picture's crop so the picture follows a pointer moved by (dx, dy) screen pixels. The crop is
- * object-position percentages; `box` is the video element's own size, before its flips and quarter turns.
+ * The part of a covered picture on show: x and y are object-position percentages of the magnified picture's hidden
+ * width and height, and zoom (absent is 1) magnifies it around that point.
  */
-export function panCrop(
-  crop: { x: number; y: number },
-  dx: number,
-  dy: number,
-  picture: { width: number; height: number },
-  box: { width: number; height: number },
-  flip: { x: boolean; y: boolean },
-  turns: number,
-) {
-  if (!(picture.width > 0 && picture.height > 0 && box.width > 0 && box.height > 0)) return crop;
-  // The screen shows the turned picture flipped, so undo the flip first, then each clockwise turn.
+export interface Crop {
+  x: number;
+  y: number;
+  zoom?: number;
+}
+type Size = { width: number; height: number };
+const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
+const shown = (picture: Size, box: Size) => picture.width > 0 && picture.height > 0 && box.width > 0 && box.height > 0;
+/** The screen shows the turned picture flipped, so undo the flip first, then each clockwise turn. */
+function onPicture(dx: number, dy: number, flip: { x: boolean; y: boolean }, turns: number) {
   let x = flip.x ? -dx : dx;
   let y = flip.y ? -dy : dy;
   for (let turn = 0; turn < turns % 4; turn++) [x, y] = [y, -x];
-  const scale = Math.max(box.width / picture.width, box.height / picture.height);
-  const spareX = picture.width * scale - box.width;
-  const spareY = picture.height * scale - box.height;
-  const move = (value: number, by: number, spare: number) =>
-    spare >= 1 ? Math.max(0, Math.min(100, value - (by / spare) * 100)) : value;
-  return { x: move(crop.x, x, spareX), y: move(crop.y, y, spareY) };
+  return { x, y };
+}
+const coverScale = (picture: Size, box: Size) => Math.max(box.width / picture.width, box.height / picture.height);
+
+/**
+ * Moves a covered picture's crop so the picture follows a pointer moved by (dx, dy) screen pixels. `box` is the
+ * video element's own size, before its flips and quarter turns.
+ */
+export function panCrop<T extends Crop>(
+  crop: T,
+  dx: number,
+  dy: number,
+  picture: Size,
+  box: Size,
+  flip: { x: boolean; y: boolean },
+  turns: number,
+): T {
+  if (!shown(picture, box)) return crop;
+  const by = onPicture(dx, dy, flip, turns);
+  const scale = coverScale(picture, box) * (crop.zoom ?? 1);
+  const move = (value: number, distance: number, spare: number) =>
+    spare >= 1 ? clamp(value - (distance / spare) * 100, 0, 100) : value;
+  return {
+    ...crop,
+    x: move(crop.x, by.x, picture.width * scale - box.width),
+    y: move(crop.y, by.y, picture.height * scale - box.height),
+  };
+}
+
+/**
+ * Magnifies a covered picture by `factor`, between covering its screen and MAX_ZOOM, keeping the part under the
+ * pointer at (dx, dy) screen pixels from the screen's centre in place. A zoom back to 1 drops it.
+ */
+export function zoomCrop(
+  crop: Crop,
+  factor: number,
+  dx: number,
+  dy: number,
+  picture: Size,
+  box: Size,
+  flip: { x: boolean; y: boolean },
+  turns: number,
+): Crop {
+  const from = crop.zoom ?? 1;
+  const zoom = clamp(from * factor, 1, MAX_ZOOM);
+  if (!shown(picture, box) || !Number.isFinite(zoom) || zoom === from) return crop;
+  const at = onPicture(dx, dy, flip, turns);
+  const scale = coverScale(picture, box);
+  const keep = (value: number, offset: number, length: number, room: number) => {
+    const before = length * scale * from - room;
+    const after = length * scale * zoom - room;
+    // A side that the screen still shows whole has nothing hidden to choose from.
+    if (after < 1) return 50;
+    const pointer = room / 2 + offset;
+    const under = (pointer + (value / 100) * before) / (length * scale * from);
+    return clamp(((under * length * scale * zoom - pointer) / after) * 100, 0, 100);
+  };
+  const x = keep(crop.x, at.x, picture.width, box.width);
+  const y = keep(crop.y, at.y, picture.height, box.height);
+  return zoom === 1 ? { x, y } : { x, y, zoom };
 }

@@ -81,11 +81,13 @@
   --ms-rotation: 270deg;
 }
 
-/* Flips apply along the displayed axes, after rotation. Native controls and captions stay upright. */
+/* Flips apply along the displayed axes, after rotation. Native controls and captions stay upright.
+   A wheel zoom magnifies the picture around its crop point in the video's own axes, before it turns. */
 #root .ms-cell .ms-native-tile .video-js video {
   transform: translate(var(--ms-video-offset, 0), var(--ms-video-offset, 0))
     scale(var(--ms-flip-x, 1), var(--ms-flip-y, 1)) rotate(var(--ms-rotation, 0deg))
-    scale(var(--ms-capture-scale, 1)) !important;
+    scale(var(--ms-capture-scale, 1)) translate(var(--ms-zoom-x, 0), var(--ms-zoom-y, 0))
+    scale(var(--ms-zoom, 1)) !important;
 }
 
 /* Swap the video's box before rotating it, so both contain and cover use the turned picture's shape.
@@ -673,12 +675,32 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
   z-index: calc(var(--dirty-ui-layer-standalone-dialog) + 20);
 }
 
+/* Saved grids lets the playing screens show through, blurred, under a light shade. Themes paint dialogs in their
+   panel colour, some with !important; this one keeps that colour, partly clear. */
+.dirty-ui-backdrop.ms-saved-grids-backdrop {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+:root .dirty-ui-dialog.ms-saved-grids {
+  background: color-mix(in srgb, var(--dirty-theme-panel) 82%, transparent) !important;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+/* Only the saved list scrolls, so the title, name field, autosaves and search above it stay in view. */
 .ms-saved-grids {
+  display: flex;
+  flex-direction: column;
   width: min(30rem, 100%);
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
   padding: 0.75rem;
   color: var(--dirty-ui-text);
+}
+
+.ms-saved-grids > *,
+.ms-saved-results > * {
+  flex: none;
 }
 
 .ms-saved-grids .ms-scene-search-heading {
@@ -702,7 +724,39 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
 }
 
 .ms-saved-results {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
   margin-top: var(--dirty-ui-space-2);
+}
+
+/* The list shrinks to fit the window and scrolls; room for focus rings at its sides. In a very short window it keeps
+   a few rows and the whole dialog scrolls instead. */
+.ms-saved-results > .ms-saved-named {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin-inline: -0.15rem;
+  padding-inline: 0.15rem;
+}
+
+.ms-saved-results > .ms-saved-named:has(> :nth-child(3)) {
+  min-height: 4.8rem;
+}
+
+.ms-saved-search {
+  margin: 0.15rem 0 var(--dirty-ui-space-2);
+}
+
+/* The search stays faint until it is used, like the main buttons. */
+.ms-saved-search .form-control {
+  opacity: 0.6;
+  transition: opacity 150ms ease;
+}
+
+.ms-saved-search .form-control:is(:hover, :focus, :not(:placeholder-shown)) {
+  opacity: 1;
 }
 
 .ms-saved-heading {

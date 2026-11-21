@@ -2781,7 +2781,83 @@ async function cropPan() {
   h.nodes(node => node.type === "native-player")[0].props.onPrevious();
   await h.flush();
   assert.equal(crop(), "50% 75%");
+
+  // The wheel zooms a cropped picture toward the pointer; quick notches each count before a render.
+  pointer("onPointerDown", 50, 50);
+  pointer("onPointerUp", 50, 50);
+  await h.flush();
+  const screen = h.screens.get(0);
+  Object.assign(video, { clientWidth: 100, clientHeight: 100 });
+  Object.assign(screen, { video, bounds: { left: 0, top: 0, width: 100, height: 100 } });
+  const wheel = (deltaY, extra = {}) => {
+    const event = {
+      deltaY,
+      deltaMode: 0,
+      clientX: 25,
+      clientY: 75,
+      ctrlKey: false,
+      target: { closest: () => null },
+      defaultPrevented: false,
+      preventDefault() {
+        event.defaultPrevented = true;
+      },
+      ...extra,
+    };
+    screen.emit("wheel", event);
+    return event;
+  };
+  const close = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < 1e-9, message);
+  const zoom = () => cell().props.style["--ms-zoom"];
+  const position = () =>
+    crop()
+      .match(/[\d.]+/g)
+      .map(Number);
+  assert.equal(wheel(-100).defaultPrevented, true);
+  wheel(-100);
+  await h.flush();
+  close(Number(zoom()), Math.exp(0.3), "two notches zoom twice");
+  const [x, y] = position();
+  close(x, 25, "the point under the pointer stays");
+  close(y, 75);
+  close(parseFloat(cell().props.style["--ms-zoom-x"]), 25 * (Math.exp(0.3) - 1), "the zoom centres on the crop");
+  h.window.emit("pagehide");
+  close(JSON.parse(h.localStorage.get("multiscreen.session")).panes[0].view.crop.zoom, Math.exp(0.3));
+
+  // The player's own controls and Ctrl+wheel keep the browser's wheel.
+  assert.equal(wheel(-100, { target: { closest: () => ({}) } }).defaultPrevented, false);
+  assert.equal(wheel(-100, { ctrlKey: true }).defaultPrevented, false);
+  await h.flush();
+  close(Number(zoom()), Math.exp(0.3));
+
+  // Without Fill the picture shows whole: the zoom waits, and the wheel scrolls as usual.
+  const toggleFill = async () => {
+    h.button("Edit screens").props.onClick();
+    await h.flush();
+    h.button("Fill screen 1 with the picture").props.onClick();
+    await h.flush();
+    h.button("Finish editing screens").props.onClick();
+    await h.flush();
+  };
+  await toggleFill();
+  assert.equal(zoom(), undefined);
+  assert.equal(wheel(-100).defaultPrevented, false);
+  await toggleFill();
+  close(Number(zoom()), Math.exp(0.3), "the zoom returns with Fill");
+
+  // Zooming out stops at the whole cropped picture; a wheel counting lines zooms a notch per event.
+  wheel(1000);
+  await h.flush();
+  assert.equal(zoom(), undefined);
+  assert.equal(crop(), "50% 50%");
+  wheel(-3, { deltaMode: 1 });
+  await h.flush();
+  close(Number(zoom()), Math.exp(0.15));
+  pointer("onPointerDown", 50, 50);
+  pointer("onPointerUp", 50, 50);
+  await h.flush();
+  assert.equal(crop(), undefined, "a middle click shows the whole centre again");
   await h.unmount();
+  assert.equal(screen.handlers.get("wheel").size, 0);
 }
 async function gridPickerAndSwap() {
   const { text } = require("./ui_harness");
@@ -3371,16 +3447,28 @@ async function fittedDivider() {
   const divider = () => h.nodes(node => node.props.className === "ms-divider ms-divider-vertical")[0];
   const widths = () =>
     h.nodes(node => /^ms-cell\b/.test(node.props.className ?? "")).map(node => node.props.style.width);
-  assert.deepEqual(
-    { ...divider().props.style },
-    { left: 800, top: 50, height: 800 },
-    "the divider starts at the fitted edge",
-  );
+  assert.deepEqual({ ...divider().props.style }, { left: 800, top: 0, height: 900 }, "the divider spans the window");
 
+  // Two square videos fill the wide window with no margins, so a drag moves only the line between them.
+  const boxes = () =>
+    h
+      .nodes(node => /^ms-cell\b/.test(node.props.className ?? ""))
+      .map(({ props: { style } }) => [style.left, style.top, style.width, style.height]);
+  assert.deepEqual(boxes(), [
+    [0, 0, 800, 900],
+    [800, 0, 800, 900],
+  ]);
   const resize = dividerPointer(divider, 800, 450);
   resize("onPointerMove", 606, 450, true);
   await h.flush();
-  assert.deepEqual(widths(), [606, 994], "holding Shift bypasses snapping in Fit videos");
+  assert.deepEqual(
+    boxes(),
+    [
+      [0, 0, 606, 900],
+      [606, 0, 994, 900],
+    ],
+    "holding Shift bypasses snapping in Fit videos",
+  );
   resize("onPointerMove", 606, 450);
   await h.flush();
   assert.deepEqual(widths(), [600, 1000], "the fitted divider snaps to three eighths");
@@ -3754,6 +3842,13 @@ async function rotation() {
       saved.panes[0].view.crop.x = invalid;
       assert.equal(isSession(saved), false, "invalid saved crops are rejected");
     }
+    saved.panes[0].view.crop = { itemId: "0", x: 0, y: 100, zoom: 8 };
+    assert.equal(isSession(saved), true);
+    for (const invalid of [1, 0.5, 8.5, Infinity, "2", null]) {
+      saved.panes[0].view.crop.zoom = invalid;
+      assert.equal(isSession(saved), false, "invalid saved zooms are rejected");
+    }
+    delete saved.panes[0].view.crop.zoom;
     const reopened = await start({ scenes, settings, localStorage: new Map(h.localStorage), width: 901, height: 1201 });
     assert.deepEqual(rectangles(reopened), rectangles(h));
     assert.equal(cells(reopened)[0].props.className, cells(h)[0].props.className);
@@ -3806,7 +3901,9 @@ async function savedGrids() {
   const submit = async (h, form, value, field) => {
     h.nodes(node => node.type === "input" && field(node))[0].props.onChange({ target: { value } });
     await h.flush();
-    h.nodes(node => node.type === "form")[form].props.onSubmit({ preventDefault() {} });
+    h.nodes(node => node.type === "form")
+      .at(form)
+      .props.onSubmit({ preventDefault() {} });
     await h.flush();
   };
   const nameField = node => node.props.placeholder === "Name for this grid";
@@ -3860,6 +3957,54 @@ async function savedGrids() {
   }
   assert.match(text(dialog(h)), /Evening mix2 × 1 · \d/, "each grid is one line: name, size and date");
   assert.equal(h.nodes(nameField)[0].props.value, "", "the name clears after a save");
+
+  // More than five saved grids bring a search above their own scrolling list, for names with every word typed.
+  const searchField = node => node.type === "input" && node.props["aria-label"] === "Search saved grids";
+  const extra = ["Morning news", "Late evening", "Weekend", "Movie night", "Quiet hours"];
+  const all = ["Evening mix", "Late evening", "Morning news", "Movie night", "Quiet hours", "Weekend"];
+  const reopen = async () => {
+    await press(h, "Close saved grids");
+    await press(h, "Saved grids");
+  };
+  extra.slice(0, 4).forEach((name, at) => grids.set(7 + at, { id: 7 + at, name, rows: 1, columns: 1, data: "{}" }));
+  await reopen();
+  assert.equal(h.nodes(searchField).length, 0, "five saved grids need no search");
+  grids.set(11, { id: 11, name: extra[4], rows: 1, columns: 1, data: "{}" });
+  await reopen();
+  assert.equal(h.nodes(searchField).length, 1);
+  assert.equal(h.nodes(node => node.props?.className === "ms-saved-list ms-saved-named").length, 1);
+  const search = async value => {
+    h.nodes(searchField)[0].props.onChange({ target: { value } });
+    await h.flush();
+  };
+  const listed = () => h.nodes(node => node.props?.className === "ms-saved-name").map(text);
+  assert.deepEqual(listed(), all);
+  await search("EVEN");
+  assert.deepEqual(listed(), ["Evening mix", "Late evening"]);
+  let searched = false;
+  h.nodes(node => node.type === "form" && node.props.role === "search")[0].props.onSubmit({
+    preventDefault() {
+      searched = true;
+    },
+  });
+  assert.equal(searched, true, "Enter in the search leaves the page where it is");
+  await search("  eve   late ");
+  assert.deepEqual(listed(), ["Late evening"]);
+  assert.equal(h.nodes(searchField)[0].props.value, "  eve   late ", "the search keeps what was typed");
+  await search("zebra");
+  assert.deepEqual(listed(), []);
+  assert.match(text(dialog(h)), /No saved grids match this search\./);
+  await search("");
+  assert.deepEqual(listed(), all);
+  // Back to five, the search goes, and what it held no longer hides any grid.
+  await search("late");
+  await press(h, "Delete Late evening");
+  assert.equal(h.nodes(searchField).length, 0);
+  assert.deepEqual(
+    listed(),
+    all.filter(name => name !== "Late evening"),
+  );
+  for (const id of [7, 9, 10, 11]) grids.delete(id);
 
   // Opening it replaces changed screens, and the replaced session's last save does not overwrite it.
   await press(h, "Close saved grids");
@@ -3947,7 +4092,8 @@ async function savedGrids() {
 
   // Rename and delete act on one grid; deleting asks first.
   await press(h, "Rename Evening mix");
-  await submit(h, 1, "Late", node => node.props["aria-label"] === "New name for Evening mix");
+  // The rename form is the last one, after the save form and the search.
+  await submit(h, -1, "Late", node => node.props["aria-label"] === "New name for Evening mix");
   assert.equal(grids.get(1).name, "Late");
   assert.ok(openButton(h, "Late"));
 
@@ -4117,6 +4263,12 @@ async function recentGrids() {
   const byAge = () => recentRows().sort((a, b) => b.updatedAt - a.updatedAt);
   await press(third, "Saved grids");
   assert.match(text(dialog(third)), /Autosaves.*Autosave 1.*\d:\d\d.*Autosave 2.*\d:\d\d/);
+  // The search belongs to the named grids, below the autosaves; with none there is nothing to search.
+  const sections = () =>
+    third
+      .nodes(node => node.type === "h3" || node.type === "ul" || node.props?.role === "search")
+      .map(node => (node.props.role === "search" ? "search" : node.type === "h3" ? text(node) : "list"));
+  assert.deepEqual(sections(), ["Autosaves", "list", "list"]);
   const [newest, oldest] = byAge();
   assert.equal(third.button("Overwrite Autosave 1 with the current screens"), undefined);
   await press(third, "Keep Autosave 1 as a saved grid");
@@ -4133,6 +4285,13 @@ async function recentGrids() {
   await third.flush();
   assert.deepEqual([grids.get(newest.id).name, grids.get(newest.id).recent], ["Favourite pair", false]);
   assert.match(text(dialog(third)), /Autosave 1.*Saved.*Favourite pair/);
+  assert.deepEqual(sections(), ["Autosaves", "list", "Saved", "list"]);
+  const others = [901, 902, 903, 904, 905];
+  for (const id of others) grids.set(id, { id, name: "Pair " + id, rows: 1, columns: 2, data: "{}", updatedAt: 1 });
+  await press(third, "Close saved grids");
+  await press(third, "Saved grids");
+  assert.deepEqual(sections(), ["Autosaves", "list", "Saved", "search", "list"], "the search follows the autosaves");
+  for (const id of others) grids.delete(id);
   assert.ok(openButton(third, "Autosave 1"), "the other autosave moves up to 1");
   assert.equal(openButton(third, "Autosave 2"), undefined);
   const kept = grids.get(newest.id).data;

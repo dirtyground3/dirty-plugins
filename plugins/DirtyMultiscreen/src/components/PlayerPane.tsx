@@ -1,18 +1,9 @@
 import type * as R from "react";
 import { React } from "../runtime";
-import { panCrop } from "../domain/layout";
-import type { Rectangle } from "../domain/layout";
+import { panCrop, zoomCrop } from "../domain/layout";
+import type { Crop, Rectangle } from "../domain/layout";
 import { locatePlaylistItem, nextFreeIndex, nextItemAfter } from "../domain/playlists";
-import type {
-  AudioState,
-  CropPosition,
-  GridProps,
-  Item,
-  PaneView,
-  PictureControls,
-  SavedPane,
-  SwapControls,
-} from "../types";
+import type { AudioState, GridProps, Item, PaneView, PictureControls, SavedPane, SwapControls } from "../types";
 import { NativePlayerTile } from "./NativePlayerTile";
 import { ScreenControls, useScreenDrag } from "./ScreenControls";
 import { ScreenMenu } from "./ScreenMenu";
@@ -63,6 +54,8 @@ const PANE_CONTROLS =
 /** Links and text fields keep the browser's own menu, for opening a scene or pasting a search. */
 const BROWSER_MENU = "a, input, select, textarea";
 const NOTICE_MS = 1000;
+/** A wheel notch of 100 px magnifies a cropped picture by about 16%. */
+const ZOOM_PER_PIXEL = 0.0015;
 export function NativePlayerPane({
   playlist,
   screenIndex,
@@ -351,8 +344,9 @@ export function NativePlayerPane({
   };
   return (
     <div
+      ref={pan.cell}
       className={cellClass + (pan.active ? " ms-panning" : "")}
-      style={pan.crop ? ({ ...box, "--ms-crop": `${pan.crop.x}% ${pan.crop.y}%` } as R.CSSProperties) : box}
+      style={pan.style ? { ...box, ...pan.style } : box}
       data-ms-screen={screenIndex}
       onPointerDown={event => {
         if (pan.press(event) || !dragsScreen) return;
@@ -542,8 +536,9 @@ function swallowDismissalClick(pointerId: number) {
 }
 
 /**
- * A middle-button drag moves a cropped picture inside its screen; a middle click without a drag shows its centre
- * again. Each handler returns whether it handled the event, so the screen's own drag gets the rest.
+ * A middle-button drag moves a cropped picture inside its screen and the wheel zooms it around the pointer; a middle
+ * click without a drag shows its whole centre again. Each pointer handler returns whether it handled the event, so
+ * the screen's own drag gets the rest.
  */
 function useCropPan({
   view,
@@ -568,11 +563,50 @@ function useCropPan({
     id: number;
     x: number;
     y: number;
-    from: CropPosition;
+    from: Crop;
     before: PaneView;
     moved: boolean;
   } | null>(null);
   const [active, setActive] = React.useState(false);
+  // Wheel events can arrive faster than renders, so each one zooms from the last one's view.
+  const latest = React.useRef(view);
+  latest.current = view;
+  const cell = React.useRef<HTMLDivElement>(null);
+  const wheel = React.useRef<(event: WheelEvent) => void>();
+  wheel.current = event => {
+    const screen = cell.current;
+    const video = screen?.querySelector("video");
+    if (!screen || !video || !cropped || !item || press.current || event.ctrlKey || !event.deltaY) return;
+    if ((event.target as Element | null)?.closest?.(PANE_CONTROLS)) return;
+    event.preventDefault();
+    const before = latest.current;
+    const from = before.crop?.itemId === item.id ? before.crop : { x: 50, y: 50 };
+    // Wheels that count lines or pages zoom one notch per event.
+    const distance = event.deltaMode === 0 ? event.deltaY : Math.sign(event.deltaY) * 100;
+    const bounds = screen.getBoundingClientRect();
+    const next = zoomCrop(
+      from,
+      Math.exp(-distance * ZOOM_PER_PIXEL),
+      event.clientX - (bounds.left + bounds.width / 2),
+      event.clientY - (bounds.top + bounds.height / 2),
+      { width: video.videoWidth, height: video.videoHeight },
+      { width: video.clientWidth, height: video.clientHeight },
+      flip,
+      rotation,
+    );
+    if (next === from) return;
+    latest.current = { ...before, crop: { itemId: item.id, ...next } };
+    onCommit(latest.current);
+  };
+  React.useEffect(() => {
+    const screen = cell.current;
+    if (!screen) return undefined;
+    // React listens to the wheel passively, so only a listener of the screen's own can keep the page still.
+    const listener = (event: WheelEvent) => wheel.current?.(event);
+    screen.addEventListener("wheel", listener, { passive: false });
+    return () => screen.removeEventListener("wheel", listener);
+  }, []);
+  const zoom = cropped && crop?.zoom ? crop.zoom : 1;
   const target = (event: R.PointerEvent<HTMLDivElement>) => {
     const start = press.current;
     const video = event.currentTarget.querySelector("video");
@@ -590,8 +624,21 @@ function useCropPan({
     setActive(false);
   };
   return {
-    crop,
+    cell,
     active,
+    /** The crop for the CSS; a zoom magnifies the picture around that point, so it applies only while cropped. */
+    style: crop
+      ? ({
+          "--ms-crop": `${crop.x}% ${crop.y}%`,
+          ...(zoom > 1
+            ? {
+                "--ms-zoom": String(zoom),
+                "--ms-zoom-x": `${(crop.x - 50) * (1 - zoom)}%`,
+                "--ms-zoom-y": `${(crop.y - 50) * (1 - zoom)}%`,
+              }
+            : {}),
+        } as R.CSSProperties)
+      : undefined,
     press(event: R.PointerEvent<HTMLDivElement>) {
       if (event.button !== 1 || event.isPrimary === false || press.current || !cropped || !item) return false;
       if ((event.target as Element).closest(PANE_CONTROLS)) return false;

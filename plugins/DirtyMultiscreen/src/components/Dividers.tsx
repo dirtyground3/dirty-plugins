@@ -1,7 +1,6 @@
 import type * as R from "react";
 import { customDividers, dividerSnap, moveDivider } from "../domain/custom";
 import type { CustomLayout, Divider } from "../domain/custom";
-import type { Edges } from "../domain/layout";
 import { React } from "../runtime";
 
 /** A grid-wide overlay: each split owns its line, regardless of how many screens touch it. */
@@ -10,7 +9,6 @@ export function Dividers({
   shown,
   closed,
   size,
-  bounds,
   quiet,
   snap: snapping,
   onDraft,
@@ -20,8 +18,6 @@ export function Dividers({
   shown: CustomLayout;
   closed: readonly number[];
   size: { width: number; height: number; ratio: number };
-  /** The automatic fit may leave outer margins; its resting handles stop at the pictures. */
-  bounds?: Edges;
   /** Outside edit mode only the pointer shows a divider. */
   quiet?: boolean;
   /** Lines stick at eighths of their split unless Shift is held. */
@@ -62,15 +58,11 @@ export function Dividers({
       {dividers.map(divider => {
         const { path, at, axis, x, y, length } = divider;
         const vertical = axis === "row";
-        const from = vertical ? Math.max(y, bounds?.top ?? y) : Math.max(x, bounds?.left ?? x);
-        const to = vertical
-          ? Math.min(y + length, bounds?.bottom ?? Infinity)
-          : Math.min(x + length, bounds?.right ?? Infinity);
         return (
           <span
             key={`${path.join(".")}:${at}`}
             className={`ms-divider ms-divider-${vertical ? "vertical" : "horizontal"}`}
-            style={vertical ? { left: x, top: from, height: to - from } : { left: from, top: y, width: to - from }}
+            style={vertical ? { left: x, top: y, height: length } : { left: x, top: y, width: length }}
             title={
               quiet ? undefined : snapping ? "Drag to resize. Hold Shift to move without snapping." : "Drag to resize."
             }

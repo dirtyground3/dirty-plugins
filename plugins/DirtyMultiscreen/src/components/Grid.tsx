@@ -145,16 +145,7 @@ export function NativeMultiscreenGrid({
   );
   const structure = React.useMemo(() => {
     if (custom) return custom;
-    if (fittedPlan && fitted)
-      return layoutFromFitted(
-        open,
-        placeOrder,
-        fittedPlan.ends,
-        fittedPlan.transposed,
-        fitted,
-        size.width,
-        size.height,
-      );
+    if (fittedPlan && fitted) return layoutFromFitted(open, placeOrder, fittedPlan.ends, fittedPlan.transposed, fitted);
     const lanes = Array.from({ length: Math.ceil(open.length / columns) }, (_, at) =>
       open.slice(at * columns, (at + 1) * columns),
     );
@@ -472,17 +463,6 @@ export function NativeMultiscreenGrid({
     gridTemplateColumns: `repeat(${columns * tracks}, minmax(0, 1fr))`,
     gridTemplateRows: `repeat(${closed.length ? Math.max(1, Math.ceil(open.length / columns)) : rows}, minmax(0, 1fr))`,
   };
-  const firstFitted = !shownLayout && fitted ? fitted[0] : null;
-  const lastFitted = firstFitted && fitted ? fitted[fitted.length - 1] : null;
-  const fittedBounds =
-    firstFitted && lastFitted
-      ? {
-          left: firstFitted.left,
-          top: firstFitted.top,
-          right: lastFitted.left + lastFitted.width,
-          bottom: lastFitted.top + lastFitted.height,
-        }
-      : undefined;
   return (
     <div
       className={`ms-grid ms-native-grid${fitVideos ? " ms-fit" : ""}${shownLayout ? " ms-custom" : ""}${resizing ? " ms-resizing" : ""}${swapping?.guide ? " ms-moving" : ""}`}
@@ -531,7 +511,6 @@ export function NativeMultiscreenGrid({
           shown={shownLayout ?? structure}
           closed={closed}
           size={size}
-          bounds={fittedBounds}
           onDraft={setDraft}
           onCommit={onLayoutChange}
         />

@@ -16,6 +16,7 @@ function createMultiscreenHarness(options = {}) {
     timers = new Map(),
     observers = [],
     media = new Map(),
+    screens = new Map(),
     nativeCalls = [],
     screenMenu = {
       offsetWidth: 180,
@@ -36,6 +37,25 @@ function createMultiscreenHarness(options = {}) {
         media.get(address).video.closest = () => ({ dataset: { msScreen: address.match(/ms-native-(\d+)/)?.[1] } });
       }
       if (node.props.ref && node.props.className?.includes("ms-native-grid")) node.props.ref.current = grid;
+      // Each screen listens to the wheel itself, measures itself and finds its video; suites set both per screen.
+      if (node.props.ref && /^ms-cell\b/.test(node.props.className || "")) {
+        const index = node.props["data-ms-screen"];
+        if (!screens.has(index))
+          screens.set(
+            index,
+            events({
+              bounds: { left: 0, top: 0, width: 0, height: 0 },
+              video: null,
+              getBoundingClientRect() {
+                return this.bounds;
+              },
+              querySelector(selector) {
+                return selector === "video" ? this.video : null;
+              },
+            }),
+          );
+        node.props.ref.current = screens.get(index);
+      }
       // The right-click menu measures itself against its screen.
       if (node.props.ref && node.props.className === "ms-screen-menu") node.props.ref.current = screenMenu;
       // A screen's header groups: search and portraits at its top left, the link and O button further right.
@@ -467,6 +487,7 @@ function createMultiscreenHarness(options = {}) {
     timers,
     observers,
     media,
+    screens,
     nativeCalls,
     screenMenu,
     storage,

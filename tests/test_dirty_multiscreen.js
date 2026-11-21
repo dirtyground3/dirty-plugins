@@ -253,19 +253,20 @@ function customRows() {
   assert.equal(custom.isCustomLayout(grid), true);
   assert.equal(custom.isCustomLayout([{ height: 1, cells: [] }]), false);
 
-  // Starting from the automatic fit keeps the interior boundaries in both orientations.
+  // Starting from the automatic fit keeps every boundary in both orientations.
   const fitted = [
-    { left: 100, top: 0, width: 1000, height: 300 },
-    { left: 100, top: 300, width: 400, height: 600 },
-    { left: 500, top: 300, width: 600, height: 600 },
+    { left: 0, top: 0, width: 1200, height: 300 },
+    { left: 0, top: 300, width: 480, height: 600 },
+    { left: 480, top: 300, width: 720, height: 600 },
   ];
   const panes = [0, 2, 3],
     order = [0, 1, 2, 3];
-  const fromFit = layoutFromFitted(panes, order, [1, 3], false, fitted, 1200, 900);
+  const fromFit = layoutFromFitted(panes, order, [1, 3], false, fitted);
   assert.deepEqual(plain(readingOrder(fromFit, [])), order);
+  assert.deepEqual(plain(customRectangles(fromFit, [1], 1200, 900)), [fitted[0], null, fitted[1], fitted[2]]);
   assert.deepEqual(lines(fromFit, [1]), [
     [[], 0, "column", 0, 300, 1200, 900],
-    [[1], 0, "row", 500, 300, 600, 1200],
+    [[1], 0, "row", 480, 300, 600, 1200],
   ]);
   const transposed = fitted.map(({ left, top, width, height }) => ({
     left: top,
@@ -273,17 +274,16 @@ function customRows() {
     width: height,
     height: width,
   }));
-  const fromColumns = layoutFromFitted(panes, panes, [1, 3], true, transposed, 900, 1200);
+  const fromColumns = layoutFromFitted(panes, panes, [1, 3], true, transposed);
   assert.deepEqual(plain(customRectangles(fromColumns, [], 900, 1200)), [
-    { left: 0, top: 0, width: 300, height: 1200 },
+    transposed[0],
     null,
-    { left: 300, top: 0, width: 600, height: 500 },
-    { left: 300, top: 500, width: 600, height: 700 },
+    transposed[1],
+    transposed[2],
   ]);
 }
 async function main() {
-  const { fitLayout, videoAspect, panCrop, DEFAULT_ASPECT, FIT_COVERAGE_THRESHOLD } = feature("layout");
-  assert.equal(FIT_COVERAGE_THRESHOLD, 0.9);
+  const { fitLayout, videoAspect, panCrop, zoomCrop, MAX_ZOOM, DEFAULT_ASPECT } = feature("layout");
   assert.deepEqual(fitLayout(Array(4).fill(16 / 9), 1600, 900), [
     { left: 0, top: 0, width: 800, height: 450 },
     { left: 800, top: 0, width: 800, height: 450 },
@@ -296,8 +296,9 @@ async function main() {
     portraits.map(rect => rect.width),
     [400, 400, 400, 400],
   );
-  assert.deepEqual(fitLayout([1], 1000, 900), [{ left: 0, top: 0, width: 1000, height: 900 }], "90% stretches");
-  assert.deepEqual(fitLayout([1], 1000, 899), [{ left: 51, top: 0, width: 899, height: 899 }], "below 90% centres");
+  // The packed screens always fill the window, cropping their pictures however little their shapes match it.
+  assert.deepEqual(fitLayout([1], 1000, 900), [{ left: 0, top: 0, width: 1000, height: 900 }]);
+  assert.deepEqual(fitLayout([9 / 16], 1600, 900), [{ left: 0, top: 0, width: 1600, height: 900 }], "no margins");
   assert.deepEqual(fitLayout([16 / 9], 1600, 900), [{ left: 0, top: 0, width: 1600, height: 900 }]);
   assert.deepEqual(fitLayout([], 1600, 900), []);
   for (const size of [
@@ -323,6 +324,28 @@ async function main() {
     panCrop({ x: 20, y: 30 }, 50, 50, { width: 0, height: 0 }, { width: 900, height: 900 }, { x: false, y: false }, 0),
     { x: 20, y: 30 },
   );
+  // A square picture in a square screen hides nothing until it is zoomed; zooming keeps the point under the pointer.
+  const square = { width: 100, height: 100 };
+  const still = { x: false, y: false };
+  const zoom = (crop, factor, dx, dy, flip = still, turns = 0) =>
+    zoomCrop(crop, factor, dx, dy, square, square, flip, turns);
+  assert.deepEqual(zoom({ x: 50, y: 50 }, 2, 0, 0), { x: 50, y: 50, zoom: 2 });
+  assert.deepEqual(zoom({ x: 50, y: 50 }, 2, -50, -50), { x: 0, y: 0, zoom: 2 }, "a corner stays in its corner");
+  assert.deepEqual(zoom({ x: 50, y: 50 }, 2, 25, 0), { x: 75, y: 50, zoom: 2 });
+  assert.deepEqual(zoom({ x: 75, y: 50, zoom: 2 }, 2, 25, 0), { x: 75, y: 50, zoom: 4 });
+  assert.deepEqual(zoom({ x: 50, y: 50 }, 2, 25, 0, { x: true, y: false }), { x: 25, y: 50, zoom: 2 });
+  assert.deepEqual(zoom({ x: 50, y: 50 }, 2, 25, 0, still, 1), { x: 50, y: 25, zoom: 2 }, "turned, right is the top");
+  assert.deepEqual(zoom({ x: 75, y: 0, zoom: 2 }, 0.25, 25, 0), { x: 50, y: 50 }, "zoomed out, the zoom is dropped");
+  assert.deepEqual(zoom({ x: 50, y: 50 }, 100, 0, 0), { x: 50, y: 50, zoom: MAX_ZOOM });
+  const whole = { x: 50, y: 50 };
+  assert.equal(zoom(whole, 0.5, 0, 0), whole, "a picture at its cover size zooms out no further");
+  assert.equal(zoomCrop(whole, 2, 0, 0, { width: 0, height: 0 }, square, still, 0), whole);
+  // A 16:9 picture covering a square screen keeps its hidden width while zoomed, and panning reaches the rest.
+  assert.deepEqual(
+    zoomCrop({ x: 50, y: 50 }, 2, 0, 0, { width: 1600, height: 900 }, { width: 900, height: 900 }, still, 0),
+    { x: 50, y: 50, zoom: 2 },
+  );
+  assert.deepEqual(panCrop({ x: 50, y: 50, zoom: 2 }, 50, 0, square, square, still, 0), { x: 0, y: 50, zoom: 2 });
   assert.deepEqual(fitLayout([0, NaN, -2, Infinity], 1600, 900), fitLayout(Array(4).fill(DEFAULT_ASPECT), 1600, 900));
   const verifyTiling = (aspects, width, height) => {
     const rectangles = fitLayout(aspects, width, height);
@@ -346,7 +369,7 @@ async function main() {
         );
     });
     assert.equal(area, (right - left) * (bottom - top), "rounded cells tile the block without gaps");
-    assert.ok(Math.abs(left - (width - right)) <= 1 && Math.abs(top - (height - bottom)) <= 1, "centred block");
+    assert.deepEqual([left, top, right, bottom], [0, 0, width, height], "the block fills the window");
     return rectangles;
   };
   // Under display scaling every edge falls on a whole device pixel, and neighbours share it exactly.

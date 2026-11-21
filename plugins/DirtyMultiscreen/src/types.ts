@@ -2,6 +2,7 @@ import type * as R from "react";
 import type { HubApi, SceneCondition } from "../../DirtyPlugins/src/types";
 import type { CustomLayout, Edge } from "./domain/custom";
 import type { DropPointer } from "./domain/dropGuide";
+import type { Crop } from "./domain/layout";
 export type SceneOrder = "random" | "fresh" | "unwatched" | "favorites" | "newest" | "mix" | "list";
 export type Hub = Pick<HubApi, "graphql" | "react" | "native" | "getPluginSettings" | "captureEnabled" | "debugLog">;
 export interface Settings {
@@ -177,12 +178,8 @@ export interface PaneView {
   loop?: boolean;
   flip?: { itemId: string; x: boolean; y: boolean };
   rotation?: { itemId: string; turns: 1 | 2 | 3 };
-  /** The part of a cropped picture on show, as percentages of the video; absent shows its centre. */
-  crop?: { itemId: string } & CropPosition;
-}
-export interface CropPosition {
-  x: number;
-  y: number;
+  /** The part of a cropped picture on show and its zoom; absent shows its centre. */
+  crop?: { itemId: string } & Crop;
 }
 /** Where one pane was; absent time and audio fall back to the pane's normal start. */
 export interface SavedPane {

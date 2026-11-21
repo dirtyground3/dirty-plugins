@@ -1,5 +1,6 @@
 import { isMultiscreenLaunchContext, isRecord } from "./context";
 import { isCustomLayout } from "./custom";
+import { MAX_ZOOM } from "./layout";
 import type { AudioState, GridSize, PaneView, SavedPane, SavedSession, Settings } from "../types";
 
 const SESSION_STORAGE_KEY = "multiscreen.session";
@@ -25,7 +26,9 @@ const isView = (value: unknown): value is PaneView =>
     (isRecord(value.crop) &&
       typeof value.crop.itemId === "string" &&
       isPercent(value.crop.x) &&
-      isPercent(value.crop.y)));
+      isPercent(value.crop.y) &&
+      (value.crop.zoom === undefined ||
+        (isFiniteNumber(value.crop.zoom) && value.crop.zoom > 1 && value.crop.zoom <= MAX_ZOOM))));
 const isGridSize = (value: unknown): value is GridSize =>
   isRecord(value) &&
   Number.isInteger(value.rows) &&

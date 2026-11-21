@@ -9,6 +9,13 @@ const sameName = (first: string, second: string) =>
   first.trim().toLocaleLowerCase() === second.trim().toLocaleLowerCase();
 const played = (seconds: number) =>
   new Date(seconds * 1000).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+/** The search appears once there are more saved grids than this. */
+const SEARCH_AFTER = 5;
+/** Every word of the search appears somewhere in the label, in any order and case. */
+const matches = (label: string, words: readonly string[]) => {
+  const text = label.toLocaleLowerCase();
+  return words.every(word => text.includes(word));
+};
 
 function SavedGridsDialog({
   capture,
@@ -33,6 +40,7 @@ function SavedGridsDialog({
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [name, setName] = React.useState("");
+  const [query, setQuery] = React.useState("");
   // Renaming a recent grid keeps it as a named one.
   const [renaming, setRenaming] = React.useState<{ id: number; name: string; keep: boolean } | null>(null);
   const mounted = React.useRef(true);
@@ -61,6 +69,12 @@ function SavedGridsDialog({
   }, []);
   const recent = (grids ?? []).filter(grid => grid.recent);
   const saved = (grids ?? []).filter(grid => !grid.recent);
+  // A search that hides with its field would go on hiding grids, so it applies only while shown.
+  const searching = saved.length > SEARCH_AFTER;
+  const words = searching ? query.toLocaleLowerCase().split(/\s+/).filter(Boolean) : [];
+  const shownSaved = saved.filter(grid => matches(grid.name, words));
+  // The named grids get a heading of their own only below autosaves.
+  const savedHeading = recent.length > 0 && saved.length > 0 && <h3 className="ms-saved-heading">Saved</h3>;
   const canSave = !!snapshot();
   const existing = saved.find(grid => sameName(grid.name, name));
   const save = (event: R.FormEvent) => {
@@ -165,6 +179,7 @@ function SavedGridsDialog({
   return (
     <DirtyPlugins.react.Dialog
       className={"dirty-ui-dialog ms-saved-grids" + (capture ? " ms-docs-capture" : "")}
+      backdropClassName="dirty-ui-backdrop ms-saved-grids-backdrop"
       ariaLabel="Saved grids"
       initialFocusRef={closeRef}
       openerRef={openerRef}
@@ -208,10 +223,25 @@ function SavedGridsDialog({
           <>
             <h3 className="ms-saved-heading">Autosaves</h3>
             <ul className="ms-saved-list">{recent.map((grid, index) => row(grid, `Autosave ${index + 1}`))}</ul>
-            {saved.length > 0 && <h3 className="ms-saved-heading">Saved</h3>}
           </>
         )}
-        <ul className="ms-saved-list">{saved.map(grid => row(grid, grid.name))}</ul>
+        {savedHeading}
+        {searching && (
+          // A search form of its own: themes such as Refract turn the list around a bare search field into a toolbar.
+          <form className="ms-saved-search" role="search" onSubmit={event => event.preventDefault()}>
+            <input
+              type="search"
+              className="form-control"
+              aria-label="Search saved grids"
+              placeholder="Search saved grids"
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+            />
+          </form>
+        )}
+        {searching && !shownSaved.length && <p role="status">No saved grids match this search.</p>}
+        {/* Only this list scrolls, so everything above it, the search included, stays in view. */}
+        <ul className="ms-saved-list ms-saved-named">{shownSaved.map(grid => row(grid, grid.name))}</ul>
       </div>
     </DirtyPlugins.react.Dialog>
   );

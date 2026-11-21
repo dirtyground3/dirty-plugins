@@ -170,44 +170,29 @@ export function layoutFromLanes(
   );
 }
 
-/** Sized lanes keep every interior boundary of the automatic fit, extending the outside panes into the margins. */
+/** Sized lanes keep every boundary of the automatic fit, which fills the window. */
 export function layoutFromFitted(
   panes: readonly number[],
   placeOrder: readonly number[],
   ends: readonly number[],
   transposed: boolean,
   boxes: readonly Rectangle[],
-  width: number,
-  height: number,
 ): CustomLayout {
   const starts = ends.map((_, index) => (index ? ends[index - 1] : 0));
-  const across = transposed ? "left" : "top";
-  const along = transposed ? "top" : "left";
-  const span = (from: number, to: number) => Math.max(1e-6, to - from);
+  const across = transposed ? "width" : "height";
+  const along = transposed ? "height" : "width";
+  const span = (length: number) => Math.max(1e-6, length);
   return placeClosedLanes(
     {
       size: 1,
       axis: transposed ? "row" : "column",
-      children: starts.map((first, lane) => {
-        const end = ends[lane];
-        return {
-          size: span(
-            lane ? boxes[first][across] : 0,
-            end < panes.length ? boxes[end][across] : transposed ? width : height,
-          ),
-          axis: transposed ? "column" : "row",
-          children: panes.slice(first, end).map((pane, offset) => {
-            const index = first + offset;
-            return {
-              pane,
-              size: span(
-                offset ? boxes[index][along] : 0,
-                index + 1 < end ? boxes[index + 1][along] : transposed ? height : width,
-              ),
-            };
-          }),
-        };
-      }),
+      children: starts.map((first, lane) => ({
+        size: span(boxes[first][across]),
+        axis: transposed ? "column" : "row",
+        children: panes
+          .slice(first, ends[lane])
+          .map((pane, offset) => ({ pane, size: span(boxes[first + offset][along]) })),
+      })),
     },
     placeOrder,
   );

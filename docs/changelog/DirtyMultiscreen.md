@@ -2,6 +2,22 @@
 
 Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names its version.
 
+- **DirtyMultiscreen 1.1.0:** wheel zoom on cropped pictures, Fit videos
+  without margins, and a see-through Saved grids with a search.
+  - **Zoom with the wheel.** When Fill or Fit videos crops a picture, scroll
+    over it to zoom in toward the pointer, up to 8×, and back out. The
+    middle-button drag moves the zoomed picture, and a middle click shows the
+    whole centre again. The zoom belongs to the video, like the crop, and is
+    kept in the session and saved grids.
+  - **Fit videos fills the window.** The packed screens always cover the whole
+    window, each picture cropped to its screen, so dragging a divider no longer
+    makes the screens jump out to the edges.
+  - **Search saved grids.** With more than five saved grids, a search field
+    below the autosaves shows those whose name holds every word you type, in
+    any order. Only the saved grids scroll, so the search stays in view.
+  - **See-through Saved grids.** The dialog lets the screens show behind it
+    under a lighter shade, blurred where the theme allows it.
+
 - **DirtyMultiscreen 1.0.30:** a right-click menu of screen options, search
   choices that play at once, screen headers that hide like the main buttons,
   and launches from groups.
