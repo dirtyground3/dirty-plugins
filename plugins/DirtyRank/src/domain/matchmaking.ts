@@ -21,7 +21,11 @@ import type {
   RankSettings,
 } from "../types";
 const ORDER_CONFIDENCE_Z = 0.84,
-  MATCHMAKER_FOCUS_LIMIT = 48;
+  MATCHMAKER_FOCUS_LIMIT = 48,
+  // Share of the less needy side's weighted gain that a pair also earns. Summing both
+  // sides in full let two uncertain performers outscore an uncertain one against a
+  // rated opponent, although the rated opponent tells each of them more.
+  PARTNER_GAIN_SHARE = 0.25;
 type CategorySummary = { key: string; entries: RankEntry[]; confidence?: RankConfidence };
 // Library arrays are immutable snapshots. Weak ownership releases replaced populations.
 const categorySummaries = new WeakMap<RankPerformer[], Map<string, CategorySummary>>();
@@ -316,8 +320,10 @@ export function selectPair(
       if (evaluated.has(token)) continue;
       evaluated.add(token);
       const information = pairInformationGain(leftEntry.pool, rightEntry.pool, settings);
-      let score =
-        information.leftGain * (0.25 + weight(leftEntry)) + information.rightGain * (0.25 + weight(rightEntry));
+      const leftValue = information.leftGain * (0.25 + weight(leftEntry));
+      const rightValue = information.rightGain * (0.25 + weight(rightEntry));
+      let score = Math.max(leftValue, rightValue) + Math.min(leftValue, rightValue) * PARTNER_GAIN_SHARE;
+      // Without rated opponents, still give everyone a first battle before anyone a second.
       if (leftEntry.pool.matches === 0 && rightEntry.pool.matches === 0) score *= 1.12;
       score = finishScore(
         score,

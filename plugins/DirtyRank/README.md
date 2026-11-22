@@ -52,6 +52,8 @@ volatility instead of relying on a capped integer score.
 - Expected-information-gain matchmaking that predicts each candidate battle's
   Glicko-2 uncertainty reduction, applies soft recent-pair and calibration
   penalties, and advances the selected confidence goal as efficiently as possible.
+  New performers meet rated opponents rather than each other, because a rated
+  opponent places them more precisely.
 - Selectable confidence goals for every performer rating, complete leaderboard
   order, or a configurable top N. Leaderboard modes stop refining performers
   once they no longer affect the requested ordering.

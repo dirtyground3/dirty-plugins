@@ -381,6 +381,55 @@ function performer(id, rating, deviation, matches) {
 }
 
 {
+  // A rated opponent tells a new performer more than another new performer does.
+  const rated = [940, 980, 1000, 1020, 1060].map(function (rating, index) {
+    return performer(71 + index, rating, 50, 20);
+  });
+  const originalRandom = Math.random;
+  Math.random = function () {
+    return 0.5;
+  };
+  ["all", "ranking", "top"].forEach(function (confidenceGoal) {
+    const settings = Object.assign({}, baseSettings, { confidenceGoal, calibrationPercent: 0, confidenceTopN: 3 });
+    [
+      [performer(61, 1000, 350, 0), performer(62, 1000, 350, 0)],
+      [performer(63, 1000, 253, 1), performer(64, 1000, 253, 1)],
+    ].forEach(function (fresh) {
+      const ids = fresh
+        .map(function (item) {
+          return item.id;
+        })
+        .sort()
+        .join(":");
+      const selected = algorithms.selectPair(rated.concat(fresh), category, "FEMALE", settings, []);
+      const pair = selected.pair
+        .map(function (item) {
+          return item.id;
+        })
+        .sort()
+        .join(":");
+      assert.notStrictEqual(pair, ids, confidenceGoal + ": uncertain newcomers must meet a rated opponent first");
+      assert(
+        selected.pair.some(function (item) {
+          return fresh.indexOf(item) >= 0;
+        }),
+        confidenceGoal + ": the pair must still include a newcomer",
+      );
+    });
+  });
+  const unrated = [performer(65, 1000, 350, 0), performer(66, 1000, 350, 0), performer(67, 1000, 350, 0)];
+  const settings = Object.assign({}, baseSettings, { calibrationPercent: 0 });
+  const start = algorithms.selectPair(unrated.concat(performer(68, 1100, 253, 1)), category, "FEMALE", settings, []);
+  Math.random = originalRandom;
+  assert(
+    start.pair.every(function (item) {
+      return unrated.indexOf(item) >= 0;
+    }),
+    "without rated opponents, unrated performers get their first battle before anyone gets a second",
+  );
+}
+
+{
   const performers = [performer(1, 1000, 350, 0), performer(2, 1000, 45, 20), performer(3, 1400, 45, 20)];
   const settings = Object.assign({}, baseSettings, { calibrationPercent: 0 });
   const originalRandom = Math.random;
