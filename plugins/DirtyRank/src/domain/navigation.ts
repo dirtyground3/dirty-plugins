@@ -42,27 +42,19 @@ export function leaderboardPerformerCountError(settings: RankSettingsDraft) {
 export function linkedBox(defaultCohort: string, cohort: string) {
   return cohort === defaultCohort && cohort.indexOf("BOX-") !== 0 ? "" : cohort;
 }
-export function battleCategoryPath(categoryId: string, kingsMode?: boolean, performerId?: string, cohort?: string) {
+export function battleCategoryPath(categoryId: string, performerId?: string, cohort?: string) {
   const base = performerId ? ROUTE_PATH + "/gauntlet/" + encodeURIComponent(performerId) : ROUTE_PATH + "/category";
-  return (
-    base +
-    "/" +
-    encodeURIComponent(categoryId) +
-    (kingsMode && !performerId ? "/king-of-the-hill" : "") +
-    (cohort ? "?box=" + encodeURIComponent(cohort) : "")
-  );
+  return base + "/" + encodeURIComponent(categoryId) + (cohort ? "?box=" + encodeURIComponent(cohort) : "");
 }
 export function battleRouteFromPath(pathname: string) {
-  if (pathname === ROUTE_PATH || pathname === ROUTE_PATH + "/")
-    return { categoryId: "", kingsMode: false, performerId: "" };
-  const match = pathname.match(/^\/plugins\/dirty-rank\/category\/([^/]+)(?:\/(king-of-the-hill))?\/?$/);
+  if (pathname === ROUTE_PATH || pathname === ROUTE_PATH + "/") return { categoryId: "", performerId: "" };
+  const match = pathname.match(/^\/plugins\/dirty-rank\/category\/([^/]+)\/?$/);
   const gauntlet = pathname.match(/^\/plugins\/dirty-rank\/gauntlet\/([^/]+)(?:\/([^/]+))?\/?$/);
   try {
-    if (match) return { categoryId: decodeURIComponent(match[1]), kingsMode: Boolean(match[2]), performerId: "" };
+    if (match) return { categoryId: decodeURIComponent(match[1]), performerId: "" };
     if (gauntlet)
       return {
         categoryId: gauntlet[2] ? decodeURIComponent(gauntlet[2]) : "",
-        kingsMode: false,
         performerId: decodeURIComponent(gauntlet[1]),
       };
   } catch (_error) {}

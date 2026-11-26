@@ -10,6 +10,12 @@ for (const example of fixture.rank) {
   const actual = Object.fromEntries(Object.keys(example.expected).map(key => [key, normalized[key]]));
   assert.deepEqual(actual, example.expected, example.name);
 }
+for (const example of fixture.rankVerdicts) {
+  example.probabilities.forEach((expected, index) => {
+    const actual = rank.verdictProbability(example.difference, index - 3, example.thresholds);
+    assert(Math.abs(actual - expected) < 1e-12, "verdict " + (index - 3) + " at " + example.difference);
+  });
+}
 for (const example of fixture.compactor) {
   const size = compactor.outputSize(example.width, example.height, example.rule);
   assert.deepEqual(plain(size), example.expected.size, example.name);
@@ -20,4 +26,6 @@ for (const example of fixture.presets) {
   assert.equal(compactor.visualPreset(example.vmaf), example.preset);
   assert.equal(compactor.CRF[example.codec][example.preset], example.crf);
 }
-console.log("Shared Rank defaults/legacy/boundaries and Compactor resize/bitrate/preset fixtures passed in JavaScript");
+console.log(
+  "Shared Rank defaults/legacy/boundaries/verdicts and Compactor resize/bitrate/preset fixtures passed in JavaScript",
+);

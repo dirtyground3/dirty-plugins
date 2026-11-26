@@ -210,8 +210,11 @@ Rebuild after changing plugin source, schemas or scripts: tests read
   evaluation counts. After building,
   `node tests/benchmark_rank_scores.js 27e810f` compares synthetic cold/warm scoring
   with the report's baseline commit; timings are never assertions.
+  `test_dirty_rank_simulation.js` runs a simulated voter with a known ranking, graded
+  answers and occasional slips: information-ordered battles must rank better than
+  random pairs, and judged pairs may return only rarely and mostly to correct a slip.
   `python -B tests/test_dirty_rank_stash_integration.py --binary /path/to/stash`
-  verifies synthetic portraits/media/markers, rating/undo, HTTP seeking and
+  verifies synthetic portraits/media/markers, verdict/undo, HTTP seeking and
   the exact served bundle. Add `--serve --stop-file <path>` for browser review.
   `test_dirty_rank_cold.js` checks shifted-weight parity, bounded task yields,
   cancellation/port cleanup, shared preparation, changes during calculation,

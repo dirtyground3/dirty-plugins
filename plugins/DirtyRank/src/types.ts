@@ -1,5 +1,7 @@
 import type * as R from "react";
 import type { HubApi, SharedProps } from "../../DirtyPlugins/src/types";
+import type { SavedVerdict, VerdictInformation } from "./domain/rating";
+import type { PoolVerdicts } from "./domain/verdicts";
 export interface RankCategory {
   id: string;
   name: string;
@@ -35,13 +37,9 @@ export interface RankSettingsDraft {
   includePerformersWithoutImages: boolean;
   confidenceGoal: string;
   confidenceTopN: number | string;
-  avoidRepeatWindow: number | string;
-  calibrationPercent: number | string;
   initialRating: number | string;
   initialDeviation: number | string;
-  initialVolatility: number | string;
   evidenceWeight: number | string;
-  tau: number | string;
   deviationFloor: number | string;
   provisionalDeviation: number | string;
 }
@@ -79,13 +77,9 @@ export interface RankSettings
     | "leaderboardPerformerCount"
     | "overallPower"
     | "confidenceTopN"
-    | "avoidRepeatWindow"
-    | "calibrationPercent"
     | "initialRating"
     | "initialDeviation"
-    | "initialVolatility"
     | "evidenceWeight"
-    | "tau"
     | "deviationFloor"
     | "provisionalDeviation"
   > {
@@ -93,13 +87,9 @@ export interface RankSettings
   leaderboardPerformerCount: number;
   overallPower: number;
   confidenceTopN: number;
-  avoidRepeatWindow: number;
-  calibrationPercent: number;
   initialRating: number;
   initialDeviation: number;
-  initialVolatility: number;
   evidenceWeight: number;
-  tau: number;
   deviationFloor: number;
   provisionalDeviation: number;
 }
@@ -107,7 +97,6 @@ export interface RankSettings
 export interface RankPool {
   rating: number;
   deviation: number;
-  volatility: number;
   matches: number;
   wins?: number;
   losses?: number;
@@ -126,34 +115,29 @@ export interface RankEntry {
   performer: RankPerformer;
   pool: RankPool;
 }
-export interface RankInformation {
-  rdReduction: number;
-  leftGain: number;
-  rightGain: number;
-  nextLeftDeviation: number;
-  nextRightDeviation: number;
-}
 export interface RankPairCandidate {
   left: RankPerformer;
   right: RankPerformer;
-  information: RankInformation;
+  information: VerdictInformation;
   score: number;
+  saved: SavedVerdict | null;
 }
 export interface RankOpponentCandidate {
   opponent: RankPerformer;
-  information: RankInformation;
+  information: VerdictInformation;
   score: number;
+  saved: SavedVerdict | null;
 }
 export interface RankPairResult {
   pair: RankPerformer[] | null;
   eligible: number;
   ranks: Record<string, number>;
   instanceId?: string;
-  calibration?: boolean;
-  expectedRdReduction?: number;
+  /** Expected information (nats) the verdict adds to the two ratings. */
+  expectedInformation?: number;
   goalLabel?: string;
-  incumbentId?: string;
-  incumbentSide?: string;
+  /** The pair's saved verdict, from the left performer's side, when it was judged before. */
+  saved?: SavedVerdict | null;
 }
 
 export interface RankPerformerState {
@@ -187,7 +171,8 @@ export interface RankSelectionApi {
     category: RankCategory,
     cohort: string,
     settings: RankSettings,
-    recentTokens: string[],
+    verdicts: PoolVerdicts | null,
+    excluded?: Set<string>,
   ): RankPairResult;
   selectGauntletPair(
     performers: RankPerformer[],
@@ -195,22 +180,8 @@ export interface RankSelectionApi {
     category: RankCategory,
     cohort: string,
     settings: RankSettings,
-    recentTokens: string[],
-  ): RankPairResult;
-  selectKingsStartingPair(
-    performers: RankPerformer[],
-    category: RankCategory,
-    cohort: string,
-    settings: RankSettings,
-  ): RankPairResult;
-  selectKingsPair(
-    performers: RankPerformer[],
-    winner: RankPerformer,
-    winnerSide: string,
-    defeatedIds: string[],
-    category: RankCategory,
-    cohort: string,
-    settings: RankSettings,
+    verdicts: PoolVerdicts | null,
+    excluded?: Set<string>,
   ): RankPairResult;
 }
 export interface RankOperationResult {
@@ -218,6 +189,8 @@ export interface RankOperationResult {
   settings?: Record<string, unknown>;
   left?: { id: string; state: RankPerformerState };
   right?: { id: string; state: RankPerformerState };
+  /** Every performer a refit moved, including both performers of the verdict. */
+  changed?: Array<{ id: string; state: RankPerformerState }>;
   undone?: boolean;
   duplicate?: boolean;
   [result: string]: unknown;
@@ -236,7 +209,6 @@ export interface DisplayPool {
   rating: number;
   deviation: number;
   matches: number;
-  volatility?: number;
   wins?: number;
   losses?: number;
   draws?: number;
@@ -249,6 +221,12 @@ export interface DisplayPool {
 export interface StandingEntry {
   performer: RankPerformer;
   rank: number;
+  /** Likely leaderboard positions, from the ratings' uncertainty. */
+  range?: RankRange;
+}
+export interface RankRange {
+  low: number;
+  high: number;
 }
 export interface LeaderboardProps {
   ranked: RankPerformer[];
@@ -280,7 +258,7 @@ export interface ConfidenceProps {
   settings: RankSettings;
 }
 export interface BattleProps {
-  routeDetails: { categoryId?: string; kingsMode?: boolean };
+  routeDetails: { categoryId?: string };
   routeTargetId?: string;
 }
 export type ConfigurationEvent = Event & { detail?: { pluginId?: string } };
@@ -289,14 +267,8 @@ export interface PerformerCardProps {
   pool: DisplayPool;
   settings: RankSettings;
   reveal?: boolean;
-  disabled?: boolean;
-  crowned?: boolean;
   rank?: number;
   gauntletTarget?: boolean;
-  kingTarget?: boolean;
-  hillMode?: boolean;
-  hillOpening?: boolean;
-  onChoose?(): void;
   onSceneChange?(id: string | null): void;
 }
 export interface Feedback {
@@ -304,6 +276,8 @@ export interface Feedback {
 }
 export interface Decision {
   id: string;
+  /** From the left performer's side, -3 to 3. */
+  score: number;
   left: DecisionPerson;
   right: DecisionPerson;
 }
@@ -318,10 +292,8 @@ export interface UndoEntry {
   leftId: string;
   rightId: string;
   pairInfo: RankPairResult;
-}
-export interface DefeatedKing {
-  performerId: string;
-  battleId: string;
+  /** What the pair had before this verdict, from the left performer's side. */
+  previous: SavedVerdict | null;
 }
 export interface PreparedPair {
   sourceInstanceId?: string;

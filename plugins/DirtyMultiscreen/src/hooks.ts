@@ -300,3 +300,40 @@ export function useNativePlayerComponent() {
     },
   };
 }
+/**
+ * What a click may land on without leaving edit mode: the edit tools, controls and menus, and dialogs with their
+ * backdrops. A click on a picture or on empty space leaves it.
+ */
+const EDITING_TARGETS =
+  "button, a, input, select, textarea, [role='slider'], [role='dialog'], .modal, .dirty-ui-backdrop, .dropdown-menu, " +
+  ".vjs-control-bar, .vjs-menu, .vjs-modal-dialog, .ms-screen-controls, .ms-divider, .ms-floating, .ms-pane-header, " +
+  ".ms-screen-menu, .ms-docking-guide";
+/**
+ * While editing, a click on a picture or on empty space finishes editing, so edit mode opened by mistake takes one
+ * click to leave. Where the press starts decides, so a drag that ends elsewhere, such as along a divider, never counts.
+ */
+export function useClickAwayFinish(editing: boolean, finish: () => void) {
+  const finishRef = React.useRef(finish);
+  finishRef.current = finish;
+  React.useEffect(() => {
+    if (!editing) return undefined;
+    let outside = false;
+    const press = (event: PointerEvent) => {
+      outside = event.button === 0 && !(event.target as Element | null)?.closest?.(EDITING_TARGETS);
+    };
+    const click = (event: MouseEvent) => {
+      if (!outside) return;
+      outside = false;
+      // That click only finishes editing: the video beneath it does not also pause.
+      event.stopPropagation();
+      event.preventDefault();
+      finishRef.current();
+    };
+    document.addEventListener("pointerdown", press, true);
+    document.addEventListener("click", click, true);
+    return () => {
+      document.removeEventListener("pointerdown", press, true);
+      document.removeEventListener("click", click, true);
+    };
+  }, [editing]);
+}

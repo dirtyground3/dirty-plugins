@@ -17,7 +17,8 @@ const matches = (label: string, words: readonly string[]) => {
   return words.every(word => text.includes(word));
 };
 
-function SavedGridsDialog({
+/** Save the current screens, or open, rename and delete saved grids. The main menu opens it. */
+export function SavedGridsDialog({
   capture,
   keepRecent,
   onClose,
@@ -31,7 +32,8 @@ function SavedGridsDialog({
   onClose(): void;
   /** Replaces the current screens with a saved grid. */
   onOpen(grid: SavedGrid, summary: SavedGridSummary): Promise<void>;
-  openerRef: R.RefObject<HTMLButtonElement>;
+  /** Takes focus back when the dialog closes. */
+  openerRef?: R.RefObject<HTMLElement>;
   /** The current screens, or null while no grid is playing. */
   snapshot(): SavedGrid | null;
 }) {
@@ -244,28 +246,5 @@ function SavedGridsDialog({
         <ul className="ms-saved-list ms-saved-named">{shownSaved.map(grid => row(grid, grid.name))}</ul>
       </div>
     </DirtyPlugins.react.Dialog>
-  );
-}
-
-/** One round button beside the grid button: save the current screens, or open, rename and delete saved grids. */
-export function SavedGridsButton(props: {
-  capture: boolean;
-  keepRecent: number;
-  onOpen(grid: SavedGrid, summary: SavedGridSummary): Promise<void>;
-  snapshot(): SavedGrid | null;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const openerRef = React.useRef<HTMLButtonElement>(null);
-  return (
-    <>
-      <PluginIconButton
-        ariaLabel="Saved grids"
-        fallback="★"
-        icon={icon("saved")}
-        buttonRef={openerRef}
-        onClick={() => setOpen(true)}
-      />
-      {open && <SavedGridsDialog {...props} openerRef={openerRef} onClose={() => setOpen(false)} />}
-    </>
   );
 }

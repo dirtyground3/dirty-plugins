@@ -1,7 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict"),
   { createMultiscreenHarness } = require("./multiscreen_harness"),
-  { text } = require("./ui_harness");
+  { findAll, text } = require("./ui_harness");
 const deferred = () => {
   let resolve, reject;
   const promise = new Promise((yes, no) => {
@@ -15,6 +15,39 @@ async function start(options) {
   h.load();
   await h.flush();
   return h;
+}
+/**
+ * The burger between the O counter and Close: edit mode, Grid, +, saved grids, Reshuffle with the scene orders, then
+ * Playback with its settings.
+ */
+const mainMenu = h => h.nodes(node => node.type === "ActionMenu" && node.props.ariaLabel === "Menu")[0]?.props;
+const menuItem = (h, key) => mainMenu(h)?.items.find(item => item && item.key === key);
+/** The Grid submenu: the squares, then Fit videos. */
+const gridOption = (h, key) => menuItem(h, "grid").items.find(item => item.key === key);
+const toggleFit = h => gridOption(h, "fit").onSelect();
+const fitOn = h => /\(on\)/.test(JSON.stringify(gridOption(h, "fit").label));
+/** The scene orders in Reshuffle's submenu. */
+const orderItems = h => menuItem(h, "reshuffle").items;
+const shuffleWith = (h, key) =>
+  orderItems(h)
+    .find(item => item.key === key)
+    .onSelect();
+const checkedOrder = h =>
+  orderItems(h)
+    .filter(item => JSON.stringify(item.label).includes("(current)"))
+    .map(item => item.key)
+    .join();
+/** A checked option tells a screen reader "(on)" or "(current)" after its label. */
+const menuChecked = (h, key) => /\((on|current)\)/.test(JSON.stringify(menuItem(h, key).label));
+const MENU_KEYS = { "Edit screens": "edit", "Add a screen": "add", "Saved grids": "saved" };
+/** Presses the round button with this label, or chooses the menu option of that name. */
+function activate(h, label) {
+  const button = h.button(label);
+  if (button) return button.props.onClick();
+  const item = menuItem(h, MENU_KEYS[label]);
+  assert.ok(item, label + " is offered");
+  assert.ok(!item.disabled, label + " is available");
+  item.onSelect();
 }
 async function registration() {
   const h = await start();
@@ -388,6 +421,14 @@ async function sceneHeaderActions() {
   const visible = h.nodes(node => node.type === "IconButton" && node.props.ariaLabel?.startsWith("Increase O"))[0];
   assert.equal(visible.props.icon, undefined, "the visible-scenes button draws its own drops");
   const floating = () => h.nodes(node => node.props.className?.startsWith("ms-floating"))[0].props.className;
+  // The row holds the O counter for the visible scenes, the menu with the other main actions, then Close at the corner.
+  assert.deepEqual(
+    findAll(
+      h.nodes(node => node.props.className?.startsWith("ms-floating"))[0],
+      node => node.type === "IconButton" || node.type === "ActionMenu",
+    ).map(node => node.props.ariaLabel),
+    [visible.props.ariaLabel, "Menu", "Close DirtyMultiscreen"],
+  );
   const pointer = (clientX, clientY, pointerType = "mouse") =>
     h.window.emit("pointermove", { clientX, clientY, pointerType });
   assert.equal(floating(), "ms-floating");
@@ -396,7 +437,7 @@ async function sceneHeaderActions() {
   pointer(400, 500);
   await h.tick(3000);
   assert.equal(floating(), "ms-floating ms-floating-idle", "moving elsewhere in the window does not show them");
-  pointer(1480, 300);
+  pointer(1400, 120);
   await h.flush();
   assert.equal(floating(), "ms-floating", "the mouse near them shows them");
   await h.tick(5000);
@@ -415,7 +456,7 @@ async function sceneHeaderActions() {
   assert.equal(floating(), "ms-floating", "a touch shows them for a while");
   await h.tick(3000);
   assert.equal(floating(), "ms-floating ms-floating-idle");
-  h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === "Edit screens")[0].props.onClick();
+  activate(h, "Edit screens");
   await h.flush();
   assert.equal(floating(), "ms-floating", "entering edit mode reveals the toolbar even while idle");
   pointer(200, 200);
@@ -428,29 +469,27 @@ async function sceneHeaderActions() {
   assert.equal(floating(), "ms-floating", "leaving edit mode starts a fresh idle delay");
   await h.tick(3000);
   assert.equal(floating(), "ms-floating ms-floating-idle", "the toolbar hides normally after editing");
-  // Each screen's header groups follow the same rule, each measured from its own buttons.
-  const group = name => h.nodes(node => node.props.className?.startsWith(name))[0].props.className;
-  assert.equal(group("ms-pane-navigation"), "ms-pane-navigation ms-idle", "search and portraits hide after a while");
-  assert.equal(group("ms-pane-actions"), "ms-pane-actions ms-idle", "the scene link and O button hide too");
+  // Each screen's buttons form one group at its top left and follow the same rule, measured from that group.
+  const group = () => h.nodes(node => node.props.className?.startsWith("ms-pane-navigation"))[0].props.className;
+  assert.equal(group(), "ms-pane-navigation ms-idle", "a screen's buttons hide after a while");
   pointer(400, 500);
   await h.flush();
-  assert.equal(group("ms-pane-navigation"), "ms-pane-navigation ms-idle", "moving elsewhere does not show them");
+  assert.equal(group(), "ms-pane-navigation ms-idle", "moving elsewhere does not show them");
   pointer(60, 30);
   await h.flush();
-  assert.equal(group("ms-pane-navigation"), "ms-pane-navigation", "the mouse near search and the portraits shows them");
-  assert.equal(group("ms-pane-actions"), "ms-pane-actions ms-idle", "each group shows only near itself");
+  assert.equal(group(), "ms-pane-navigation", "the mouse near them shows them");
   pointer(680, 30);
   await h.tick(3000);
-  assert.equal(group("ms-pane-actions"), "ms-pane-actions", "the mouse near the link and O button shows them");
-  assert.equal(group("ms-pane-navigation"), "ms-pane-navigation ms-idle", "the other group hides after the delay");
+  assert.equal(group(), "ms-pane-navigation ms-idle", "they hide a while after the mouse moves away");
+  pointer(60, 30);
+  await h.flush();
   h.document.emit("pointerout", { relatedTarget: null });
   await h.tick(3000);
-  assert.equal(group("ms-pane-actions"), "ms-pane-actions ms-idle", "the mouse leaving the window hides them");
-  h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === "Edit screens")[0].props.onClick();
+  assert.equal(group(), "ms-pane-navigation ms-idle", "the mouse leaving the window hides them");
+  activate(h, "Edit screens");
   await h.flush();
   await h.tick(3000);
-  assert.equal(group("ms-pane-navigation"), "ms-pane-navigation", "edit mode keeps the header visible");
-  assert.equal(group("ms-pane-actions"), "ms-pane-actions");
+  assert.equal(group(), "ms-pane-navigation", "edit mode keeps them visible");
   h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === "Finish editing screens")[0].props.onClick();
   await h.flush();
   await h.unmount();
@@ -868,13 +907,36 @@ async function sceneSearch() {
     h.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result");
   const other = [...h.media.values()].filter(pair => pair.video.isConnected)[1];
   const listener = [...other.player.handlers.get("volumechange")][0];
+
+  // Each screen's buttons form one group at its top left: the scene link, the performers, search, then the O button
+  // after a separator.
+  const group = index =>
+    findAll(
+      h.nodes(node => node.props.className?.startsWith("ms-pane-navigation"))[index],
+      node => ["NavLink", "IconButton", "Button"].includes(node.type) || node.props?.className === "ms-pane-separator",
+    ).map(node => node.props["aria-label"] ?? node.props.ariaLabel ?? node.props.className);
+  for (const index of [0, 1]) {
+    const labels = group(index);
+    assert.match(labels[0], /^Open scene page for /, "the scene link comes first");
+    assert.deepEqual(labels.slice(-3), [
+      `Search scenes for screen ${index + 1}`,
+      "ms-pane-separator",
+      `Add an O to the scene on screen ${index + 1}`,
+    ]);
+    assert.ok(
+      labels.slice(1, -3).every(label => /^Next scene featuring /.test(label)),
+      "only the performers sit between the link and search",
+    );
+  }
+  assert.equal(h.nodes(node => node.props.className?.startsWith("ms-pane-actions")).length, 0, "nothing at the right");
+
   h.button("Search scenes for screen 1").props.onClick();
   await h.flush();
   assert.equal(requests.length, 0, "opening search does not fetch the library");
   assert.equal(h.nodes(node => node.type === "Dialog")[0].props.ariaLabel, "Search scenes for screen 1");
   await search("  first  ");
   assert.deepEqual(JSON.parse(JSON.stringify(requests[0].variables)), {
-    filter: { q: "session term", page: 1, per_page: 20, sort: "title", direction: "ASC" },
+    filter: { q: "session term", page: 1, per_page: 10, sort: "title", direction: "ASC" },
     scene_filter: {
       title: { value: "(?i)first", modifier: "MATCHES_REGEX" },
       AND: { rating100: { value: 40, modifier: "GREATER_THAN" } },
@@ -988,9 +1050,9 @@ async function fixedSessionSearch() {
   await search("Outside");
   assert.equal(results().length, 0, "videos outside an explicit session selection are excluded");
   await search("AVAILABLE");
-  assert.equal(results().length, 20);
-  assert.equal(h.nodes(node => node.type === "Pagination")[0].props.totalPages, 3);
-  h.nodes(node => node.type === "Pagination")[0].props.onPageChange(3);
+  assert.equal(results().length, 10, "a page of results is short enough to fit the dialog");
+  assert.equal(h.nodes(node => node.type === "Pagination")[0].props.totalPages, 5);
+  h.nodes(node => node.type === "Pagination")[0].props.onPageChange(5);
   await h.flush();
   await h.tick(300);
   assert.equal(results().length, 5, "search includes selected videos beyond the first playback page");
@@ -1074,7 +1136,7 @@ async function searchDuringMarkersAndPaging() {
     settings: { rows: 1, columns: 3, splitScenes: true, sceneOrder: "list", randomStart: false },
   });
   const choose = async (label, index) => {
-    h.button(label).props.onClick();
+    activate(h, label);
     await h.flush();
     h.nodes(node => node.type === "NativeSceneFilter")[0].props.onChange({ find: { q: "a" }, scene: {} });
     await h.flush();
@@ -1603,7 +1665,7 @@ async function searchFocusAfterClosing() {
   await openAndClose(true);
   assert.deepEqual(blurred, [], "keyboard users keep their place on the opener");
   await openAndClose(false);
-  assert.deepEqual(blurred, [false], "a mouse user's returned focus cannot keep the header showing");
+  assert.deepEqual(blurred, [false], "a mouse user's returned focus cannot keep the controls showing");
   await h.unmount();
 }
 
@@ -1695,26 +1757,22 @@ async function reshuffleMenu() {
     scenes,
     settings: { rows: 1, columns: 2, sceneOrder: "random", startMuted: true },
   });
-  const menu = () => h.nodes(node => node.type === "ActionMenu")[0].props;
-  const choose = key =>
-    menu()
-      .items.find(item => item.key === key)
-      .onSelect();
+  const menu = () => mainMenu(h);
+  const choose = key => shuffleWith(h, key);
   const sceneQueries = () => h.calls.filter(call => call.query.includes("MultiscreenScenes"));
-  assert.equal(menu().ariaLabel, "Reshuffle scenes");
+  assert.equal(menu().ariaLabel, "Menu");
   assert.deepEqual(
-    [
-      ...menu()
-        .items.filter(item => item.key)
-        .map(item => item.key),
-    ],
-    ["random", "fresh", "unwatched", "favorites", "newest", "mix", "list"],
+    [...menu().items.map(item => item.key)],
+    ["edit", "grid", "add", "saved", "reshuffle", "playback"],
+    "the menu holds edit mode, Grid, +, saved grids, Reshuffle and Playback",
   );
-  const checked = () =>
-    menu()
-      .items.filter(item => item.key && JSON.stringify(item.label).includes("(current)"))
-      .map(item => item.key)
-      .join();
+  assert.equal(menuItem(h, "reshuffle").onSelect, undefined, "Reshuffle only opens its submenu");
+  assert.deepEqual(
+    [...orderItems(h).map(item => item.key)],
+    ["random", "fresh", "unwatched", "favorites", "newest", "mix", "list"],
+    "Reshuffle's submenu lists the scene orders",
+  );
+  const checked = () => checkedOrder(h);
   assert.equal(checked(), "random", "the current order is checked");
   const before = sceneQueries().length;
   choose("random");
@@ -1733,10 +1791,7 @@ async function reshuffleMenu() {
   await h.unmount();
 
   const unsaved = await start({ scenes, saveFails: true, settings: { sceneOrder: "random" } });
-  unsaved
-    .nodes(node => node.type === "ActionMenu")[0]
-    .props.items.find(item => item.key === "list")
-    .onSelect();
+  shuffleWith(unsaved, "list");
   await unsaved.flush();
   assert.equal(unsaved.notices.length, 1, "a failed save is reported");
   assert.equal(unsaved.notices[0].tone, "error");
@@ -1746,6 +1801,93 @@ async function reshuffleMenu() {
     "the session still uses the chosen order",
   );
   await unsaved.unmount();
+}
+
+async function playbackMenu() {
+  const scenes = ["a", "b", "c", "d"].map(id => ({
+    id,
+    title: id,
+    paths: { stream: "/" + id },
+    files: [{ duration: 10 }],
+  }));
+  const settings = { rows: 1, columns: 2, sceneOrder: "list", randomStart: false, loopScenes: false, fitVideos: false };
+  const players = h => h.nodes(node => node.type === "native-player");
+  const playing = h => players(h).map(node => node.props.scene.id);
+  const looping = h => players(h).map(node => node.props.permitLoop);
+  const muted = h => [...h.media].filter(([, pair]) => pair.video.isConnected).map(([, pair]) => pair.player.muted());
+  const sceneQueries = h => h.calls.filter(call => call.query.includes("MultiscreenScenes")).length;
+  const option = (h, key) => menuItem(h, "playback").items.find(item => item.key === key);
+  const state = (h, key) => {
+    const label = JSON.stringify(option(h, key).label);
+    return label.includes("(on)") ? "on" : label.includes("(mixed)") ? "mixed" : "off";
+  };
+  const choose = async (h, key) => {
+    option(h, key).onSelect();
+    await h.flush();
+  };
+  const press = async (h, label) => {
+    activate(h, label);
+    await h.flush();
+  };
+  const h = await start({ scenes, settings });
+  const [first, second] = playing(h);
+  const queries = sceneQueries(h);
+  assert.equal(menuItem(h, "playback").onSelect, undefined, "Playback only opens its submenu");
+  assert.deepEqual(
+    [...menuItem(h, "playback").items.map(item => item.key)],
+    ["startMuted", "randomStart", "loop", "pauseWhenHidden"],
+  );
+  assert.deepEqual(
+    ["startMuted", "randomStart", "loop", "pauseWhenHidden"].map(key => state(h, key)),
+    ["on", "off", "off", "on"],
+    "each option shows its setting",
+  );
+
+  // An option saves its setting and applies to the playing screens without reloading them.
+  assert.deepEqual(muted(h), [true, true]);
+  await choose(h, "startMuted");
+  assert.equal(h.saved.at(-1).settings.startMuted, false);
+  assert.equal(state(h, "startMuted"), "off");
+  assert.deepEqual(muted(h), [false, false]);
+  await choose(h, "pauseWhenHidden");
+  assert.equal(h.saved.at(-1).settings.pauseWhenHidden, false);
+  assert.equal(state(h, "pauseWhenHidden"), "off");
+  assert.equal(sceneQueries(h), queries, "playback settings never reload the queues");
+  assert.deepEqual(playing(h), [first, second]);
+
+  // Loop scenes is mixed while a screen loops on its own; choosing it then makes every screen loop.
+  await press(h, "Edit screens");
+  await press(h, "Loop the scene on screen 1");
+  assert.deepEqual(looping(h), [true, false]);
+  assert.equal(state(h, "loop"), "mixed");
+  await choose(h, "loop");
+  assert.equal(h.saved.at(-1).settings.loopScenes, true);
+  assert.equal(state(h, "loop"), "on");
+  assert.deepEqual(looping(h), [true, true]);
+  assert.equal(h.button("Loop the scene on screen 2").props.pressed, true);
+  players(h)[1].props.onComplete();
+  await h.flush();
+  assert.equal(playing(h)[1], second, "the other screen now repeats its scene");
+
+  // Mixed again turns every screen on; on then stops them all and forgets the screens' own loops.
+  await press(h, "Loop the scene on screen 2");
+  assert.equal(state(h, "loop"), "mixed");
+  await choose(h, "loop");
+  assert.equal(state(h, "loop"), "on");
+  assert.deepEqual(looping(h), [true, true]);
+  await choose(h, "loop");
+  assert.equal(h.saved.at(-1).settings.loopScenes, false);
+  assert.equal(state(h, "loop"), "off");
+  assert.deepEqual(looping(h), [false, false]);
+  assert.equal(h.button("Loop the scene on screen 1").props.pressed, false);
+  h.window.emit("pagehide");
+  const panes = JSON.parse(h.localStorage.get("multiscreen.session")).panes;
+  assert.ok(
+    panes.every(pane => pane.view?.loop === undefined),
+    "the saved screens follow the setting again",
+  );
+  assert.equal(sceneQueries(h), queries);
+  await h.unmount();
 }
 
 async function pagedPlayback() {
@@ -1798,7 +1940,7 @@ async function pagedPlayback() {
   assert.match(h.text(), /Queue unavailable/);
   assert.equal(players()[0].props.scene.id, String(size - 1));
   fail = false;
-  h.nodes(node => node.type === "button" && /Retry/.test(h.text()))
+  h.nodes(node => node.type === "button" && /Retry/.test(text(node)))
     .at(-1)
     .props.onClick();
   await h.flush();
@@ -2063,10 +2205,7 @@ async function sessionRestore() {
 
   // Shuffle starts over and becomes what a reopened tab returns to.
   const shuffling = await reopen(first);
-  shuffling
-    .nodes(node => node.type === "ActionMenu")[0]
-    .props.items.find(item => item.key === "random")
-    .onSelect();
+  shuffleWith(shuffling, "random");
   await shuffling.flush();
   shuffling.window.emit("pagehide");
   const shuffledQuery = shuffling.calls.filter(call => call.query.includes("MultiscreenScenes")).at(-1);
@@ -2330,12 +2469,7 @@ async function pluginLists() {
   const size = route.calls[0].variables.ids.length;
   assert.equal(size, 24, "IDs load one page at a time");
   assert.deepEqual([...route.calls[1].variables.ids], launchIds.slice(1, size));
-  const checked = h =>
-    h
-      .nodes(node => node.type === "ActionMenu")[0]
-      .props.items.filter(item => item.key && JSON.stringify(item.label).includes("(current)"))
-      .map(item => item.key)
-      .join();
+  const checked = checkedOrder;
   assert.equal(checked(route), "list");
   await route.tick(5000);
   const launched = new Map(route.localStorage);
@@ -2365,10 +2499,7 @@ async function pluginLists() {
   assert(launchIds.slice(size, 2 * size).includes(playing(route)[1]), "Next continues into the next page of IDs");
 
   // Another order ends the list's own order and becomes the Scene order setting.
-  route
-    .nodes(node => node.type === "ActionMenu")[0]
-    .props.items.find(item => item.key === "random")
-    .onSelect();
+  shuffleWith(route, "random");
   await route.flush();
   assert.equal(route.saved.at(-1).settings.sceneOrder, "random");
   assert.equal(checked(route), "random");
@@ -2419,7 +2550,7 @@ async function editMode() {
   const cells = h => h.nodes(node => /^ms-cell\b/.test(node.props.className ?? "")).map(node => node.props.className);
   const button = (h, label) => h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === label)[0];
   const press = async (h, label) => {
-    button(h, label).props.onClick();
+    activate(h, label);
     await h.flush();
   };
   const pane = (h, index) =>
@@ -2428,15 +2559,14 @@ async function editMode() {
   const [first, second] = playing(h);
 
   // Outside edit mode the screens show no picture controls.
-  assert.equal(button(h, "Edit screens").props.pressed, false);
+  assert.equal(menuChecked(h, "edit"), false);
   assert.equal(h.nodes(node => node.props.className === "ms-screen-controls").length, 0);
   pane(h, 0).video.currentTime = 5;
   await press(h, "Edit screens");
-  assert.ok(
-    h
-      .nodes(node => node.type === "IconButton" && node.props.ariaLabel === "Finish editing screens")
-      .some(node => node.props.pressed === true),
-    "the global edit toggle stays pressed while the screens also offer a finish button",
+  assert.equal(
+    menuChecked(h, "edit"),
+    true,
+    "the menu's Edit screens stays checked while the screens offer a finish button",
   );
   assert.equal(h.nodes(node => node.props.className === "ms-screen-controls").length, 2);
   assert.deepEqual(playing(h), [first, second], "entering edit mode changes no screen");
@@ -2480,13 +2610,12 @@ async function editMode() {
 
   // The × on any screen's controls leaves edit mode for all of them and keeps the picture.
   const finishButtons = h.nodes(
-    node =>
-      node.type === "IconButton" && node.props.ariaLabel === "Finish editing screens" && node.props.pressed == null,
+    node => node.type === "IconButton" && node.props.className === "ms-button ms-finish-editing",
   );
   assert.equal(finishButtons.length, 2, "every screen's controls carry the ×");
   finishButtons[1].props.onClick();
   await h.flush();
-  assert.equal(button(h, "Edit screens").props.pressed, false);
+  assert.equal(menuChecked(h, "edit"), false);
   assert.equal(h.nodes(node => node.props.className === "ms-screen-controls").length, 0);
   assert.equal(cells(h)[0], "ms-cell ms-fill ms-flip-x ms-flip-y");
 
@@ -2500,7 +2629,7 @@ async function editMode() {
   const reopened = await start({ scenes, settings, localStorage: new Map(h.localStorage) });
   assert.equal(playing(reopened)[0], first);
   assert.equal(cells(reopened)[0], "ms-cell ms-fill ms-flip-x ms-flip-y");
-  assert.equal(button(reopened, "Edit screens").props.pressed, false);
+  assert.equal(menuChecked(reopened, "edit"), false);
   players(reopened)[0].props.onComplete();
   await reopened.flush();
   assert.equal(playing(reopened)[0], first, "the restored screen still loops");
@@ -2558,7 +2687,7 @@ async function rightClickOptions() {
     await h.flush();
   };
   const press = async (h, label) => {
-    h.button(label).props.onClick();
+    activate(h, label);
     await h.flush();
   };
   const off = await start({ settings });
@@ -2579,7 +2708,7 @@ async function rightClickOptions() {
   assert.equal(await rightClick(h, 0), true, "the picture opens its menu instead of the browser's");
   assert.deepEqual(shown(h), ["Options for screen 1"]);
   assert.deepEqual(controls(h), [], "the menu replaces the edit-mode controls");
-  assert.equal(h.button("Edit screens").props.pressed, false);
+  assert.equal(menuChecked(h, "edit"), false);
   assert.deepEqual(
     h.nodes(node => node.props.className === "ms-screen-menu-label").map(node => text(node)),
     ["Flip horizontally", "Flip vertically", "Rotate clockwise", "Loop scene", "Fill screen", "Close screen"],
@@ -2748,7 +2877,7 @@ async function cropPan() {
   await drag(0, 25);
   assert.equal(crop(), undefined);
 
-  h.button("Edit screens").props.onClick();
+  activate(h, "Edit screens");
   await h.flush();
   h.nodes(
     node => node.type === "IconButton" && node.props.ariaLabel === "Fill screen 1 with the picture",
@@ -2849,7 +2978,7 @@ async function cropPan() {
 
   // Without Fill the picture shows whole: the zoom waits, and the wheel scrolls as usual.
   const toggleFill = async () => {
-    h.button("Edit screens").props.onClick();
+    activate(h, "Edit screens");
     await h.flush();
     h.button("Fill screen 1 with the picture").props.onClick();
     await h.flush();
@@ -2877,6 +3006,49 @@ async function cropPan() {
   await h.unmount();
   assert.equal(screen.handlers.get("wheel").size, 0);
 }
+/** In edit mode a click on a picture or on empty space finishes editing; clicks on controls and tools do not. */
+async function editingClickAway() {
+  const scenes = ["a", "b"].map(id => ({ id, title: id, paths: { stream: "/" + id }, files: [{ duration: 10 }] }));
+  const h = await start({ scenes, settings: { rows: 1, columns: 2, sceneOrder: "list" } });
+  const editing = () => menuChecked(h, "edit");
+  const listening = () => h.document.handlers.get("click")?.size ?? 0;
+  const open = async () => {
+    activate(h, "Edit screens");
+    await h.flush();
+    assert.equal(editing(), true);
+  };
+  // Where the press starts decides; the click that follows is the one held back.
+  const press = (target, button = 0) => h.document.emit("pointerdown", { button, target });
+  const click = async target => {
+    const stopped = [];
+    h.document.emit("click", {
+      target,
+      stopPropagation: () => stopped.push("stop"),
+      preventDefault: () => stopped.push("prevent"),
+    });
+    await h.flush();
+    return stopped;
+  };
+  const control = { closest: selector => (selector.includes("button") ? {} : null) };
+  const picture = { closest: () => null };
+
+  assert.equal(listening(), 0, "outside edit mode a click is left alone");
+  await open();
+  press(control);
+  assert.deepEqual(await click(control), [], "a click on an edit tool or another control keeps editing");
+  assert.equal(editing(), true);
+  press(picture, 1);
+  assert.deepEqual(await click(picture), [], "a middle press, which pans the picture, keeps editing");
+  press(control);
+  assert.deepEqual(await click(picture), [], "a drag that starts on a divider and ends on a picture keeps editing");
+  assert.equal(editing(), true);
+  press(picture);
+  assert.deepEqual(await click(picture), ["stop", "prevent"], "a click on a picture only finishes editing");
+  assert.equal(editing(), false);
+  assert.equal(listening(), 0, "the listener leaves with edit mode");
+  await h.unmount();
+}
+
 async function gridPickerAndSwap() {
   const { text } = require("./ui_harness");
   const scenes = ["a", "b", "c", "d", "e", "f", "g", "h"].map(id => ({
@@ -2893,7 +3065,7 @@ async function gridPickerAndSwap() {
   const places = h => cells(h).map(node => node.props.style.order);
   const button = (h, label) => h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === label)[0];
   const press = async (h, label) => {
-    button(h, label).props.onClick();
+    activate(h, label);
     await h.flush();
   };
   const squares = h => h.nodes(node => /^ms-grid-square\b/.test(node.props.className ?? ""));
@@ -2908,10 +3080,15 @@ async function gridPickerAndSwap() {
     [...h.media].find(([address, media]) => address.includes("ms-native-" + index) && media.video.isConnected)[1];
   const h = await start({ scenes, settings });
 
-  // The picker belongs to edit mode and shows the current grid.
-  assert.equal(squares(h).length, 0);
-  await press(h, "Edit screens");
+  // The Grid submenu holds the squares outside edit mode too and names the current grid.
   assert.equal(squares(h).length, 36);
+  assert.match(JSON.stringify(menuItem(h, "grid").label), /2 × 1/);
+  assert.deepEqual(
+    [...menuItem(h, "grid").items.map(item => item.key)],
+    ["sizes", "fit"],
+    "Grid opens the squares, then Fit videos",
+  );
+  await press(h, "Edit screens");
   assert.equal(lit(h), 2);
   assert.equal(square(h, 2, 1).props["aria-pressed"], true);
   assert.equal(square(h, 1, 1).props["aria-label"], "1 × 1: 1 screen");
@@ -2921,10 +3098,11 @@ async function gridPickerAndSwap() {
   assert.equal(lit(h), 6, "the squares under the pointer preview a grid");
   assert.equal(text(h.nodes(node => node.props.className === "ms-grid-size")[0]), "3 × 2");
 
-  // The current grid asks nothing; another one asks first and a refusal changes nothing.
+  // The current grid asks nothing; another one asks first and a refusal changes nothing. A pick closes the menu.
   square(h, 2, 1).props.onClick();
   await h.flush();
   assert.equal(dialog(h), undefined);
+  assert.deepEqual([...h.menuCloses], ["Menu"]);
   square(h, 3, 2).props.onClick();
   await h.flush();
   assert.equal(dialog(h).props.ariaLabel, "Change the grid");
@@ -2947,7 +3125,9 @@ async function gridPickerAndSwap() {
     id: "multiscreen",
     settings: { ...settings, rows: 2, columns: 2 },
   });
-  assert.equal(square(h, 2, 2).props["aria-pressed"], true, "edit mode stays on with the new grid");
+  assert.equal(square(h, 2, 2).props["aria-pressed"], true);
+  assert.match(JSON.stringify(menuItem(h, "grid").label), /2 × 2/);
+  assert.equal(menuChecked(h, "edit"), true, "edit mode stays on with the new grid");
   assert.deepEqual(places(h), [0, 1, 2, 3]);
 
   // Two clicks swap two screens. Each keeps its player; only its place and its screen number change.
@@ -3020,7 +3200,7 @@ async function gridPickerAndSwap() {
     cells(h).some(node => /ms-swap/.test(node.props.className)),
     false,
   );
-  assert.equal(squares(h).length, 0);
+  assert.equal(menuChecked(h, "edit"), false);
 
   // The saved session returns every screen to its place.
   h.window.emit("pagehide");
@@ -3053,13 +3233,13 @@ async function fitVideos() {
   const players = h => h.nodes(node => node.type === "native-player");
   const cells = h => h.nodes(node => /^ms-cell\b/.test(node.props.className ?? ""));
   const rectangles = h => JSON.parse(JSON.stringify(cells(h).map(node => node.props.style)));
-  const fit = h => h.nodes(node => node.props.className === "ms-fit-toggle")[0];
+  const fit = h => gridOption(h, "fit");
   const press = async (h, label) => {
-    h.button(label).props.onClick();
+    activate(h, label);
     await h.flush();
   };
   const toggle = async h => {
-    fit(h).props.onClick();
+    fit(h).onSelect();
     await h.flush();
   };
   const alive = () => [...h.media.values()].filter(pair => pair.video.isConnected);
@@ -3075,9 +3255,8 @@ async function fitVideos() {
       order.map(place => expected[place]),
     );
   };
-  assert.equal(fit(h), undefined);
+  assert.equal(fitOn(h), false, "Fit videos sits in the Grid submenu, outside edit mode too");
   await press(h, "Edit screens");
-  assert.equal(fit(h).props["aria-pressed"], false);
   await press(h, "Fill screen 1 with the picture");
   const original = alive();
   original.forEach((pair, index) => {
@@ -3086,7 +3265,7 @@ async function fitVideos() {
   const queries = h.calls.length;
   await toggle(h);
   assert.equal(h.saved.at(-1).settings.fitVideos, true);
-  assert.equal(fit(h).props["aria-pressed"], true);
+  assert.equal(fitOn(h), true);
   assert.equal(h.calls.length, queries, "fit toggles perform no GraphQL query");
   assert.deepEqual(alive(), original, "all native player and video objects survive");
   assert.deepEqual(
@@ -3161,7 +3340,7 @@ async function fitVideos() {
   await press(failed, "Edit screens");
   const count = failed.calls.length;
   await toggle(failed);
-  assert.equal(fit(failed).props["aria-pressed"], true);
+  assert.equal(fitOn(failed), true);
   assert.match(failed.notices.at(-1).message, /Could not save the layout/);
   assert.equal(failed.calls.length, count);
   await failed.unmount();
@@ -3183,7 +3362,7 @@ async function closeScreens() {
   const places = h => cells(h).map(node => node.props.style.order);
   const button = (h, label) => h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === label)[0];
   const press = async (h, label) => {
-    button(h, label).props.onClick();
+    activate(h, label);
     await h.flush();
   };
   const pane = (h, index) =>
@@ -3211,14 +3390,14 @@ async function closeScreens() {
   assert.equal(button(h, "Move screen 4"), undefined);
 
   // With Fit videos the open screens pack the window by themselves.
-  h.nodes(node => node.props.className === "ms-fit-toggle")[0].props.onClick();
+  toggleFit(h);
   await h.flush();
   const aspects = players(h).map(node => node.props.scene.files[0].width / node.props.scene.files[0].height);
   assert.deepEqual(
     JSON.parse(JSON.stringify(cells(h).map(node => node.props.style))),
     fitLayout(aspects, h.window.innerWidth, h.window.innerHeight),
   );
-  h.nodes(node => node.props.className === "ms-fit-toggle")[0].props.onClick();
+  toggleFit(h);
   await h.flush();
 
   // The closed screen stays closed in the saved session, and + returns it to its scene and place.
@@ -3329,9 +3508,8 @@ async function customRows() {
   const handles = () => h.nodes(node => /^ms-divider\b/.test(node.props.className ?? ""));
   const topDivider = () =>
     handles().find(node => node.props.className.endsWith("vertical") && node.props.style.top === 0);
-  const button = (h, label) => h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === label)[0];
   const press = async (h, label) => {
-    button(h, label).props.onClick();
+    activate(h, label);
     await h.flush();
   };
   const label = h => text(h.nodes(node => node.props.className === "ms-grid-size")[0]);
@@ -3371,6 +3549,8 @@ async function customRows() {
   resize("onPointerUp", 837, 225);
   await h.flush();
   assert.equal(label(h), "Custom");
+  assert.match(JSON.stringify(menuItem(h, "grid").label), /Custom grid/, "the menu names the custom grid");
+  assert.doesNotMatch(JSON.stringify(menuItem(h, "grid").label), /2 × 2/);
   assert.ok(layoutOf(h));
   assert.deepEqual(
     boxes(h).map(box => box.width),
@@ -3413,7 +3593,7 @@ async function customRows() {
   assert.deepEqual(boxes(resumed), docked, "a resumed session keeps the docked layout");
   await resumed.unmount();
 
-  const fit = () => h.nodes(node => node.props.className === "ms-fit-toggle")[0].props.onClick();
+  const fit = () => toggleFit(h);
   fit();
   await h.flush();
   assert.deepEqual(boxes(h), docked, "Fit videos preserves every custom pane");
@@ -3460,7 +3640,7 @@ async function fittedDivider() {
     files: [{ duration: 100, width: 900, height: 900 }],
   }));
   const h = await start({ scenes, settings: { rows: 1, columns: 2, fitVideos: true } });
-  h.button("Edit screens").props.onClick();
+  activate(h, "Edit screens");
   await h.flush();
   const divider = () => h.nodes(node => node.props.className === "ms-divider ms-divider-vertical")[0];
   const widths = () =>
@@ -3498,7 +3678,7 @@ async function fittedDivider() {
 
   // With Snap edges when resizing off in the Grid settings, the divider follows the pointer.
   const free = await start({ scenes, settings: { rows: 1, columns: 2, fitVideos: true, snapDividers: false } });
-  free.button("Edit screens").props.onClick();
+  activate(free, "Edit screens");
   await free.flush();
   const freeDivider = () => free.nodes(node => node.props.className === "ms-divider ms-divider-vertical")[0];
   assert.equal(freeDivider().props.title, "Drag to resize.");
@@ -3674,9 +3854,8 @@ async function addScreens() {
   const cells = h => h.nodes(node => /^ms-cell\b/.test(node.props.className ?? ""));
   const places = h => cells(h).map(node => node.props.style.order);
   const squares = h => h.nodes(node => /^ms-grid-square\b/.test(node.props.className ?? ""));
-  const button = (h, label) => h.nodes(node => node.type === "IconButton" && node.props.ariaLabel === label)[0];
   const press = async (h, label) => {
-    button(h, label).props.onClick();
+    activate(h, label);
     await h.flush();
   };
   const pane = (h, index) =>
@@ -3686,7 +3865,7 @@ async function addScreens() {
     return JSON.parse(h.localStorage.get("multiscreen.session"));
   };
   const h = await start({ scenes, settings });
-  assert.ok(button(h, "Add a screen"), "+ shows outside edit mode");
+  assert.ok(menuItem(h, "add"), "+ shows outside edit mode");
   await press(h, "Edit screens");
   const before = playing(h);
   const videos = [0, 1].map(index => pane(h, index).video);
@@ -3759,7 +3938,8 @@ async function addScreens() {
   // At 6 x 6 with every screen open there is nothing to add.
   const full = await start({ scenes, settings: { ...settings, rows: 6, columns: 6 } });
   await press(full, "Edit screens");
-  assert.equal(button(full, "Add a screen: the grid is at its largest").props.disabled, true);
+  assert.equal(menuItem(full, "add").disabled, true);
+  assert.match(JSON.stringify(menuItem(full, "add").label), /the grid is full/, "the menu says why + is unavailable");
   await full.unmount();
 }
 async function rotation() {
@@ -3778,7 +3958,7 @@ async function rotation() {
   const pane = (h, index) =>
     [...h.media].find(([address, pair]) => address.includes("ms-native-" + index) && pair.video.isConnected)[1];
   const press = async (h, label) => {
-    h.button(label).props.onClick();
+    activate(h, label);
     await h.flush();
   };
   const rotate = (h, degrees, screen = 1) => press(h, `Rotate screen ${screen} 90° clockwise (${degrees}°)`);
@@ -3910,7 +4090,7 @@ async function savedGrids() {
   const pane = (h, index) =>
     [...h.media].find(([address, media]) => address.includes("ms-native-" + index) && media.video.isConnected)[1];
   const press = async (h, label) => {
-    h.button(label).props.onClick();
+    activate(h, label);
     await h.flush();
   };
   const dialog = h => h.nodes(node => node.type === "Dialog" && node.props.ariaLabel === "Saved grids")[0];
@@ -3944,6 +4124,7 @@ async function savedGrids() {
   // The dialog lists nothing at first and saves the current screens under a name.
   assert.equal(dialog(h), undefined);
   await press(h, "Saved grids");
+  assert.equal(dialog(h).props.openerRef.current, h.menuToggle, "closing the dialog returns focus to the menu");
   assert.deepEqual(modes(h), ["gridList"]);
   assert.match(text(dialog(h)), /No saved grids yet\./);
   assert.equal(named(h, "Save").props.disabled, true, "a grid needs a name");
@@ -4192,7 +4373,7 @@ async function recentGrids() {
   const recentRows = () => [...grids.values()].filter(row => row.recent);
   const stored = id => JSON.parse(grids.get(id).data);
   const press = async (h, label) => {
-    h.button(label).props.onClick();
+    activate(h, label);
     await h.flush();
   };
   const dialog = h => h.nodes(node => node.type === "Dialog" && node.props.ariaLabel === "Saved grids")[0];
@@ -4384,12 +4565,14 @@ async function recentGrids() {
   await pagedPlayback();
   await avoidsDuplicateScenes();
   await reshuffleMenu();
+  await playbackMenu();
   await unscopedLibraryPaging();
   await sessionRestore();
   await editMode();
   await rightClickOptions();
   await cropPan();
   await gridPickerAndSwap();
+  await editingClickAway();
   await fitVideos();
   await closeScreens();
   await customRows();

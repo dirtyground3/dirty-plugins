@@ -46,8 +46,8 @@ class CompactorStoreTests(unittest.TestCase):
         settings = dirty_rank.normalize_settings({})
         def votes():
             for n in range(10):
-                dirty_rank.record_battle(rank, {"leftId": "1", "rightId": "2", "battleId": "vote-" + str(n),
-                    "categoryId": "appearance", "cohort": "FEMALE", "outcome": "left"}, settings)
+                dirty_rank.record_verdict(rank, {"leftId": "1", "rightId": str(n + 2), "verdictId": "vote-" + str(n),
+                    "categoryId": "appearance", "cohort": "FEMALE", "score": 2}, settings)
         def saves():
             for n in range(10):
                 storage.set_plugin_settings("example", {"value": n}, self.database)

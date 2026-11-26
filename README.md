@@ -16,7 +16,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 | Plugin | What it does | Version |
 | --- | --- | ---: |
 | [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.15 |
-| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles using high-precision Glicko-2 ratings, adaptive matchmaking, Gauntlet and King of the hill modes, and leaderboards. | 1.1.4 |
+| [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles: one editable verdict from -3 to 3 per pair, ratings fitted to every verdict, battles ordered by the information they add, Gauntlet mode and leaderboards. | 1.1.4 |
 | [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.1.1 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.8 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, updates tags with independent action triggers, and backs up library data. | 1.0.14 |
@@ -96,15 +96,20 @@ The only setting hides or restores the bubble chart button in the Stash header.
 
 - **Gender boxes**: each box selects a group of genders and has its own
   weighted categories and rating pools.
-- Glicko-2 rating, deviation, and volatility with full floating-point precision,
-  configurable evidence per battle, and four rating presets (Default, Chess,
-  Confident, and Extremely confident).
-- Expected-information-gain matchmaking towards a selectable confidence goal:
-  every rating, complete leaderboard order, or a top N.
-- Votes, ties, skips, up to 25 undos, and arrow-key controls. Battles advance
-  immediately while persistence runs through an ordered background queue.
-- **Gauntlet** mode from any performer page and a **King of the hill** mode
-  in which the winner climbs the standings against fresh challengers.
+- One verdict per pair on a seven-step scale, from "left much better" (3)
+  through equal (0) to "right much better" (3), chosen with a number button or
+  the home-row keys A S D · G · J K L by position, so any layout works (Q S D on
+  AZERTY), or the keypad: 1 2 3 left, 0 equal, 4 5 6 right. A pair keeps one saved verdict; choosing it again confirms it.
+- Ratings and deviations refitted to every verdict after each choice with an
+  ordinal Bradley-Terry model, which also learns where each category's
+  "slightly", "better" and "much better" begin. Full floating-point precision,
+  exact undo, and likely leaderboard positions while ratings are uncertain.
+- Battles ordered by the Shannon information their verdict adds towards a
+  selectable confidence goal: every rating, complete leaderboard order, or a
+  top N. A judged pair returns only when the other verdicts point to a slip.
+- Up to 25 undos. Battles advance immediately while persistence runs through
+  an ordered background queue.
+- **Gauntlet** mode from any performer page.
 - Optional scene playback below each card, preferring a curated marker and
   falling back to the performer's highest-rated scene.
 - Leaderboards per category plus a weighted **Overall** score (Simple weighted,
@@ -136,7 +141,7 @@ each category's rank and rating.
 
 Configure gender boxes, navigation buttons, leaderboard and battle
 presentation, the confidence goal, and overall scoring. Categories, their
-weights, and advanced Glicko-2 parameters follow further down the same tab.
+weights, and advanced rating parameters follow further down the same tab.
 Every change saves automatically.
 
 ### DirtyMultiscreen
@@ -357,7 +362,7 @@ before major manual changes.
 
 The hidden DirtyPlugins hub owns `dirty_plugins.sqlite3` in its installed plugin
 directory. It stores settings for all managed plugins, the DirtyStats dashboard
-layout, DirtyRank's rating pools and battle journal, and DirtyTasks encoding's rules,
+layout, DirtyRank's rating pools and verdicts, and DirtyTasks encoding's rules,
 run snapshots, and recovery journals. The database uses WAL mode for responsive
 concurrent reads and writes.
 
@@ -499,9 +504,8 @@ announce(scenes.map(scene => scene.id)); // when the page shows its list, and wh
 announce(null);                          // when the page or its tab goes away
 ```
 
-- Send the whole list. DirtyMultiscreen keeps the first 10,000 IDs by default
-  (its **List size limit** goes from 1,000 to 100,000). A duplicate ID keeps its
-  first position. Malformed announcements are dropped and unknown fields are
+- Send the whole list. DirtyMultiscreen keeps the first 10,000 IDs. A duplicate
+  ID keeps its first position. Malformed announcements are dropped and unknown fields are
   ignored.
 - Events are not stored. DirtyMultiscreen listens from its plugin setup, before
   Stash shows any page, so announce once your list is ready and again whenever
@@ -521,7 +525,7 @@ plugins/
 ├── DirtyPlugins/        # shared UI, GraphQL helpers, settings and SQLite owner
 ├── DirtyFileExtractor/  # selection UI and Python extraction backend
 ├── DirtyMultiscreen/    # multiscreen playback UI and saved-grids backend
-├── DirtyRank/           # battle/leaderboard UI and Glicko-2 backend
+├── DirtyRank/           # battle/leaderboard UI and battle-fit backend
 ├── DirtyStats/          # dashboard, statistics and visualizations
 └── DirtyTasks/          # organization, additional encodes and tag updates
 tests/                   # JavaScript and Python suites, opt-in Stash fixtures

@@ -18,6 +18,8 @@ function createMultiscreenHarness(options = {}) {
     media = new Map(),
     screens = new Map(),
     nativeCalls = [],
+    // The burger's toggle, which takes focus back when the saved-grids dialog closes.
+    menuToggle = { className: "dirty-ui-action-menu-toggle" },
     screenMenu = {
       offsetWidth: 180,
       offsetHeight: 200,
@@ -56,24 +58,23 @@ function createMultiscreenHarness(options = {}) {
           );
         node.props.ref.current = screens.get(index);
       }
+      if (node.props.ref && node.props.className === "ms-main-menu-anchor")
+        node.props.ref.current = {
+          querySelector: selector => (selector === ".dirty-ui-action-menu-toggle" ? menuToggle : null),
+        };
       // The right-click menu measures itself against its screen.
       if (node.props.ref && node.props.className === "ms-screen-menu") node.props.ref.current = screenMenu;
-      // A screen's header groups: search and portraits at its top left, the link and O button further right.
-      if (node.props.ref && /^ms-pane-(navigation|actions)/.test(node.props.className || ""))
-        node.props.ref.current = {
-          getBoundingClientRect: () =>
-            node.props.className.startsWith("ms-pane-navigation")
-              ? { left: 10, right: 120, top: 8, bottom: 40 }
-              : { left: 640, right: 700, top: 8, bottom: 40 },
-        };
-      // The main buttons' column in the window's top-right corner.
+      // A screen's buttons: one group at its top left.
+      if (node.props.ref && /^ms-pane-navigation/.test(node.props.className || ""))
+        node.props.ref.current = { getBoundingClientRect: () => ({ left: 10, right: 120, top: 8, bottom: 40 }) };
+      // The main buttons' row in the window's top-right corner.
       if (node.props.ref && node.props.className?.startsWith("ms-floating"))
         node.props.ref.current = {
           getBoundingClientRect: () => ({
-            left: window.innerWidth - 46,
+            left: window.innerWidth - 124,
             right: window.innerWidth - 14,
             top: 14,
-            bottom: 220,
+            bottom: 46,
           }),
         };
     },
@@ -217,6 +218,22 @@ function createMultiscreenHarness(options = {}) {
   );
   // Like the hub's field, an action sits beside the control.
   controls.Field = props => React.createElement("Field", props, props.children, props.action);
+  // Like the hub's menu, content in it (a picker) renders and can close it; suites choose items through their props.
+  const menuCloses = [];
+  controls.ActionMenu = props => {
+    const contents = [];
+    const visit = items =>
+      (items || []).forEach(item => {
+        if (!item) return;
+        if (item.content)
+          contents.push(
+            typeof item.content === "function" ? item.content(() => menuCloses.push(props.ariaLabel)) : item.content,
+          );
+        visit(item.items);
+      });
+    visit(props.items);
+    return React.createElement("ActionMenu", props, ...contents);
+  };
   const saved = [],
     notices = [],
     operations = [],
@@ -501,6 +518,8 @@ function createMultiscreenHarness(options = {}) {
     media,
     screens,
     nativeCalls,
+    menuCloses,
+    menuToggle,
     screenMenu,
     storage,
     localStorage,

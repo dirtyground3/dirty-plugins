@@ -21,7 +21,7 @@ reusing save/error colours.
 | Route action | `NavAction` with a `NavIcon` | Route and label |
 | Browser page title | `react.usePageTitle(pluginName, viewTitle)` | Plugin name and current view label |
 | Statistic navigation | `StatisticSelector` with `to` on each option, so the items are links | Available statistics and their routes |
-| Secondary row actions | `ActionMenu` (⋮ overflow menu) | Which actions are rare enough to hide |
+| Secondary row actions | `ActionMenu` (⋮ overflow menu); an item with `items` opens them beneath it, and `content` shows a node such as a picker | Which actions are rare enough to hide |
 | Modal | `react.Dialog` or `ui.manageDialog` for DOM-created content | Dialog body and data operation |
 | Server folder setting | A read-only path with **Browse…** opening `ui.pickFolder` | Title and what the chosen folder saves |
 

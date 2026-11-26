@@ -172,40 +172,19 @@ export function PaneHeader({
   const [open, setOpen] = React.useState(false);
   const openerRef = React.useRef<HTMLButtonElement>(null);
   const openedWithoutFocusRing = React.useRef(false);
-  // Each group hides and shows like the main buttons, by how near the mouse is to that group.
-  const navigationRef = React.useRef<HTMLDivElement>(null);
-  const actionsRef = React.useRef<HTMLDivElement>(null);
-  const navigationIdle = useIdle(navigationRef, CONTROLS_IDLE_MS, editing);
-  const actionsIdle = useIdle(actionsRef, CONTROLS_IDLE_MS, editing);
+  // The group hides and shows like the main buttons, by how near the mouse is to it.
+  const groupRef = React.useRef<HTMLDivElement>(null);
+  const idle = useIdle(groupRef, CONTROLS_IDLE_MS, editing);
   // The dialog returns focus to its opener, which would keep the header showing after a mouse user is done.
   React.useEffect(() => {
     if (!open && openedWithoutFocusRing.current) openerRef.current?.blur();
   }, [open]);
+  // One group at the screen's top left: the scene link, the performers, search, then the scene's O button.
   return (
     <>
       <div className="ms-pane-header">
-        <div className={"ms-pane-navigation" + (navigationIdle ? " ms-idle" : "")} ref={navigationRef}>
-          <PluginIconButton
-            ariaLabel={`Search scenes for screen ${screenIndex + 1}`}
-            fallback="⌕"
-            icon={icon("search")}
-            buttonRef={openerRef}
-            onClick={() => {
-              openedWithoutFocusRing.current = !openerRef.current?.matches(":focus-visible");
-              setOpen(true);
-            }}
-          />
-          {showPerformerNavigation && (
-            <PerformerNavigation
-              performers={item?.scene.performers ?? []}
-              screenIndex={screenIndex}
-              busy={busy}
-              onNext={onNavigatePerformer}
-            />
-          )}
-        </div>
-        {item && (
-          <div className={"ms-pane-actions" + (actionsIdle ? " ms-idle" : "")} ref={actionsRef}>
+        <div className={"ms-pane-navigation" + (idle ? " ms-idle" : "")} ref={groupRef}>
+          {item && (
             <PluginApi.libraries.ReactRouterDOM.NavLink
               aria-label={`Open scene page for ${item.title}`}
               className="dirty-ui-icon-button ms-button ms-scene-link"
@@ -216,9 +195,32 @@ export function PaneHeader({
             >
               <DirtyPlugins.react.Glyph icon={icon("scene")} fallback="↗" />
             </PluginApi.libraries.ReactRouterDOM.NavLink>
-            <SceneOCounterButton key={item.scene.id} sceneId={item.scene.id} screenIndex={screenIndex} />
-          </div>
-        )}
+          )}
+          {showPerformerNavigation && (
+            <PerformerNavigation
+              performers={item?.scene.performers ?? []}
+              screenIndex={screenIndex}
+              busy={busy}
+              onNext={onNavigatePerformer}
+            />
+          )}
+          <PluginIconButton
+            ariaLabel={`Search scenes for screen ${screenIndex + 1}`}
+            fallback="⌕"
+            icon={icon("search")}
+            buttonRef={openerRef}
+            onClick={() => {
+              openedWithoutFocusRing.current = !openerRef.current?.matches(":focus-visible");
+              setOpen(true);
+            }}
+          />
+          {item && (
+            <>
+              <span className="ms-pane-separator" aria-hidden="true" />
+              <SceneOCounterButton key={item.scene.id} sceneId={item.scene.id} screenIndex={screenIndex} />
+            </>
+          )}
+        </div>
       </div>
       {open && (
         <SceneSearchDialog

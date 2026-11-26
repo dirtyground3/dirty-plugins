@@ -3,22 +3,21 @@ import { DirtyPlugins, React } from "../runtime";
 import type { GridSize } from "../types";
 
 export type { GridSize };
-const sizeLabel = ({ columns, rows }: GridSize) => `${columns} × ${rows}`;
+export const sizeLabel = ({ columns, rows }: GridSize) => `${columns} × ${rows}`;
 
-/** Squares for every grid size: click one, or press and drag to it, to choose that many columns and rows. */
+/**
+ * Squares for every grid size, in the menu's Grid submenu: click one, or press and drag to it, to choose that many
+ * columns and rows. The label beneath names the size under the pointer.
+ */
 export function GridPicker({
   columns,
   custom,
   rows,
-  fitVideos,
   onPick,
-  onToggleFit,
 }: GridSize & {
   /** Resizing or docking has replaced the preset grid. */
   custom: boolean;
-  fitVideos: boolean;
   onPick(size: GridSize): void;
-  onToggleFit(): void;
 }) {
   const [preview, setPreview] = React.useState<GridSize | null>(null);
   // The square a press started on. Releasing on another one chooses it, since no click follows a drag.
@@ -66,15 +65,6 @@ export function GridPicker({
       <div className="ms-grid-size" aria-live="polite">
         {shown ? sizeLabel(shown) : "Custom"}
       </div>
-      <button
-        type="button"
-        className="ms-fit-toggle"
-        aria-pressed={fitVideos}
-        title={custom ? "Fill each pane without stretching the picture" : "Pack screens by video shape"}
-        onClick={onToggleFit}
-      >
-        Fit videos
-      </button>
     </div>
   );
 }

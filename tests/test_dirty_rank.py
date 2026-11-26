@@ -1,12 +1,14 @@
 from plugin_paths import runtime_path
 import importlib.util
 import json
+import math
 import os
+import random
 import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -17,123 +19,132 @@ dirty_rank = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules[SPEC.name] = dirty_rank
 SPEC.loader.exec_module(dirty_rank)
+import dirty_rank_rating as rating_model  # noqa: E402  (beside dirty_rank on its path)
+
+THRESHOLDS = dirty_rank.VERDICT_THRESHOLDS
 
 
-class Glicko2Tests(unittest.TestCase):
+class FitTests(unittest.TestCase):
     def setUp(self):
         self.settings = dirty_rank.normalize_settings({})
 
-    def test_official_glicko2_example(self):
-        player = dirty_rank.Rating(1500, 200, 0.06)
-        opponents = [
-            (dirty_rank.Rating(1400, 30, 0.06), 1.0),
-            (dirty_rank.Rating(1550, 100, 0.06), 0.0),
-            (dirty_rank.Rating(1700, 300, 0.06), 0.0),
-        ]
-
-        standard_settings = {**self.settings, "evidenceWeight": 1.0}
-        result = dirty_rank.glicko2_update(player, opponents, standard_settings)
-
-        self.assertAlmostEqual(result.rating, 1464.06, delta=0.02)
-        self.assertAlmostEqual(result.deviation, 151.52, delta=0.02)
-        self.assertAlmostEqual(result.volatility, 0.059996, places=6)
-
-    def test_default_evidence_weight_adds_information_without_extra_match(self):
-        player = dirty_rank.Rating(1000, 350, 0.06)
-        opponent = dirty_rank.Rating(1000, 350, 0.06)
-        standard_settings = {**self.settings, "evidenceWeight": 1.0}
-
-        weighted, _ = dirty_rank.rate_battle(
-            player, opponent, 1.0, self.settings
-        )
-        standard, _ = dirty_rank.rate_battle(
-            player, opponent, 1.0, standard_settings
+    def fit(self, verdicts, **overrides):
+        settings = {**self.settings, **overrides}
+        return dirty_rank.fit_ratings(
+            [dirty_rank.Verdict(str(left), str(right), score) for left, right, score in verdicts],
+            settings,
+            THRESHOLDS,
         )
 
-        self.assertEqual(weighted.matches, 1)
-        self.assertLess(weighted.deviation, standard.deviation)
-        self.assertGreater(weighted.rating, standard.rating)
+    def test_verdict_probabilities_cover_every_answer_and_mirror(self):
+        for difference in (-4.0, -0.3, 0.0, 1.2, 6.0):
+            probabilities = [rating_model.verdict_probability(difference, score, THRESHOLDS) for score in range(-3, 4)]
+            self.assertAlmostEqual(sum(probabilities), 1.0, places=12)
+            self.assertTrue(all(probability > 0 for probability in probabilities))
+            for score in range(-3, 4):
+                self.assertAlmostEqual(
+                    rating_model.verdict_probability(difference, score, THRESHOLDS),
+                    rating_model.verdict_probability(-difference, -score, THRESHOLDS),
+                    places=12,
+                )
+        # A clear lead makes a strong verdict for the leader the likeliest answer.
+        leading = [rating_model.verdict_probability(4.0, score, THRESHOLDS) for score in range(-3, 4)]
+        self.assertEqual(leading.index(max(leading)) - 3, 3)
+
+    def test_one_verdict_moves_both_performers_equally(self):
+        ratings = self.fit([(1, 2, 2)]).ratings
+
+        # Converged within about 0.002 points.
+        self.assertAlmostEqual(ratings["1"].rating - 1000, 1000 - ratings["2"].rating, delta=0.01)
+        self.assertGreater(ratings["1"].rating, 1000)
+        self.assertAlmostEqual(ratings["1"].deviation, ratings["2"].deviation, delta=0.01)
+        self.assertLess(ratings["1"].deviation, self.settings["initialDeviation"])
+        self.assertEqual((ratings["1"].matches, ratings["1"].wins), (1, 1))
+        self.assertEqual((ratings["2"].matches, ratings["2"].losses), (1, 1))
+
+    def test_stronger_verdicts_mean_larger_gaps(self):
+        gaps = []
+        for score in range(-3, 4):
+            ratings = self.fit([(1, 2, score)]).ratings
+            gaps.append(ratings["1"].rating - ratings["2"].rating)
+        self.assertAlmostEqual(gaps[3], 0.0, delta=0.01)
+        for weaker, stronger in zip(gaps[3:], gaps[4:]):
+            self.assertGreater(stronger, weaker)
+        for index in range(3):
+            self.assertAlmostEqual(gaps[index], -gaps[6 - index], delta=0.01)
+
+    def test_equal_verdict_pulls_ratings_together(self):
+        apart = self.fit([(1, 3, 3), (2, 3, 1)]).ratings
+        together = self.fit([(1, 3, 3), (2, 3, 1), (1, 2, 0)]).ratings
+
+        self.assertLess(together["1"].rating - together["2"].rating, apart["1"].rating - apart["2"].rating)
+        self.assertEqual((together["1"].draws, together["2"].draws), (1, 1))
+
+    def test_verdict_order_does_not_change_ratings(self):
+        verdicts = [(1, 2, 2), (2, 3, 1), (3, 1, 0), (1, 4, -3), (4, 2, 2), (3, 4, 1)]
+        forward = self.fit(verdicts)
+        backward = self.fit(list(reversed(verdicts)))
+
+        for performer, rating in forward.ratings.items():
+            self.assertAlmostEqual(rating.rating, backward.ratings[performer].rating, delta=0.01)
+            self.assertAlmostEqual(rating.deviation, backward.ratings[performer].deviation, delta=0.01)
+        for left, right in zip(forward.thresholds, backward.thresholds):
+            self.assertAlmostEqual(left, right, delta=0.001)
+
+    def test_later_verdicts_revalue_earlier_ones(self):
+        # Beating a newcomer who later proves strong is worth more once that is known.
+        early = self.fit([(1, 2, 1)]).ratings
+        later = self.fit([(1, 2, 1)] + [(2, opponent, 2) for opponent in range(3, 9)]).ratings
+
+        self.assertGreater(later["1"].rating, early["1"].rating)
+
+    def test_evidence_weight_sets_how_much_a_verdict_counts(self):
+        verdicts = [(1, 2, 1), (2, 3, 1), (1, 3, 2)]
+        deviations = [self.fit(verdicts, evidenceWeight=weight).ratings["1"].deviation for weight in (0.5, 1.0, 2.0)]
+
+        self.assertGreater(deviations[0], deviations[1])
+        self.assertGreater(deviations[1], deviations[2])
+
+    def test_thresholds_start_at_the_defaults_and_learn_the_scale(self):
+        self.assertEqual(self.fit([]).thresholds, THRESHOLDS)
+        # Someone who keeps most verdicts at "slightly" spreads the thresholds out.
+        generator = random.Random(7)
+        truth = {str(index): generator.gauss(0, 1.2) for index in range(60)}
+        actual = (1.2, 2.6, 4.0)
+
+        def answer(difference):
+            draw, total = generator.random(), 0.0
+            for score in range(-3, 4):
+                total += rating_model.verdict_probability(difference, score, actual)
+                if draw <= total:
+                    return score
+            return 3
+
+        pairs = set()
+        while len(pairs) < 700:
+            pairs.add(tuple(generator.sample(sorted(truth), 2)))
+        verdicts = [(left, right, answer(truth[left] - truth[right])) for left, right in sorted(pairs)]
+        learned = self.fit(verdicts).thresholds
+
+        self.assertLess(learned[0], learned[1])
+        self.assertLess(learned[1], learned[2])
+        for default, fitted, true in zip(THRESHOLDS, learned, actual):
+            self.assertLess(abs(fitted - true), abs(default - true))
 
     def test_rating_has_no_user_facing_ceiling(self):
-        left = dirty_rank.Rating(9999, 350, 0.06)
-        right = dirty_rank.Rating(9999, 350, 0.06)
+        ratings = self.fit([(1, 2, 3)], initialRating=99999).ratings
 
-        winner, loser = dirty_rank.rate_battle(left, right, 1.0, self.settings)
+        self.assertGreater(ratings["1"].rating, 99999)
+        self.assertAlmostEqual(ratings["1"].rating - 99999, 99999 - ratings["2"].rating, delta=0.01)
 
-        self.assertGreater(winner.rating, 9999)
-        self.assertLess(loser.rating, 9999)
-        self.assertAlmostEqual(winner.rating - 9999, 9999 - loser.rating, places=8)
+    def test_deviation_stays_between_floor_and_starting_deviation(self):
+        verdicts = [(1, opponent, 0) for opponent in range(2, 400)]
+        ratings = self.fit(verdicts, evidenceWeight=3).ratings
 
-    def test_presets_refine_balanced_results_with_fewer_physical_battles(self):
-        # The same two equal-strength performers alternate wins. Use actual
-        # updates, including volatility, rather than just the UI's RD estimate.
-        profiles = [
-            {"initialRating": 1500, "initialDeviation": 500,
-             "initialVolatility": 0.09, "deviationFloor": 45,
-             "provisionalDeviation": 110, "evidenceWeight": 1, "tau": 0.75},
-            {"evidenceWeight": 2, "tau": 0.5},
-            {"evidenceWeight": 3, "tau": 0.3},
-        ]
-        counts = []
-        for profile in profiles:
-            settings = dirty_rank.normalize_settings(profile)
-            left = right = dirty_rank.Rating(
-                settings["initialRating"], settings["initialDeviation"],
-                settings["initialVolatility"],
-            )
-            for count in range(1, 101):
-                left, right = dirty_rank.rate_battle(
-                    left, right, float(count % 2), settings,
-                )
-                self.assertEqual(left.matches, count)
-                self.assertEqual(right.matches, count)
-                self.assertEqual(left.wins + left.losses + left.draws, count)
-                self.assertGreater(left.volatility, 0)
-                if max(left.deviation, right.deviation) <= settings["provisionalDeviation"]:
-                    counts.append(count)
-                    break
-            else:
-                self.fail("Balanced battles should reach refinement")
-        self.assertLess(counts[1], counts[0])
-        self.assertLess(counts[2], counts[1])
-
-    def test_inactivity_does_not_change_rating_updates(self):
-        established = dirty_rank.Rating(
-            1000,
-            35,
-            0.06,
-            matches=50,
-            last_rated_at="2000-01-01T00:00:00Z",
-        )
-        identical_without_timestamp = dirty_rank.Rating(1000, 35, 0.06, matches=50)
-        opponent = dirty_rank.Rating(1000, 100, 0.06, matches=20)
-
-        old_result, _ = dirty_rank.rate_battle(
-            established, opponent, 1.0, self.settings, datetime.now(timezone.utc)
-        )
-        current_result, _ = dirty_rank.rate_battle(
-            identical_without_timestamp,
-            opponent,
-            1.0,
-            self.settings,
-            datetime.now(timezone.utc),
-        )
-
-        self.assertAlmostEqual(old_result.rating, current_result.rating)
-        self.assertAlmostEqual(old_result.deviation, current_result.deviation)
-
-    def test_draw_moves_favorite_and_underdog_toward_each_other(self):
-        favorite = dirty_rank.Rating(1400, 120, 0.06)
-        underdog = dirty_rank.Rating(800, 120, 0.06)
-
-        new_favorite, new_underdog = dirty_rank.rate_battle(
-            favorite, underdog, 0.5, self.settings
-        )
-
-        self.assertLess(new_favorite.rating, favorite.rating)
-        self.assertGreater(new_underdog.rating, underdog.rating)
-        self.assertEqual(new_favorite.draws, 1)
-        self.assertEqual(new_underdog.draws, 1)
+        self.assertEqual(ratings["1"].deviation, self.settings["deviationFloor"])
+        unbeaten = self.fit([(1, opponent, 3) for opponent in range(2, 52)]).ratings
+        self.assertLessEqual(unbeaten["1"].deviation, self.settings["initialDeviation"])
+        self.assertTrue(all(math.isfinite(rating.rating) for rating in unbeaten.values()))
 
 
 class DirtyRankOperationTests(unittest.TestCase):
@@ -146,201 +157,292 @@ class DirtyRankOperationTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def state(self, performer_id):
-        with self.repository.connect() as connection:
-            return self.repository.state(connection, str(performer_id))
+    def state(self, performer_id, repository=None):
+        repository = repository or self.repository
+        with repository.connect() as connection:
+            return repository.state(connection, str(performer_id))
 
-    def battle_args(self, battle_id="battle-1"):
+    def stored_verdicts(self, repository=None):
+        repository = repository or self.repository
+        with repository.connect() as connection:
+            return [tuple(row) for row in connection.execute(
+                "SELECT category_id, cohort, low_id, high_id, score, confirmations FROM dirty_rank_verdicts"
+                " ORDER BY category_id, cohort, low_id, high_id"
+            )]
+
+    def assertSamePools(self, actual, expected):
+        """Pools match: refits store a rating only once it moves by 0.01 or more."""
+        self.assertEqual(set(actual), set(expected))
+        for performer, state in actual.items():
+            self.assertEqual(set(state["pools"]), set(expected[performer]["pools"]))
+            for key, pool in state["pools"].items():
+                other = expected[performer]["pools"][key]
+                self.assertAlmostEqual(pool["rating"], other["rating"], delta=0.011)
+                self.assertAlmostEqual(pool["deviation"], other["deviation"], delta=0.011)
+                self.assertEqual({k: v for k, v in pool.items() if k not in ("rating", "deviation")},
+                                 {k: v for k, v in other.items() if k not in ("rating", "deviation")})
+
+    def verdict_args(self, verdict_id="verdict-1", **changes):
         return {
             "leftId": "1",
             "rightId": "2",
-            "battleId": battle_id,
+            "verdictId": verdict_id,
             "categoryId": "appearance",
             "cohort": "FEMALE",
-            "outcome": "left",
+            "score": 2,
+            **changes,
         }
 
+    def record(self, verdict_id="verdict-1", repository=None, settings=None, now=None, **changes):
+        return dirty_rank.record_verdict(
+            repository or self.repository, self.verdict_args(verdict_id, **changes), settings or self.settings,
+            now or self.now,
+        )
+
+    def undo(self, verdict_id="verdict-1", repository=None, settings=None, **changes):
+        return dirty_rank.undo_verdict(
+            repository or self.repository, self.verdict_args(verdict_id, **changes), settings or self.settings
+        )
+
     def test_record_is_precise_idempotent_and_category_scoped(self):
-        first = dirty_rank.record_battle(
-            self.repository, self.battle_args(), self.settings, self.now
-        )
-        duplicate = dirty_rank.record_battle(
-            self.repository, self.battle_args(), self.settings, self.now
-        )
+        first = self.record()
+        duplicate = self.record()
         key = dirty_rank.pool_key("appearance", "FEMALE")
         left_state = self.state("1")
         right_state = self.state("2")
 
         self.assertFalse(first["duplicate"])
         self.assertTrue(duplicate["duplicate"])
+        self.assertEqual(duplicate["changed"], [])
+        self.assertEqual(first["verdict"], ["1", "2", 2, 0])
+        self.assertEqual(duplicate["verdict"], ["1", "2", 2, 0])
+        self.assertEqual(len(first["thresholds"]), 3)
         self.assertGreater(left_state["pools"][key]["rating"], 1000)
         self.assertLess(right_state["pools"][key]["rating"], 1000)
         self.assertIsInstance(left_state["pools"][key]["rating"], float)
         self.assertEqual(left_state["pools"][key]["matches"], 1)
-        with self.repository.connect() as connection:
-            self.assertEqual(connection.execute("SELECT COUNT(*) FROM dirty_rank_battles").fetchone()[0], 1)
+        self.assertEqual(self.stored_verdicts(), [("appearance", "FEMALE", "1", "2", 2, 0)])
         self.assertNotIn("performance|FEMALE", left_state["pools"])
 
-    def test_undo_restores_both_missing_pools(self):
-        dirty_rank.record_battle(
-            self.repository, self.battle_args(), self.settings, self.now
-        )
+    def test_a_pair_keeps_one_verdict_from_the_first_id_side(self):
+        self.record(leftId="2", rightId="1", score=3)
 
-        result = dirty_rank.undo_battle(
-            self.repository,
-            {
-                **self.battle_args(),
-                "mode": "undo",
-            },
-            self.settings,
-        )
+        self.assertEqual(self.stored_verdicts(), [("appearance", "FEMALE", "1", "2", -3, 0)])
+        key = dirty_rank.pool_key("appearance", "FEMALE")
+        self.assertGreater(self.state("2")["pools"][key]["rating"], self.state("1")["pools"][key]["rating"])
+
+    def test_choosing_the_same_verdict_again_confirms_it_without_moving_ratings(self):
+        first = self.record("first", score=1)
+        confirmed = self.record("again", leftId="2", rightId="1", score=-1)
+
+        self.assertEqual(confirmed["verdict"], ["1", "2", 1, 1])
+        self.assertEqual(confirmed["changed"], [])
+        self.assertEqual(confirmed["left"]["state"]["revision"], first["left"]["state"]["revision"])
+        self.assertEqual(self.stored_verdicts(), [("appearance", "FEMALE", "1", "2", 1, 1)])
+
+    def test_a_different_verdict_replaces_the_earlier_one(self):
+        self.record("first", score=2)
+        self.record("confirm", score=2)
+        replaced = self.record("change", score=-1)
         key = dirty_rank.pool_key("appearance", "FEMALE")
 
-        self.assertTrue(result["undone"])
+        self.assertEqual(replaced["verdict"], ["1", "2", -1, 0])
+        self.assertEqual(self.state("1")["pools"][key]["matches"], 1)
+        self.assertLess(self.state("1")["pools"][key]["rating"], 1000)
+        self.assertEqual({item["id"] for item in replaced["changed"]}, {"1", "2"})
+
+    def test_undo_restores_what_the_pair_had_before(self):
+        key = dirty_rank.pool_key("appearance", "FEMALE")
+        self.record("first", score=2)
+        before = self.state("1")
+        later = self.now + timedelta(hours=1)
+        self.record("confirm", score=2, now=later)
+        self.record("change", score=-3, now=later)
+
+        undone = self.undo("change")
+        self.assertTrue(undone["undone"])
+        self.assertEqual(undone["verdict"], ["1", "2", 2, 1])
+        # A confirmation keeps the time the score was given.
+        self.assertEqual(self.state("1")["pools"][key]["lastRatedAt"], dirty_rank.iso_time(self.now))
+        self.undo("confirm")
+        self.assertEqual(self.stored_verdicts(), [("appearance", "FEMALE", "1", "2", 2, 0)])
+        self.assertEqual(self.state("1")["pools"], before["pools"])
+        removed = self.undo("first")
+        self.assertEqual(removed["verdict"], ["1", "2", None, 0])
         self.assertNotIn(key, self.state("1")["pools"])
         self.assertNotIn(key, self.state("2")["pools"])
+        with self.assertRaisesRegex(dirty_rank.PluginError, "not available to undo"):
+            self.undo("first")
 
-    def test_multiple_undos_restore_consecutive_battles(self):
-        dirty_rank.record_battle(
-            self.repository, self.battle_args("battle-1"), self.settings, self.now
-        )
-        second_args = self.battle_args("battle-2")
-        second_args["outcome"] = "right"
-        dirty_rank.record_battle(self.repository, second_args, self.settings, self.now)
+    def test_only_the_latest_choice_on_a_pair_can_be_undone(self):
+        self.record("first", score=1)
+        self.record("second", score=-1)
 
-        dirty_rank.undo_battle(self.repository, second_args, self.settings)
-        key = dirty_rank.pool_key("appearance", "FEMALE")
-        after_first_undo = self.state("1")
-        self.assertEqual(after_first_undo["pools"][key]["matches"], 1)
+        with self.assertRaisesRegex(dirty_rank.PluginError, "later verdict on this pair"):
+            self.undo("first")
+        with self.assertRaisesRegex(dirty_rank.PluginError, "do not match"):
+            self.undo("second", rightId="3")
 
-        dirty_rank.undo_battle(
-            self.repository, self.battle_args("battle-1"), self.settings
-        )
-        self.assertNotIn(
-            key, self.state("1")["pools"]
-        )
-        self.assertNotIn(
-            key, self.state("2")["pools"]
-        )
-
-    def test_database_journal_supports_many_consecutive_undos(self):
-        for index in range(1, 31):
-            dirty_rank.record_battle(
-                self.repository,
-                self.battle_args(f"battle-{index}"),
-                self.settings,
-                self.now,
-            )
-
-        for index in range(30, 5, -1):
-            dirty_rank.undo_battle(
-                self.repository,
-                self.battle_args(f"battle-{index}"),
-                self.settings,
-            )
-
-        key = dirty_rank.pool_key("appearance", "FEMALE")
-        state = self.state("1")
-        self.assertEqual(state["pools"][key]["matches"], 5)
-        self.assertNotIn("lastBattle", state["pools"][key])
-        dirty_rank.undo_battle(
-            self.repository, self.battle_args("battle-5"), self.settings
-        )
-        self.assertEqual(self.state("1")["pools"][key]["matches"], 4)
-
-    def test_journal_caps_undo_per_pool_and_keeps_ordered_outcomes(self):
-        other_pool = dict(self.battle_args("other-pool"), categoryId="performance")
-        dirty_rank.record_battle(self.repository, other_pool, self.settings, self.now)
-        battles = [self.battle_args(f"battle-{index}") for index in range(101)]
-        battles[0]["outcome"] = "draw"
-        for battle in battles:
-            dirty_rank.record_battle(self.repository, battle, self.settings, self.now)
-
-        with self.repository.connect() as connection:
-            journal = connection.execute("""
-                SELECT battle_id, outcome, undo_snapshot IS NOT NULL
-                FROM dirty_rank_battles ORDER BY sequence
-            """).fetchall()
-        self.assertEqual([row[0] for row in journal], [other_pool["battleId"], *[b["battleId"] for b in battles]])
-        self.assertEqual(tuple(journal[1]), ("battle-0", "draw", 0))
-        self.assertTrue(journal[0][2])
-        self.assertTrue(all(row[2] for row in journal[2:]))
+    def test_any_verdict_can_be_undone_exactly(self):
+        other_pool = self.verdict_args("other-pool", categoryId="performance")
+        dirty_rank.record_verdict(self.repository, other_pool, self.settings, self.now)
+        verdicts = [self.verdict_args(f"verdict-{index}", rightId=str(2 + index), score=index % 7 - 3)
+                    for index in range(40)]
+        for verdict in verdicts:
+            dirty_rank.record_verdict(self.repository, verdict, self.settings, self.now)
 
         before_retry = self.state("1")
-        retry = dirty_rank.record_battle(self.repository, battles[0], self.settings, self.now)
+        retry = dirty_rank.record_verdict(self.repository, verdicts[0], self.settings, self.now)
         self.assertTrue(retry["duplicate"])
         self.assertEqual(self.state("1"), before_retry)
-        with self.assertRaisesRegex(dirty_rank.PluginError, "not available to undo"):
-            dirty_rank.undo_battle(self.repository, battles[0], self.settings)
 
-        dirty_rank.undo_battle(self.repository, battles[-1], self.settings)
+        # The oldest verdict undoes as if it had never been given.
+        undone = dirty_rank.undo_verdict(self.repository, verdicts[0], self.settings)
+        expected = dirty_rank.RatingRepository(Path(self.temp_dir.name) / "expected.sqlite3")
+        dirty_rank.record_verdict(expected, other_pool, self.settings, self.now)
+        for verdict in verdicts[1:]:
+            dirty_rank.record_verdict(expected, verdict, self.settings, self.now)
+        self.assertSamePools(self.repository.all_states()["states"], expected.all_states()["states"])
+        self.assertLessEqual({"1", "2"}, {item["id"] for item in undone["changed"]})
         with self.repository.connect() as connection:
-            row = connection.execute("""
-                SELECT status, outcome, undone_at, undo_snapshot FROM dirty_rank_battles
-                WHERE battle_id='battle-100'
-            """).fetchone()
-        self.assertEqual(tuple(row)[:2], ("undone", "left"))
+            row = connection.execute(
+                "SELECT score, undone_at FROM dirty_rank_verdict_log WHERE verdict_id='verdict-0'"
+            ).fetchone()
+        self.assertEqual(row["score"], -3)
         self.assertIsNotNone(row["undone_at"])
-        self.assertIsNone(row["undo_snapshot"])
 
-    def test_upgrade_keeps_pools_and_migrates_legacy_journal_once(self):
-        dirty_rank.record_battle(self.repository, self.battle_args(), self.settings, self.now)
-        before_upgrade = self.repository.all_states()
-        old_pool = before_upgrade["states"]["1"]["pools"]["appearance|FEMALE"]
-        with self.repository.connect() as connection:
-            connection.executescript("""
-                DROP TABLE dirty_rank_battles;
-                CREATE TABLE dirty_rank_battles (
-                  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                  battle_id TEXT NOT NULL UNIQUE,
-                  category_id TEXT NOT NULL,
-                  cohort TEXT NOT NULL,
-                  left_id TEXT NOT NULL,
-                  right_id TEXT NOT NULL,
-                  outcome TEXT NOT NULL,
-                  left_before TEXT,
-                  right_before TEXT,
-                  left_after TEXT NOT NULL,
-                  right_after TEXT NOT NULL,
-                  status TEXT NOT NULL DEFAULT 'active',
-                  created_at TEXT NOT NULL,
-                  undone_at TEXT
-                );
-                UPDATE dirty_schema_versions SET version=1 WHERE plugin_id='dirtyRank';
-            """)
-            connection.executemany("""
-                INSERT INTO dirty_rank_battles VALUES (
-                  ?, ?, 'appearance', 'FEMALE', '1', '2', 'right', ?, NULL, '{}', '{}', ?, ?, ?
-                )
-            """, [
-                (index, f"legacy-{index}", json.dumps(old_pool), "undone" if index == 102 else "active",
-                 self.now.isoformat(), self.now.isoformat() if index == 102 else None)
-                for index in range(1, 103)
-            ])
-            connection.execute("UPDATE sqlite_sequence SET seq=120 WHERE name='dirty_rank_battles'")
+    def test_verdict_returns_every_performer_the_refit_moved(self):
+        self.record("a", rightId="3")
+        result = self.record("b")
 
-        self.repository = dirty_rank.RatingRepository(self.repository.path)
-        self.assertEqual(self.repository.all_states(), before_upgrade)
-        with self.repository.connect() as connection:
-            journal = connection.execute("""
-                SELECT sequence, battle_id, outcome, status, undo_snapshot FROM dirty_rank_battles ORDER BY sequence
-            """).fetchall()
-        self.assertEqual([tuple(row)[:3] for row in journal], [
-            (index, f"legacy-{index}", "right") for index in range(1, 103)
-        ])
-        self.assertIsNone(journal[0]["undo_snapshot"])
-        self.assertTrue(all(json.loads(row["undo_snapshot"]) == [old_pool, None] for row in journal[1:-1]))
-        self.assertEqual(tuple(journal[-1])[3:], ("undone", None))
+        changed = {item["id"]: item["state"] for item in result["changed"]}
+        self.assertEqual(set(changed), {"1", "2", "3"})
+        self.assertEqual(changed["3"], self.state("3"))
+        self.assertEqual(changed["1"], result["left"]["state"])
+        self.assertEqual(result["left"]["state"]["revision"], result["right"]["state"]["revision"])
 
-        dirty_rank.RatingRepository(self.repository.path)
-        self.assertEqual(len(list(self.repository.path.parent.glob("dirty_plugins-backup-*.sqlite3"))), 1)
-        dirty_rank.record_battle(self.repository, self.battle_args("post-upgrade"), self.settings, self.now)
-        with self.repository.connect() as connection:
-            sequence = connection.execute("SELECT MAX(sequence) FROM dirty_rank_battles").fetchone()[0]
-        self.assertEqual(sequence, 121)
+    def test_load_verdicts_returns_one_pool_and_its_thresholds(self):
+        self.record("a", score=1)
+        self.record("b", rightId="3", score=-2)
+        self.record("c", categoryId="performance")
+
+        loaded = dirty_rank.load_verdicts(self.repository, {"categoryId": "appearance", "cohort": "FEMALE"},
+                                          self.settings)
+        self.assertEqual(loaded["verdicts"], [["1", "2", 1, 0], ["1", "3", -2, 0]])
+        self.assertEqual(len(loaded["thresholds"]), 3)
+        self.assertNotEqual(tuple(loaded["thresholds"]), THRESHOLDS)
+        empty = dirty_rank.load_verdicts(self.repository, {"categoryId": "appearance", "cohort": "MALE"},
+                                         self.settings)
+        self.assertEqual(empty["verdicts"], [])
+        self.assertEqual(tuple(empty["thresholds"]), THRESHOLDS)
+
+    def test_invalid_verdicts_are_rejected(self):
+        for score in (4, -4, 1.5, "2", True, None):
+            with self.subTest(score=score), self.assertRaisesRegex(dirty_rank.PluginError, "whole number"):
+                self.record(score=score)
+        with self.assertRaisesRegex(dirty_rank.PluginError, "two different performers"):
+            self.record(rightId="1")
+        with self.assertRaisesRegex(dirty_rank.PluginError, "idempotency"):
+            self.record(verdict_id="")
+
+    def test_changing_rating_settings_refits_every_verdict(self):
+        database = self.repository.path
+        self.record()
+        key = dirty_rank.pool_key("appearance", "FEMALE")
+        before = self.state("1")["pools"][key]
+        with mock.patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}):
+            snapshot = dirty_rank.run({"args": {"mode": "getSettings"}})
+            for changed in ({"evidenceWeight": 2}, {"evidenceWeight": 2, "initialRating": 1500}):
+                saved = dirty_rank.run({"args": {"mode": "saveSettings",
+                                                 "settings": dict(snapshot["settings"], **changed),
+                                                 "expectedRevision": snapshot["revision"]}})
+                snapshot = {"revision": saved["revision"], "settings": saved["settings"]}
+                if "initialRating" not in changed:
+                    weighted = self.state("1")["pools"][key]
+                    self.assertLess(weighted["deviation"], before["deviation"])
+                    self.assertGreater(weighted["rating"], before["rating"])
+        shifted = self.state("1")["pools"][key]
+        self.assertAlmostEqual(shifted["rating"] - 1500, weighted["rating"] - 1000, delta=0.01)
+        self.assertGreater(self.repository.all_states()["revision"], 2)
+
+    def previous_database(self, version):
+        """A database written before verdicts: Glicko-2 battles (1, 2) or fitted battles (3)."""
+        database = Path(self.temp_dir.name) / f"previous-{version}.sqlite3"
+        connection = dirty_rank.shared_storage.connect(database)
+        connection.executescript("""
+            CREATE TABLE dirty_rank_pools (
+              performer_id TEXT NOT NULL, category_id TEXT NOT NULL, cohort TEXT NOT NULL,
+              rating REAL NOT NULL, deviation REAL NOT NULL, matches INTEGER NOT NULL,
+              wins INTEGER NOT NULL, losses INTEGER NOT NULL, draws INTEGER NOT NULL, last_rated_at TEXT,
+              PRIMARY KEY (performer_id, category_id, cohort)
+            );
+            CREATE TABLE dirty_rank_battles (
+              sequence INTEGER PRIMARY KEY AUTOINCREMENT, battle_id TEXT NOT NULL UNIQUE,
+              category_id TEXT NOT NULL, cohort TEXT NOT NULL, left_id TEXT NOT NULL,
+              right_id TEXT NOT NULL, outcome TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active',
+              created_at TEXT NOT NULL, undone_at TEXT
+            );
+        """)
+        if version == 3:
+            connection.execute("""CREATE TABLE dirty_rank_baselines (
+              performer_id TEXT NOT NULL, category_id TEXT NOT NULL, cohort TEXT NOT NULL,
+              rating_offset REAL NOT NULL, deviation REAL NOT NULL, matches INTEGER NOT NULL,
+              wins INTEGER NOT NULL, losses INTEGER NOT NULL, draws INTEGER NOT NULL, last_rated_at TEXT,
+              PRIMARY KEY (performer_id, category_id, cohort))""")
+        if version > 1:
+            connection.execute(
+                "INSERT INTO dirty_schema_versions(plugin_id, version, applied_at) VALUES ('dirtyRank', ?, 'then')",
+                (version,),
+            )
+        connection.executemany(
+            """INSERT INTO dirty_rank_battles(battle_id, category_id, cohort, left_id, right_id, outcome, created_at)
+               VALUES (?, 'appearance', 'FEMALE', '1', '2', 'right', ?)""",
+            [(f"previous-{index}", self.now.isoformat()) for index in range(12)],
+        )
+        connection.executemany(
+            "INSERT INTO dirty_rank_pools VALUES (?, 'appearance', 'FEMALE', ?, 60, 12, ?, ?, 0, ?)",
+            [("1", 700.0, 0, 12, self.now.isoformat()), ("2", 1300.0, 12, 0, self.now.isoformat())],
+        )
+        connection.commit()
+        connection.close()
+        dirty_rank.shared_storage.set_plugin_settings(
+            dirty_rank.PLUGIN_ID,
+            {"tau": 0.5, "initialVolatility": 0.06, "evidenceWeight": 2, "initialDeviation": 350,
+             "calibrationPercent": 5, "avoidRepeatWindow": 20, "confidenceTopN": 15},
+            path=database,
+        )
+        return database
+
+    def test_upgrade_keeps_battles_in_a_backup_and_starts_every_pool_fresh(self):
+        for version in (1, 2, 3):
+            with self.subTest(version=version):
+                database = self.previous_database(version)
+                repository = dirty_rank.RatingRepository(database)
+
+                payload = repository.all_states()
+                self.assertEqual(payload["states"], {})
+                self.assertEqual(payload["revision"], 1)
+                stored = dirty_rank.shared_storage.get_plugin_settings(dirty_rank.PLUGIN_ID, path=database)
+                self.assertEqual(stored, {"confidenceTopN": 15})
+                with repository.connect() as connection:
+                    tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                self.assertFalse({"dirty_rank_battles", "dirty_rank_baselines"} & tables)
+                self.assertLessEqual({"dirty_rank_verdicts", "dirty_rank_verdict_log", "dirty_rank_scales"}, tables)
+                backups = sorted(database.parent.glob("dirty_plugins-backup-*"))
+                self.assertEqual(len(backups), version)
+                backup = dirty_rank.shared_storage.connect(backups[-1])
+                try:
+                    self.assertEqual(backup.execute("SELECT COUNT(*) FROM dirty_rank_battles").fetchone()[0], 12)
+                finally:
+                    backup.close()
+
+                dirty_rank.RatingRepository(database)
+                self.assertEqual(len(list(database.parent.glob("dirty_plugins-backup-*"))), version)
+                self.record("after-upgrade", repository=repository)
+                self.assertEqual(self.stored_verdicts(repository), [("appearance", "FEMALE", "1", "2", 2, 0)])
 
     def test_load_all_returns_sqlite_rating_index(self):
-        dirty_rank.record_battle(self.repository, self.battle_args(), self.settings, self.now)
+        self.record()
         payload = self.repository.all_states()
         self.assertEqual(payload["version"], 2)
         self.assertEqual(set(payload["states"]), {"1", "2"})
@@ -359,7 +461,7 @@ class DirtyRankOperationTests(unittest.TestCase):
         self.assertEqual(payload["states"], {})
 
     def test_load_all_keeps_revision_and_pools_on_one_snapshot(self):
-        first = dirty_rank.record_battle(self.repository, self.battle_args(), self.settings, self.now)
+        first = self.record()
         original_revision = self.repository.revision
         interleaved = False
 
@@ -369,9 +471,7 @@ class DirtyRankOperationTests(unittest.TestCase):
             if not interleaved:
                 interleaved = True
                 self.assertTrue(connection.in_transaction)
-                dirty_rank.record_battle(
-                    self.repository, self.battle_args("battle-2"), self.settings, self.now
-                )
+                self.record("verdict-2", rightId="3")
             return revision
 
         with mock.patch.object(self.repository, "revision", side_effect=revision_then_write):
@@ -410,7 +510,7 @@ class DirtyRankOperationTests(unittest.TestCase):
         self.assertEqual(snapshot, {"revision": 1, "settings": {"initialRating": 1000}})
         self.assertEqual(latest, {"revision": 2, "settings": {"initialRating": 1200}})
 
-    def test_renamed_labels_move_ratings_history_and_undo_through_id_swaps(self):
+    def test_renamed_labels_move_ratings_verdicts_and_undo_through_id_swaps(self):
         database = Path(self.temp_dir.name) / "rename-chain.sqlite3"
         repository = dirty_rank.RatingRepository(database)
         for category_id in ("appearance", "performance", "category-1"):
@@ -418,13 +518,7 @@ class DirtyRankOperationTests(unittest.TestCase):
             settings = dirty_rank.normalize_settings({"categories": json.dumps({
                 "FEMALE": [{"name": label}],
             })})
-            dirty_rank.record_battle(
-                repository,
-                {"leftId": "1", "rightId": "2", "battleId": "battle-" + category_id,
-                 "categoryId": category_id, "cohort": "FEMALE", "outcome": "left"},
-                settings,
-                self.now,
-            )
+            self.record("verdict-" + category_id, repository=repository, settings=settings, categoryId=category_id)
         current = {"FEMALE": [
             {"id": "appearance", "name": "Appearance"},
             {"id": "performance", "name": "Performance"},
@@ -450,19 +544,21 @@ class DirtyRankOperationTests(unittest.TestCase):
             )
             self.assertEqual(set(states["1"]["pools"]),
                              {"breasts|FEMALE", "face|FEMALE", "performance|FEMALE"})
+            loaded = dirty_rank.run({"args": {"mode": "loadVerdicts", "categoryId": "breasts", "cohort": "FEMALE"}})
+            self.assertEqual(loaded["verdicts"], [["1", "2", 2, 0]])
             dirty_rank.run({"args": {"mode": "undo", "leftId": "1", "rightId": "2",
-                                     "battleId": "battle-appearance", "categoryId": "breasts",
+                                     "verdictId": "verdict-appearance", "categoryId": "breasts",
                                      "cohort": "FEMALE"}})
         with repository.connect() as connection:
             self.assertIsNone(repository.pool(connection, "1", "breasts", "FEMALE"))
             self.assertEqual(connection.execute(
-                "SELECT category_id FROM dirty_rank_battles WHERE battle_id='battle-appearance'"
+                "SELECT category_id FROM dirty_rank_verdict_log WHERE verdict_id='verdict-appearance'"
             ).fetchone()[0], "breasts")
 
     def test_saving_renamed_label_moves_existing_pool_and_rejects_stale_revision(self):
         database = Path(self.temp_dir.name) / "rename.sqlite3"
         repository = dirty_rank.RatingRepository(database)
-        dirty_rank.record_battle(repository, self.battle_args(), self.settings, self.now)
+        self.record(repository=repository)
         categories = {"FEMALE": [{"id": "appearance", "name": "Appearance"}]}
         dirty_rank.shared_storage.set_plugin_settings(
             dirty_rank.PLUGIN_ID, {"categories": json.dumps(categories)}, path=database
@@ -480,19 +576,18 @@ class DirtyRankOperationTests(unittest.TestCase):
         with repository.connect() as connection:
             self.assertIsNone(repository.pool(connection, "1", "appearance", "FEMALE"))
             self.assertIsNotNone(repository.pool(connection, "1", "etoile", "FEMALE"))
-            self.assertEqual(connection.execute(
-                "SELECT category_id FROM dirty_rank_battles WHERE battle_id='battle-1'"
-            ).fetchone()[0], "etoile")
+            self.assertEqual({row[0] for row in connection.execute(
+                "SELECT category_id FROM dirty_rank_scales UNION SELECT category_id FROM dirty_rank_verdicts"
+            )}, {"etoile"})
 
-    def test_adding_genders_preserves_existing_pools_and_history(self):
+    def test_adding_genders_preserves_existing_pools_and_verdicts(self):
         database = Path(self.temp_dir.name) / "mixed.sqlite3"
         repository = dirty_rank.RatingRepository(database)
-        dirty_rank.record_battle(repository, self.battle_args(), self.settings, self.now)
+        self.record(repository=repository)
         male_settings = dirty_rank.normalize_settings({"genderBoxes": [
             {"id": "FEMALE", "genders": ["FEMALE"]}, {"id": "MALE", "genders": ["MALE"]},
         ]})
-        male_battle = dict(self.battle_args("male-existing"), cohort="MALE")
-        dirty_rank.record_battle(repository, male_battle, male_settings, self.now)
+        self.record("male-existing", repository=repository, settings=male_settings, cohort="MALE")
         with repository.connect() as connection:
             original = repository.state(connection, "1")
         with mock.patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}):
@@ -508,15 +603,15 @@ class DirtyRankOperationTests(unittest.TestCase):
             self.assertEqual(json.loads(saved["settings"]["genderBoxes"])[0]["genders"], ["FEMALE", "MALE"])
         with repository.connect() as connection:
             self.assertEqual(repository.state(connection, "1")["pools"], original["pools"])
-            self.assertEqual(connection.execute("SELECT COUNT(*) FROM dirty_rank_battles").fetchone()[0], 2)
+        self.assertEqual(len(self.stored_verdicts(repository)), 2)
         mixed_settings = dirty_rank.normalize_settings(changed)
-        added_battle = dict(self.battle_args("mixed-new"), rightId="3")
-        mixed = dirty_rank.record_battle(repository, added_battle, mixed_settings, self.now)
+        mixed = self.record("mixed-new", repository=repository, settings=mixed_settings, rightId="3")
         self.assertEqual(mixed["left"]["pool"]["matches"], 2)
         self.assertEqual(mixed["right"]["pool"]["matches"], 1)
         with repository.connect() as connection:
-            self.assertEqual(repository.state(connection, "1")["pools"]["appearance|MALE"], original["pools"]["appearance|MALE"])
-        dirty_rank.undo_battle(repository, dict(added_battle, mode="undo"), mixed_settings)
+            self.assertEqual(repository.state(connection, "1")["pools"]["appearance|MALE"],
+                             original["pools"]["appearance|MALE"])
+        self.undo("mixed-new", repository=repository, settings=mixed_settings, rightId="3")
         with repository.connect() as connection:
             self.assertEqual(repository.state(connection, "1")["pools"], original["pools"])
             self.assertEqual(repository.state(connection, "3")["pools"], {})
@@ -534,7 +629,7 @@ class DirtyRankOperationTests(unittest.TestCase):
         dirty_rank.shared_storage.set_plugin_settings(dirty_rank.PLUGIN_ID, raw, path=database)
         settings = dirty_rank.normalize_settings(raw)
         for box in ["BOX-1", "BOX-2"]:
-            dirty_rank.record_battle(repository, dict(self.battle_args("battle-" + box), cohort=box), settings, self.now)
+            self.record("verdict-" + box, repository=repository, settings=settings, cohort=box)
         with repository.connect() as connection:
             before = repository.state(connection, "1")["pools"]
         self.assertEqual(set(before), {"appearance|BOX-1", "appearance|BOX-2"})
@@ -556,32 +651,27 @@ class DirtyRankOperationTests(unittest.TestCase):
         self.assertEqual(after["appearance|BOX-1"], before["appearance|BOX-1"])
         settings["categoriesByCohort"]["BOX-1"][0]["enabled"] = False
         with self.assertRaisesRegex(dirty_rank.PluginError, "explicit RESET confirmation"):
-            dirty_rank.reset_pool(repository, {"categoryId": "appearance", "cohort": "BOX-1"}, settings, dirty_rank.Reporter())
-        dirty_rank.reset_pool(repository, {"categoryId": "appearance", "cohort": "BOX-1", "confirm": "RESET"}, settings, dirty_rank.Reporter())
+            dirty_rank.reset_pool(repository, {"categoryId": "appearance", "cohort": "BOX-1"}, settings,
+                                  dirty_rank.Reporter())
+        dirty_rank.reset_pool(repository, {"categoryId": "appearance", "cohort": "BOX-1", "confirm": "RESET"},
+                              settings, dirty_rank.Reporter())
         with repository.connect() as connection:
             self.assertEqual(set(repository.state(connection, "1")["pools"]), {"power|BOX-2"})
-        dirty_rank.undo_battle(repository, dict(self.battle_args("battle-BOX-2"), categoryId="power", cohort="BOX-2"), settings)
+        self.assertEqual([row[:2] for row in self.stored_verdicts(repository)], [("power", "BOX-2")])
+        self.undo("verdict-BOX-2", repository=repository, settings=settings, categoryId="power", cohort="BOX-2")
         with repository.connect() as connection:
             self.assertEqual(repository.state(connection, "1")["pools"], {})
         with self.assertRaises(dirty_rank.PluginError):
-            dirty_rank.record_battle(repository, dict(self.battle_args("invalid-box"), cohort="BOX-4"), settings)
+            self.record("invalid-box", repository=repository, settings=settings, cohort="BOX-4")
 
-    def test_battle_for_disabled_cohort_is_rejected(self):
+    def test_verdict_for_disabled_cohort_is_rejected(self):
         settings = dirty_rank.normalize_settings(
             {"defaultCohort": "MALE", "enabledCohorts": json.dumps(["MALE"])}
         )
 
         with self.assertRaisesRegex(dirty_rank.PluginError, "disabled for FEMALE"):
-            dirty_rank.record_battle(
-                self.repository, self.battle_args(), settings, self.now
-            )
+            self.record(settings=settings)
 
-    def test_skip_is_not_a_backend_outcome(self):
-        args = self.battle_args()
-        args["outcome"] = "skip"
-
-        with self.assertRaisesRegex(dirty_rank.PluginError, "left, right, or draw"):
-            dirty_rank.record_battle(self.repository, args, self.settings, self.now)
 
 class SettingsTests(unittest.TestCase):
     def test_overall_scoring_strategies(self):
@@ -649,7 +739,10 @@ class SettingsTests(unittest.TestCase):
         settings = dirty_rank.normalize_settings({})
 
         self.assertNotIn("ratingPeriodDays", settings)
-        self.assertEqual(settings["evidenceWeight"], 2.0)
+        self.assertEqual(settings["evidenceWeight"], 1.0)
+        self.assertEqual(settings["initialDeviation"], 500.0)
+        self.assertNotIn("tau", settings)
+        self.assertNotIn("initialVolatility", settings)
         self.assertEqual(settings["enabledCohorts"], ["FEMALE"])
         self.assertTrue(settings["showLeaderboardsInMenu"])
         self.assertTrue(settings["showBattlesInMenu"])
@@ -676,7 +769,7 @@ class SettingsTests(unittest.TestCase):
     def test_evidence_weight_is_bounded(self):
         self.assertEqual(
             dirty_rank.normalize_settings({"evidenceWeight": 0.1})["evidenceWeight"],
-            1.0,
+            0.25,
         )
         self.assertEqual(
             dirty_rank.normalize_settings({"evidenceWeight": 99})["evidenceWeight"],
@@ -749,6 +842,7 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings["leaderboardPerformerCount"] % top, 0)
 
 
+
 class DirtyRankProtocolTests(unittest.TestCase):
     """Drives the raw stdin/stdout plugin protocol in a real subprocess.
 
@@ -783,21 +877,23 @@ class DirtyRankProtocolTests(unittest.TestCase):
         return json.loads(envelope["output"])
 
     def test_record_load_undo_and_reset_round_trip_over_stdin_stdout(self):
+        pair = {"categoryId": "appearance", "cohort": "FEMALE", "leftId": "1", "rightId": "2"}
         recorded = self.output(self.run_backend({"args": {
-            "mode": "record", "battleId": "battle-1", "categoryId": "appearance",
-            "cohort": "FEMALE", "leftId": "1", "rightId": "2", "outcome": "left",
+            "mode": "record", "verdictId": "verdict-1", "score": -1, **pair,
         }}))
         self.assertFalse(recorded["duplicate"])
+        self.assertEqual(recorded["verdict"], ["1", "2", -1, 0])
 
         loaded = self.output(self.run_backend({"args": {"mode": "loadAll"}}))
         self.assertEqual(loaded["version"], 2)
         self.assertIn("1", loaded["states"])
         self.assertIn("2", loaded["states"])
-
-        undone = self.output(self.run_backend({"args": {
-            "mode": "undo", "battleId": "battle-1", "categoryId": "appearance",
-            "cohort": "FEMALE", "leftId": "1", "rightId": "2",
+        verdicts = self.output(self.run_backend({"args": {
+            "mode": "loadVerdicts", "categoryId": "appearance", "cohort": "FEMALE",
         }}))
+        self.assertEqual(verdicts["verdicts"], [["1", "2", -1, 0]])
+
+        undone = self.output(self.run_backend({"args": {"mode": "undo", "verdictId": "verdict-1", **pair}}))
         self.assertTrue(undone["undone"])
 
         reset = self.output(self.run_backend({"args": {

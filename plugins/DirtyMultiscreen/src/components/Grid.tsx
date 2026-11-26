@@ -17,7 +17,7 @@ import type { DropPointer, DropTarget } from "../domain/dropGuide";
 import type { Rectangle } from "../domain/layout";
 import { useSessionSaver } from "../hooks";
 import { React } from "../runtime";
-import type { AbLoop, AudioState, GridProps, Item, PaneView, SavedPane, SwapControls } from "../types";
+import type { AbLoop, AudioState, GridProps, Item, LoopState, PaneView, SavedPane, SwapControls } from "../types";
 import { Dividers } from "./Dividers";
 import { DockingGuide } from "./DockingGuide";
 import type { DockingGuideState } from "./DockingGuide";
@@ -46,8 +46,10 @@ export function NativeMultiscreenGrid({
   onCloseScreen,
   onFinishEditing,
   onLayoutChange,
+  onLoopChange,
   onSessionChange,
   onVisibleSceneIdsChange,
+  loopReset,
   playback,
   playlists,
   savedOrder,
@@ -64,6 +66,10 @@ export function NativeMultiscreenGrid({
   const [visibleByPane, setVisibleByPane] = React.useState<Array<string | null>>([]);
   const [aspects, setAspects] = React.useState<number[]>([]);
   const [rotations, setRotations] = React.useState<number[]>([]);
+  // Each screen's own loop, which overrides the Loop scenes setting; undefined follows the setting.
+  const [loops, setLoops] = React.useState<Array<boolean | undefined>>(
+    () => savedPanes?.map(pane => pane?.view?.loop) ?? [],
+  );
   const updateAspect = React.useCallback((index: number, aspect: number) => {
     setAspects(current => {
       if (current[index] === aspect) return current;
@@ -388,7 +394,33 @@ export function NativeMultiscreenGrid({
     (index: number, audio: AudioState) => updatePane(index, { audio }),
     [updatePane],
   );
-  const onViewChange = React.useCallback((index: number, view: PaneView) => updatePane(index, { view }), [updatePane]);
+  const onViewChange = React.useCallback(
+    (index: number, view: PaneView) => {
+      setLoops(current => {
+        if (current[index] === view.loop) return current;
+        const next = current.slice();
+        next[index] = view.loop;
+        return next;
+      });
+      updatePane(index, { view });
+    },
+    [updatePane],
+  );
+  // The menu's Loop scenes puts every screen, closed ones too, back on the setting; each open pane clears its own.
+  const seenLoopReset = React.useRef(loopReset);
+  React.useEffect(() => {
+    if (seenLoopReset.current === loopReset) return;
+    seenLoopReset.current = loopReset;
+    panes.current.forEach((pane, index) => {
+      if (pane?.view?.loop !== undefined) panes.current[index] = { ...pane, view: { ...pane.view, loop: undefined } };
+    });
+    setLoops([]);
+    scheduleSave();
+  }, [loopReset, scheduleSave]);
+  const looping = open.map(index => loops[index] ?? playback.loop);
+  const loopState: LoopState = looping.every(Boolean) ? true : looping.some(Boolean) ? "mixed" : false;
+  React.useEffect(() => onLoopChange(loopState), [onLoopChange, loopState]);
+  React.useEffect(() => () => onLoopChange(null), [onLoopChange]);
   /** A closed pane stops playing and counts as no scene, but keeps its saved state and item for reopening. */
   const closeScreen = (index: number) => {
     if (closedRef.current.includes(index) || closedRef.current.length + 1 >= totalScreens) return;
@@ -495,6 +527,7 @@ export function NativeMultiscreenGrid({
             findPerformerItems={findPerformerItems}
             nativePlayer={nativePlayer}
             playback={playback}
+            loopReset={loopReset}
             useFindScene={useFindScene}
             onAbLoopChange={onAbLoopChange}
             onAudioChange={onAudioChange}

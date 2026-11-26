@@ -1,5 +1,10 @@
 import { OVERALL_LEADERBOARD_ID, PLUGIN_ID } from "../constants";
-import { buildCategoryScoreIndex, buildCategoryScoreIndexAsync, updateCategoryScoreIndex } from "./scores";
+import {
+  buildCategoryScoreIndex,
+  buildCategoryScoreIndexAsync,
+  categoryScoreAt,
+  updateCategoryScoreIndex,
+} from "./scores";
 import type { CategoryScoreIndex } from "./scores";
 import type {
   DisplayPool,
@@ -10,6 +15,7 @@ import type {
   RankOperationResult,
   RankPerformer,
   RankPerformerState,
+  RankRange,
   RankSettings,
   RankSettingsDraft,
   StandingEntry,
@@ -235,7 +241,6 @@ export function poolFor(
     return {
       rating: settings.initialRating,
       deviation: settings.initialDeviation,
-      volatility: settings.initialVolatility,
       matches: 0,
       wins: 0,
       losses: 0,
@@ -245,7 +250,6 @@ export function poolFor(
   return {
     rating: number(pool.rating, settings.initialRating, -1000000, 1000000),
     deviation: number(pool.deviation, settings.initialDeviation, settings.deviationFloor, settings.initialDeviation),
-    volatility: number(pool.volatility, settings.initialVolatility, 0.0001, 2),
     matches: integer(pool.matches, 0, 0, 2000000000),
     wins: integer(pool.wins, 0, 0, 2000000000),
     losses: integer(pool.losses, 0, 0, 2000000000),
@@ -448,6 +452,56 @@ function overallCategoryValue(performer: RankPerformer, categoryId: string, coho
     ? overallCategoryScoreFor(performer, categoryId, cohort, settings).rating
     : overallCategoryStrengthFor(performer, categoryId, cohort, settings, uncertainty);
 }
+/** The same category value if the performer's rating were `rating`, everyone else unchanged. */
+function overallCategoryValueAt(
+  performer: RankPerformer,
+  categoryId: string,
+  cohort: string,
+  settings: RankSettings,
+  rating: number,
+) {
+  const index = categoryScoreIndexFor(categoryId, cohort, settings);
+  const uncertainty = overallScoreStrategy(settings.overallScoreStrategy).uncertainty;
+  if (uncertainty === null) {
+    const own = index.performers.get(String(performer.id));
+    return categoryScoreAt(index, rating, own ? own.rating : null);
+  }
+  const pool = poolFor(performer, categoryId, cohort, settings);
+  const mean = index.performers.size ? index.mean : settings.initialRating;
+  const spread = index.spread > 0 ? index.spread : settings.initialDeviation;
+  return (rating - uncertainty * pool.deviation - mean) / spread;
+}
+/** Weighted mean, or weighted power mean, of the category values. */
+function combineOverall(values: number[], weights: number[], settings: RankSettings) {
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  const power = number(settings.overallPower, 3, 1, 4);
+  if (overallScoreStrategy(settings.overallScoreStrategy).id === "power" && power !== 1) {
+    // Power mean combines the same non-negative category scores as Simple weighted.
+    // Scaling before exponentiation keeps intermediates in the 0–1 range.
+    const mean = values.reduce((sum, value, index) => sum + Math.pow(value / 100, power) * weights[index], 0);
+    return 100 * Math.pow(mean / totalWeight, 1 / power);
+  }
+  return values.reduce((sum, value, index) => sum + value * weights[index], 0) / totalWeight;
+}
+/** How far the overall score moves when each category rating moves by its deviation. */
+export function overallScoreDeviation(performer: RankPerformer, cohort: string, settings: RankSettings) {
+  const categories = scoredCategories(performer, cohort, settings);
+  if (!categories.length) return 0;
+  const weights = categories.map(category => Number(category.weight));
+  const values = categories.map(category => overallCategoryValue(performer, category.id, cohort, settings));
+  let variance = 0;
+  categories.forEach((category, index) => {
+    const pool = poolFor(performer, category.id, cohort, settings);
+    const moved = (rating: number) => {
+      const next = values.slice();
+      next[index] = overallCategoryValueAt(performer, category.id, cohort, settings, rating);
+      return combineOverall(next, weights, settings);
+    };
+    const half = (moved(pool.rating + pool.deviation) - moved(pool.rating - pool.deviation)) / 2;
+    variance += half * half;
+  });
+  return Math.sqrt(variance);
+}
 /** Percentile strategies score 0–100 with one decimal; rating strengths are small signed values. */
 export function overallScoreText(value: number, settings: RankSettings) {
   return ratingStrengthStrategy(settings.overallScoreStrategy) ? value.toFixed(2) : value.toFixed(1);
@@ -465,30 +519,23 @@ export function overallPoolFor(performer: RankPerformer, cohort: string, setting
       totalCategories: 0,
     };
   }
-  const strategy = overallScoreStrategy(settings.overallScoreStrategy).id;
-  const power = number(settings.overallPower, 3, 1, 4);
   const totals = categories.reduce(
     (result, category) => {
       const pool = poolFor(performer, category.id, cohort, settings);
       const weight = Number(category.weight);
-      const score = overallCategoryValue(performer, category.id, cohort, settings);
-      result.rating += score * weight;
-      // Power mean combines the same non-negative category scores as Simple weighted.
-      // Scaling before exponentiation keeps intermediates in the 0–1 range.
-      if (strategy === "power") result.powerRating += Math.pow(score / 100, power) * weight;
       result.deviation += pool.deviation * weight;
       result.matches += pool.matches;
       if (pool.matches > 0) result.ratedCategories += 1;
       return result;
     },
-    { rating: 0, powerRating: 0, deviation: 0, matches: 0, ratedCategories: 0 },
+    { deviation: 0, matches: 0, ratedCategories: 0 },
   );
-  let rating = totals.rating / totalWeight;
-  if (strategy === "power" && power !== 1) {
-    rating = 100 * Math.pow(totals.powerRating / totalWeight, 1 / power);
-  }
   return {
-    rating,
+    rating: combineOverall(
+      categories.map(category => overallCategoryValue(performer, category.id, cohort, settings)),
+      categories.map(category => Number(category.weight)),
+      settings,
+    ),
     deviation: totals.deviation / totalWeight,
     matches: totals.matches,
     overallScore: true,
@@ -688,8 +735,71 @@ export function leaderboardRatingText(pool: DisplayPool, settings: RankSettings)
   const text = pool.overallScore ? overallScoreText(pool.rating, settings) : Math.round(pool.rating).toLocaleString();
   return text + (precision.id === "refined" || precision.id === "excellent" ? "" : "*");
 }
-export function leaderboardEntries(ranked: RankPerformer[]) {
-  return ranked.map((performer, index) => ({ performer, rank: index + 1 }));
+// A rival is clearly ahead when it is at least this likely to be better.
+const CLEARLY = 0.9;
+/** Standard normal CDF (Abramowitz and Stegun 7.1.26, error below 1.5e-7). */
+function normalCdf(z: number) {
+  const x = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * x);
+  const erf =
+    1 -
+    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return z >= 0 ? (1 + erf) / 2 : (1 - erf) / 2;
+}
+/**
+ * Likely positions for each entry of a ranked list, from pairwise comparisons: the best
+ * rank counts only rivals clearly ahead, the worst also counts rivals too close to call.
+ * The ranges agree with each other: if a leader could drop below a rival, that rival is
+ * not clearly behind, so the leader is not clearly ahead of it and its best rank rises.
+ */
+export function rankRanges(points: Array<{ rating: number; deviation: number }>): RankRange[] {
+  return points.map((point, index) => {
+    let ahead = 0,
+      behind = 0;
+    points.forEach((other, otherIndex) => {
+      if (otherIndex === index) return;
+      const spread = Math.max(Math.sqrt(point.deviation * point.deviation + other.deviation * other.deviation), 1e-9);
+      const better = normalCdf((other.rating - point.rating) / spread);
+      if (better >= CLEARLY) ahead += 1;
+      else if (better <= 1 - CLEARLY) behind += 1;
+    });
+    return { low: Math.min(index + 1, 1 + ahead), high: Math.max(index + 1, points.length - behind) };
+  });
+}
+const leaderboardRangeCache = new WeakMap<RankPerformer[], Map<string, RankRange[]>>();
+/** Likely positions for a leaderboard's ranked performers, cached per ranking. */
+export function leaderboardRanges(
+  ranked: RankPerformer[],
+  leaderboardId: string,
+  cohort: string,
+  settings: RankSettings,
+) {
+  let cached = leaderboardRangeCache.get(ranked);
+  if (!cached) leaderboardRangeCache.set(ranked, (cached = new Map()));
+  const key = leaderboardId + "|" + cohort + "|" + JSON.stringify(settings);
+  let ranges = cached.get(key);
+  if (!ranges) {
+    ranges = rankRanges(
+      ranked.map(performer => {
+        if (leaderboardId !== OVERALL_LEADERBOARD_ID) return poolFor(performer, leaderboardId, cohort, settings);
+        return {
+          rating: overallPoolFor(performer, cohort, settings).rating,
+          deviation: overallScoreDeviation(performer, cohort, settings),
+        };
+      }),
+    );
+    cached.set(key, ranges);
+  }
+  return ranges;
+}
+export function leaderboardEntries(
+  ranked: RankPerformer[],
+  leaderboardId?: string,
+  cohort?: string,
+  settings?: RankSettings,
+): StandingEntry[] {
+  const ranges = settings && leaderboardId ? leaderboardRanges(ranked, leaderboardId, cohort || "", settings) : null;
+  return ranked.map((performer, index) => ({ performer, rank: index + 1, range: ranges ? ranges[index] : undefined }));
 }
 export function filteredLeaderboardEntries(entries: StandingEntry[], performerIds: Set<string> | null) {
   if (!performerIds) return entries;
@@ -746,7 +856,9 @@ export function queryLeaderboardPerformerIds(model: PerformerFilterModel, signal
 }
 export function leaderboardStandingEntries(props: LeaderboardProps) {
   if (props.entries) return props.entries;
-  return leaderboardEntries(props.ranked).slice(leaderboardFeaturedCount(props));
+  return leaderboardEntries(props.ranked, props.leaderboardId, props.cohort, props.settings).slice(
+    leaderboardFeaturedCount(props),
+  );
 }
 export function filteredLeaderboardPanelProps() {
   return {

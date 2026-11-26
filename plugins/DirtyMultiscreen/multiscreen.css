@@ -381,16 +381,9 @@
   user-select: none;
 }
 
-/* Edit mode: squares for every grid size, beside the column of main buttons. */
+/* The Grid submenu: squares for every grid size in the menu's own text colour, lined up with the options. */
 .ms-grid-picker {
-  position: fixed;
-  top: 0.85rem;
-  right: 3.25rem;
-  z-index: 1060;
-  padding: 0.45rem;
-  border-radius: var(--dirty-ui-radius-small);
-  color: #fff;
-  background: rgba(0, 0, 0, 0.72);
+  display: inline-block;
 }
 
 .ms-grid-squares {
@@ -404,6 +397,7 @@
   height: 1.3rem;
   padding: 2px;
   border: 0;
+  color: inherit;
   background: transparent;
   cursor: pointer;
 }
@@ -414,43 +408,27 @@
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  border: 1px solid currentColor;
   border-radius: 2px;
+  opacity: 0.45;
 }
 
 .ms-grid-square-on::before {
-  border-color: #fff;
-  background: rgba(255, 255, 255, 0.88);
+  background: currentColor;
+  opacity: 0.9;
 }
 
 .ms-grid-square:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid currentColor;
   outline-offset: -1px;
 }
 
 .ms-grid-size {
   margin-top: 0.3rem;
+  color: var(--dirty-ui-muted);
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
   text-align: center;
-}
-
-.ms-fit-toggle {
-  display: block;
-  width: 100%;
-  margin-top: 0.4rem;
-  padding: 0.25rem;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  border-radius: var(--dirty-ui-radius-small);
-  font-size: 0.78rem;
-  color: #fff;
-  background: transparent;
-  cursor: pointer;
-}
-
-.ms-fit-toggle[aria-pressed="true"] {
-  color: #000;
-  background: #fff;
 }
 
 .ms-grid-confirm {
@@ -514,8 +492,8 @@
   position: absolute;
   top: 0.45rem;
   left: 0.55rem;
-  /* Leave the viewport's global button column clear when this is a right-hand screen. */
-  right: 3.25rem;
+  /* Leave the window's row of main buttons clear when this is a right-hand screen. */
+  right: 8.25rem;
   z-index: 4;
   display: flex;
   align-items: flex-start;
@@ -524,19 +502,19 @@
   pointer-events: none;
 }
 
-.ms-pane-navigation,
-.ms-pane-actions {
+.ms-pane-navigation {
   pointer-events: auto;
   transition: opacity 200ms ease;
 }
 
-/* Like the main buttons, each group shows while the mouse is near it and fades out a while after it leaves. */
-:is(.ms-pane-navigation, .ms-pane-actions).ms-idle:not(:hover):not(:has(:focus-visible)) {
+/* Like the main buttons, the group shows while the mouse is near it and fades out a while after it leaves. */
+.ms-pane-navigation.ms-idle:not(:hover):not(:has(:focus-visible)) {
   opacity: 0;
   transition: opacity 1s ease;
 }
 
-/* Search and the performer portraits; their box ends at the last portrait, which is where "near" is measured. */
+/* The scene link, the performer portraits, search, then the scene's O button after a separator. The box ends at the
+   last button, which is where "near" is measured. */
 .ms-pane-navigation {
   display: flex;
   flex: 0 1 auto;
@@ -546,21 +524,28 @@
   min-width: 0;
 }
 
-.ms-pane-actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 0.4rem;
-  margin-left: auto;
+.ms-pane-separator {
+  flex: none;
+  width: 1px;
+  height: 1.2rem;
+  margin: 0 0.1rem;
+  background: rgba(255, 255, 255, 0.55);
 }
 
-.ms-route .ms-pane-header .ms-button {
+/* The screens' header buttons and the main buttons share one look: white on a dark circle, darker on hover. */
+.ms-route :is(.ms-pane-header, .ms-floating) .ms-button {
   color: #fff;
   background: rgba(0, 0, 0, 0.62);
 }
 
-.ms-route .ms-pane-header .ms-button:hover:not(:disabled),
-.ms-route .ms-pane-header .ms-button:focus-visible {
+/* Hover and keyboard focus draw the same white ring on every round button, the portraits included; the icon stays
+   white, even on the scene link, which themes would colour as a link. */
+#root .ms-route :is(.ms-pane-header, .ms-floating) .ms-button:hover:not(:disabled),
+#root .ms-route :is(.ms-pane-header, .ms-floating) .ms-button:focus-visible {
+  color: #fff !important;
   background: rgba(0, 0, 0, 0.82);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85) !important;
+  outline: none;
 }
 
 .ms-performer-navigation {
@@ -570,20 +555,23 @@
   max-width: 100%;
 }
 
-/* A round portrait the size of the header buttons, with the next mark on its corner. */
+/* A round portrait the size of the header buttons, with the next mark on its corner. Hub themes that give buttons a
+   block shadow and a press offset, such as De Stijl, would make it look larger than the buttons beside it. */
 #root .ms-pane-header .ms-performer-next.dirty-ui-button {
   position: relative;
   display: block;
   overflow: visible;
   color: #fff !important;
   background: rgba(0, 0, 0, 0.62) !important;
-  box-shadow: none;
+  box-shadow: none !important;
+  transform: none !important;
 }
 
 #root .ms-pane-header .ms-performer-next.dirty-ui-button:hover:not(:disabled),
 #root .ms-pane-header .ms-performer-next.dirty-ui-button:focus-visible {
   background: rgba(0, 0, 0, 0.82) !important;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85) !important;
+  transform: none !important;
 }
 
 .ms-performer-image,
@@ -630,11 +618,6 @@
   text-decoration: none;
 }
 
-.ms-route .ms-pane-header .ms-scene-link:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.9);
-  outline-offset: 2px;
-}
-
 .ms-drops-icon {
   width: 1.15em;
   height: 1.15em;
@@ -645,12 +628,40 @@
   visibility: hidden !important;
 }
 
+/* Only the results scroll, so the title, the filter and the page buttons always stay in view. In a very short window
+   the list keeps a few rows and the whole dialog scrolls instead. */
 .ms-scene-search-dialog {
+  display: flex;
+  flex-direction: column;
   width: min(44rem, 100%);
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
   padding: 1rem;
   color: var(--dirty-ui-text);
+}
+
+.ms-scene-search-dialog > *,
+.ms-scene-search-dialog > .ms-scene-search-results > * {
+  flex: none;
+}
+
+.ms-scene-search-dialog > .ms-scene-search-results {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ms-scene-search-results > .ms-scene-search-list {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin-inline: -0.15rem;
+  padding-inline: 0.15rem;
+}
+
+.ms-scene-search-results > .ms-scene-search-list:has(> :nth-child(3)) {
+  min-height: 7rem;
 }
 
 .ms-scene-search-help {
@@ -872,19 +883,20 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
   color: var(--dirty-ui-muted);
 }
 
-/* The main buttons stand in a column down from the top-right corner. */
+/* The main buttons stand in a row in the top-right corner: the O counter, the menu, then Close at the corner, so the
+   O counter leaving moves nothing. */
 .ms-floating {
   position: fixed;
   top: 0.85rem;
   right: 0.85rem;
   z-index: 1060;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   gap: 0.4rem;
 }
 
-/* They fade once nothing moves; a pointer over them, keyboard focus or the open shuffle menu keeps them.
+/* They fade once nothing moves; a pointer over them, keyboard focus or the open menu keeps them.
    A clicked button keeps focus too, but not visible focus, so clicking one never pins them. */
 .ms-floating {
   transition: opacity 200ms ease;
@@ -895,22 +907,16 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
   transition: opacity 1s ease;
 }
 
-.ms-floating .ms-button {
-  background: rgba(0, 0, 0, 0.62);
-  opacity: 0.45;
-}
-
-.ms-floating .ms-button:hover,
-.ms-floating .ms-button:focus-visible {
-  opacity: 1;
-}
-
 .ms-floating .ms-button:disabled {
   cursor: wait;
 }
 
-/* The reshuffle menu's toggle matches the round floating buttons beside it. */
-#root .ms-floating .ms-shuffle-menu .dirty-ui-action-menu-toggle {
+/* The menu's toggle matches the round buttons above it and on the screens. */
+.ms-main-menu-anchor {
+  display: contents;
+}
+
+#root .ms-floating .ms-main-menu .dirty-ui-action-menu-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -922,22 +928,97 @@ body:has(.ms-scene-search-backdrop) > div > .popover {
   border-radius: 50% !important;
   background: rgba(0, 0, 0, 0.62) !important;
   color: #fff !important;
-  opacity: 0.45;
 }
 
-#root .ms-floating .ms-shuffle-menu .dirty-ui-action-menu-toggle::after {
+#root .ms-floating .ms-main-menu .dirty-ui-action-menu-toggle::after {
   display: none;
 }
 
-#root .ms-floating .ms-shuffle-menu .dirty-ui-action-menu-toggle:hover,
-#root .ms-floating .ms-shuffle-menu .dirty-ui-action-menu-toggle:focus-visible,
-#root .ms-floating .ms-shuffle-menu.show .dirty-ui-action-menu-toggle {
-  opacity: 1;
+#root .ms-floating .ms-main-menu .dirty-ui-action-menu-toggle:hover,
+#root .ms-floating .ms-main-menu .dirty-ui-action-menu-toggle:focus-visible,
+#root .ms-floating .ms-main-menu.show .dirty-ui-action-menu-toggle {
+  background: rgba(0, 0, 0, 0.82) !important;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85) !important;
+  outline: none;
 }
 
-.ms-shuffle-check {
-  display: inline-block;
-  width: 1.2rem;
+/*
+ * The main menu hangs from its button at the right, so every option lines up on one right edge: the label, a column
+ * for its icon, then a submenu's arrow at the edge. Options without an arrow keep its space, so the icons line up. A
+ * main option's check, short note or value, such as the grid size, sits before its label. The row and the shared
+ * submenu label box hand their parts to the item itself, so the shared arrow can join them.
+ */
+#root .ms-floating .ms-main-menu .dropdown-item {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.65rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+#root .ms-floating .ms-main-menu .dropdown-item:not(.dirty-ui-action-menu-submenu) {
+  padding-right: calc(0.75rem + 1rem + 0.65rem);
+}
+
+/*
+ * An open submenu sits in one continuous panel beneath its option, on the same edge, tinted with the theme's faint
+ * accent, which hovering deepens. Its options are square, whatever corners a theme gives menu rows, so they never look
+ * stacked; only the panel's ends are rounded. The options have no icon, so the icon column shows their state, a check
+ * while on or a dash while mixed: one glance down the column shows what is on.
+ */
+#root .ms-floating .ms-main-menu .dirty-ui-action-menu-subitem {
+  background: var(--dirty-theme-softer) !important;
+  border-radius: 0 !important;
+}
+
+#root .ms-floating .ms-main-menu .dropdown-item.dirty-ui-action-menu-subitem:is(:hover, :focus):not(.disabled) {
+  background: var(--dirty-theme-soft) !important;
+}
+
+#root .ms-floating .ms-main-menu .dirty-ui-action-menu-submenu + .dirty-ui-action-menu-subitem {
+  border-top-left-radius: var(--dirty-ui-radius) !important;
+  border-top-right-radius: var(--dirty-ui-radius) !important;
+}
+
+#root .ms-floating .ms-main-menu .dirty-ui-action-menu-subitem:not(.dirty-ui-action-menu-subitem-hidden):not(:has(+ .dirty-ui-action-menu-subitem)) {
+  margin-bottom: 0.25rem;
+  border-bottom-left-radius: var(--dirty-ui-radius) !important;
+  border-bottom-right-radius: var(--dirty-ui-radius) !important;
+}
+
+/* The grid picker sits in the middle of its well. */
+#root .ms-floating .ms-main-menu .dirty-ui-action-menu-content.dirty-ui-action-menu-subitem {
+  padding: 0.5rem 0.75rem 0.35rem;
+  text-align: center;
+}
+
+.ms-main-menu .dirty-ui-action-menu-submenu-label,
+.ms-menu-row {
+  display: contents;
+}
+
+.ms-menu-hint {
+  order: 1;
+  color: var(--dirty-ui-muted);
+}
+
+.ms-menu-label {
+  order: 2;
+  text-align: right;
+}
+
+/* As wide as Stash draws its icons, so a check in the column lines up with them. */
+.ms-menu-icon {
+  order: 3;
+  flex: 0 0 1.25rem;
+  text-align: center;
+}
+
+.ms-main-menu .dirty-ui-action-menu-submenu-caret {
+  order: 4;
+  flex: 0 0 1rem;
+  text-align: center;
 }
 
 .ms-o-counter-dismissing {

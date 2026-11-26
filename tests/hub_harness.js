@@ -16,7 +16,7 @@ function createHubHarness(options = {}) {
   const settings = copy(
     options.settings || {
       dirtyPlugins: { visualTheme: "classic" },
-      multiscreen: { markerDuration: 30, listSizeLimit: 10000 },
+      multiscreen: { markerDuration: 30, recentGrids: 5 },
     },
   );
   const revisions = Object.fromEntries(Object.keys(settings).map(id => [id, 1]));
@@ -26,7 +26,7 @@ function createHubHarness(options = {}) {
       name: "DirtyMultiscreen",
       enabled: true,
       settings: [
-        { name: "listSizeLimit", type: "NUMBER" },
+        { name: "recentGrids", type: "NUMBER" },
         { name: "markerDuration", type: "NUMBER" },
       ],
     },

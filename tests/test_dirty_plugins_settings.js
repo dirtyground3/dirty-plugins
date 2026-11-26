@@ -199,9 +199,9 @@ test("out-of-order reloads cannot regress the draft, baseline or next write revi
   await h.settle();
   h.settings.multiscreen.markerDuration = 7;
   h.revisions.multiscreen = 3;
-  reads[1].resolve(response({ settings: { markerDuration: 7, listSizeLimit: 10000 }, revision: 3 }));
+  reads[1].resolve(response({ settings: { markerDuration: 7, recentGrids: 5 }, revision: 3 }));
   await h.settle();
-  reads[0].resolve(response({ settings: { markerDuration: 6, listSizeLimit: 10000 }, revision: 2 }));
+  reads[0].resolve(response({ settings: { markerDuration: 6, recentGrids: 5 }, revision: 2 }));
   await h.settle();
   assert.equal(field(h).props.value, 7);
   assert.doesNotMatch(h.text(), /Unsaved changes/);
@@ -225,16 +225,16 @@ test("edits made during a reload keep their value while untouched fields adopt t
   refresh(h, "multiscreen");
   await h.settle();
   edit(h, "8");
-  h.settings.multiscreen.listSizeLimit = 20000;
+  h.settings.multiscreen.recentGrids = 8;
   h.revisions.multiscreen = 2;
-  read.resolve(response({ settings: { markerDuration: 30, listSizeLimit: 20000 }, revision: 2 }));
+  read.resolve(response({ settings: { markerDuration: 30, recentGrids: 8 }, revision: 2 }));
   await h.settle();
   assert.equal(field(h).props.value, "8");
-  assert.equal(field(h, "listSizeLimit").props.value, 20000);
+  assert.equal(field(h, "recentGrids").props.value, 8);
   assert.match(h.text(), /Unsaved changes/);
   await h.tick();
   assert.equal(h.settings.multiscreen.markerDuration, 8);
-  assert.equal(h.settings.multiscreen.listSizeLimit, 20000, "the save merges only explicitly edited fields");
+  assert.equal(h.settings.multiscreen.recentGrids, 8, "the save merges only explicitly edited fields");
   assert.equal(writes(h)[0].variables.args.expectedRevision, 2);
   h.unmount();
 });
@@ -253,7 +253,7 @@ test("unmount discards a late reload response", async () => {
   await h.settle();
   h.unmount();
   const previous = h.text();
-  read.resolve(response({ settings: { markerDuration: 7, listSizeLimit: 10000 }, revision: 2 }));
+  read.resolve(response({ settings: { markerDuration: 7, recentGrids: 5 }, revision: 2 }));
   await h.settle();
   assert.equal(h.text(), previous);
   assert.equal(writes(h).length, 0);
@@ -266,7 +266,7 @@ test("reset to defaults asks first, then saves every setting at its schema defau
   for (const confirm of [false, true]) {
     const h = createHubHarness({
       confirm,
-      settings: { multiscreen: { markerDuration: 45, listSizeLimit: 20000, randomize: true } },
+      settings: { multiscreen: { markerDuration: 45, recentGrids: 8, randomize: true } },
     });
     h.load();
     await h.settle();
@@ -276,12 +276,12 @@ test("reset to defaults asks first, then saves every setting at its schema defau
     await h.tick();
     if (!confirm) {
       assert.equal(writes(h).length, 0, "a declined reset changes nothing");
-      assert.equal(field(h, "listSizeLimit").props.value, 20000);
+      assert.equal(field(h, "recentGrids").props.value, 8);
     } else {
       assert.equal(writes(h).length, 1);
       assert.deepEqual(
         h.settings.multiscreen,
-        { markerDuration: 30, listSizeLimit: 10000, randomize: true },
+        { markerDuration: 30, recentGrids: 5, randomize: true },
         "unreported keys are kept",
       );
       assert.equal(field(h).props.value, 30);

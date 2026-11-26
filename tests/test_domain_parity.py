@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 for plugin in ("DirtyRank", "DirtyTasks"):
     sys.path.insert(0, str(runtime_path(plugin)))
 import dirty_rank as rank
+import dirty_rank_rating as rank_rating
 import dirty_compactor_rules as compactor
 import dirty_compactor_quality as quality
 
@@ -23,6 +24,13 @@ class DomainParityTests(unittest.TestCase):
                     for index, category in enumerate(categories):
                         self.assertEqual(category.pop("order"), index)
                 self.assertEqual({key: normalized[key] for key in example["expected"]}, example["expected"])
+        for example in fixture["rankVerdicts"]:
+            for index, expected in enumerate(example["probabilities"]):
+                self.assertAlmostEqual(
+                    rank_rating.verdict_probability(example["difference"], index - 3, example["thresholds"]),
+                    expected,
+                    places=12,
+                )
         for example in fixture["compactor"]:
             with self.subTest(example=example["name"]):
                 size = compactor.dimensions(example["width"], example["height"], example["rule"])

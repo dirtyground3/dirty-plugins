@@ -49,7 +49,7 @@
     "sceneOrder": {
       "type": "STRING",
       "displayName": "Scene order",
-      "description": "How each pane orders its scenes. The favour orders shuffle with a bias; Fewer repeats plays recently watched scenes last. Defaults to random.",
+      "description": "How each pane orders its scenes. Unwatched, Favourites (high ratings and O counts) and Recently added shuffle with a bias toward those scenes; Smart mix alternates favourites with unwatched scenes; Fewer repeats plays recently watched scenes last. Defaults to random.",
       "default": "random",
       "options": [
         {
@@ -62,23 +62,23 @@
         },
         {
           "value": "unwatched",
-          "label": "Favour unwatched scenes"
+          "label": "Unwatched"
         },
         {
           "value": "favorites",
-          "label": "Favour high ratings and O counts"
+          "label": "Favourites"
         },
         {
           "value": "newest",
-          "label": "Favour recently added scenes"
+          "label": "Recently added"
         },
         {
           "value": "mix",
-          "label": "Mix favourites with unwatched scenes"
+          "label": "Smart mix"
         },
         {
           "value": "list",
-          "label": "Keep the list order"
+          "label": "List order"
         }
       ]
     },
@@ -183,20 +183,6 @@
           "label": "Any plugin"
         }
       ]
-    },
-    "listSizeLimit": {
-      "type": "NUMBER",
-      "displayName": "List size limit",
-      "description": "The most scenes or markers taken from another plugin's list. Defaults to 10000.",
-      "default": 10000,
-      "integer": true,
-      "min": 1000,
-      "max": 100000,
-      "step": 1000,
-      "disabledWhen": {
-        "setting": "otherPluginLists",
-        "value": "off"
-      }
     }
   },
   "sections": [
@@ -248,8 +234,7 @@
     {
       "title": "Advanced",
       "settings": [
-        "otherPluginLists",
-        "listSizeLimit"
+        "otherPluginLists"
       ]
     }
   ]

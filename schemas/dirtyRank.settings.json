@@ -87,13 +87,13 @@
     "hideBattleStandings": {
       "type": "BOOLEAN",
       "displayName": "Hide standings during battles",
-      "description": "Hide the right-hand standings and expand standard and Gauntlet battles. King of the hill always hides standings.",
+      "description": "Hide the right-hand standings and expand standard and Gauntlet battles.",
       "default": false
     },
     "autoPlayTopScenes": {
       "type": "BOOLEAN",
       "displayName": "Automatically play top scenes",
-      "description": "Open each performer's highest-rated full scene in battles, muted, at a random point between 30% and 70%. Photos remain clickable for voting unless hidden.",
+      "description": "Open each performer's highest-rated full scene in battles, muted, at a random point between 30% and 70%.",
       "default": false
     },
     "includePerformersWithoutImages": {
@@ -105,7 +105,7 @@
     "confidenceGoal": {
       "type": "STRING",
       "displayName": "Confidence goal",
-      "description": "Optimize information-gain matchmaking for every rating, leaderboard order, or a top-N leaderboard. Defaults to leaderboard order.",
+      "description": "Order battles by the information they add to every rating, the leaderboard order, or a top-N leaderboard. Defaults to leaderboard order.",
       "default": "ranking"
     },
     "confidenceTopN": {
@@ -118,28 +118,10 @@
       "max": 1000,
       "step": 1
     },
-    "avoidRepeatWindow": {
-      "type": "NUMBER",
-      "displayName": "Repeat avoidance window",
-      "description": "Number of recent pairs to avoid when alternatives are available. Defaults to 12.",
-      "default": 12,
-      "integer": true,
-      "min": 0,
-      "max": 100
-    },
-    "calibrationPercent": {
-      "type": "NUMBER",
-      "displayName": "Calibration match percentage",
-      "description": "Percentage of matchmaking searches favouring broader rating gaps. A soft preference within the information-gain optimizer. Defaults to 10.",
-      "default": 10,
-      "integer": true,
-      "min": 0,
-      "max": 100
-    },
     "initialRating": {
       "type": "NUMBER",
       "displayName": "Initial rating",
-      "description": "Starting rating for a new category and cohort pool. Defaults to 1000.",
+      "description": "Rating of a performer with no verdicts yet. It only shifts the scale. Defaults to 1000.",
       "default": 1000,
       "min": -100000,
       "max": 100000,
@@ -148,43 +130,25 @@
     "initialDeviation": {
       "type": "NUMBER",
       "displayName": "Initial rating deviation",
-      "description": "Starting uncertainty for an unrated performer. Defaults to 350.",
-      "default": 350,
+      "description": "Uncertainty of a performer with no verdicts yet: how far apart performers are expected to be. Defaults to 500.",
+      "default": 500,
       "min": 30,
       "max": 1000,
       "step": 1
     },
-    "initialVolatility": {
-      "type": "NUMBER",
-      "displayName": "Initial volatility",
-      "description": "Starting Glicko-2 volatility. Defaults to 0.06.",
-      "default": 0.06,
-      "min": 0.0001,
-      "max": 1,
-      "step": 0.001
-    },
     "evidenceWeight": {
       "type": "NUMBER",
-      "displayName": "Evidence per battle",
-      "description": "Strength of one subjective comparison in the Glicko-2 update. 1 is standard evidence; 2 doubles the information contribution while recording one battle. Defaults to 2.",
-      "default": 2,
-      "min": 1,
+      "displayName": "Evidence per verdict",
+      "description": "How much one verdict counts in the fit. 1 treats each verdict as one comparison; lower values suit inconsistent verdicts and higher values consistent ones. Defaults to 1.",
+      "default": 1,
+      "min": 0.25,
       "max": 3,
-      "step": 0.1
-    },
-    "tau": {
-      "type": "NUMBER",
-      "displayName": "Glicko-2 tau",
-      "description": "Controls how quickly volatility may change. Defaults to 0.5.",
-      "default": 0.5,
-      "min": 0.01,
-      "max": 2,
-      "step": 0.01
+      "step": 0.05
     },
     "deviationFloor": {
       "type": "NUMBER",
       "displayName": "Rating deviation floor",
-      "description": "Minimum uncertainty retained for highly precise ratings. Defaults to 30.",
+      "description": "Ratings never claim more precision than this deviation. Defaults to 30.",
       "default": 30,
       "min": 1,
       "max": 1000,
@@ -217,71 +181,10 @@
         "weight": 1
       }
     ],
-    "ratingPresets": [
-      {
-        "id": "default",
-        "name": "Default",
-        "description": "Standard DirtyRank values. 2× evidence, 12 recent pairs avoided, 10% calibration, tau 0.5.",
-        "settings": {
-          "initialRating": 1000,
-          "initialDeviation": 350,
-          "initialVolatility": 0.06,
-          "deviationFloor": 30,
-          "provisionalDeviation": 85,
-          "evidenceWeight": 2,
-          "avoidRepeatWindow": 12,
-          "calibrationPercent": 10,
-          "tau": 0.5
-        }
-      },
-      {
-        "id": "chess",
-        "name": "Chess",
-        "description": "Lichess core Glicko-2 values. 1× evidence, 12 recent pairs avoided, 10% calibration, tau 0.75.",
-        "settings": {
-          "initialRating": 1500,
-          "initialDeviation": 500,
-          "initialVolatility": 0.09,
-          "deviationFloor": 45,
-          "provisionalDeviation": 110,
-          "evidenceWeight": 1,
-          "avoidRepeatWindow": 12,
-          "calibrationPercent": 10,
-          "tau": 0.75
-        }
-      },
-      {
-        "id": "confident",
-        "name": "Confident",
-        "description": "For consistent preferences. 2× evidence, 24 recent pairs avoided, 5% calibration, tau 0.5.",
-        "settings": {
-          "initialRating": 1000,
-          "initialDeviation": 350,
-          "initialVolatility": 0.06,
-          "deviationFloor": 30,
-          "provisionalDeviation": 85,
-          "evidenceWeight": 2,
-          "avoidRepeatWindow": 24,
-          "calibrationPercent": 5,
-          "tau": 0.5
-        }
-      },
-      {
-        "id": "extremely-confident",
-        "name": "Extremely confident",
-        "description": "Fewer battles for stable preferences. 3× evidence, 48 recent pairs avoided, 0% calibration, tau 0.3. Mistaken votes also carry more weight.",
-        "settings": {
-          "initialRating": 1000,
-          "initialDeviation": 350,
-          "initialVolatility": 0.06,
-          "deviationFloor": 30,
-          "provisionalDeviation": 85,
-          "evidenceWeight": 3,
-          "avoidRepeatWindow": 48,
-          "calibrationPercent": 0,
-          "tau": 0.3
-        }
-      }
+    "verdictThresholds": [
+      0.6,
+      1.8,
+      3.2
     ]
   }
 }

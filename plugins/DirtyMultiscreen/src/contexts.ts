@@ -89,7 +89,7 @@ export function createContexts() {
     for (let index = held.length - 1; index >= 0; index--) {
       const { source, kind, ids, keepOrder, label } = held[index];
       if (settings.allow === "any" || KNOWN_LIST_SOURCES.has(source.toLowerCase()))
-        return { source: "plugin-list", kind, ids: ids.slice(0, settings.limit), keepOrder, label };
+        return { source: "plugin-list", kind, ids, keepOrder, label };
     }
     return null;
   }

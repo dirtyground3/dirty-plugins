@@ -95,26 +95,17 @@ export const DEFAULT_SETTINGS = Object.assign(
   { categoriesByCohort: defaultCategoriesByCohort() },
   JSON.parse(JSON.stringify(defaults)) as typeof defaults,
 );
-// Lichess core values: lila Glicko.scala and scalachess glicko/model.scala.
-// Evidence weight and matchmaking controls are DirtyRank extensions.
-export const RATING_PRESETS: Array<{
-  id: string;
-  name: string;
-  description: string;
-  settings: Partial<RankSettingsDraft>;
-}> = constants.ratingPresets;
-export function ratingPresetFor(settings: RankSettingsDraft) {
-  return (
-    RATING_PRESETS.filter(preset => {
-      return Object.keys(preset.settings).every(
-        key => settings[key as keyof RankSettingsDraft] === preset.settings[key as keyof RankSettingsDraft],
-      );
-    })[0] || null
-  );
-}
+/** The advanced rating values that "Undo changes" restores. */
+export const RATING_PARAMETER_KEYS = [
+  "initialRating",
+  "initialDeviation",
+  "deviationFloor",
+  "provisionalDeviation",
+  "evidenceWeight",
+] as const;
 export function ratingParameters(settings: RankSettingsDraft) {
   const parameters: Partial<RankSettingsDraft> = {};
-  Object.keys(RATING_PRESETS[0].settings).forEach(key => {
+  RATING_PARAMETER_KEYS.forEach(key => {
     Object.assign(parameters, { [key]: settings[key as keyof RankSettingsDraft] });
   });
   return parameters;
@@ -341,13 +332,9 @@ export function settingsFromConfiguration(configuration: unknown) {
     includePerformersWithoutImages: flag("includePerformersWithoutImages"),
     confidenceGoal,
     confidenceTopN: boundedInteger("confidenceTopN"),
-    avoidRepeatWindow: boundedInteger("avoidRepeatWindow"),
-    calibrationPercent: boundedInteger("calibrationPercent"),
     initialRating: bounded("initialRating"),
     initialDeviation,
-    initialVolatility: bounded("initialVolatility"),
     evidenceWeight: bounded("evidenceWeight"),
-    tau: bounded("tau"),
     deviationFloor,
     provisionalDeviation: bounded("provisionalDeviation", deviationFloor, initialDeviation),
   };
@@ -388,13 +375,9 @@ export function serializedSettings(settings: RankSettingsDraft) {
     includePerformersWithoutImages: Boolean(settings.includePerformersWithoutImages),
     confidenceGoal: settings.confidenceGoal,
     confidenceTopN: Number(settings.confidenceTopN),
-    avoidRepeatWindow: settings.avoidRepeatWindow,
-    calibrationPercent: settings.calibrationPercent,
     initialRating: settings.initialRating,
     initialDeviation: settings.initialDeviation,
-    initialVolatility: settings.initialVolatility,
     evidenceWeight: settings.evidenceWeight,
-    tau: settings.tau,
     deviationFloor: settings.deviationFloor,
     provisionalDeviation: settings.provisionalDeviation,
   };

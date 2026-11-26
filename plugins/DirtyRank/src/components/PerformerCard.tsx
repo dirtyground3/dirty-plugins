@@ -1,5 +1,5 @@
 import { NativePreviewPlayer } from "./Preview";
-import { PrecisionBadge, RankButton, RankCrown } from "./Primitives";
+import { PrecisionBadge, RankButton } from "./Primitives";
 import { loadNativePreviewPlayer, loadPreferredMedia, needsNativePreview, scenePlaybackUrl } from "../domain/rank";
 import { PluginApi, React, Router } from "../runtime";
 import type * as R from "react";
@@ -96,27 +96,6 @@ export function PerformerCard(props: PerformerCardProps): R.JSX.Element | null {
     const end = markerEndSeconds(scene);
     if (end !== null && event.currentTarget.currentTime >= end) event.currentTarget.pause();
   }
-  function chooseFromKeyboard(event: R.KeyboardEvent<HTMLElement>) {
-    if (props.disabled || props.crowned || event.target !== event.currentTarget) return;
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      props.onChoose!();
-    }
-  }
-  function chooseFromClick(event: R.MouseEvent<HTMLElement>) {
-    if (props.disabled || props.crowned || event.defaultPrevented) return;
-    if ((event.target as Element).closest && (event.target as Element).closest(".dirty-rank-native-portrait")) return;
-    props.onChoose!();
-  }
-  function chooseNativePhoto(event: R.MouseEvent<HTMLElement>) {
-    const target = event.target as Element;
-    if (!target.closest || !target.closest(".thumbnail-section")) return;
-    if (target.closest("button, input, select, textarea")) return;
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (!props.disabled && !props.crowned) props.onChoose!();
-  }
   function toggleTopScene(event: R.MouseEvent<HTMLElement>) {
     event.preventDefault();
     event.stopPropagation();
@@ -167,36 +146,15 @@ export function PerformerCard(props: PerformerCardProps): R.JSX.Element | null {
   const rankBadge = reveal && props.rank && <span className="dirty-rank-rank">{"#" + props.rank}</span>;
   return (
     <div
-      aria-disabled={props.disabled ? "true" : undefined}
-      aria-label={props.crowned ? "King of the hill: " + performer.name : "Choose " + performer.name}
+      aria-label={performer.name}
       className={
         "dirty-rank-card" +
         (NativePerformerCard ? " dirty-rank-battle-native" : "") +
         (showMedia ? "" : " dirty-rank-card-no-image") +
-        (props.gauntletTarget ? " dirty-rank-card-gauntlet-target" : "") +
-        (props.kingTarget ? " dirty-rank-card-king-target" : "") +
-        (props.crowned ? " dirty-rank-card-crowned" : "") +
-        (props.disabled ? " dirty-rank-card-disabled" : "")
+        (props.gauntletTarget ? " dirty-rank-card-gauntlet-target" : "")
       }
-      onClick={chooseFromClick}
-      onKeyDown={chooseFromKeyboard}
-      role={props.crowned ? "group" : "button"}
-      tabIndex={props.disabled || props.crowned ? -1 : 0}
+      role="group"
     >
-      {props.hillMode && (
-        <div className={"dirty-rank-hill-role" + (props.kingTarget ? " dirty-rank-hill-role-champion" : "")}>
-          <RankCrown />
-          <span>
-            {props.crowned
-              ? "Hill conquered"
-              : props.kingTarget
-                ? "Reigning champion"
-                : props.hillOpening
-                  ? "Contender"
-                  : "Challenger"}
-          </span>
-        </div>
-      )}
       {showMedia && (
         <div
           className={
@@ -207,15 +165,8 @@ export function PerformerCard(props: PerformerCardProps): R.JSX.Element | null {
           }
         >
           {NativePerformerCard ? (
-            <div
-              className="dirty-rank-native-portrait dirty-rank-native-card"
-              onClickCapture={chooseNativePhoto}
-              onKeyDown={(event: R.SyntheticEvent<HTMLElement>) => {
-                event.stopPropagation();
-              }}
-            >
+            <div className="dirty-rank-native-portrait dirty-rank-native-card">
               <NativePerformerCard performer={performer} />
-              {!props.crowned && <span className="dirty-rank-native-vote-hint">Click photo to vote</span>}
               {rankBadge}
             </div>
           ) : (
@@ -241,23 +192,12 @@ export function PerformerCard(props: PerformerCardProps): R.JSX.Element | null {
                   </div>
                 )}
                 {performer.image_path && !imageReady && <div aria-hidden="true" className="dirty-rank-image-loading" />}
-                {!props.crowned && (scene || sceneLoading) && (
-                  <span className="dirty-rank-photo-vote-hint">Click photo to vote</span>
-                )}
                 {rankBadge}
               </div>
             )
           )}
           {(scene || sceneLoading) && (
-            <div
-              className="dirty-rank-scene-panel"
-              onClick={(event: R.MouseEvent<HTMLElement>) => {
-                event.stopPropagation();
-              }}
-              onKeyDown={event => {
-                event.stopPropagation();
-              }}
-            >
+            <div className="dirty-rank-scene-panel">
               {scene &&
               needsNativePreview(scene) &&
               PluginApi.components &&
@@ -308,19 +248,10 @@ export function PerformerCard(props: PerformerCardProps): R.JSX.Element | null {
       )}
       {!showImages && rankBadge}
       {props.gauntletTarget && <span className="dirty-rank-gauntlet-target">Gauntlet target</span>}
-      {props.kingTarget && !props.hillMode && (
-        <span className="dirty-rank-king-target">
-          <RankCrown />
-          {"King of the hill"}
-        </span>
-      )}
       <div className="dirty-rank-card-body">
         <h2 className="dirty-rank-performer-name">
           <Router.NavLink
             className="dirty-rank-performer-link"
-            onClick={(event: R.MouseEvent<HTMLElement>) => {
-              event.stopPropagation();
-            }}
             title={"Open " + performer.name}
             to={"/performers/" + performer.id}
           >
@@ -334,7 +265,7 @@ export function PerformerCard(props: PerformerCardProps): R.JSX.Element | null {
           <RankButton
             compact={true}
             className="dirty-rank-play-scene"
-            disabled={props.disabled || Number(performer.scene_count || 0) < 1}
+            disabled={Number(performer.scene_count || 0) < 1}
             onClick={toggleTopScene}
           >
             {sceneLoading

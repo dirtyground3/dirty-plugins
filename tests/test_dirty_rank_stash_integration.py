@@ -112,11 +112,11 @@ const media = requireSource('DirtyRank', 'src/domain/media.ts');
     operation(fixture, "saveSettings", settings=settings, expectedRevision=snapshot["revision"])
     for index in range(16):
         left, right = people[index % 8], people[(index + 1) % 8]
-        operation(fixture, "record", leftId=left["id"], rightId=right["id"], battleId="fixture-seed-" + str(index),
-                  categoryId="appearance", cohort="FEMALE", outcome="left" if index % 3 else "draw")
+        operation(fixture, "record", leftId=left["id"], rightId=right["id"], verdictId="fixture-seed-" + str(index),
+                  categoryId="appearance", cohort="FEMALE", score=2 if index % 3 else 0)
     before = operation(fixture, "loadAll")
-    args = {"leftId": people[0]["id"], "rightId": people[1]["id"], "battleId": "fixture-roundtrip", "categoryId": "appearance", "cohort": "FEMALE"}
-    operation(fixture, "record", **args, outcome="right")
+    args = {"leftId": people[0]["id"], "rightId": people[1]["id"], "verdictId": "fixture-roundtrip", "categoryId": "appearance", "cohort": "FEMALE"}
+    operation(fixture, "record", **args, score=-2)
     operation(fixture, "undo", **args)
     after = operation(fixture, "loadAll")
     assert {key: value["pools"] for key, value in before["states"].items()} == {

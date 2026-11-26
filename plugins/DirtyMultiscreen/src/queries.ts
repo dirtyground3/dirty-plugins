@@ -45,7 +45,8 @@ const EMPTY = {
   findScenes: { count: 0, scenes: [] },
   findSceneMarkers: { count: 0, scene_markers: [] },
 } as unknown as QueryResult;
-export const SEARCH_PAGE_SIZE = 20;
+/** Short enough that a page of results fits beside the dialog's filter in most windows. */
+export const SEARCH_PAGE_SIZE = 10;
 const PERFORMER_IDS =
   "query MultiscreenPerformers($filter:FindFilterType,$performer_filter:PerformerFilterType){findPerformers(filter:$filter,performer_filter:$performer_filter){performers{id}}}";
 const STUDIO_IDS =

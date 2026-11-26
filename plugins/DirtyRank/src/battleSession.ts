@@ -1,11 +1,5 @@
 import { PLUGIN_ID, UNDO_HISTORY_LIMIT } from "./constants";
-import {
-  categoryConfidence,
-  selectGauntletPair,
-  selectKingsPair,
-  selectKingsStartingPair,
-  selectPair,
-} from "./domain/matchmaking";
+import { categoryConfidence, keepSides, selectGauntletPair, selectPair } from "./domain/matchmaking";
 import { battleCategoryPath, battleId, cohortLabel, ratingDelta } from "./domain/navigation";
 import {
   getRatingIndexRevision,
@@ -17,6 +11,7 @@ import {
   runOperation,
   updatePerformerStates,
 } from "./domain/rank";
+import { VERDICT_LIMIT } from "./domain/rating";
 import {
   CONFIGURATION_CHANGED_EVENT,
   battleCohortFor,
@@ -25,12 +20,13 @@ import {
   rememberCategory,
   settingsFromConfiguration,
 } from "./domain/settings";
+import { applyVerdictResult, chosenVerdict, poolVerdictsFromResult, verdictFor, withVerdict } from "./domain/verdicts";
+import type { PoolVerdicts } from "./domain/verdicts";
 import { DirtyPlugins, React, Router, documentationCapture } from "./runtime";
 import { linkedBox } from "./domain/navigation";
 import type {
   ConfigurationEvent,
   Decision,
-  DefeatedKing,
   Feedback,
   PreparedPair,
   RankCategory,
@@ -41,11 +37,53 @@ import type {
   UndoEntry,
 } from "./types";
 
-/** @param {{routeDetails: {categoryId?: string, kingsMode?: boolean}, routeTargetId?: string}} props */
-export function useBattleSession(props: {
-  routeDetails: { categoryId?: string; kingsMode?: boolean };
-  routeTargetId?: string;
-}) {
+/** How long the chosen number flashes on the scale while the next pair is already shown. */
+export const CHOICE_FLASH_MS = 600;
+
+/**
+ * Home-row keys for the scale, left to right: A S D for the left performer's 3 2 1, G for
+ * equal, J K L for the right performer's 1 2 3. KeyboardEvent.code names a key's position,
+ * not its letter, so the same keys work on every layout (Q S D G J K L on AZERTY).
+ */
+export const VERDICT_KEY_CODES = ["KeyA", "KeyS", "KeyD", "KeyG", "KeyJ", "KeyK", "KeyL"];
+/** The QWERTY letters of those keys, shown until the browser reports the keyboard's own. */
+export const DEFAULT_KEY_LABELS = ["A", "S", "D", "G", "J", "K", "L"];
+/**
+ * The keypad gives the strength directly: 1 2 3 for the left performer (slightly, better,
+ * much better), 0 for equal, 4 5 6 for the right performer. Its codes ignore Num Lock.
+ */
+const KEYPAD_SCORES: Record<string, number> = {
+  Numpad0: 0,
+  Numpad1: 1,
+  Numpad2: 2,
+  Numpad3: 3,
+  Numpad4: -1,
+  Numpad5: -2,
+  Numpad6: -3,
+};
+export function scoreForCode(code: string) {
+  if (Object.prototype.hasOwnProperty.call(KEYPAD_SCORES, code)) return KEYPAD_SCORES[code];
+  const position = VERDICT_KEY_CODES.indexOf(code);
+  return position === -1 ? null : VERDICT_LIMIT - position;
+}
+type KeyboardLayout = { getLayoutMap?(): Promise<Map<string, string>> };
+/** The letters this keyboard types on those keys, where the browser can tell (Chromium's Keyboard Map). */
+export function loadKeyLabels(): Promise<string[]> {
+  const keyboard =
+    typeof navigator === "undefined" ? undefined : (navigator as Navigator & { keyboard?: KeyboardLayout }).keyboard;
+  if (!keyboard || typeof keyboard.getLayoutMap !== "function") return Promise.resolve(DEFAULT_KEY_LABELS);
+  return keyboard
+    .getLayoutMap()
+    .then(layout =>
+      VERDICT_KEY_CODES.map((code, index) => {
+        const key = layout.get(code);
+        return key && key.length === 1 ? key.toUpperCase() : DEFAULT_KEY_LABELS[index];
+      }),
+    )
+    .catch(() => DEFAULT_KEY_LABELS);
+}
+
+export function useBattleSession(props: { routeDetails: { categoryId?: string }; routeTargetId?: string }) {
   const routeDetails = props.routeDetails;
   const requestedCategoryId = routeDetails.categoryId;
   const history = Router.useHistory();
@@ -57,8 +95,7 @@ export function useBattleSession(props: {
   const findTarget = (list: RankPerformer[]) =>
     gauntletMode ? list.find(performer => String(performer.id) === gauntletTargetId) || null : null;
   const censorMedia = documentationCapture();
-  const kingsMode = !gauntletMode && Boolean(routeDetails.kingsMode);
-  DirtyPlugins.react.usePageTitle("DirtyRank", gauntletMode ? "Gauntlet" : kingsMode ? "King of the Hill" : "Battles");
+  DirtyPlugins.react.usePageTitle("DirtyRank", gauntletMode ? "Gauntlet" : "Battles");
   const [settings, setSettings] = React.useState<RankSettings | null>(null);
   const [performers, setPerformers] = React.useState<RankPerformer[]>([]);
   const performersRef = React.useRef(performers),
@@ -76,17 +113,37 @@ export function useBattleSession(props: {
   const [decision, setDecision] = React.useState<Decision | null>(null);
   const [undoHistory, setUndoHistory] = React.useState<UndoEntry[]>([]);
   const [pendingVotes, setPendingVotes] = React.useState(0);
-  const recentPairs = React.useRef<string[]>([]);
+  const [verdicts, setVerdictState] = React.useState<PoolVerdicts | null>(null);
+  const verdictsRef = React.useRef<PoolVerdicts | null>(null);
   const submittedPairRef = React.useRef("");
   const pendingVotesRef = React.useRef(0);
   const voteQueueRef = React.useRef<Promise<unknown>>(Promise.resolve());
   const mountedRef = React.useRef(true);
   const loadRequestRef = React.useRef(0);
   const undoHistoryRef = React.useRef<UndoEntry[]>([]);
-  const defeatedKingsRef = React.useRef<DefeatedKing[]>([]);
   const operationStatusRef = React.useRef(new Map<string, { recordFailed: boolean; undone: boolean }>());
   const preparedPairRef = React.useRef<PreparedPair | null>(null);
   const preparedImagesRef = React.useRef<HTMLImageElement[]>([]);
+  // The number just chosen flashes briefly on the scale; the next pair does not wait for it.
+  const [chosen, setChosen] = React.useState<number | null>(null);
+  const [keyLabels, setKeyLabels] = React.useState<string[]>(DEFAULT_KEY_LABELS);
+  const flashTimerRef = React.useRef<number | null>(null);
+  function cancelFlash() {
+    if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = null;
+  }
+
+  /** Verdict changes apply at once, so the next pair already knows them. */
+  function setVerdicts(update: (current: PoolVerdicts | null) => PoolVerdicts | null) {
+    verdictsRef.current = update(verdictsRef.current);
+    setVerdictState(verdictsRef.current);
+  }
+  /** Change the verdicts of one pool only, if they are still the loaded ones. */
+  function updatePool(categoryId: string, poolCohort: string, update: (current: PoolVerdicts) => PoolVerdicts) {
+    setVerdicts(current =>
+      current && current.categoryId === categoryId && current.cohort === poolCohort ? update(current) : current,
+    );
+  }
 
   const load = React.useCallback(
     (settingsOnly = false) => {
@@ -130,7 +187,6 @@ export function useBattleSession(props: {
           setPairInfo(null);
           setDecision(null);
           undoHistoryRef.current = [];
-          defeatedKingsRef.current = [];
           setUndoHistory([]);
         })
         .catch(caught => {
@@ -144,6 +200,12 @@ export function useBattleSession(props: {
   );
 
   React.useEffect(() => {
+    void loadKeyLabels().then(labels => {
+      if (mountedRef.current) setKeyLabels(labels);
+    });
+  }, []);
+
+  React.useEffect(() => {
     mountedRef.current = true;
     void load();
     function changed(event: ConfigurationEvent) {
@@ -153,6 +215,7 @@ export function useBattleSession(props: {
     return () => {
       mountedRef.current = false;
       loadRequestRef.current += 1;
+      cancelFlash();
       window.removeEventListener(CONFIGURATION_CHANGED_EVENT, changed);
     };
   }, [load]);
@@ -164,12 +227,33 @@ export function useBattleSession(props: {
       cohortCategories.find(item => item.id === (requestedCategoryId || categoryId)) || cohortCategories[0] || null
     );
   }, [categoryId, cohort, settings, requestedCategoryId, gauntletTarget]);
+  const poolCategoryId = category ? category.id : "";
+
+  // Every verdict of the pool, so matchmaking knows which pairs were judged and how.
+  React.useEffect(() => {
+    if (loading || !poolCategoryId || !cohort) return undefined;
+    let cancelled = false;
+    setVerdicts(() => null);
+    runOperation({ mode: "loadVerdicts", categoryId: poolCategoryId, cohort })
+      .then(result => {
+        if (!cancelled && mountedRef.current) setVerdicts(() => poolVerdictsFromResult(poolCategoryId, cohort, result));
+      })
+      .catch(caught => {
+        if (!cancelled && mountedRef.current)
+          setError("DirtyRank could not load the saved verdicts: " + (caught.message || String(caught)));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cohort, loading, poolCategoryId]);
+  const verdictsReady = Boolean(verdicts && verdicts.categoryId === poolCategoryId && verdicts.cohort === cohort);
 
   function resetPair() {
+    cancelFlash();
+    setChosen(null);
     setPairInfo(null);
     preparedPairRef.current = null;
     undoHistoryRef.current = [];
-    defeatedKingsRef.current = [];
     setUndoHistory([]);
     setFeedback(null);
     setDecision(null);
@@ -178,12 +262,11 @@ export function useBattleSession(props: {
   React.useEffect(() => {
     resetPair();
     preparedImagesRef.current = [];
-    recentPairs.current = [];
-  }, [requestedCategoryId, requestedCohort, kingsMode]);
+  }, [requestedCategoryId, requestedCohort]);
 
   React.useEffect(() => {
     if (loading || !settings || !category) return;
-    const targetPath = categoryPath(category!.id, kingsMode, cohort);
+    const targetPath = categoryPath(category!.id, cohort);
     rememberCategory(cohort, category!.id);
     if (
       location.pathname !== targetPath.split("?")[0] ||
@@ -191,40 +274,31 @@ export function useBattleSession(props: {
     ) {
       history.replace(DirtyPlugins.captureUrl(targetPath));
     }
-  }, [category, cohort, gauntletTargetId, history, kingsMode, loading, location.pathname, requestedCohort, settings]);
+  }, [category, cohort, gauntletTargetId, history, loading, location.pathname, requestedCohort, settings]);
 
-  function categoryPath(nextCategoryId: string, nextKingsMode: boolean, nextCohort: string) {
+  function categoryPath(nextCategoryId: string, nextCohort: string) {
     const defaultCohort = battleCohortFor(settings!, gauntletTarget, "");
-    return battleCategoryPath(nextCategoryId, nextKingsMode, gauntletTargetId, linkedBox(defaultCohort, nextCohort));
+    return battleCategoryPath(nextCategoryId, gauntletTargetId, linkedBox(defaultCohort, nextCohort));
   }
 
-  /** @param {string} nextCategoryId */
   function selectCategory(nextCategoryId: string) {
     if (pendingVotes > 0) return;
-    navigate(nextCategoryId, kingsMode, cohort);
+    navigate(nextCategoryId, cohort);
     setCategoryId(nextCategoryId);
     rememberCategory(cohort, nextCategoryId);
   }
 
-  function toggleBattleMode() {
-    if (pendingVotes > 0) return;
-    navigate(category!.id, !kingsMode, cohort);
-  }
-
-  /** @param {string} nextCohort */
   function selectCohort(nextCohort: string) {
     const nextCategories = categoriesForPerformer(settings!, nextCohort, gauntletTarget);
     const preferredId = preferredCategoryId(settings!, nextCohort, category!.id);
     const nextCategoryId = nextCategories.some(item => item.id === preferredId) ? preferredId : nextCategories[0].id;
     setCategoryId(nextCategoryId);
     rememberCategory(nextCohort, nextCategoryId);
-    navigate(nextCategoryId, kingsMode, nextCohort);
+    navigate(nextCategoryId, nextCohort);
   }
 
-  /** @param {string} nextCategoryId @param {boolean} nextKingsMode @param {string} nextCohort */
-  function navigate(nextCategoryId: string, nextKingsMode: boolean, nextCohort: string) {
-    const nextPath = categoryPath(nextCategoryId, nextKingsMode, nextCohort);
-    history.push(DirtyPlugins.captureUrl(nextPath));
+  function navigate(nextCategoryId: string, nextCohort: string) {
+    history.push(DirtyPlugins.captureUrl(categoryPath(nextCategoryId, nextCohort)));
     resetPair();
   }
 
@@ -240,15 +314,23 @@ export function useBattleSession(props: {
       sourceCategory: RankCategory,
       sourceCohort: string,
       sourceSettings: RankSettings,
-      sourceRecentPairs: string[],
+      excluded: Set<string>,
     ) => {
-      if (kingsMode) return selectKingsStartingPair(sourcePerformers, sourceCategory, sourceCohort, sourceSettings);
       const target = findTarget(sourcePerformers);
+      const poolVerdicts = verdictsRef.current;
       return target
-        ? selectGauntletPair(sourcePerformers, target, sourceCategory, sourceCohort, sourceSettings, sourceRecentPairs)
-        : selectPair(sourcePerformers, sourceCategory, sourceCohort, sourceSettings, sourceRecentPairs);
+        ? selectGauntletPair(
+            sourcePerformers,
+            target,
+            sourceCategory,
+            sourceCohort,
+            sourceSettings,
+            poolVerdicts,
+            excluded,
+          )
+        : selectPair(sourcePerformers, sourceCategory, sourceCohort, sourceSettings, poolVerdicts, excluded);
     },
-    [gauntletMode, gauntletTargetId, kingsMode],
+    [gauntletMode, gauntletTargetId],
   );
 
   const pickNext = React.useCallback(
@@ -257,14 +339,12 @@ export function useBattleSession(props: {
       sourceSettings: RankSettings | null,
       sourceCategory: RankCategory | null,
       sourceCohort: string,
+      previous?: RankPerformer[] | null,
     ) => {
       if (!sourceSettings || !sourceCategory) return;
-      const selected = selectModePair(
-        sourcePerformers,
-        sourceCategory,
-        sourceCohort,
-        sourceSettings,
-        recentPairs.current,
+      const selected = keepSides(
+        previous,
+        selectModePair(sourcePerformers, sourceCategory, sourceCohort, sourceSettings, new Set()),
       );
       selected.instanceId = battleId();
       setPairInfo(selected);
@@ -289,27 +369,7 @@ export function useBattleSession(props: {
     });
   }
 
-  function showPreparedOrPickNext(outcome: string) {
-    if (kingsMode) {
-      if (outcome === "left" || outcome === "right") {
-        const winner = pairInfo!.pair![outcome === "left" ? 0 : 1];
-        const selected = selectKingsPair(
-          performers,
-          winner,
-          outcome,
-          defeatedKingsRef.current.map(entry => entry.performerId),
-          category!,
-          cohort,
-          settings!,
-        );
-        selected.instanceId = battleId();
-        setPairInfo(selected);
-        setFeedback(null);
-      } else {
-        pickNext(performers, settings, category, cohort);
-      }
-      return;
-    }
+  function showPreparedOrPickNext() {
     const prepared = preparedPairRef.current;
     const contextKey = category ? preparedPairKey(category!, cohort) : "";
     if (
@@ -320,18 +380,22 @@ export function useBattleSession(props: {
     ) {
       preparedPairRef.current = null;
       preparedImagesRef.current = [];
-      setPairInfo(prepared.pairInfo);
+      const next = keepSides(pairInfo.pair, prepared.pairInfo);
+      const pair = next.pair;
+      // The prepared pair may have been judged by the verdict that was just given.
+      const saved = pair ? verdictFor(verdictsRef.current, pair[0].id, pair[1].id) : null;
+      setPairInfo(Object.assign({}, next, { saved }));
       setFeedback(null);
       return;
     }
-    pickNext(performers, settings, category, cohort);
+    pickNext(performers, settings, category, cohort, pairInfo ? pairInfo.pair : null);
   }
 
   React.useEffect(() => {
-    if (!loading && !error && settings && category && !pairInfo && performers.length) {
+    if (!loading && !error && verdictsReady && settings && category && !pairInfo && performers.length) {
       pickNext(performers, settings, category, cohort);
     }
-  }, [category, cohort, error, loading, pairInfo, performers, pickNext, settings]);
+  }, [category, cohort, error, loading, pairInfo, performers, pickNext, settings, verdictsReady]);
 
   React.useEffect(() => {
     preparedPairRef.current = null;
@@ -339,7 +403,7 @@ export function useBattleSession(props: {
     if (
       loading ||
       error ||
-      kingsMode ||
+      !verdictsReady ||
       !settings ||
       !category ||
       !pairInfo ||
@@ -353,8 +417,9 @@ export function useBattleSession(props: {
     let timeoutHandle: number | null = null;
     function prepareNextPair() {
       if (cancelled) return;
-      const simulatedRecentPairs = recentPairs.current.concat([pairToken(pairInfo!.pair![0], pairInfo!.pair![1])]);
-      const selected = selectModePair(performers, category!, cohort, settings!, simulatedRecentPairs);
+      // The shown pair is about to be judged, so the next pair is another one.
+      const shown = new Set([pairToken(pairInfo!.pair![0], pairInfo!.pair![1])]);
+      const selected = selectModePair(performers, category!, cohort, settings!, shown);
       selected.instanceId = battleId();
       if (cancelled) return;
       preparedPairRef.current = {
@@ -375,13 +440,7 @@ export function useBattleSession(props: {
       if (idleHandle !== null && typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idleHandle);
       if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
     };
-  }, [category, cohort, error, kingsMode, loading, pairInfo, performers, selectModePair, settings]);
-
-  /** Avoid repeating a pair that was just shown, voted on or skipped. */
-  function rememberPair(left: RankPerformer, right: RankPerformer) {
-    recentPairs.current.push(pairToken(left, right));
-    recentPairs.current = recentPairs.current.slice(-Math.max(50, settings!.avoidRepeatWindow));
-  }
+  }, [category, cohort, error, loading, pairInfo, performers, selectModePair, settings, verdictsReady]);
 
   /** Persist operations one at a time, after the UI has already moved on. */
   function enqueue(
@@ -402,31 +461,45 @@ export function useBattleSession(props: {
   }
 
   function publishStates(result: RankOperationResult) {
-    const updates = [result.left, result.right].filter((update): update is NonNullable<typeof update> =>
-      Boolean(update),
-    );
+    // A refit can move other performers of the pool too.
+    const updates = [result.left, result.right]
+      .concat(result.changed || [])
+      .filter((update): update is NonNullable<typeof update> => Boolean(update));
     if (updatePerformerStates(updates)) setPerformers(current => current.slice());
   }
 
-  function submit(outcome: string) {
-    if (!pairInfo || !pairInfo!.pair! || !category) return;
-    if (kingsMode && outcome === "draw") return;
+  /** Save a verdict from the left performer's side: 3 is "left much better", -3 "right much better". */
+  function submit(score: number) {
+    if (!pairInfo || !pairInfo!.pair! || !category || !verdictsReady) return;
+    if (!Number.isInteger(score) || Math.abs(score) > VERDICT_LIMIT) return;
     if (submittedPairRef.current === pairInfo.instanceId) return;
     const left = pairInfo!.pair![0];
     const right = pairInfo!.pair![1];
     const beforeLeft = poolFor(left, category!.id, cohort, settings!);
     const beforeRight = poolFor(right, category!.id, cohort, settings!);
     const id = battleId(),
-      battleCategoryId = category.id,
-      battleSettings = settings!;
-    const historyEntry = { id, categoryId: battleCategoryId, cohort, leftId: left.id, rightId: right.id, pairInfo };
+      verdictCategoryId = category.id,
+      verdictCohort = cohort,
+      verdictSettings = settings!;
+    const previous = verdictFor(verdictsRef.current, left.id, right.id);
+    const confirmation = Boolean(previous && previous.score === score);
+    const historyEntry: UndoEntry = {
+      id,
+      categoryId: verdictCategoryId,
+      cohort,
+      leftId: left.id,
+      rightId: right.id,
+      pairInfo,
+      previous,
+    };
     const operationStatus = { recordFailed: false, undone: false };
-    const leftTone = outcome === "draw" ? "draw" : outcome === "left" ? "winner" : "loser";
-    const rightTone = outcome === "draw" ? "draw" : outcome === "right" ? "winner" : "loser";
+    const tone = (side: number) => (score === 0 ? "draw" : score * side > 0 ? "winner" : "loser");
     submittedPairRef.current = pairInfo.instanceId || "";
     setError("");
-    setDecision({ id, left: { name: left.name, tone: leftTone }, right: { name: right.name, tone: rightTone } });
-    rememberPair(left, right);
+    setDecision({ id, score, left: { name: left.name, tone: tone(1) }, right: { name: right.name, tone: tone(-1) } });
+    updatePool(verdictCategoryId, verdictCohort, current =>
+      withVerdict(current, left.id, right.id, chosenVerdict(previous, score)),
+    );
     const combinedUndoHistory = undoHistoryRef.current.concat([historyEntry]);
     combinedUndoHistory.slice(0, Math.max(0, combinedUndoHistory.length - UNDO_HISTORY_LIMIT)).forEach(entry => {
       operationStatusRef.current.delete(entry.id);
@@ -435,29 +508,37 @@ export function useBattleSession(props: {
     undoHistoryRef.current = nextUndoHistory;
     setUndoHistory(nextUndoHistory);
     operationStatusRef.current.set(id, operationStatus);
-    if (kingsMode) {
-      defeatedKingsRef.current.push({ battleId: id, performerId: String(outcome === "left" ? right.id : left.id) });
-    }
-    showPreparedOrPickNext(outcome);
-    setFeedback({ text: "Vote queued" });
+    showPreparedOrPickNext();
+    setChosen(score);
+    cancelFlash();
+    flashTimerRef.current = window.setTimeout(() => {
+      flashTimerRef.current = null;
+      if (mountedRef.current) setChosen(null);
+    }, CHOICE_FLASH_MS);
+    setFeedback({ text: "Verdict queued" });
 
     enqueue(
       () =>
         runOperation({
           mode: "record",
-          battleId: id,
-          categoryId: battleCategoryId,
-          cohort,
+          verdictId: id,
+          categoryId: verdictCategoryId,
+          cohort: verdictCohort,
           leftId: left.id,
           rightId: right.id,
-          outcome,
+          score,
         }),
       saved => {
         const result = saved!;
         if (!mountedRef.current || operationStatus.undone) return;
         publishStates(result);
-        const afterLeft = poolFor(left, battleCategoryId, cohort, battleSettings);
-        const afterRight = poolFor(right, battleCategoryId, cohort, battleSettings);
+        updatePool(verdictCategoryId, verdictCohort, current => applyVerdictResult(current, result));
+        if (confirmation) {
+          setFeedback({ text: "Verdict confirmed" });
+          return;
+        }
+        const afterLeft = poolFor(left, verdictCategoryId, verdictCohort, verdictSettings);
+        const afterRight = poolFor(right, verdictCategoryId, verdictCohort, verdictSettings);
         setFeedback({
           text:
             left.name +
@@ -473,55 +554,53 @@ export function useBattleSession(props: {
         if (!mountedRef.current) return;
         operationStatus.recordFailed = true;
         if (!operationStatus.undone) {
+          updatePool(verdictCategoryId, verdictCohort, current => withVerdict(current, left.id, right.id, previous));
           undoHistoryRef.current = undoHistoryRef.current.filter(entry => entry.id !== id);
           setUndoHistory(undoHistoryRef.current.slice());
           setDecision(current => (current && current.id === id ? null : current));
         }
-        setError("A queued vote could not be saved: " + (caught.message || String(caught)));
+        setError("A queued verdict could not be saved: " + (caught.message || String(caught)));
       },
     );
   }
 
-  function skip() {
-    if (kingsMode) return;
-    if (!pairInfo || !pairInfo!.pair! || !category) return;
-    rememberPair(pairInfo.pair[0], pairInfo.pair[1]);
-    setDecision(null);
-    showPreparedOrPickNext("skip");
-  }
-
   function undo() {
-    const lastBattle = undoHistoryRef.current[undoHistoryRef.current.length - 1];
-    if (!lastBattle) return;
-    const operationStatus = operationStatusRef.current.get(lastBattle.id) || { recordFailed: false, undone: false };
+    const lastVerdict = undoHistoryRef.current[undoHistoryRef.current.length - 1];
+    if (!lastVerdict) return;
+    const operationStatus = operationStatusRef.current.get(lastVerdict.id) || { recordFailed: false, undone: false };
     operationStatus.undone = true;
-    operationStatusRef.current.set(lastBattle.id, operationStatus);
+    operationStatusRef.current.set(lastVerdict.id, operationStatus);
     undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
-    defeatedKingsRef.current = defeatedKingsRef.current.filter(entry => entry.battleId !== lastBattle.id);
     setUndoHistory(undoHistoryRef.current.slice());
+    cancelFlash();
+    setChosen(null);
     setError("");
-    setPairInfo(Object.assign({}, lastBattle.pairInfo, { instanceId: battleId() }));
+    updatePool(lastVerdict.categoryId, lastVerdict.cohort, current =>
+      withVerdict(current, lastVerdict.leftId, lastVerdict.rightId, lastVerdict.previous),
+    );
+    setPairInfo(Object.assign({}, lastVerdict.pairInfo, { instanceId: battleId() }));
     setDecision(null);
     setFeedback({ text: "Undo queued" });
 
-    // A vote that failed to record has nothing to undo on the server.
+    // A verdict that failed to record has nothing to undo on the server.
     enqueue(
       () =>
         operationStatus.recordFailed
           ? null
           : runOperation({
               mode: "undo",
-              battleId: lastBattle.id,
-              categoryId: lastBattle.categoryId,
-              cohort: lastBattle.cohort,
-              leftId: lastBattle.leftId,
-              rightId: lastBattle.rightId,
+              verdictId: lastVerdict.id,
+              categoryId: lastVerdict.categoryId,
+              cohort: lastVerdict.cohort,
+              leftId: lastVerdict.leftId,
+              rightId: lastVerdict.rightId,
             }),
       result => {
-        operationStatusRef.current.delete(lastBattle.id);
+        operationStatusRef.current.delete(lastVerdict.id);
         if (!mountedRef.current || !result) return;
         publishStates(result);
-        setFeedback({ text: "Battle undone." });
+        updatePool(lastVerdict.categoryId, lastVerdict.cohort, current => applyVerdictResult(current, result));
+        setFeedback({ text: "Verdict undone." });
       },
       caught => {
         if (!mountedRef.current) return;
@@ -534,40 +613,20 @@ export function useBattleSession(props: {
     );
   }
 
-  function restartKings() {
-    if (pendingVotesRef.current > 0) return;
-    resetPair();
-    recentPairs.current = [];
-  }
-
   React.useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.defaultPrevented || !pairInfo || !pairInfo!.pair!) return;
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (!pairInfo || !pairInfo!.pair!) return;
       const tagName = document.activeElement && document.activeElement.tagName;
       if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return;
-      if (event.key === "ArrowLeft") {
+      const score = scoreForCode(event.code);
+      if (score !== null) {
         event.preventDefault();
-        submit("left");
-      }
-      if (event.key === "ArrowRight") {
-        event.preventDefault();
-        submit("right");
-      }
-      if (!kingsMode && event.key === "ArrowUp") {
-        event.preventDefault();
-        submit("draw");
-      }
-      if (event.key === "ArrowDown") {
+        submit(score);
+      } else if (event.key === "ArrowDown" || event.key === "u" || event.key === "U") {
+        // U goes by the letter it types, so it is U on every layout; a scale key never undoes as well.
         event.preventDefault();
         undo();
-      }
-      if (!kingsMode && event.key.toLowerCase() === "t") {
-        event.preventDefault();
-        submit("draw");
-      }
-      if (!kingsMode && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        skip();
       }
     }
     document.addEventListener("keydown", onKeyDown);
@@ -590,19 +649,18 @@ export function useBattleSession(props: {
   }, [pendingVotes]);
 
   return {
-    loading,
+    loading: loading || (!error && Boolean(settings && category) && !verdictsReady),
     error,
     settings,
     category,
     gauntletMode,
-    kingsMode,
     censorMedia,
     pairInfo,
+    chosen,
+    keyLabels,
     performers,
     cohort,
-    defeatedCount: defeatedKingsRef.current.length,
     selectCategory,
-    toggleBattleMode,
     selectCohort,
     pendingVotes,
     feedback,
@@ -612,8 +670,6 @@ export function useBattleSession(props: {
     gauntletTarget,
     load,
     submit,
-    skip,
     undo,
-    restartKings,
   };
 }

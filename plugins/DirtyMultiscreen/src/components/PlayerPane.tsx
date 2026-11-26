@@ -15,6 +15,7 @@ interface PaneProps
     GridProps,
     | "nativePlayer"
     | "playback"
+    | "loopReset"
     | "useFindScene"
     | "continuation"
     | "editing"
@@ -74,6 +75,7 @@ export function NativePlayerPane({
   onSceneChange,
   onViewChange,
   playback: defaultPlayback,
+  loopReset,
   playingElsewhere,
   position,
   columnSpan,
@@ -107,7 +109,13 @@ export function NativePlayerPane({
     setView(next);
     onViewChange(screenIndex, next);
   };
-  // The screen's own loop choice overrides the Loop scenes setting.
+  // The screen's own loop choice overrides the Loop scenes setting, until the menu's Loop scenes sets every screen.
+  const seenLoopReset = React.useRef(loopReset);
+  React.useEffect(() => {
+    if (seenLoopReset.current === loopReset) return;
+    seenLoopReset.current = loopReset;
+    setView(current => (current.loop === undefined ? current : { ...current, loop: undefined }));
+  }, [loopReset]);
   const loop = view.loop ?? defaultPlayback.loop;
   const playback = React.useMemo(
     () => (loop === defaultPlayback.loop ? defaultPlayback : { ...defaultPlayback, loop }),

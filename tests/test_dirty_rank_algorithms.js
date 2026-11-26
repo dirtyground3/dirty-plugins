@@ -1,5 +1,6 @@
 "use strict";
 const { requireRankDomain } = require("./rank_modules");
+const { requireSource } = require("./plugin_paths");
 
 const assert = require("assert");
 
@@ -67,91 +68,33 @@ assert.strictEqual(
   "domain factories install no route, patch, listener or instance guard",
 );
 assert.deepStrictEqual(registrations, [], "import and construction own no host integrations");
-algorithms.ratingPresets = algorithms.RATING_PRESETS;
 const baseSettings = algorithms.settingsFromConfiguration({});
 const category = { id: "appearance", name: "Appearance", enabled: true, weight: 1 };
 const ratingStates = {};
 
 {
-  const presets = algorithms.ratingPresets;
-  assert.strictEqual(presets.map(preset => preset.name).join(","), "Default,Chess,Confident,Extremely confident");
-  assert.strictEqual(
-    algorithms.ratingPresetFor(baseSettings),
-    presets[0],
-    "the original settings are recognized as Default without changing values",
-  );
-  assert.deepStrictEqual(presets[0].settings, {
-    initialRating: 1000,
-    initialDeviation: 350,
-    initialVolatility: 0.06,
-    deviationFloor: 30,
-    provisionalDeviation: 85,
-    evidenceWeight: 2,
-    avoidRepeatWindow: 12,
-    calibrationPercent: 10,
-    tau: 0.5,
-  });
-  const chess = presets.find(preset => preset.id === "chess").settings;
   assert.deepStrictEqual(
-    [
-      chess.initialRating,
-      chess.initialDeviation,
-      chess.initialVolatility,
-      chess.deviationFloor,
-      chess.provisionalDeviation,
-      chess.tau,
-      chess.evidenceWeight,
-    ],
-    [1500, 500, 0.09, 45, 110, 0.75, 1],
-    "Chess matches Lichess core parameters",
+    [baseSettings.initialRating, baseSettings.initialDeviation, baseSettings.evidenceWeight],
+    [1000, 500, 1],
+    "the battle fit starts from a wide prior and counts each vote once",
   );
-  const estimates = {};
-  presets.forEach(preset => {
-    const selected = algorithms.settingsFromConfiguration(preset.settings);
-    assert.strictEqual(algorithms.ratingPresetFor(selected), preset);
-    assert.strictEqual(
-      algorithms.ratingPresetFor(Object.assign({}, selected, { hideBattleStandings: true })),
-      preset,
-      "presentation settings do not change the selected rating preset",
-    );
-    assert.strictEqual(
-      algorithms.ratingPresetFor(Object.assign({}, selected, { tau: 0.42 })),
-      null,
-      "manual parameter changes return to Custom",
-    );
-    const initial = Object.assign(pool(selected.initialRating, selected.initialDeviation, 0), {
-      volatility: selected.initialVolatility,
-    });
-    estimates[preset.id] = algorithms.estimatedMatchesToConfidence(
-      initial,
-      selected.provisionalDeviation,
-      initial,
-      selected,
-    );
-  });
-  assert(
-    estimates["extremely-confident"] < estimates.confident && estimates.confident < estimates.chess,
-    "stronger presets predict fewer informative battles",
-  );
-  assert.strictEqual(
-    estimates.default,
-    estimates.confident,
-    "Default and Confident share rating evidence and differ in matchmaking controls",
-  );
+  for (const retired of ["tau", "initialVolatility"]) {
+    assert(!(retired in baseSettings), retired + " belonged to Glicko-2 and is gone");
+  }
   assert.deepStrictEqual(
-    presets.map(preset => [
-      preset.settings.evidenceWeight,
-      preset.settings.avoidRepeatWindow,
-      preset.settings.calibrationPercent,
-      preset.settings.tau,
-    ]),
-    [
-      [2, 12, 10, 0.5],
-      [1, 12, 10, 0.75],
-      [2, 24, 5, 0.5],
-      [3, 48, 0, 0.3],
-    ],
+    Object.keys(algorithms.ratingParameters(baseSettings)),
+    Array.from(algorithms.RATING_PARAMETER_KEYS),
+    "Undo changes restores every advanced rating and matchmaking value",
   );
+  const initial = pool(baseSettings.initialRating, baseSettings.initialDeviation, 0);
+  const battlesAt = evidenceWeight =>
+    algorithms.estimatedMatchesToConfidence(
+      initial,
+      baseSettings.provisionalDeviation,
+      initial,
+      Object.assign({}, baseSettings, { evidenceWeight }),
+    );
+  assert(battlesAt(2) < battlesAt(1) && battlesAt(1) < battlesAt(0.5), "more evidence per vote refines sooner");
 }
 
 {
@@ -218,9 +161,8 @@ const ratingStates = {};
     "refinement estimates cover the entire box",
   );
   for (const pair of [
-    algorithms.selectPair(people.slice(0, 2), mixed, "BOX-1", mixedSettings, []).pair,
-    algorithms.selectKingsStartingPair(people.slice(0, 2), mixed, "BOX-1", mixedSettings).pair,
-    algorithms.selectGauntletPair(people, people[1], mixed, "BOX-1", mixedSettings, []).pair,
+    algorithms.selectPair(people.slice(0, 2), mixed, "BOX-1", mixedSettings, null).pair,
+    algorithms.selectGauntletPair(people, people[1], mixed, "BOX-1", mixedSettings, null).pair,
   ]) {
     assert.strictEqual(pair.length, 2);
     assert.notStrictEqual(pair[0].gender, pair[1].gender, "all battle modes allow comparisons across selected genders");
@@ -239,12 +181,17 @@ const ratingStates = {};
     "selecting it again restores its standings",
   );
   assert.strictEqual(
-    algorithms.battleCategoryPath("appearance", true, "", "BOX-1"),
-    "/plugins/dirty-rank/category/appearance/king-of-the-hill?box=BOX-1",
+    algorithms.battleCategoryPath("appearance", "", "BOX-1"),
+    "/plugins/dirty-rank/category/appearance?box=BOX-1",
   );
   assert.strictEqual(
-    algorithms.battleCategoryPath("appearance", false, people[1].id, "BOX-1"),
+    algorithms.battleCategoryPath("appearance", people[1].id, "BOX-1"),
     "/plugins/dirty-rank/gauntlet/mixed-1/appearance?box=BOX-1",
+  );
+  assert.strictEqual(
+    algorithms.battleRouteFromPath("/plugins/dirty-rank/category/appearance/king-of-the-hill"),
+    null,
+    "battles have one mode",
   );
   algorithms.setOverallReferencePerformers([]);
   algorithms.applyRatingIndex({ revision: 1, states: {} });
@@ -284,18 +231,17 @@ function performer(id, rating, deviation, matches) {
   const far = pool(1800, 50, 20);
   const closeResult = algorithms.expectedDeviationAfterBattle(uncertain, close, baseSettings);
   const farResult = algorithms.expectedDeviationAfterBattle(uncertain, far, baseSettings);
-  const standardResult = algorithms.expectedDeviationAfterBattle(
+  const weightedResult = algorithms.expectedDeviationAfterBattle(
     uncertain,
     close,
-    Object.assign({}, baseSettings, { evidenceWeight: 1 }),
+    Object.assign({}, baseSettings, { evidenceWeight: 2 }),
   );
+  const uncertainOpponent = algorithms.expectedDeviationAfterBattle(uncertain, pool(1000, 350, 1), baseSettings);
 
   assert(closeResult < uncertain.deviation, "an informative battle must lower expected deviation");
   assert(closeResult < farResult, "a close opponent must provide more information than an implausible result");
-  assert(
-    closeResult < standardResult,
-    "the default evidence multiplier must reduce expected deviation more than standard Glicko-2",
-  );
+  assert(weightedResult < closeResult, "more evidence per vote reduces expected deviation more");
+  assert(closeResult < uncertainOpponent, "an established opponent tells more than an uncertain one");
 }
 
 {
@@ -363,12 +309,12 @@ function performer(id, rating, deviation, matches) {
 
 {
   const performers = [performer(1, 1000, 350, 0), performer(2, 1000, 45, 20), performer(3, 1300, 45, 20)];
-  const settings = Object.assign({}, baseSettings, { confidenceGoal: "all", calibrationPercent: 0 });
+  const settings = Object.assign({}, baseSettings, { confidenceGoal: "all" });
   const originalRandom = Math.random;
   Math.random = function () {
     return 0.5;
   };
-  const selected = algorithms.selectPair(performers, category, "FEMALE", settings, []);
+  const selected = algorithms.selectPair(performers, category, "FEMALE", settings, null);
   Math.random = originalRandom;
 
   assert(
@@ -377,7 +323,7 @@ function performer(id, rating, deviation, matches) {
     }),
     "the optimizer must include the only uncertain performer",
   );
-  assert(selected.expectedRdReduction > 0, "the selected pair must report expected uncertainty reduction");
+  assert(selected.expectedInformation > 0, "the selected pair must report its expected information");
 }
 
 {
@@ -390,7 +336,7 @@ function performer(id, rating, deviation, matches) {
     return 0.5;
   };
   ["all", "ranking", "top"].forEach(function (confidenceGoal) {
-    const settings = Object.assign({}, baseSettings, { confidenceGoal, calibrationPercent: 0, confidenceTopN: 3 });
+    const settings = Object.assign({}, baseSettings, { confidenceGoal, confidenceTopN: 3 });
     [
       [performer(61, 1000, 350, 0), performer(62, 1000, 350, 0)],
       [performer(63, 1000, 253, 1), performer(64, 1000, 253, 1)],
@@ -401,7 +347,7 @@ function performer(id, rating, deviation, matches) {
         })
         .sort()
         .join(":");
-      const selected = algorithms.selectPair(rated.concat(fresh), category, "FEMALE", settings, []);
+      const selected = algorithms.selectPair(rated.concat(fresh), category, "FEMALE", settings, null);
       const pair = selected.pair
         .map(function (item) {
           return item.id;
@@ -418,157 +364,76 @@ function performer(id, rating, deviation, matches) {
     });
   });
   const unrated = [performer(65, 1000, 350, 0), performer(66, 1000, 350, 0), performer(67, 1000, 350, 0)];
-  const settings = Object.assign({}, baseSettings, { calibrationPercent: 0 });
-  const start = algorithms.selectPair(unrated.concat(performer(68, 1100, 253, 1)), category, "FEMALE", settings, []);
+  const start = algorithms.selectPair(
+    unrated.concat(performer(68, 1100, 253, 1)),
+    category,
+    "FEMALE",
+    baseSettings,
+    null,
+  );
   Math.random = originalRandom;
   assert(
     start.pair.every(function (item) {
       return unrated.indexOf(item) >= 0;
     }),
-    "without rated opponents, unrated performers get their first battle before anyone gets a second",
+    "without rated opponents, unrated performers get their first verdict before anyone gets a second",
   );
 }
 
 {
   const performers = [performer(1, 1000, 350, 0), performer(2, 1000, 45, 20), performer(3, 1400, 45, 20)];
-  const settings = Object.assign({}, baseSettings, { calibrationPercent: 0 });
   const originalRandom = Math.random;
   Math.random = function () {
     return 0.5;
   };
-  const selected = algorithms.selectGauntletPair(performers, performers[0], category, "FEMALE", settings, []);
+  const selected = algorithms.selectGauntletPair(performers, performers[0], category, "FEMALE", baseSettings, null);
   Math.random = originalRandom;
 
   assert.strictEqual(selected.pair[0].id, "1", "Gauntlet must keep the target performer fixed on the left");
   assert.notStrictEqual(selected.pair[1].id, "1", "Gauntlet must select a different opponent");
-  assert(selected.expectedRdReduction > 0, "Gauntlet must report the target's expected RD reduction");
+  assert(selected.expectedInformation > 0, "Gauntlet must report the target's expected information");
 }
 
 {
-  const performers = [performer(11, 1000, 300, 1), performer(12, 1000, 300, 1), performer(13, 1000, 300, 1)];
-  const settings = Object.assign({}, baseSettings, { calibrationPercent: 0 });
-  const leftWinner = algorithms.selectKingsPair(
-    performers,
-    performers[0],
-    "left",
-    ["12"],
-    category,
-    "FEMALE",
-    settings,
-  );
-  const rightWinner = algorithms.selectKingsPair(
-    performers,
-    performers[0],
-    "right",
-    ["12"],
-    category,
-    "FEMALE",
-    settings,
-  );
-  assert.deepStrictEqual(
-    leftWinner.pair.map(function (item) {
-      return item.id;
-    }),
-    ["11", "13"],
-    "left winner stays while the defeated challenger leaves",
-  );
-  assert.deepStrictEqual(
-    rightWinner.pair.map(function (item) {
-      return item.id;
-    }),
-    ["13", "11"],
-    "right winner stays on the right",
-  );
-  assert.strictEqual(rightWinner.incumbentId, "11");
-  assert.strictEqual(leftWinner.incumbentSide, "left");
-  assert.strictEqual(rightWinner.incumbentSide, "right");
-  const lastChallenger = algorithms.selectKingsPair(
-    performers.slice(0, 2),
-    performers[0],
-    "left",
-    ["12"],
-    category,
-    "FEMALE",
-    settings,
-  );
-  assert.strictEqual(lastChallenger.pair, null, "a two-person hill ends after its sole challenger loses");
-  const largerPool = performers.concat([performer(14, 1000, 300, 1), performer(15, 1000, 300, 1)]);
-  const laterRound = algorithms.selectKingsPair(
-    largerPool,
-    performers[0],
-    "left",
-    ["12", "13", "14"],
-    category,
-    "FEMALE",
-    settings,
-  );
-  assert.deepStrictEqual(
-    laterRound.pair.map(function (item) {
-      return item.id;
-    }),
-    ["11", "15"],
-    "all previous losers stay out of later rounds",
-  );
-  assert.strictEqual(laterRound.eligible, 5, "rank and eligible count still cover the full pool");
-}
-
-{
-  const performers = [
-    performer(21, 1700, 100, 10),
-    performer(22, 1600, 100, 10),
-    performer(23, 1500, 100, 10),
-    performer(24, 1400, 100, 10),
-    performer(25, 1300, 100, 10),
-    performer(26, 1200, 100, 10),
-  ];
+  // A judged pair's answer replaces its verdict, so a verdict that fits the others is not asked again.
+  const performers = [performer(41, 1000, 350, 0), performer(42, 1000, 45, 20), performer(43, 1400, 45, 20)];
+  const settings = Object.assign({}, baseSettings, { confidenceGoal: "all" });
   const originalRandom = Math.random;
+  Math.random = () => 0.5;
   try {
-    Math.random = () => 0;
-    const opening = algorithms.selectKingsStartingPair(performers, category, "FEMALE", baseSettings);
-    assert.deepStrictEqual(
-      opening.pair.map(item => item.id),
-      ["26", "25"],
-      "Kings starts with the lowest-ranked performers",
+    const fresh = algorithms.emptyPoolVerdicts("appearance", "FEMALE");
+    const first = algorithms.selectPair(performers, category, "FEMALE", settings, fresh);
+    const token = first.pair
+      .map(item => item.id)
+      .sort()
+      .join(":");
+    assert.strictEqual(first.saved, null, "an unjudged pair has no saved verdict");
+    assert(first.expectedInformation > 0, "the selected pair must report its expected information");
+    const judged = algorithms.withVerdict(fresh, first.pair[0].id, first.pair[1].id, { score: 0, confirmations: 0 });
+    const next = algorithms.selectPair(performers, category, "FEMALE", settings, judged);
+    assert.notStrictEqual(
+      next.pair
+        .map(item => item.id)
+        .sort()
+        .join(":"),
+      token,
+      "a verdict that agrees with the ratings leaves its pair for new ones",
     );
-    assert.strictEqual(opening.ranks["26"], 6, "Kings uses the current global ranking");
-    const next = algorithms.selectKingsPair(
-      performers,
-      performers[5],
-      "left",
-      ["25"],
-      category,
-      "FEMALE",
-      baseSettings,
+    const excluded = algorithms.selectPair(performers, category, "FEMALE", settings, fresh, new Set([token]));
+    assert.notStrictEqual(
+      excluded.pair
+        .map(item => item.id)
+        .sort()
+        .join(":"),
+      token,
+      "an excluded pair is skipped",
     );
-    assert.deepStrictEqual(
-      next.pair.map(item => item.id),
-      ["26", "24"],
-      "the challenger climbs to the next available rank",
-    );
-
-    Math.random = () => 0.99;
-    const variedOpening = algorithms.selectKingsStartingPair(performers, category, "FEMALE", baseSettings);
-    assert(
-      variedOpening.pair.every(item => ["24", "25", "26"].includes(item.id)),
-      "opening variation stays near the bottom",
-    );
-    const variedNext = algorithms.selectKingsPair(
-      performers,
-      performers[5],
-      "left",
-      ["25"],
-      category,
-      "FEMALE",
-      baseSettings,
-    );
-    assert.strictEqual(variedNext.pair[1].id, "22", "a challenger can vary within the next three available ranks");
-
-    Math.random = () => 0;
-    const unrated = performers.concat([performer(27, 1500, 350, 0), performer(28, 1500, 350, 0)]);
-    const unratedOpening = algorithms.selectKingsStartingPair(unrated, category, "FEMALE", baseSettings);
-    assert(
-      unratedOpening.pair.every(item => ["27", "28"].includes(item.id)),
-      "unrated performers enter before the established ranking",
+    const gauntlet = algorithms.selectGauntletPair(performers, performers[0], category, "FEMALE", settings, fresh);
+    const gauntletJudged = algorithms.withVerdict(fresh, "41", gauntlet.pair[1].id, { score: 0, confirmations: 0 });
+    assert.notStrictEqual(
+      algorithms.selectGauntletPair(performers, performers[0], category, "FEMALE", settings, gauntletJudged).pair[1].id,
+      gauntlet.pair[1].id,
+      "Gauntlet also moves on from a judged opponent",
     );
   } finally {
     Math.random = originalRandom;
@@ -576,95 +441,121 @@ function performer(id, rating, deviation, matches) {
 }
 
 {
-  const performers = [
-    performer(41, 1000, 350, 0),
-    performer(42, 1000, 300, 0),
-    performer(43, 1000, 45, 20),
-    performer(44, 1400, 45, 20),
-  ];
-  const settings = Object.assign({}, baseSettings, {
-    avoidRepeatWindow: 0,
-    calibrationPercent: 0,
-    confidenceGoal: "all",
+  // A verdict the other verdicts make improbable looks like a slip and comes back.
+  const strong = pool(1700, 40, 30);
+  const weak = pool(700, 40, 30);
+  const thresholds = algorithms.DEFAULT_THRESHOLDS;
+  const agreeing = algorithms.verdictInformation(strong, weak, baseSettings, thresholds, {
+    score: 3,
+    confirmations: 0,
   });
-  const originalRandom = Math.random;
-  Math.random = function () {
-    return 0.5;
-  };
-  const baseline = algorithms.selectPair(performers, category, "FEMALE", settings, []);
-  const baselineToken = baseline.pair
-    .map(function (item) {
-      return item.id;
-    })
-    .sort()
-    .join(":");
-  const recalled = algorithms.selectPair(performers, category, "FEMALE", settings, [baselineToken]);
-  const penalized = algorithms.selectPair(
-    performers,
-    category,
-    "FEMALE",
-    Object.assign({}, settings, { avoidRepeatWindow: 1 }),
-    [baselineToken],
-  );
-  Math.random = originalRandom;
+  const contradicting = algorithms.verdictInformation(strong, weak, baseSettings, thresholds, {
+    score: -3,
+    confirmations: 0,
+  });
+  const confirmed = algorithms.verdictInformation(strong, weak, baseSettings, thresholds, {
+    score: -3,
+    confirmations: 2,
+  });
+  assert(agreeing.slipChance < 0.05, "a verdict that fits the ratings is unlikely to be a slip");
+  assert(contradicting.slipChance > 0.9, "a reversed verdict between distant performers is probably a slip");
+  assert(confirmed.slipChance < contradicting.slipChance / 10, "each confirmation makes a slip much less likely");
+  assert(contradicting.leftGain > agreeing.leftGain * 100, "correcting a slip is worth far more than asking again");
+  const open = algorithms.verdictInformation(pool(1000, 200, 5), pool(1000, 200, 5), baseSettings, thresholds, null);
+  assert.strictEqual(open.slipChance, 0, "a new pair has no saved verdict to correct");
+  assert(open.leftGain > 0 && Math.abs(open.leftGain - open.rightGain) < 1e-12, "a new close pair informs both");
 
-  assert.strictEqual(
-    recalled.pair
-      .map(function (item) {
-        return item.id;
-      })
-      .sort()
-      .join(":"),
-    baselineToken,
-    "avoidRepeatWindow 0 must disable the repeat penalty for selectPair",
+  const performers = [performer(31, 1700, 40, 30), performer(32, 700, 40, 30), performer(33, 1200, 40, 30)];
+  const settings = Object.assign({}, baseSettings, { confidenceGoal: "all" });
+  let verdicts = algorithms.emptyPoolVerdicts("appearance", "FEMALE");
+  verdicts = algorithms.withVerdict(verdicts, "31", "33", { score: 3, confirmations: 0 });
+  verdicts = algorithms.withVerdict(verdicts, "33", "32", { score: 3, confirmations: 0 });
+  verdicts = algorithms.withVerdict(verdicts, "32", "31", { score: 2, confirmations: 0 });
+  const selected = algorithms.selectPair(performers, category, "FEMALE", settings, verdicts);
+  assert.deepStrictEqual(
+    selected.pair.map(item => item.id).sort(),
+    ["31", "32"],
+    "the verdict that breaks the chain is asked again",
   );
-  assert.notStrictEqual(
-    penalized.pair
-      .map(function (item) {
-        return item.id;
-      })
-      .sort()
-      .join(":"),
-    baselineToken,
-    "a positive avoidRepeatWindow must penalize the remembered selectPair pair",
+  const left = selected.pair[0].id;
+  assert.strictEqual(selected.saved.score, left === "32" ? 2 : -2, "the saved verdict is shown from the left side");
+}
+
+{
+  // A performer who stays for the next battle keeps their side.
+  const [a, b, c, d] = ["a", "b", "c", "d"].map(id => ({ id }));
+  const ids = result => result.pair.map(item => item.id).join("");
+  const next = (pair, saved = null) => ({ pair, eligible: 4, ranks: {}, saved });
+  assert.strictEqual(ids(algorithms.keepSides([a, b], next([c, a]))), "ac", "the left performer stays left");
+  assert.strictEqual(ids(algorithms.keepSides([a, b], next([b, c]))), "cb", "the right performer stays right");
+  assert.strictEqual(ids(algorithms.keepSides([a, b], next([a, c]))), "ac");
+  assert.strictEqual(ids(algorithms.keepSides([a, b], next([c, d]))), "cd", "a new pair keeps its own sides");
+  assert.strictEqual(ids(algorithms.keepSides([a, b], next([b, a]))), "ab", "a returning pair keeps both sides");
+  assert.strictEqual(ids(algorithms.keepSides(null, next([b, a]))), "ba");
+  assert.deepStrictEqual(
+    algorithms.keepSides([a, b], next([c, a], { score: 2, confirmations: 1 })).saved,
+    { score: -2, confirmations: 1 },
+    "the saved verdict follows the swap",
   );
 }
 
 {
-  const performers = [performer(51, 1000, 350, 0), performer(52, 1000, 45, 20), performer(53, 1100, 45, 20)];
-  const settings = Object.assign({}, baseSettings, {
-    avoidRepeatWindow: 0,
-    calibrationPercent: 0,
-  });
-  const originalRandom = Math.random;
-  Math.random = function () {
-    return 0.5;
-  };
-  const baseline = algorithms.selectGauntletPair(performers, performers[0], category, "FEMALE", settings, []);
-  const baselineToken = [baseline.pair[0].id, baseline.pair[1].id].sort().join(":");
-  const recalled = algorithms.selectGauntletPair(performers, performers[0], category, "FEMALE", settings, [
-    baselineToken,
+  const thresholds = algorithms.DEFAULT_THRESHOLDS;
+  for (const difference of [-3, -0.4, 0, 1.1, 5]) {
+    const chances = [-3, -2, -1, 0, 1, 2, 3].map(score => algorithms.verdictProbability(difference, score, thresholds));
+    assert(
+      Math.abs(chances.reduce((sum, value) => sum + value, 0) - 1) < 1e-12,
+      "the seven verdicts cover every answer",
+    );
+    const predicted = algorithms.predictedVerdicts(difference, 0, thresholds);
+    chances.forEach((chance, index) =>
+      assert(Math.abs(chance - predicted[index]) < 1e-12, "a certain lead predicts exactly"),
+    );
+  }
+  const certain = algorithms.predictedVerdicts(4, 0, thresholds);
+  const uncertain = algorithms.predictedVerdicts(4, 9, thresholds);
+  assert(uncertain[6] < certain[6], "an uncertain lead predicts a strong verdict less confidently");
+  assert.deepStrictEqual(
+    ["KeyA", "KeyS", "KeyD", "KeyG", "KeyJ", "KeyK", "KeyL"].map(algorithms.scoreForCode),
+    [3, 2, 1, 0, -1, -2, -3],
+    "home-row key positions choose the scale from left to right",
+  );
+  assert.deepStrictEqual(
+    ["Numpad1", "Numpad2", "Numpad3", "Numpad0", "Numpad4", "Numpad5", "Numpad6"].map(algorithms.scoreForCode),
+    [1, 2, 3, 0, -1, -2, -3],
+    "the keypad gives the strength: 1 2 3 left, 0 equal, 4 5 6 right",
+  );
+  assert.deepStrictEqual(["KeyF", "KeyH", "KeyQ", "Digit1", "Numpad7", ""].map(algorithms.scoreForCode), [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
   ]);
-  const penalized = algorithms.selectGauntletPair(
-    performers,
-    performers[0],
-    category,
-    "FEMALE",
-    Object.assign({}, settings, { avoidRepeatWindow: 1 }),
-    [baselineToken],
-  );
-  Math.random = originalRandom;
-
-  assert.strictEqual(
-    [recalled.pair[0].id, recalled.pair[1].id].sort().join(":"),
-    baselineToken,
-    "avoidRepeatWindow 0 must disable the repeat penalty for the gauntlet",
-  );
-  assert.notStrictEqual(
-    [penalized.pair[0].id, penalized.pair[1].id].sort().join(":"),
-    baselineToken,
-    "a positive avoidRepeatWindow must penalize the remembered gauntlet pair",
-  );
+  assert.strictEqual(algorithms.verdictLabel(2, "Ann", "Bea"), "Ann is better than Bea");
+  assert.strictEqual(algorithms.verdictLabel(-3, "Ann", "Bea"), "Bea is much better than Ann");
+  assert.strictEqual(algorithms.verdictLabel(-1, "Ann", "Bea"), "Bea is slightly better than Ann");
+  assert.strictEqual(algorithms.verdictLabel(0, "Ann", "Bea"), "Ann and Bea are equal");
+  let verdicts = algorithms.poolVerdictsFromResult("appearance", "FEMALE", {
+    thresholds: [0.7, 1.9, 3.1],
+    verdicts: [
+      ["10", "9", 2, 1],
+      ["bad", "entry"],
+      ["1", "2", 9, 0],
+    ],
+  });
+  assert.deepStrictEqual(Array.from(verdicts.thresholds), [0.7, 1.9, 3.1]);
+  // Scores arrive from the first ID in text order: "10" sorts before "9".
+  assert.deepStrictEqual(algorithms.verdictFor(verdicts, "10", "9"), { score: 2, confirmations: 1 });
+  assert.deepStrictEqual(algorithms.verdictFor(verdicts, "9", "10"), { score: -2, confirmations: 1 });
+  assert.strictEqual(algorithms.verdictFor(verdicts, "1", "2"), null, "invalid entries are ignored");
+  verdicts = algorithms.applyVerdictResult(verdicts, { verdict: ["10", "9", null, 0], thresholds: [0, 1, 2] });
+  assert.strictEqual(algorithms.verdictFor(verdicts, "10", "9"), null, "a removed verdict leaves the pair unjudged");
+  assert.deepStrictEqual(Array.from(verdicts.thresholds), [0.7, 1.9, 3.1], "invalid thresholds are ignored");
+  assert.deepStrictEqual(algorithms.chosenVerdict({ score: 1, confirmations: 2 }, 1), { score: 1, confirmations: 3 });
+  assert.deepStrictEqual(algorithms.chosenVerdict({ score: 1, confirmations: 2 }, -1), { score: -1, confirmations: 0 });
+  assert.deepStrictEqual(algorithms.chosenVerdict(null, 0), { score: 0, confirmations: 0 });
 }
 
 {
@@ -916,9 +807,9 @@ function performer(id, rating, deviation, matches) {
   assert.strictEqual(cohort.refined, 0);
   assert(cohort.remainingBattles >= 150, "300 unrated performers cannot be refined in eight cohort-wide battles");
   const perPerformer = algorithms.estimatedMatchesToConfidence(
-    pool(1000, 350, 0),
+    pool(1000, maleSettings.initialDeviation, 0),
     maleSettings.provisionalDeviation,
-    pool(1000, 350, 1),
+    pool(1000, maleSettings.initialDeviation, 1),
     maleSettings,
   );
   assert.strictEqual(
@@ -948,14 +839,12 @@ function performer(id, rating, deviation, matches) {
 
 {
   const estimate = algorithms.freshCategoryBattleEstimate;
-  const presets = algorithms.ratingPresets;
-  const defaults = presets.find(preset => preset.name === "Default").settings;
+  const defaults = algorithms.ratingParameters(baseSettings);
   const normal = estimate(300, defaults);
   const perPerson = algorithms.estimatedMatchesToConfidence(
     {
       rating: defaults.initialRating,
       deviation: defaults.initialDeviation,
-      volatility: defaults.initialVolatility,
       matches: 0,
     },
     defaults.provisionalDeviation,
@@ -970,10 +859,8 @@ function performer(id, rating, deviation, matches) {
   assert.strictEqual(estimate(301, defaults).battles, Math.ceil((301 * perPerson) / 2));
   assert.strictEqual(estimate(0, defaults).battles, 0);
   assert.strictEqual(estimate(1, defaults).battles, 0, "one performer cannot battle alone");
-  assert(estimate(300, presets.find(preset => preset.name === "Chess").settings).battles > normal.battles);
-  assert(
-    estimate(300, presets.find(preset => preset.name === "Extremely confident").settings).battles < normal.battles,
-  );
+  assert(estimate(300, { ...defaults, evidenceWeight: 0.5 }).battles > normal.battles);
+  assert(estimate(300, { ...defaults, evidenceWeight: 3 }).battles < normal.battles);
   assert(
     estimate(300, { ...defaults, provisionalDeviation: 70 }).battles > normal.battles,
     "stricter refinement requires more battles",
@@ -984,7 +871,7 @@ function performer(id, rating, deviation, matches) {
     "a common rating offset does not invent extra uncertainty",
   );
   assert.strictEqual(
-    estimate(300, { ...defaults, initialVolatility: 1, provisionalDeviation: 30 }).capped,
+    estimate(300, { ...defaults, evidenceWeight: 0.25, deviationFloor: 1, provisionalDeviation: 1 }).capped,
     true,
     "unreachable refinement is marked as a lower bound",
   );
@@ -1367,6 +1254,93 @@ function performer(id, rating, deviation, matches) {
   );
   assert.strictEqual(publications.length, beforeStaleUndo);
   unsubscribe();
+}
+
+{
+  const near = (actual, expected, message) => assert(Math.abs(actual - expected) < 1e-9, message);
+  // Likely positions: a clear order keeps exact ranks, overlapping ratings widen them.
+  assert.deepStrictEqual(
+    algorithms.rankRanges([
+      { rating: 2000, deviation: 30 },
+      { rating: 1500, deviation: 30 },
+      { rating: 1000, deviation: 30 },
+    ]),
+    [
+      { low: 1, high: 1 },
+      { low: 2, high: 2 },
+      { low: 3, high: 3 },
+    ],
+  );
+  assert.deepStrictEqual(
+    algorithms.rankRanges([
+      { rating: 1010, deviation: 150 },
+      { rating: 1005, deviation: 150 },
+      { rating: 1000, deviation: 150 },
+      { rating: 400, deviation: 40 },
+    ]),
+    [
+      { low: 1, high: 3 },
+      { low: 1, high: 3 },
+      { low: 1, high: 3 },
+      { low: 4, high: 4 },
+    ],
+    "close uncertain ratings share their likely positions; a clearly weaker one does not",
+  );
+  // The Breasts top four: if the leader could drop, a rival behind it could lead.
+  const breasts = algorithms.rankRanges(
+    [
+      [1875, 81],
+      [1814, 68],
+      [1810, 67],
+      [1752, 73],
+      [1500, 60],
+    ].map(([rating, deviation]) => ({ rating, deviation })),
+  );
+  assert(breasts[0].high > 1);
+  assert.deepStrictEqual(
+    breasts.slice(1, 4).map(range => range.low),
+    [1, 1, 1],
+    "rivals too close to call with the leader can also be first",
+  );
+  assert.deepStrictEqual(breasts[4], { low: 5, high: 5 }, "a clearly weaker performer cannot reach the top");
+
+  const scores = requireSource("DirtyRank", "src/domain/scores.ts");
+  const index = scores.buildCategoryScoreIndex(
+    [900, 1000, 1000, 1150, 1400].map((rating, position) => ({ id: "score-" + position, rating })),
+  );
+  for (const [id, group] of index.performers) {
+    near(scores.categoryScoreAt(index, group.rating, group.rating), group.score.rating, id + " matches its own score");
+  }
+  assert(scores.categoryScoreAt(index, 2000, null) > scores.categoryScoreAt(index, 1400, 1400));
+
+  const settings = algorithms.settingsFromConfiguration({ overallScoreStrategy: "rating" });
+  const people = ["range-a", "range-b", "range-c"].map(id => ({ id, name: id, gender: "FEMALE", image_path: "/x" }));
+  algorithms.setOverallReferencePerformers(people);
+  algorithms.applyRatingIndex({
+    revision: 5000,
+    states: {
+      "range-a": { pools: { "appearance|FEMALE": pool(1400, 60, 20), "performance|FEMALE": pool(1300, 60, 20) } },
+      "range-b": { pools: { "appearance|FEMALE": pool(1100, 60, 20), "performance|FEMALE": pool(1000, 60, 20) } },
+      "range-c": { pools: { "appearance|FEMALE": pool(1050, 200, 2) } },
+    },
+  });
+  const board = algorithms.leaderboardData(people, "appearance", "FEMALE", settings);
+  const entries = algorithms.leaderboardEntries(board.ranked, "appearance", "FEMALE", settings);
+  assert.deepStrictEqual(
+    entries.map(entry => entry.range),
+    algorithms.leaderboardRanges(board.ranked, "appearance", "FEMALE", settings),
+    "standings carry the same cached likely positions",
+  );
+  assert.deepStrictEqual(entries[0].range, { low: 1, high: 1 });
+  assert(entries[2].range.low < 3, "an uncertain performer may rank higher than its position");
+  const deviation = index => algorithms.overallScoreDeviation(people[index], "FEMALE", settings);
+  assert(deviation(1) > 0);
+  assert(deviation(2) > deviation(1), "an unrated category makes the overall score less certain");
+  const overall = algorithms.leaderboardData(people, "__overall__", "FEMALE", settings);
+  algorithms.leaderboardRanges(overall.ranked, "__overall__", "FEMALE", settings).forEach((range, position) => {
+    assert(range.low <= position + 1 && position + 1 <= range.high, "a likely range always holds the shown rank");
+  });
+  algorithms.setOverallReferencePerformers([]);
 }
 
 console.log("DirtyRank information-gain and overall scoring algorithm tests passed");

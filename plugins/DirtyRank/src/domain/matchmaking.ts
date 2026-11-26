@@ -1,14 +1,8 @@
-import {
-  categoryEligible,
-  confidenceRevisionFor,
-  pairToken,
-  poolFor,
-  precisionTier,
-  rankPerformers,
-  recentPairWindow,
-} from "./rank";
-import { expectedDeviationAfterBattle, pairInformationGain } from "./rating";
+import { categoryEligible, confidenceRevisionFor, pairToken, poolFor, precisionTier, rankPerformers } from "./rank";
+import { DEFAULT_THRESHOLDS, expectedDeviationAfterBattle, verdictInformation } from "./rating";
 import { settingsFromConfiguration } from "./settings";
+import { verdictFor } from "./verdicts";
+import type { PoolVerdicts } from "./verdicts";
 import type {
   RankCategory,
   RankConfidence,
@@ -45,7 +39,7 @@ function categorySummary(performers: RankPerformer[], category: RankCategory, co
   return summary;
 }
 export function representativeOpponent(pool: RankPool, opponentDeviation: number, settings: RankSettings) {
-  return { rating: pool.rating, deviation: opponentDeviation, volatility: settings.initialVolatility, matches: 1 };
+  return { rating: pool.rating, deviation: opponentDeviation, matches: 1 };
 }
 export function estimatedMatchesToConfidence(
   pool: RankPool,
@@ -77,7 +71,6 @@ export function freshCategoryBattleEstimate(performerCount: number, settings: un
   const initial = {
     rating: effective.initialRating,
     deviation: effective.initialDeviation,
-    volatility: effective.initialVolatility,
     matches: 0,
   };
   const matches = estimatedMatchesToConfidence(initial, effective.provisionalDeviation, initial, effective);
@@ -281,191 +274,122 @@ function rankIndex(performers: RankPerformer[], category: RankCategory, cohort: 
   });
   return ranks;
 }
-/** Penalize recent repeats, widen calibration gaps, then add a small tie-breaking jitter. */
-function finishScore(
-  score: number,
-  repeated: boolean,
-  calibration: boolean,
-  ratingDistance: number,
-  settings: RankSettings,
-) {
-  if (repeated) score *= 0.04;
-  if (calibration) score *= 0.8 + Math.min(0.35, ratingDistance / Math.max(1, settings.initialDeviation * 4));
+/** A tiny jitter so equally informative pairs do not always come in the same order. */
+function jittered(score: number) {
   return score * (0.995 + Math.random() * 0.01);
 }
+/**
+ * The pair whose verdict adds the most expected information to the standings the
+ * confidence goal cares about. Judged pairs compete too: their answer replaces the saved
+ * verdict, so they only win when the saved verdict looks like a slip.
+ */
 export function selectPair(
   performers: RankPerformer[],
   category: RankCategory,
   cohort: string,
   settings: RankSettings,
-  recentTokens: string[],
+  verdicts: PoolVerdicts | null,
+  excluded: Set<string> = new Set(),
 ): RankPairResult {
   const confidence = categoryConfidence(performers, category, cohort, settings);
   const eligible = confidence.entries.map(entry => entry.performer);
   if (eligible.length < 2) return { pair: null, eligible: eligible.length, ranks: {} };
   const ranks = rankIndex(eligible, category, cohort, settings);
+  const thresholds = verdicts ? verdicts.thresholds : DEFAULT_THRESHOLDS;
   const weight = (entry: RankEntry) => confidence.activeWeights.get(String(entry.performer.id)) || 0;
+  const byId = new Map(confidence.entries.map(entry => [String(entry.performer.id), entry]));
   const focus = confidence.entries
     .slice()
     .sort((left, right) => weight(right) - weight(left) || right.pool.deviation - left.pool.deviation)
     .slice(0, MATCHMAKER_FOCUS_LIMIT);
-  const recent = new Set(recentPairWindow(recentTokens, settings.avoidRepeatWindow));
-  const calibration = Math.random() * 100 < settings.calibrationPercent;
-  const evaluated = new Set();
+  const evaluated = new Set<string>();
   let best: RankPairCandidate | null = null;
+  function consider(leftEntry: RankEntry, rightEntry: RankEntry) {
+    if (leftEntry.performer.id === rightEntry.performer.id) return;
+    const token = pairToken(leftEntry.performer, rightEntry.performer);
+    if (evaluated.has(token) || excluded.has(token)) return;
+    evaluated.add(token);
+    const saved = verdictFor(verdicts, leftEntry.performer.id, rightEntry.performer.id);
+    const information = verdictInformation(leftEntry.pool, rightEntry.pool, settings, thresholds, saved);
+    const leftValue = information.leftGain * (0.25 + weight(leftEntry));
+    const rightValue = information.rightGain * (0.25 + weight(rightEntry));
+    let score = Math.max(leftValue, rightValue) + Math.min(leftValue, rightValue) * PARTNER_GAIN_SHARE;
+    // Without rated opponents, still give everyone a first verdict before anyone a second.
+    if (leftEntry.pool.matches === 0 && rightEntry.pool.matches === 0) score *= 1.12;
+    score = jittered(score);
+    if (!best || score > best.score)
+      best = { information, left: leftEntry.performer, right: rightEntry.performer, score, saved };
+  }
   for (const leftEntry of focus) {
-    for (const rightEntry of confidence.entries) {
-      if (leftEntry.performer.id === rightEntry.performer.id) continue;
-      const token = pairToken(leftEntry.performer, rightEntry.performer);
-      if (evaluated.has(token)) continue;
-      evaluated.add(token);
-      const information = pairInformationGain(leftEntry.pool, rightEntry.pool, settings);
-      const leftValue = information.leftGain * (0.25 + weight(leftEntry));
-      const rightValue = information.rightGain * (0.25 + weight(rightEntry));
-      let score = Math.max(leftValue, rightValue) + Math.min(leftValue, rightValue) * PARTNER_GAIN_SHARE;
-      // Without rated opponents, still give everyone a first battle before anyone a second.
-      if (leftEntry.pool.matches === 0 && rightEntry.pool.matches === 0) score *= 1.12;
-      score = finishScore(
-        score,
-        recent.has(token),
-        calibration,
-        Math.abs(leftEntry.pool.rating - rightEntry.pool.rating),
-        settings,
-      );
-      if (!best || score > best.score)
-        best = { information, left: leftEntry.performer, right: rightEntry.performer, score };
+    for (const rightEntry of confidence.entries) consider(leftEntry, rightEntry);
+  }
+  // A slip between two settled performers can matter as much as a new pair.
+  if (verdicts) {
+    for (const key of verdicts.byPair.keys()) {
+      const [lowId, highId] = key.split(":");
+      const low = byId.get(lowId),
+        high = byId.get(highId);
+      if (low && high) consider(low, high);
     }
   }
   if (!best) return { pair: null, eligible: eligible.length, ranks };
+  const chosen: RankPairCandidate = best;
+  const swap = Math.random() < 0.5;
   return {
-    calibration,
     eligible: eligible.length,
-    expectedRdReduction: best.information.rdReduction,
+    expectedInformation: chosen.information.leftGain + chosen.information.rightGain,
     goalLabel: confidence.goalLabel,
-    pair: Math.random() < 0.5 ? [best.left, best.right] : [best.right, best.left],
+    pair: swap ? [chosen.right, chosen.left] : [chosen.left, chosen.right],
     ranks,
+    saved: chosen.saved ? (swap ? { ...chosen.saved, score: -chosen.saved.score } : chosen.saved) : null,
   };
 }
+/**
+ * Orient the next pair so a performer who stays from the previous battle keeps their
+ * side. The saved verdict, scored from the left, follows the swap.
+ */
+export function keepSides(previous: RankPerformer[] | null | undefined, next: RankPairResult): RankPairResult {
+  if (!previous || previous.length !== 2 || !next.pair) return next;
+  const [left, right] = next.pair.map(performer => String(performer.id));
+  const [wasLeft, wasRight] = previous.map(performer => String(performer.id));
+  if (left === wasLeft || right === wasRight || (right !== wasLeft && left !== wasRight)) return next;
+  return Object.assign({}, next, {
+    pair: [next.pair[1], next.pair[0]],
+    saved: next.saved ? { score: -next.saved.score, confirmations: next.saved.confirmations } : next.saved,
+  });
+}
+/** The opponent whose verdict tells the most about the target performer's rating. */
 export function selectGauntletPair(
   performers: RankPerformer[],
   target: RankPerformer,
   category: RankCategory,
   cohort: string,
   settings: RankSettings,
-  recentTokens: string[],
+  verdicts: PoolVerdicts | null,
+  excluded: Set<string> = new Set(),
 ): RankPairResult {
   const eligible = performers.filter(performer => categoryEligible(performer, category, settings, cohort));
   const targetEntry = eligible.find(performer => String(performer.id) === String(target.id));
   const ranks = rankIndex(eligible, category, cohort, settings);
   if (!targetEntry || eligible.length < 2) return { pair: null, eligible: eligible.length, ranks };
+  const thresholds = verdicts ? verdicts.thresholds : DEFAULT_THRESHOLDS;
   const targetPool = poolFor(targetEntry, category.id, cohort, settings);
-  const recent = new Set(recentPairWindow(recentTokens, settings.avoidRepeatWindow));
-  const calibration = Math.random() * 100 < settings.calibrationPercent;
   let best: RankOpponentCandidate | null = null;
   for (const opponent of eligible) {
-    if (String(opponent.id) === String(targetEntry.id)) continue;
+    if (String(opponent.id) === String(targetEntry.id) || excluded.has(pairToken(targetEntry, opponent))) continue;
     const opponentPool = poolFor(opponent, category.id, cohort, settings);
-    const information = pairInformationGain(targetPool, opponentPool, settings);
-    const score = finishScore(
-      information.leftGain + information.rightGain * 0.08,
-      recent.has(pairToken(targetEntry, opponent)),
-      calibration,
-      Math.abs(targetPool.rating - opponentPool.rating),
-      settings,
-    );
-    if (!best || score > best.score) best = { information, opponent, score };
+    const saved = verdictFor(verdicts, targetEntry.id, opponent.id);
+    const information = verdictInformation(targetPool, opponentPool, settings, thresholds, saved);
+    const score = jittered(information.leftGain + information.rightGain * 0.08);
+    if (!best || score > best.score) best = { information, opponent, score, saved };
   }
+  const chosen = best as RankOpponentCandidate | null;
   return {
-    calibration,
     eligible: eligible.length,
-    expectedRdReduction:
-      best && best.information.leftGain > 0
-        ? Math.max(0, targetPool.deviation - best.information.nextLeftDeviation)
-        : 0,
+    expectedInformation: chosen ? chosen.information.leftGain : 0,
     goalLabel: "Target performer",
-    pair: best ? [targetEntry, best.opponent] : null,
+    pair: chosen ? [targetEntry, chosen.opponent] : null,
     ranks,
-  };
-}
-function kingsOrder(performers: RankPerformer[], category: RankCategory, cohort: string, settings: RankSettings) {
-  const eligible = performers.filter(performer => categoryEligible(performer, category, settings, cohort));
-  const ranked = rankPerformers(eligible, category.id, cohort, settings);
-  const ranks: Record<string, number> = {};
-  const rankedIds = new Set();
-  ranked.forEach((performer, index) => {
-    ranks[performer.id] = index + 1;
-    rankedIds.add(String(performer.id));
-  });
-  const unrated = eligible.filter(performer => !rankedIds.has(String(performer.id)));
-  // Unrated performers have no leaderboard position, so vary their order within the starting group.
-  for (let index = unrated.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    const previous = unrated[index];
-    unrated[index] = unrated[swapIndex];
-    unrated[swapIndex] = previous;
-  }
-  return { eligible: eligible.length, ordered: unrated.concat(ranked.reverse()), ranks };
-}
-function takeKingsChallenger(ordered: RankPerformer[]): RankPerformer {
-  // Stay close to the bottom of the remaining ranking without making every round predictable.
-  const band = Math.min(3, ordered.length);
-  const index = Math.floor(Math.pow(Math.random(), 2) * band);
-  return ordered.splice(index, 1)[0];
-}
-export function selectKingsStartingPair(
-  performers: RankPerformer[],
-  category: RankCategory,
-  cohort: string,
-  settings: RankSettings,
-): RankPairResult {
-  const order = kingsOrder(performers, category, cohort, settings);
-  if (order.ordered.length < 2) return { pair: null, eligible: order.eligible, ranks: order.ranks };
-  const startingBand = order.ordered.slice(0, Math.min(3, order.ordered.length));
-  const first = takeKingsChallenger(startingBand);
-  const second = takeKingsChallenger(startingBand);
-  const information = pairInformationGain(
-    poolFor(first, category.id, cohort, settings),
-    poolFor(second, category.id, cohort, settings),
-    settings,
-  );
-  return {
-    eligible: order.eligible,
-    expectedRdReduction: information.rdReduction,
-    goalLabel: "Kings of the hill",
-    pair: Math.random() < 0.5 ? [first, second] : [second, first],
-    ranks: order.ranks,
-  };
-}
-export function selectKingsPair(
-  performers: RankPerformer[],
-  winner: RankPerformer,
-  winnerSide: string,
-  defeatedIds: string[],
-  category: RankCategory,
-  cohort: string,
-  settings: RankSettings,
-): RankPairResult {
-  const order = kingsOrder(performers, category, cohort, settings);
-  const defeated = new Set(defeatedIds.map(id => String(id)));
-  const incumbent = order.ordered.find(performer => String(performer.id) === String(winner.id));
-  const challengers = order.ordered.filter(
-    performer => String(performer.id) !== String(winner.id) && !defeated.has(String(performer.id)),
-  );
-  const challenger = incumbent && challengers.length ? takeKingsChallenger(challengers) : null;
-  const information = challenger
-    ? pairInformationGain(
-        poolFor(incumbent!, category.id, cohort, settings),
-        poolFor(challenger, category.id, cohort, settings),
-        settings,
-      )
-    : null;
-  return {
-    eligible: order.eligible,
-    expectedRdReduction: information ? information.rdReduction : 0,
-    goalLabel: "Kings of the hill",
-    incumbentId: String(winner.id),
-    incumbentSide: winnerSide,
-    pair: challenger ? (winnerSide === "right" ? [challenger, incumbent!] : [incumbent!, challenger]) : null,
-    ranks: order.ranks,
+    saved: chosen ? chosen.saved : null,
   };
 }

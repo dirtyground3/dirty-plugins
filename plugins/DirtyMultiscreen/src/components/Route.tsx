@@ -1,15 +1,22 @@
 import { isMarkerLaunchContext } from "../domain/context";
 import { getMarkerItem, getSceneItem } from "../domain/items";
 import { growPlaylists, pagePlaylists } from "../domain/playlists";
-import { CONTROLS_IDLE_MS, useIdle, useMarkerQuery, useNativePlayerComponent, useSceneQuery } from "../hooks";
+import {
+  CONTROLS_IDLE_MS,
+  useClickAwayFinish,
+  useIdle,
+  useMarkerQuery,
+  useNativePlayerComponent,
+  useSceneQuery,
+} from "../hooks";
 import { closedScreens, queueKey, readSession, writeSession } from "../domain/session";
 import {
   dealtSettings,
-  getPlaybackSettings,
   getSceneLimit,
   GRID_LIMITS,
   growGrid,
   normalizeFitVideos,
+  normalizePlayback,
   normalizeRightClickOptions,
   normalizeSnapDividers,
   normalizeRecentGrids,
@@ -21,15 +28,16 @@ import { contexts, DirtyPlugins, PluginApi, React } from "../runtime";
 import { icon, PluginIconButton, StateView } from "./Controls";
 import { VisibleOCounterButton } from "./Counter";
 import { NativeMultiscreenGrid } from "./Grid";
-import { GridChangeDialog, GridPicker } from "./GridPicker";
-import { SavedGridsButton } from "./SavedGrids";
-import { ShuffleMenu } from "./ShuffleMenu";
+import { GridChangeDialog } from "./GridPicker";
+import { MainMenu } from "./MainMenu";
+import type { PlaybackOption } from "./MainMenu";
 import type { CustomLayout } from "../domain/custom";
 import type {
   FindPerformerItems,
   GridSize,
   GridSnapshot,
   LaunchContext,
+  LoopState,
   SavedGrid,
   SavedGridSummary,
   SavedSession,
@@ -138,7 +146,10 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   const grown = settings.totalScreens > queue.totalScreens;
   const grownRef = React.useRef(grown);
   grownRef.current = grown;
-  const playbackSettings = React.useMemo(() => getPlaybackSettings(settings), [settings]);
+  const playbackSettings = React.useMemo(() => normalizePlayback(rawSettings), [rawSettings]);
+  // Whether the open screens loop, which the grid reports while it plays; the menu's Loop scenes raises loopReset.
+  const [screensLoop, setScreensLoop] = React.useState<LoopState | null>(null);
+  const [loopReset, setLoopReset] = React.useState(0);
   const nativePlayerQuery = useNativePlayerComponent();
   const scenesQuery = useSceneQuery(queue, launchContext, !settingsQuery.loading && !markerMode, resume);
   const markersQuery = useMarkerQuery(queue, launchContext, !settingsQuery.loading && markerMode, resume);
@@ -265,6 +276,14 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   );
   const loading = settingsQuery.loading || activeQuery.loading || nativePlayerQuery.loading;
   const error = settingsQuery.error ?? activeQuery.error ?? nativePlayerQuery.error;
+  /** Settings chosen in the player apply at once and are saved; a failed save keeps them for this session only. */
+  const saveSettings = (change: Record<string, unknown>, what: string) => {
+    const data = { ...rawSettings, ...change };
+    setSettingsQuery(current => ({ ...current, data }));
+    DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
+      DirtyPlugins.ui.notify(`Could not save ${what}. It applies to this session only.`, "error"),
+    );
+  };
   /** The same order loads a fresh random sample; another order also becomes the saved Scene order. */
   const reshuffle = (order: SceneOrder) => {
     resume.current = null;
@@ -274,11 +293,18 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
     }
     if (launchContext?.source === "plugin-list" && launchContext.keepOrder)
       setLaunchContext({ ...launchContext, keepOrder: false });
-    const data = { ...rawSettings, sceneOrder: order };
-    setSettingsQuery(current => ({ ...current, data }));
-    DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
-      DirtyPlugins.ui.notify("Could not save the scene order. It applies to this session only.", "error"),
-    );
+    saveSettings({ sceneOrder: order }, "the scene order");
+  };
+  const playbackLoop = screensLoop ?? playbackSettings.loop;
+  /**
+   * Loop scenes, when off or mixed, makes every screen loop and, when on, stops them all; the screens' own loops
+   * give way to the setting.
+   */
+  const togglePlayback = (option: PlaybackOption) => {
+    if (option === "loop") {
+      saveSettings({ loopScenes: playbackLoop !== true }, "the playback settings");
+      setLoopReset(value => value + 1);
+    } else saveSettings({ [option]: !playbackSettings[option] }, "the playback settings");
   };
   /** Another grid becomes the saved grid and deals a new queue for every screen. */
   const changeGrid = ({ columns, rows }: GridSize) => {
@@ -287,11 +313,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
     setClosed([]);
     setLayout(null);
     setDealtGrid(null);
-    const data = { ...rawSettings, rows, columns };
-    setSettingsQuery(current => ({ ...current, data }));
-    DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
-      DirtyPlugins.ui.notify("Could not save the grid. It applies to this session only.", "error"),
-    );
+    saveSettings({ rows, columns }, "the grid");
   };
   /**
    * + brings back the screen closed last. With none closed it grows the grid by a row or a column and opens one
@@ -309,19 +331,9 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
     const size = grownGrid.rows * grownGrid.columns;
     setDealtGrid(deal ?? { rows: settings.rows, columns: settings.columns });
     setClosed(Array.from({ length: size - settings.totalScreens - 1 }, (_, index) => size - 1 - index));
-    const data = { ...rawSettings, ...grownGrid };
-    setSettingsQuery(current => ({ ...current, data }));
-    DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
-      DirtyPlugins.ui.notify("Could not save the grid. It applies to this session only.", "error"),
-    );
+    saveSettings({ ...grownGrid }, "the grid");
   };
-  const changeFitVideos = () => {
-    const data = { ...rawSettings, fitVideos: !fitVideos };
-    setSettingsQuery(current => ({ ...current, data }));
-    DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
-      DirtyPlugins.ui.notify("Could not save the layout. It applies to this session only.", "error"),
-    );
-  };
+  const changeFitVideos = () => saveSettings({ fitVideos: !fitVideos }, "the layout");
   /** The current screens as a saved grid: this session, and the stored settings its queue was dealt under. */
   const snapshot = (): SavedGrid | null => {
     const current = snapshotRef.current?.();
@@ -381,6 +393,9 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
       ? `No ${itemType}${launchContext.label ? " in " + launchContext.label : ""}`
       : "";
   const docsCapture = DirtyPlugins.captureEnabled(window.location.search);
+  // Edit mode, the Grid submenu and + need screens that play.
+  const playing = !loading && !error && items.length > 0;
+  useClickAwayFinish(editing, () => setEditing(false));
   const retryAll = () => {
     void reloadSettings();
     void activeQuery.refresh();
@@ -429,24 +444,12 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           onCloseScreen={index => setClosed(current => [...current, index])}
           onSessionChange={saveSession}
           onVisibleSceneIdsChange={setVisibleNativeSceneIds}
+          onLoopChange={setScreensLoop}
+          loopReset={loopReset}
           savedPanes={resume.current?.panes}
           savedOrder={resume.current?.order}
           snapshotRef={snapshotRef}
           useFindScene={PluginApi.utils!.StashService!.useFindScene}
-        />
-      )}
-      {editing && !loading && !error && items.length > 0 && (
-        <GridPicker
-          fitVideos={fitVideos}
-          onToggleFit={changeFitVideos}
-          columns={settings.columns}
-          rows={settings.rows}
-          custom={!!layout}
-          onPick={size => {
-            // The same grid returns from custom rows without dealing again.
-            if (size.columns !== settings.columns || size.rows !== settings.rows) setPendingGrid(size);
-            else setLayout(null);
-          }}
         />
       )}
       {pendingGrid && (
@@ -456,32 +459,44 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           onConfirm={() => changeGrid(pendingGrid)}
         />
       )}
-      {/* A column down from the corner, always visible while editing. */}
+      {/* A row in the corner, always visible while editing: the O counter, the menu, then Close at the corner. */}
       <div className={"ms-floating" + (controlsIdle ? " ms-floating-idle" : "")} ref={floatingRef}>
-        <PluginIconButton ariaLabel="Close DirtyMultiscreen" fallback="x" icon={icon("close")} onClick={closeRoute} />
-        {!error && items.length > 0 && <ShuffleMenu order={settings.sceneOrder} onShuffle={reshuffle} />}
-        {!settingsQuery.loading && !settingsQuery.error && (
-          <SavedGridsButton capture={docsCapture} keepRecent={recentGrids} snapshot={snapshot} onOpen={openGrid} />
-        )}
-        {!loading && !error && items.length > 0 && (
-          <PluginIconButton
-            ariaLabel={editing ? "Finish editing screens" : "Edit screens"}
-            fallback="▦"
-            icon={icon("edit")}
-            pressed={editing}
-            onClick={() => setEditing(value => !value)}
-          />
-        )}
-        {!loading && !error && items.length > 0 && (
-          <PluginIconButton
-            ariaLabel={addable.length || grownGrid ? "Add a screen" : "Add a screen: the grid is at its largest"}
-            fallback="+"
-            icon={icon("add")}
-            disabled={!addable.length && !grownGrid}
-            onClick={addScreen}
-          />
-        )}
         <VisibleOCounterButton sceneIds={visibleNativeSceneIds} />
+        <MainMenu
+          editing={playing ? editing : null}
+          onToggleEditing={() => setEditing(value => !value)}
+          grid={
+            playing
+              ? {
+                  columns: settings.columns,
+                  rows: settings.rows,
+                  custom: !!layout,
+                  fitVideos,
+                  onToggleFit: changeFitVideos,
+                  onPick: size => {
+                    // The same grid returns from custom rows without dealing again.
+                    if (size.columns !== settings.columns || size.rows !== settings.rows) setPendingGrid(size);
+                    else setLayout(null);
+                  },
+                }
+              : null
+          }
+          canAdd={addable.length > 0 || !!grownGrid}
+          onAdd={addScreen}
+          order={!error && items.length > 0 ? settings.sceneOrder : null}
+          onShuffle={reshuffle}
+          savedGrids={
+            !settingsQuery.loading && !settingsQuery.error
+              ? { capture: docsCapture, keepRecent: recentGrids, snapshot, onOpen: openGrid }
+              : null
+          }
+          playback={
+            !settingsQuery.loading && !settingsQuery.error
+              ? { ...playbackSettings, loop: playbackLoop, onToggle: togglePlayback }
+              : null
+          }
+        />
+        <PluginIconButton ariaLabel="Close DirtyMultiscreen" fallback="x" icon={icon("close")} onClick={closeRoute} />
       </div>
     </div>
   );

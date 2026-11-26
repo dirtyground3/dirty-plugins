@@ -17,7 +17,7 @@ plugins/
 ├── DirtyPlugins/        # shared runtime: GraphQL, settings, React components, SQLite owner
 ├── DirtyFileExtractor/  # selection UI + Python extraction backend
 ├── DirtyMultiscreen/    # multiscreen playback UI + saved-grids backend
-├── DirtyRank/           # battle/leaderboard UI + Glicko-2 backend
+├── DirtyRank/           # battle/leaderboard UI + battle-fit rating backend
 ├── DirtyStats/          # statistics/visualization UI
 └── DirtyTasks/          # file organization, additive encoding and tag updates
 tests/                   # Node test suites, Python unittest and opt-in Stash fixtures
@@ -192,7 +192,7 @@ ui:
 
 - `dirty_plugins.sqlite3` (WAL mode) in the DirtyPlugins directory is the
   authoritative store for settings and high-frequency data (for example
-  DirtyRank rating pools and battle journal). It lives outside Stash entity
+  DirtyRank rating pools and verdicts). It lives outside Stash entity
   hooks by design.
 - Staged manifests declare typed `settings:` entries (generated from `schemas/`)
   so the hub can render controls, but plugins read/write values through the hub,

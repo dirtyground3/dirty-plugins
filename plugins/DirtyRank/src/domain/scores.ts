@@ -1,4 +1,4 @@
-import { GLICKO_SCALE } from "../constants";
+import { RATING_SCALE } from "../constants";
 
 export interface CategoryScore {
   rating: number;
@@ -14,7 +14,7 @@ interface RatingGroup {
 export interface CategoryScoreIndex {
   performers: Map<string, RatingGroup>;
   groups: Map<number, RatingGroup>;
-  /** Population mean and standard deviation of the category's Glicko ratings. */
+  /** Population mean and standard deviation of the category's ratings. */
   mean: number;
   spread: number;
 }
@@ -26,7 +26,7 @@ export interface CategoryScoreUpdate {
 /** Complementary probabilities use one exponential, including saturated rating gaps. */
 function expectation(rating: number, opponent: number) {
   if (rating === opponent) return 0.5;
-  const lower = 1 / (1 + Math.exp(Math.abs(opponent - rating) / GLICKO_SCALE));
+  const lower = 1 / (1 + Math.exp(Math.abs(opponent - rating) / RATING_SCALE));
   return rating < opponent ? lower : 1 - lower;
 }
 function orderedGroups(index: CategoryScoreIndex) {
@@ -38,8 +38,8 @@ const MAX_WEIGHT_SPAN = 512;
 function comparisonWeights(groups: RatingGroup[]) {
   if (groups.length < 2) return null;
   const first = groups[0]?.rating || 0;
-  const span = ((groups[groups.length - 1]?.rating || 0) - first) / GLICKO_SCALE;
-  return span <= MAX_WEIGHT_SPAN ? groups.map(group => Math.exp((group.rating - first) / GLICKO_SCALE)) : null;
+  const span = ((groups[groups.length - 1]?.rating || 0) - first) / RATING_SCALE;
+  return span <= MAX_WEIGHT_SPAN ? groups.map(group => Math.exp((group.rating - first) / RATING_SCALE)) : null;
 }
 function publishScores(index: CategoryScoreIndex, groups = orderedGroups(index)) {
   const count = index.performers.size;
@@ -94,6 +94,24 @@ function* categoryScoreWork(entries: Iterable<{ id: string; rating: number }>) {
   }
   publishScores(index, groups);
   return index;
+}
+/**
+ * The category score a performer would have at `rating`, against everyone else in the
+ * index. `own` is the performer's indexed rating, left out of the comparison, or null.
+ */
+export function categoryScoreAt(index: CategoryScoreIndex, rating: number, own: number | null) {
+  const others = index.performers.size - (own === null ? 0 : 1);
+  if (others < 1) return 50;
+  let below = 0,
+    expected = 0;
+  for (const group of index.groups.values()) {
+    const count = group.count - (own !== null && group.rating === own ? 1 : 0);
+    if (!count) continue;
+    if (group.rating < rating) below += count;
+    else if (group.rating === rating) below += count / 2;
+    expected += count * expectation(rating, group.rating);
+  }
+  return 0.8 * ((100 * below) / others) + 0.2 * ((100 * expected) / others);
 }
 export function buildCategoryScoreIndex(entries: Iterable<{ id: string; rating: number }>): CategoryScoreIndex {
   const work = categoryScoreWork(entries);

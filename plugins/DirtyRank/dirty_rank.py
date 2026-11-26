@@ -1,4 +1,4 @@
-"""DirtyRank backend: category-scoped Glicko-2 ratings for Stash performers."""
+"""DirtyRank backend: category-scoped ratings for Stash performers, fitted to every verdict."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ import sys
 import unicodedata
 import uuid
 from contextlib import contextmanager
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -23,10 +22,20 @@ from dirty_rank_metadata import CONSTANTS, DEFAULTS, LIMITS  # noqa: E402
 
 PLUGIN_ID = "dirtyRank"
 STATE_VERSION = 2
-GLICKO_SCALE = 173.7178
-GLICKO_ORIGIN = 1500.0
-MAX_RECENT_BATTLE_IDS = 24
-UNDO_SNAPSHOT_LIMIT = 100
+# A refit rewrites a stored pool only when it moves by at least this much.
+WRITE_TOLERANCE = 0.01
+VERDICT_THRESHOLDS = tuple(float(value) for value in CONSTANTS["verdictThresholds"])
+# Changing these refits every pool, so the new values apply to all verdicts.
+FIT_SETTINGS = ("initialRating", "initialDeviation", "evidenceWeight", "deviationFloor")
+# Settings of earlier rating models and matchmaking, and values tuned for them.
+RETIRED_SETTINGS = (
+    "tau", "initialVolatility", "evidenceWeight", "initialDeviation", "avoidRepeatWindow", "calibrationPercent",
+)
+# Tables of the battle journal that verdicts replaced.
+PREVIOUS_TABLES = (
+    "dirty_rank_pools", "dirty_rank_baselines", "dirty_rank_battles",
+    "dirty_rank_pools_previous", "dirty_rank_battles_previous",
+)
 VALID_COHORTS = {
     "FEMALE",
     "MALE",
@@ -56,7 +65,7 @@ else:
 import dirty_plugins_storage as shared_storage
 from dirty_plugins_protocol import Reporter
 import dirty_plugins_protocol as protocol
-from dirty_rank_rating import PluginError, Rating, glicko2_update
+from dirty_rank_rating import VERDICT_LIMIT, PluginError, Rating, Verdict, fit_ratings
 
 
 def _finite_number(value: Any, fallback: float, minimum: float, maximum: float) -> float:
@@ -252,13 +261,9 @@ def normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
         "includePerformersWithoutImages": flag("includePerformersWithoutImages"),
         "confidenceGoal": confidence_goal,
         "confidenceTopN": _bounded_integer(source, "confidenceTopN"),
-        "avoidRepeatWindow": _bounded_integer(source, "avoidRepeatWindow"),
-        "calibrationPercent": _bounded_integer(source, "calibrationPercent"),
         "initialRating": _bounded(source, "initialRating"),
         "initialDeviation": initial_deviation,
-        "initialVolatility": _bounded(source, "initialVolatility"),
         "evidenceWeight": _bounded(source, "evidenceWeight"),
-        "tau": _bounded(source, "tau"),
         "deviationFloor": deviation_floor,
         "provisionalDeviation": _bounded(source, "provisionalDeviation", deviation_floor, initial_deviation),
     }
@@ -272,71 +277,12 @@ def iso_time(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def default_rating(settings: dict[str, Any]) -> Rating:
-    return Rating(
-        rating=float(settings["initialRating"]),
-        deviation=float(settings["initialDeviation"]),
-        volatility=float(settings["initialVolatility"]),
-    )
-
-
-def rating_from_pool(pool: Any, settings: dict[str, Any]) -> Rating:
-    if not isinstance(pool, dict):
-        return default_rating(settings)
-    return Rating(
-        rating=_finite_number(pool.get("rating"), settings["initialRating"], -1000000.0, 1000000.0),
-        deviation=_finite_number(pool.get("deviation"), settings["initialDeviation"], settings["deviationFloor"], settings["initialDeviation"]),
-        volatility=_finite_number(pool.get("volatility"), settings["initialVolatility"], 0.0001, 2.0),
-        **{count: _integer(pool.get(count), 0, 0, 2_000_000_000) for count in ("matches", "wins", "losses", "draws")},
-        last_rated_at=str(pool.get("lastRatedAt")) if pool.get("lastRatedAt") else None,
-    )
-
-
-def rating_to_pool(rating: Rating) -> dict[str, Any]:
-    value = asdict(rating)
-    value["lastRatedAt"] = value.pop("last_rated_at")
-    return value
-
-
-def rate_battle(
-    left: Rating,
-    right: Rating,
-    score_left: float,
-    settings: dict[str, Any],
-    now: datetime | None = None,
-) -> tuple[Rating, Rating]:
-    now = now or utc_now()
-    updated_left = glicko2_update(left, [(right, score_left)], settings)
-    updated_right = glicko2_update(right, [(left, 1.0 - score_left)], settings)
-    timestamp = iso_time(now)
-
-    def with_result(value: Rating, score: float) -> Rating:
-        return Rating(
-            rating=value.rating,
-            deviation=value.deviation,
-            volatility=value.volatility,
-            matches=value.matches + 1,
-            wins=value.wins + (1 if score == 1.0 else 0),
-            losses=value.losses + (1 if score == 0.0 else 0),
-            draws=value.draws + (1 if score == 0.5 else 0),
-            last_rated_at=timestamp,
-        )
-
-    return with_result(updated_left, score_left), with_result(updated_right, 1.0 - score_left)
-
-
 def pool_key(category_id: str, cohort: str) -> str:
     return f"{_slug(category_id)}|{cohort.upper()}"
 
 
-def _recent_ids(pool: Any) -> list[str]:
-    if not isinstance(pool, dict) or not isinstance(pool.get("recentBattleIds"), list):
-        return []
-    return [str(value) for value in pool["recentBattleIds"]][-MAX_RECENT_BATTLE_IDS:]
-
-
 class RatingRepository:
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 4
 
     def __init__(
         self,
@@ -367,6 +313,12 @@ class RatingRepository:
         ).fetchone()
         return int(row[0]) if row else 0
 
+    @staticmethod
+    def _table_exists(connection: Any, name: str) -> bool:
+        return connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        ).fetchone() is not None
+
     def ensure_schema(self) -> None:
         with self.connect() as connection:
             if self._schema_version(connection) == self.SCHEMA_VERSION:
@@ -381,56 +333,85 @@ class RatingRepository:
                 raise PluginError(
                     f"DirtyRank database schema {installed_version} is newer than this plugin supports"
                 )
-            # Version 1 could create its tables before recording the schema version.
-            if not installed_version and connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='dirty_rank_battles'"
-            ).fetchone():
-                installed_version = 1
-            if installed_version == 1:
+            previous = [table for table in PREVIOUS_TABLES if self._table_exists(connection, table)]
+            if previous:
+                # Verdicts replace battles. The backup keeps the battles and ratings;
+                # every pool then starts unrated.
                 shared_storage.backup_database(path=self.path)
-                connection.execute("ALTER TABLE dirty_rank_battles RENAME TO dirty_rank_battles_v1")
+                for table in previous:
+                    connection.execute(f"DROP TABLE {table}")
+                stored = shared_storage.get_plugin_settings(PLUGIN_ID, connection=connection)
+                if any(key in stored for key in RETIRED_SETTINGS):
+                    stored = {key: value for key, value in stored.items() if key not in RETIRED_SETTINGS}
+                    shared_storage.set_plugin_settings_on_connection(PLUGIN_ID, stored, connection)
 
             connection.execute("""
-                CREATE TABLE IF NOT EXISTS dirty_rank_pools (
+                CREATE TABLE dirty_rank_pools (
                   performer_id TEXT NOT NULL,
                   category_id TEXT NOT NULL,
                   cohort TEXT NOT NULL,
                   rating REAL NOT NULL,
                   deviation REAL NOT NULL,
-                  volatility REAL NOT NULL,
                   matches INTEGER NOT NULL,
                   wins INTEGER NOT NULL,
                   losses INTEGER NOT NULL,
                   draws INTEGER NOT NULL,
                   last_rated_at TEXT,
-                  recent_battle_ids TEXT NOT NULL DEFAULT '[]',
                   PRIMARY KEY (performer_id, category_id, cohort)
                 )
             """)
+            # One verdict per pair, from the first ID's side in text order: positive
+            # favours low_id. Confirmations count how often the same verdict was chosen again.
             connection.execute("""
-                CREATE TABLE dirty_rank_battles (
-                  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                  battle_id TEXT NOT NULL UNIQUE,
+                CREATE TABLE dirty_rank_verdicts (
                   category_id TEXT NOT NULL,
                   cohort TEXT NOT NULL,
-                  left_id TEXT NOT NULL,
-                  right_id TEXT NOT NULL,
-                  outcome TEXT NOT NULL,
-                  undo_snapshot TEXT,
-                  status TEXT NOT NULL DEFAULT 'active',
+                  low_id TEXT NOT NULL,
+                  high_id TEXT NOT NULL,
+                  score INTEGER NOT NULL CHECK (score BETWEEN -3 AND 3),
+                  confirmations INTEGER NOT NULL DEFAULT 0,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL,
+                  PRIMARY KEY (category_id, cohort, low_id, high_id)
+                )
+            """)
+            # Every choice in order, with what it replaced, for duplicate protection and undo.
+            connection.execute("""
+                CREATE TABLE dirty_rank_verdict_log (
+                  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                  verdict_id TEXT NOT NULL UNIQUE,
+                  category_id TEXT NOT NULL,
+                  cohort TEXT NOT NULL,
+                  low_id TEXT NOT NULL,
+                  high_id TEXT NOT NULL,
+                  score INTEGER NOT NULL,
+                  previous_score INTEGER,
+                  previous_confirmations INTEGER,
+                  previous_updated_at TEXT,
                   created_at TEXT NOT NULL,
                   undone_at TEXT
                 )
             """)
-            if installed_version == 1:
-                self._migrate_battles(connection)
-
-            connection.execute("""CREATE INDEX dirty_rank_battles_left_latest
-                ON dirty_rank_battles(left_id, category_id, cohort, status, sequence DESC)""")
-            connection.execute("""CREATE INDEX dirty_rank_battles_right_latest
-                ON dirty_rank_battles(right_id, category_id, cohort, status, sequence DESC)""")
-            connection.execute("""CREATE INDEX dirty_rank_battles_undo_window
-                ON dirty_rank_battles(category_id, cohort, sequence DESC) WHERE undo_snapshot IS NOT NULL""")
+            connection.execute("""CREATE INDEX dirty_rank_verdict_log_by_pair
+                ON dirty_rank_verdict_log(category_id, cohort, low_id, high_id, sequence)""")
+            # Where this pool's verdicts put "slightly", "better" and "much better", in log-odds.
+            connection.execute("""
+                CREATE TABLE dirty_rank_scales (
+                  category_id TEXT NOT NULL,
+                  cohort TEXT NOT NULL,
+                  slightly REAL NOT NULL,
+                  better REAL NOT NULL,
+                  much REAL NOT NULL,
+                  PRIMARY KEY (category_id, cohort)
+                )
+            """)
+            connection.execute(
+                """INSERT OR IGNORE INTO dirty_metadata(namespace, key, value)
+                   VALUES (?, 'revision', '0')""",
+                (PLUGIN_ID,),
+            )
+            if previous:
+                self.increment_revision(connection)
             connection.execute(
                 """INSERT INTO dirty_schema_versions(plugin_id, version, applied_at)
                    VALUES (?, ?, ?)
@@ -438,13 +419,8 @@ class RatingRepository:
                      version=excluded.version, applied_at=excluded.applied_at""",
                 (PLUGIN_ID, self.SCHEMA_VERSION, iso_time(utc_now())),
             )
-            connection.execute(
-                """INSERT OR IGNORE INTO dirty_metadata(namespace, key, value)
-                   VALUES (?, 'revision', '0')""",
-                (PLUGIN_ID,),
-            )
             connection.commit()
-            if installed_version == 1:
+            if previous:
                 try:
                     connection.execute("VACUUM")
                 except sqlite3.OperationalError:
@@ -453,50 +429,17 @@ class RatingRepository:
                     pass
 
     @staticmethod
-    def _migrate_battles(connection: Any) -> None:
-        connection.execute("""
-            INSERT INTO dirty_rank_battles (
-              sequence, battle_id, category_id, cohort, left_id, right_id, outcome,
-              undo_snapshot, status, created_at, undone_at
-            )
-            SELECT sequence, battle_id, category_id, cohort, left_id, right_id, outcome,
-              CASE WHEN status = 'active' AND ROW_NUMBER() OVER (
-                PARTITION BY category_id, cohort, status ORDER BY sequence DESC
-              ) <= ? THEN '[' || COALESCE(left_before, 'null') || ',' || COALESCE(right_before, 'null') || ']'
-              END,
-              status, created_at, undone_at
-            FROM dirty_rank_battles_v1
-        """, (UNDO_SNAPSHOT_LIMIT,))
-        # Preserve the sequence high-water mark even if a reset deleted newer battles.
-        connection.execute("DELETE FROM sqlite_sequence WHERE name='dirty_rank_battles'")
-        connection.execute("UPDATE sqlite_sequence SET name='dirty_rank_battles' WHERE name='dirty_rank_battles_v1'")
-        connection.execute("DROP TABLE dirty_rank_battles_v1")
-
-    @staticmethod
-    def prune_undo_snapshots(connection: Any, category_id: str, cohort: str) -> None:
-        connection.execute("""
-            UPDATE dirty_rank_battles SET undo_snapshot=NULL
-            WHERE category_id=? AND cohort=? AND undo_snapshot IS NOT NULL AND sequence <= (
-              SELECT sequence FROM dirty_rank_battles
-              WHERE category_id=? AND cohort=? AND undo_snapshot IS NOT NULL
-              ORDER BY sequence DESC LIMIT 1 OFFSET ?
-            )
-        """, (category_id, cohort, category_id, cohort, UNDO_SNAPSHOT_LIMIT))
-
-    @staticmethod
     def _row_pool(row: Any) -> dict[str, Any] | None:
         if row is None:
             return None
         return {
             "rating": float(row["rating"]),
             "deviation": float(row["deviation"]),
-            "volatility": float(row["volatility"]),
             "matches": int(row["matches"]),
             "wins": int(row["wins"]),
             "losses": int(row["losses"]),
             "draws": int(row["draws"]),
             "lastRatedAt": row["last_rated_at"],
-            "recentBattleIds": json.loads(row["recent_battle_ids"] or "[]"),
         }
 
     def pool(self, connection: Any, performer_id: str, category_id: str, cohort: str) -> dict[str, Any] | None:
@@ -507,34 +450,93 @@ class RatingRepository:
         ).fetchone()
         return self._row_pool(row)
 
-    def put_pool(self, connection: Any, performer_id: str, category_id: str, cohort: str, pool: dict[str, Any]) -> None:
-        connection.execute(
-            """INSERT INTO dirty_rank_pools(
-                 performer_id, category_id, cohort, rating, deviation, volatility,
-                 matches, wins, losses, draws, last_rated_at, recent_battle_ids
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(performer_id, category_id, cohort) DO UPDATE SET
-                 rating=excluded.rating, deviation=excluded.deviation,
-                 volatility=excluded.volatility, matches=excluded.matches,
-                 wins=excluded.wins, losses=excluded.losses, draws=excluded.draws,
-                 last_rated_at=excluded.last_rated_at,
-                 recent_battle_ids=excluded.recent_battle_ids""",
-            (
-                performer_id, category_id, cohort, pool["rating"], pool["deviation"],
-                pool["volatility"], pool["matches"], pool["wins"], pool["losses"],
-                pool["draws"], pool.get("lastRatedAt"),
-                json.dumps(_recent_ids(pool), separators=(",", ":")),
-            ),
-        )
+    @staticmethod
+    def pool_keys(connection: Any) -> list[tuple[str, str]]:
+        rows = connection.execute("""
+            SELECT category_id, cohort FROM dirty_rank_verdicts
+            UNION SELECT category_id, cohort FROM dirty_rank_pools
+            UNION SELECT category_id, cohort FROM dirty_rank_scales
+        """).fetchall()
+        return sorted((str(row[0]), str(row[1])) for row in rows)
 
-    def restore_pool(self, connection: Any, performer_id: str, category_id: str, cohort: str, snapshot: dict[str, Any] | None) -> None:
-        if snapshot is None:
+    def refit_all(self, connection: Any, settings: dict[str, Any]) -> set[str]:
+        changed: set[str] = set()
+        for category_id, cohort in self.pool_keys(connection):
+            changed |= self.refit(connection, category_id, cohort, settings)
+        return changed
+
+    def refit(self, connection: Any, category_id: str, cohort: str, settings: dict[str, Any]) -> set[str]:
+        """Fit one pool to its verdicts. Returns the performers whose pool changed."""
+        verdicts = [
+            Verdict(str(row["low_id"]), str(row["high_id"]), int(row["score"]), row["updated_at"])
+            for row in connection.execute(
+                """SELECT low_id, high_id, score, updated_at FROM dirty_rank_verdicts
+                   WHERE category_id=? AND cohort=? ORDER BY low_id, high_id""",
+                (category_id, cohort),
+            )
+        ]
+        stored = {
+            str(row["performer_id"]): row
+            for row in connection.execute(
+                "SELECT * FROM dirty_rank_pools WHERE category_id=? AND cohort=?", (category_id, cohort)
+            )
+        }
+        fit = fit_ratings(verdicts, settings, VERDICT_THRESHOLDS)
+        if verdicts:
+            connection.execute(
+                """INSERT INTO dirty_rank_scales(category_id, cohort, slightly, better, much)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(category_id, cohort) DO UPDATE SET
+                     slightly=excluded.slightly, better=excluded.better, much=excluded.much""",
+                (category_id, cohort, *fit.thresholds),
+            )
+        else:
+            connection.execute("DELETE FROM dirty_rank_scales WHERE category_id=? AND cohort=?", (category_id, cohort))
+        changed: set[str] = set()
+        for performer_id, rating in fit.ratings.items():
+            row = stored.get(performer_id)
+            if row is not None and _same_pool(row, rating):
+                continue
+            connection.execute(
+                """INSERT INTO dirty_rank_pools(
+                     performer_id, category_id, cohort, rating, deviation,
+                     matches, wins, losses, draws, last_rated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(performer_id, category_id, cohort) DO UPDATE SET
+                     rating=excluded.rating, deviation=excluded.deviation,
+                     matches=excluded.matches, wins=excluded.wins, losses=excluded.losses,
+                     draws=excluded.draws, last_rated_at=excluded.last_rated_at""",
+                (
+                    performer_id, category_id, cohort, rating.rating, rating.deviation,
+                    rating.matches, rating.wins, rating.losses, rating.draws, rating.last_rated_at,
+                ),
+            )
+            changed.add(performer_id)
+        for performer_id in set(stored) - set(fit.ratings):
             connection.execute(
                 "DELETE FROM dirty_rank_pools WHERE performer_id=? AND category_id=? AND cohort=?",
                 (performer_id, category_id, cohort),
             )
-        else:
-            self.put_pool(connection, performer_id, category_id, cohort, snapshot)
+            changed.add(performer_id)
+        return changed
+
+    @staticmethod
+    def thresholds(connection: Any, category_id: str, cohort: str) -> list[float]:
+        row = connection.execute(
+            "SELECT slightly, better, much FROM dirty_rank_scales WHERE category_id=? AND cohort=?",
+            (category_id, cohort),
+        ).fetchone()
+        return [float(value) for value in row] if row else list(VERDICT_THRESHOLDS)
+
+    @staticmethod
+    def verdict(connection: Any, category_id: str, cohort: str, low_id: str, high_id: str) -> list[Any]:
+        """[low ID, high ID, score from the low ID's side or None, confirmations]."""
+        row = connection.execute(
+            """SELECT score, confirmations FROM dirty_rank_verdicts
+               WHERE category_id=? AND cohort=? AND low_id=? AND high_id=?""",
+            (category_id, cohort, low_id, high_id),
+        ).fetchone()
+        return [low_id, high_id, int(row["score"]), int(row["confirmations"])] if row else [low_id, high_id, None, 0]
 
     def revision(self, connection: Any) -> int:
         row = connection.execute(
@@ -562,8 +564,13 @@ class RatingRepository:
             state["pools"][pool_key(row["category_id"], row["cohort"])] = self._row_pool(row)
         return state
 
+    def states(self, connection: Any, performer_ids: set[str], revision: int) -> list[dict[str, Any]]:
+        """Full states of the performers a refit changed, for the browser's rating index."""
+        return [{"id": performer_id, "state": self.state(connection, performer_id, revision)}
+                for performer_id in sorted(performer_ids)]
+
     def pair_result(self, connection: Any, left_id: str, right_id: str, key: str, revision: int) -> dict[str, Any]:
-        """Both performers' full states and their battle pool at one revision."""
+        """Both performers' full states and their pool at one revision."""
         result = {}
         for side, performer_id in (("left", left_id), ("right", right_id)):
             state = self.state(connection, performer_id, revision)
@@ -580,6 +587,16 @@ class RatingRepository:
                 state = states.setdefault(performer_id, {"version": STATE_VERSION, "revision": revision, "pools": {}})
                 state["pools"][pool_key(row["category_id"], row["cohort"])] = self._row_pool(row)
             return {"version": STATE_VERSION, "revision": revision, "states": states}
+
+
+def _same_pool(row: Any, rating: Rating) -> bool:
+    return (
+        abs(float(row["rating"]) - rating.rating) < WRITE_TOLERANCE
+        and abs(float(row["deviation"]) - rating.deviation) < WRITE_TOLERANCE
+        and (int(row["matches"]), int(row["wins"]), int(row["losses"]), int(row["draws"]))
+        == (rating.matches, rating.wins, rating.losses, rating.draws)
+        and row["last_rated_at"] == rating.last_rated_at
+    )
 
 
 def _category_settings_with_label_ids(raw_settings: dict[str, Any]) -> tuple[dict[str, Any], dict[str, dict[str, str]]]:
@@ -615,6 +632,9 @@ def _category_settings_with_label_ids(raw_settings: dict[str, Any]) -> tuple[dic
     return result, remaps
 
 
+RATING_TABLES = ("dirty_rank_pools", "dirty_rank_verdicts", "dirty_rank_verdict_log", "dirty_rank_scales")
+
+
 def _move_category_rating_ids(connection: Any, remaps: dict[str, dict[str, str]]) -> bool:
     changed = False
     for cohort, mapping in remaps.items():
@@ -624,7 +644,7 @@ def _move_category_rating_ids(connection: Any, remaps: dict[str, dict[str, str]]
         for new_id in mapping.values():
             if new_id in old_ids:
                 continue
-            for table in ("dirty_rank_pools", "dirty_rank_battles"):
+            for table in RATING_TABLES:
                 if connection.execute(
                     f"SELECT 1 FROM {table} WHERE cohort=? AND category_id=? LIMIT 1",
                     (cohort, new_id),
@@ -634,13 +654,13 @@ def _move_category_rating_ids(connection: Any, remaps: dict[str, dict[str, str]]
                     )
         temporary = {old_id: "__dirty_rank_migration_" + uuid.uuid4().hex for old_id in mapping}
         for old_id, temp_id in temporary.items():
-            for table in ("dirty_rank_pools", "dirty_rank_battles"):
+            for table in RATING_TABLES:
                 connection.execute(
                     f"UPDATE {table} SET category_id=? WHERE cohort=? AND category_id=?",
                     (temp_id, cohort, old_id),
                 )
         for old_id, new_id in mapping.items():
-            for table in ("dirty_rank_pools", "dirty_rank_battles"):
+            for table in RATING_TABLES:
                 connection.execute(
                     f"UPDATE {table} SET category_id=? WHERE cohort=? AND category_id=?",
                     (new_id, cohort, temporary[old_id]),
@@ -670,11 +690,17 @@ def save_settings(repository: RatingRepository, connection: Any, args: dict[str,
                 remaps[cohort] = {old: new for old, new in mapping.items() if old in existing_ids}
         else:
             remaps = {}
-        if _move_category_rating_ids(connection, remaps):
-            repository.increment_revision(connection)
+        ratings_changed = _move_category_rating_ids(connection, remaps)
         response = shared_storage.set_plugin_settings_on_connection(
             PLUGIN_ID, canonical, connection, expected_revision
         )
+        previous, updated = normalize_settings(current), normalize_settings(canonical)
+        if any(previous[key] != updated[key] for key in FIT_SETTINGS):
+            # New starting values and evidence apply to every verdict, not only future ones.
+            repository.refit_all(connection, updated)
+            ratings_changed = True
+        if ratings_changed:
+            repository.increment_revision(connection)
         connection.commit()
         return response
     except Exception:
@@ -708,114 +734,187 @@ def _enabled_cohort(settings: dict[str, Any], value: Any) -> str:
     return cohort
 
 
-def record_battle(
+def _verdict_pair(args: dict[str, Any]) -> tuple[str, str, str, str]:
+    """The request's left and right IDs, and the pair in stored order."""
+    left_id = str(args.get("leftId") or "").strip()
+    right_id = str(args.get("rightId") or "").strip()
+    if not left_id or not right_id or left_id == right_id:
+        raise PluginError("A verdict requires two different performers")
+    low_id, high_id = sorted((left_id, right_id))
+    return left_id, right_id, low_id, high_id
+
+
+def _verdict_id(args: dict[str, Any]) -> str:
+    verdict_id = str(args.get("verdictId") or "").strip()
+    if not verdict_id or len(verdict_id) > 160:
+        raise PluginError("A verdict requires a valid idempotency ID")
+    return verdict_id
+
+
+def record_verdict(
     repository: RatingRepository,
     args: dict[str, Any],
     settings: dict[str, Any],
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    left_id = str(args.get("leftId") or "").strip()
-    right_id = str(args.get("rightId") or "").strip()
-    battle_id = str(args.get("battleId") or "").strip()
+    """Save the verdict on a pair, replacing any earlier one; choosing it again confirms it."""
+    left_id, right_id, low_id, high_id = _verdict_pair(args)
+    verdict_id = _verdict_id(args)
     cohort = _enabled_cohort(settings, args.get("cohort"))
-    category_id = _category(
-        settings, str(args.get("categoryId") or ""), cohort
-    )["id"]
-    outcome = str(args.get("outcome") or "").strip().lower()
-    if not left_id or not right_id or left_id == right_id:
-        raise PluginError("A battle requires two different performers")
-    if not battle_id or len(battle_id) > 160:
-        raise PluginError("A battle requires a valid idempotency ID")
-    if outcome not in {"left", "right", "draw"}:
-        raise PluginError("Outcome must be left, right, or draw")
+    category_id = _category(settings, str(args.get("categoryId") or ""), cohort)["id"]
+    score = args.get("score")
+    if isinstance(score, bool) or not isinstance(score, int) or abs(score) > VERDICT_LIMIT:
+        raise PluginError(f"A verdict score must be a whole number from -{VERDICT_LIMIT} to {VERDICT_LIMIT}")
+    low_score = score if left_id == low_id else -score
 
     timestamp = iso_time(now or utc_now())
     key = pool_key(category_id, cohort)
     with repository.connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        duplicate = connection.execute(
-            "SELECT status FROM dirty_rank_battles WHERE battle_id=?", (battle_id,)
+        if connection.execute(
+            "SELECT 1 FROM dirty_rank_verdict_log WHERE verdict_id=?", (verdict_id,)
+        ).fetchone() is not None:
+            return {
+                "duplicate": True, "verdictId": verdict_id, "changed": [],
+                "verdict": repository.verdict(connection, category_id, cohort, low_id, high_id),
+                "thresholds": repository.thresholds(connection, category_id, cohort),
+                **repository.pair_result(connection, left_id, right_id, key, repository.revision(connection)),
+            }
+        existing = connection.execute(
+            """SELECT score, confirmations, updated_at FROM dirty_rank_verdicts
+               WHERE category_id=? AND cohort=? AND low_id=? AND high_id=?""",
+            (category_id, cohort, low_id, high_id),
         ).fetchone()
-        if duplicate is not None:
-            return {"duplicate": True, "battleId": battle_id,
-                    **repository.pair_result(connection, left_id, right_id, key, repository.revision(connection))}
-
-        left_pool = repository.pool(connection, left_id, category_id, cohort)
-        right_pool = repository.pool(connection, right_id, category_id, cohort)
-        score_left = {"left": 1.0, "right": 0.0, "draw": 0.5}[outcome]
-        new_left, new_right = rate_battle(
-            rating_from_pool(left_pool, settings), rating_from_pool(right_pool, settings),
-            score_left, settings, now,
-        )
-
-        def build_pool(rating: Rating, old_pool: Any) -> dict[str, Any]:
-            value = rating_to_pool(rating)
-            value["recentBattleIds"] = (_recent_ids(old_pool) + [battle_id])[-MAX_RECENT_BATTLE_IDS:]
-            return value
-
-        next_left = build_pool(new_left, left_pool)
-        next_right = build_pool(new_right, right_pool)
-        repository.put_pool(connection, left_id, category_id, cohort, next_left)
-        repository.put_pool(connection, right_id, category_id, cohort, next_right)
+        if existing is None:
+            connection.execute(
+                """INSERT INTO dirty_rank_verdicts(
+                     category_id, cohort, low_id, high_id, score, confirmations, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)""",
+                (category_id, cohort, low_id, high_id, low_score, timestamp, timestamp),
+            )
+        else:
+            # A confirmation keeps the time the score was given, as it keeps every rating.
+            same = int(existing["score"]) == low_score
+            connection.execute(
+                """UPDATE dirty_rank_verdicts SET score=?, confirmations=?, updated_at=?
+                   WHERE category_id=? AND cohort=? AND low_id=? AND high_id=?""",
+                (
+                    low_score, int(existing["confirmations"]) + 1 if same else 0,
+                    existing["updated_at"] if same else timestamp,
+                    category_id, cohort, low_id, high_id,
+                ),
+            )
         connection.execute(
-            """INSERT INTO dirty_rank_battles(
-                 battle_id, category_id, cohort, left_id, right_id, outcome,
-                 undo_snapshot, created_at
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO dirty_rank_verdict_log(
+                 verdict_id, category_id, cohort, low_id, high_id, score,
+                 previous_score, previous_confirmations, previous_updated_at, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                battle_id, category_id, cohort, left_id, right_id, outcome,
-                json.dumps([left_pool, right_pool], ensure_ascii=False, separators=(",", ":")), timestamp,
+                verdict_id, category_id, cohort, low_id, high_id, low_score,
+                None if existing is None else int(existing["score"]),
+                None if existing is None else int(existing["confirmations"]),
+                None if existing is None else existing["updated_at"],
+                timestamp,
             ),
         )
-        repository.prune_undo_snapshots(connection, category_id, cohort)
-        result = repository.pair_result(connection, left_id, right_id, key, repository.increment_revision(connection))
+        # A confirmation leaves the score, and so every rating, as it was.
+        ratings_move = existing is None or int(existing["score"]) != low_score
+        result = _refit_result(repository, connection, settings, category_id, cohort, left_id, right_id, ratings_move)
+        result["verdict"] = repository.verdict(connection, category_id, cohort, low_id, high_id)
         connection.commit()
-    return {"duplicate": False, "battleId": battle_id, "categoryId": category_id, "cohort": cohort, **result}
+    return {"duplicate": False, "verdictId": verdict_id, "categoryId": category_id, "cohort": cohort, **result}
 
 
-def undo_battle(
+def _refit_result(
+    repository: RatingRepository, connection: Any, settings: dict[str, Any],
+    category_id: str, cohort: str, left_id: str, right_id: str, ratings_move: bool = True,
+) -> dict[str, Any]:
+    """Refit the verdict's pool and describe every performer whose rating moved."""
+    if ratings_move:
+        changed = repository.refit(connection, category_id, cohort, settings) | {left_id, right_id}
+        revision = repository.increment_revision(connection)
+    else:
+        changed, revision = set(), repository.revision(connection)
+    result = repository.pair_result(connection, left_id, right_id, pool_key(category_id, cohort), revision)
+    result["changed"] = repository.states(connection, changed, revision)
+    result["thresholds"] = repository.thresholds(connection, category_id, cohort)
+    return result
+
+
+def undo_verdict(
     repository: RatingRepository,
     args: dict[str, Any],
     settings: dict[str, Any],
 ) -> dict[str, Any]:
-    left_id = str(args.get("leftId") or "").strip()
-    right_id = str(args.get("rightId") or "").strip()
-    battle_id = str(args.get("battleId") or "").strip()
+    """Restore what the pair had before one choice: the earlier verdict, or none."""
+    left_id, right_id, low_id, high_id = _verdict_pair(args)
+    verdict_id = _verdict_id(args)
     cohort = _cohort(args.get("cohort"), settings)
-    category_id = _category(
-        settings, str(args.get("categoryId") or ""), cohort
-    )["id"]
+    category_id = _category(settings, str(args.get("categoryId") or ""), cohort)["id"]
     with repository.connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        battle = connection.execute(
-            "SELECT * FROM dirty_rank_battles WHERE battle_id=? AND status='active'",
-            (battle_id,),
+        entry = connection.execute(
+            "SELECT * FROM dirty_rank_verdict_log WHERE verdict_id=? AND undone_at IS NULL", (verdict_id,)
         ).fetchone()
-        if battle is None or battle["undo_snapshot"] is None:
-            raise PluginError(f"Battle {battle_id} is not available to undo")
-        if str(battle["left_id"]) != left_id or str(battle["right_id"]) != right_id:
-            raise PluginError("The stored undo performers do not match this battle")
-        if battle["category_id"] != category_id or battle["cohort"] != cohort:
-            raise PluginError("The stored undo pool does not match this battle")
-        for performer_id in (left_id, right_id):
-            latest = connection.execute(
-                """SELECT MAX(sequence) FROM dirty_rank_battles
-                   WHERE status='active' AND category_id=? AND cohort=?
-                     AND (left_id=? OR right_id=?)""",
-                (category_id, cohort, performer_id, performer_id),
-            ).fetchone()[0]
-            if latest != battle["sequence"]:
-                raise PluginError(f"Battle {battle_id} is not the latest battle for performer {performer_id}")
-        left_before, right_before = json.loads(battle["undo_snapshot"])
-        repository.restore_pool(connection, left_id, category_id, cohort, left_before)
-        repository.restore_pool(connection, right_id, category_id, cohort, right_before)
+        if entry is None:
+            raise PluginError(f"Verdict {verdict_id} is not available to undo")
+        if (str(entry["low_id"]), str(entry["high_id"])) != (low_id, high_id):
+            raise PluginError("The stored undo performers do not match this verdict")
+        if entry["category_id"] != category_id or entry["cohort"] != cohort:
+            raise PluginError("The stored undo pool does not match this verdict")
+        latest = connection.execute(
+            """SELECT verdict_id FROM dirty_rank_verdict_log
+               WHERE category_id=? AND cohort=? AND low_id=? AND high_id=? AND undone_at IS NULL
+               ORDER BY sequence DESC LIMIT 1""",
+            (category_id, cohort, low_id, high_id),
+        ).fetchone()
+        if latest["verdict_id"] != verdict_id:
+            raise PluginError("A later verdict on this pair must be undone first")
+        previous_score = entry["previous_score"]
+        if previous_score is None:
+            connection.execute(
+                """DELETE FROM dirty_rank_verdicts
+                   WHERE category_id=? AND cohort=? AND low_id=? AND high_id=?""",
+                (category_id, cohort, low_id, high_id),
+            )
+        else:
+            connection.execute(
+                """UPDATE dirty_rank_verdicts SET score=?, confirmations=?, updated_at=?
+                   WHERE category_id=? AND cohort=? AND low_id=? AND high_id=?""",
+                (
+                    int(previous_score), int(entry["previous_confirmations"]), entry["previous_updated_at"],
+                    category_id, cohort, low_id, high_id,
+                ),
+            )
         connection.execute(
-            "UPDATE dirty_rank_battles SET status='undone', undone_at=?, undo_snapshot=NULL WHERE sequence=?",
-            (iso_time(utc_now()), battle["sequence"]),
+            "UPDATE dirty_rank_verdict_log SET undone_at=? WHERE sequence=?",
+            (iso_time(utc_now()), entry["sequence"]),
         )
-        result = repository.pair_result(connection, left_id, right_id, pool_key(category_id, cohort), repository.increment_revision(connection))
+        ratings_move = previous_score is None or int(previous_score) != int(entry["score"])
+        result = _refit_result(repository, connection, settings, category_id, cohort, left_id, right_id, ratings_move)
+        result["verdict"] = repository.verdict(connection, category_id, cohort, low_id, high_id)
         connection.commit()
-    return {"undone": True, "battleId": battle_id, **result}
+    return {"undone": True, "verdictId": verdict_id, **result}
+
+
+def load_verdicts(repository: RatingRepository, args: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
+    """Every verdict of one pool, as [low ID, high ID, score from the low ID's side, confirmations]."""
+    cohort = _cohort(args.get("cohort"), settings)
+    category_id = _category(settings, str(args.get("categoryId") or ""), cohort, require_enabled=False)["id"]
+    with repository.connect() as connection:
+        connection.execute("BEGIN")
+        rows = connection.execute(
+            """SELECT low_id, high_id, score, confirmations FROM dirty_rank_verdicts
+               WHERE category_id=? AND cohort=? ORDER BY low_id, high_id""",
+            (category_id, cohort),
+        ).fetchall()
+        return {
+            "categoryId": category_id,
+            "cohort": cohort,
+            "revision": repository.revision(connection),
+            "thresholds": repository.thresholds(connection, category_id, cohort),
+            "verdicts": [[str(row[0]), str(row[1]), int(row[2]), int(row[3])] for row in rows],
+        }
 
 
 def reset_pool(
@@ -836,14 +935,8 @@ def reset_pool(
             "SELECT COUNT(*) FROM dirty_rank_pools WHERE category_id=? AND cohort=?",
             (category_id, cohort),
         ).fetchone()[0]
-        connection.execute(
-            "DELETE FROM dirty_rank_pools WHERE category_id=? AND cohort=?",
-            (category_id, cohort),
-        )
-        connection.execute(
-            "DELETE FROM dirty_rank_battles WHERE category_id=? AND cohort=?",
-            (category_id, cohort),
-        )
+        for table in RATING_TABLES:
+            connection.execute(f"DELETE FROM {table} WHERE category_id=? AND cohort=?", (category_id, cohort))
         repository.increment_revision(connection)
         connection.commit()
     reporter.progress(1.0)
@@ -874,9 +967,11 @@ def run(payload: dict[str, Any], reporter: Reporter | None = None) -> dict[str, 
             shared_storage.get_plugin_settings(PLUGIN_ID, connection=connection)
         )
         if mode == "record":
-            return record_battle(repository, args, settings)
+            return record_verdict(repository, args, settings)
         if mode == "undo":
-            return undo_battle(repository, args, settings)
+            return undo_verdict(repository, args, settings)
+        if mode == "loadVerdicts":
+            return load_verdicts(repository, args, settings)
         if mode == "resetPool":
             return reset_pool(repository, args, settings, reporter)
         raise PluginError(f"Unsupported DirtyRank operation mode: {mode}")

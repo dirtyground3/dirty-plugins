@@ -422,14 +422,15 @@ async function main() {
     spreadScenes: true,
     avoidDuplicates: true,
     splitScenes: false,
-    startMuted: true,
-    randomStart: true,
-    loopScenes: true,
     markerDuration: 30,
-    pauseWhenHidden: true,
     showPerformerNavigation: true,
     moveWithoutEditing: false,
   });
+  assert.deepEqual(
+    a.normalizeSettings({ startMuted: false, randomStart: false, loopScenes: false, pauseWhenHidden: false }),
+    defaults,
+    "playback is absent from query settings, so switching it in the menu never reloads the queues",
+  );
   assert.equal(a.normalizeSettings({ showPerformerNavigation: false }).showPerformerNavigation, false);
   assert.equal(a.normalizeSettings({ moveWithoutEditing: "true" }).moveWithoutEditing, true);
   assert.equal(a.normalizeSnapDividers({}), true, "edges snap by default");
@@ -454,7 +455,7 @@ async function main() {
   assert.equal(a.normalizeSettings({ sceneOrder: "fresh" }).sceneOrder, "fresh");
   assert.equal(a.normalizeSettings({ sceneOrder: "sideways" }).sceneOrder, "random", "unknown orders fall back");
   assert.equal(a.normalizeSettings({ spreadScenes: "false" }).spreadScenes, false);
-  assert.equal(a.normalizeSettings({ pauseWhenHidden: "invalid" }).pauseWhenHidden, true);
+  assert.equal(a.normalizePlayback({ pauseWhenHidden: "invalid" }).pauseWhenHidden, true);
 
   const items = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }, { id: "e" }];
   const listOrder = { order: "list", spread: true, now: 0 },
@@ -641,12 +642,13 @@ async function main() {
   assert.deepEqual(plain(a.playbackSort("newest", "title", 7)), { sort: "created_at", direction: "DESC" });
   assert.deepEqual(plain(a.playbackSort("list", "date", 7)), { sort: "date" });
   assert.deepEqual(plain(a.playbackSort("list", "random", 7)), { sort: "random_7" });
-  assert.deepEqual(plain(a.getPlaybackSettings(settings)), {
+  assert.deepEqual(plain(a.normalizePlayback({})), {
     startMuted: true,
     randomStart: true,
     loop: true,
     pauseWhenHidden: true,
   });
+  assert.equal(a.normalizePlayback({ loopScenes: "false" }).loop, false);
 
   assert.equal(a.isMultiscreenLaunchContext(null), false);
   assert.equal(a.isMultiscreenLaunchContext({}), false);
@@ -785,7 +787,7 @@ async function main() {
     signal,
   );
   assert.deepEqual(plain(searchRequests[0].variables), {
-    filter: { q: "original search", page: 2, per_page: 20, sort: "date", direction: "DESC" },
+    filter: { q: "original search", page: 2, per_page: 10, sort: "date", direction: "DESC" },
     scene_filter: {
       ...rated,
       title: { value: "(?i)new title", modifier: "MATCHES_REGEX" },
@@ -807,7 +809,7 @@ async function main() {
   );
   assert.match(searchRequests[1].query, /MultiscreenMarkerSearch/);
   assert.deepEqual(plain(searchRequests[1].variables), {
-    filter: { q: "range", page: 1, per_page: 20, sort: "title", direction: "ASC" },
+    filter: { q: "range", page: 1, per_page: 10, sort: "title", direction: "ASC" },
     scene_marker_filter: {
       tags: markerScope.scene_marker_filter.tags,
       scene_filter: {
@@ -826,7 +828,7 @@ async function main() {
   );
   assert.deepEqual(
     plain(searchRequests[2].variables),
-    { filter: { q: "new", page: 1, per_page: 20, sort: "title", direction: "ASC" } },
+    { filter: { q: "new", page: 1, per_page: 10, sort: "title", direction: "ASC" } },
     "without a session search term, Stash's own search applies",
   );
   await sessionQueries.searchSession(
@@ -1011,15 +1013,9 @@ async function main() {
   assert.equal(contexts.getLaunchContextForPath("/groups/new"), null);
 
   // Lists announced by other plugins.
-  assert.deepEqual(plain(a.normalizeListSettings({})), { allow: "known", limit: 10000 });
-  assert.deepEqual(plain(a.normalizeListSettings({ otherPluginLists: "any", listSizeLimit: 5 })), {
-    allow: "any",
-    limit: 1000,
-  });
-  assert.deepEqual(plain(a.normalizeListSettings({ otherPluginLists: "all", listSizeLimit: 1e9 })), {
-    allow: "known",
-    limit: 100000,
-  });
+  assert.deepEqual(plain(a.normalizeListSettings({})), { allow: "known" });
+  assert.deepEqual(plain(a.normalizeListSettings({ otherPluginLists: "any" })), { allow: "any" });
+  assert.deepEqual(plain(a.normalizeListSettings({ otherPluginLists: "all" })), { allow: "known" });
   const announcement = {
     version: 1,
     source: "CherryPick",
@@ -1061,8 +1057,8 @@ async function main() {
     { ...announcement, label: 5 },
   ])
     assert.equal(a.parseAnnouncement(malformed), null, JSON.stringify(malformed));
-  const longList = Array.from({ length: 100001 }, (_, index) => String(index));
-  assert.equal(a.parseAnnouncement({ ...announcement, ids: longList }).ids.length, 100000);
+  const longList = Array.from({ length: 10001 }, (_, index) => String(index));
+  assert.equal(a.parseAnnouncement({ ...announcement, ids: longList }).ids.length, 10000, "a list keeps 10,000 items");
   assert.equal(a.parseAnnouncement({ ...announcement, label: "x".repeat(90) }).label.length, 80);
   const pluginList = { source: "plugin-list", kind: "markers", ids: [], keepOrder: false, label: "" };
   assert.equal(a.isMultiscreenLaunchContext(pluginList), true, "an empty list is a launch");
@@ -1086,8 +1082,8 @@ async function main() {
     runTimers();
   };
   const listPath = "/plugins/cherrypick",
-    known = { allow: "known", limit: 10000 },
-    any = { allow: "any", limit: 10000 };
+    known = { allow: "known" },
+    any = { allow: "any" };
   const ids = (path, settings) => contexts.getLaunchContextForPath(path, settings)?.ids;
   announce(announcement);
   assert.equal(notified, 1);
@@ -1100,8 +1096,7 @@ async function main() {
   });
   assert.equal(contexts.getLaunchContextForPath(listPath), null, "lists wait until the settings are known");
   assert.equal(ids("/plugins/other", known), undefined, "a list applies only to its own path");
-  assert.equal(ids(listPath, { allow: "off", limit: 10000 }), undefined);
-  assert.deepEqual(plain(ids(listPath, { allow: "known", limit: 2 })), ["3", "1"]);
+  assert.equal(ids(listPath, { allow: "off" }), undefined);
   announce({ ...announcement, label: "For you" });
   assert.equal(notified, 1, "an identical announcement changes nothing");
   announce({ ...announcement, source: "Other", ids: ["9"] });
@@ -1184,7 +1179,7 @@ async function main() {
   assert.equal(searched.findScenes.count, 1250);
   assert.deepEqual(
     searched.findScenes.scenes.map(scene => scene.id),
-    Array.from({ length: 20 }, (_, index) => String(2460 - 2 * index)),
+    Array.from({ length: 10 }, (_, index) => String(2480 - 2 * index)),
     "results follow the list's order",
   );
   assert.deepEqual(plain(listRequests[0].variables), {

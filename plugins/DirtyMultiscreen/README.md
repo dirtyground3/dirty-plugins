@@ -43,12 +43,18 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   Choosing a result moves that screen to its position in the session queue, so
   Previous/Next follows from there, including across pages. The filter narrows
   the results only; it does not change what the screen plays next.
-- The shuffle button below the close button reshuffles every screen. Its menu
-  lists the scene orders with the current one checked: choosing it loads a new
-  random sample, and choosing another order reshuffles with that order and saves
-  it as the **Scene order** setting. A list launched in its plugin's own order
-  shows **Keep the list order** checked until you choose another.
-- The grid button below the saved-grids button turns edit mode on and off. Videos
+- The menu button, between the O counter and Close in the top-right corner, holds **Edit screens**,
+  **Grid**, **Add a screen**, **Saved grids**, **Reshuffle** and **Playback**. Grid,
+  Reshuffle and Playback open submenus in a shaded panel beneath them, where a check in the icon column marks what is
+  on. Reshuffle's lists the scene orders, the current one checked. Choosing
+  an order reshuffles every screen: the current order loads a new random sample, and another order
+  reshuffles with that order and saves it as the **Scene order** setting. A list launched in its plugin's own order
+  shows **List order** checked until you choose another.
+- **Playback** in the menu switches **Start muted**, **Random start**, **Loop scenes** and **Pause when hidden**,
+  checked while on. Each saves its setting and applies to the playing screens without reshuffling them. Loop
+  scenes shows a dash while some screens loop on their own; choosing it when off or mixed makes every screen
+  loop, and choosing it when on stops every screen looping.
+- **Edit screens** in the menu turns edit mode on and off, with a check while it is on. Videos
   keep playing, and every screen shows buttons to move, flip horizontally,
   flip vertically, rotate, loop, fill, remove the screen (a red minus), and
   finish editing (the small X at the group's upper-right corner). A flip mirrors the picture
@@ -103,19 +109,24 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   and **Fit videos** repacks a preset around them. The last open screen
   cannot close. Closed screens stay closed through reshuffles, reloads and
   saved grids; choosing another grid opens every screen.
-- The + button below the grid button adds a screen, in or out of edit mode. It first
+- **Add a screen** in the menu adds a screen, in or out of edit mode. It first
   brings back the screen closed last, in its place and with the scene and
   position it had. When every screen is open it grows the grid by a column, or
   by a row once the grid is wider than tall, and opens one new screen at the
-  end; the rest of a new row or column waits as closed screens for the next +.
+  end; the rest of a new row or column waits as closed screens for the next **Add a screen**.
   The playing screens go on undisturbed: the queue is not dealt again, and new
   screens take further lanes of it. The grown grid becomes the default for
-  later sessions. At 6 x 6 with every screen open, + is unavailable.
-- Edit mode also shows a square for every grid size beside the main buttons.
-  Click a square, or press and drag to it, to choose that many columns and rows.
+  later sessions. At 6 x 6 with every screen open, **Add a screen** is unavailable.
+- In edit mode, a click on a video or on empty space finishes editing, so edit
+  mode opened by mistake takes one click to leave. Clicks on the edit buttons,
+  the dividers, the menu or a player's controls keep editing.
+- **Grid** in the menu shows the current size, or reads **Custom grid** after
+  resizing or docking, and opens a square for every grid size with **Fit videos** below.
+  Click a square, or press and drag to it, to choose that many columns and rows;
+  the current grid's square returns a custom grid to it without restarting.
   Another grid deals a new queue, so every screen restarts: a dialog asks first.
   The chosen grid is saved as the default for later sessions.
-- **Fit videos**, below the grid size, packs a preset into rows or columns
+- **Fit videos**, in the Grid submenu, packs a preset into rows or columns
   based on the videos' shapes. It uses 16:9 until a video's size is known.
   The screens always fill the window without margins: it picks the rows or
   columns whose shapes match the window best, and each picture is cropped to
@@ -124,7 +135,7 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   cropping when needed without stretching. Your per-screen Fill choice
   returns when you switch it off. The toggle is on by default and also
   updates the **Fit screens to videos** setting.
-- The bookmark button above the grid button opens **Saved grids**, a compact
+- **Saved grids** in the menu opens a compact
   list with one line per grid: its name, size and date. It is see-through, so
   the screens show behind it, blurred. Only the saved grids scroll; with more
   than five, a search field above them, below the autosaves, shows only those
@@ -153,12 +164,12 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   clicking the header button on a page without a list returns every screen to
   its place, scene, position, A/B loop, audio and picture. The header button on a scene, marker, performer,
   studio, tag or group list, on a performer, studio, tag or group page, or on a page another
-  plugin announced a list for, starts a new session, and so does the shuffle
-  button; either replaces the saved one. An announced empty list shows its
+  plugin announced a list for, starts a new session, and so does
+  reshuffling; either replaces the saved one. An announced empty list shows its
   message, such as "No scenes in For you", and keeps the saved session. A tag list or
   page plays the scenes tagged with those tags themselves, not their sub-tags, and a
   group list or page plays the groups' own scenes, not their sub-groups'. With
-  **Keep the list order**, one group plays in its own scene order. Changing the scene
+  **List order**, one group plays in its own scene order. Changing the scene
   order, spreading, duplicate avoidance, splitting or the number of screens keeps
   the launch scope but deals a new queue. If the library changed, a screen whose
   scene left its page starts at the top of that page. A browser that blocks sound
@@ -166,11 +177,13 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   they then continue from their saved position. The browser keeps one saved
   session, in local storage, so two open grids overwrite each other's save and it
   does not follow you to another device.
-- Each screen's header has search and performer portraits on the left, with
-  the scene link and O button on the right. The link opens the scene page in a
-  new tab (the scene title is its tooltip). The header buttons and portraits
+- Each screen's buttons form one group at its top left: the scene link, the
+  performer portraits, search (a magnifying glass), then, after a thin
+  separator, the scene's O button. The window's top-right corner is left to the
+  main buttons. The link opens the scene page in a new tab (the scene title is
+  its tooltip). The buttons and portraits
   share the same circular size and use translucent backgrounds over the video.
-  Like the main buttons, each side shows while the mouse is near it and hides
+  Like the main buttons, the group shows while the mouse is near it and hides
   three seconds after it moves away, leaves the window, or after the player
   opens. Keyboard focus keeps them, a touch shows them for three seconds, and
   edit mode keeps them visible.
@@ -194,11 +207,11 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
 - The O-counter button at the top right, drawn as several drops, adds one O to
   every visible scene and fades away after one click per playback session.
   Failed saves can be retried without incrementing scenes that already succeeded.
-- The main buttons stand in a column down from the top-right corner: close,
-  shuffle, saved grids, the grid button, +, and the O counter. They show while
+- The main buttons stand in a row in the top-right corner: the O counter, the
+  menu, and Close in the corner, so the O counter leaving moves nothing. They show while
   the mouse is near them, and hide three seconds after it moves away, leaves
   the window, or after the player opens; moving the mouse elsewhere does not
-  show them. Keyboard focus and an open shuffle menu keep them; a touch shows
+  show them. Keyboard focus and an open menu keep them; a touch shows
   them for three seconds. In edit mode they stay visible; finishing editing
   starts a fresh three-second delay before they can hide again.
 - Runs inside Stash and uses its existing scene and marker data.
@@ -233,8 +246,9 @@ header button, and lists from other plugins.
 5. Use the DirtyMultiscreen action in Stash to open the playback grid.
 
 In the grid, click a screen's magnifying glass, search or filter with Stash's
-own controls, and choose a result. Search results are paginated, follow the sort
-you choose and are limited to the session's playable videos. When the session
+own controls, and choose a result. Search results come ten to a page, follow the
+sort you choose and are limited to the session's playable videos. Only the
+results scroll, so the filter and the page buttons always stay in view. When the session
 was itself launched with a search term, the text you type matches titles, since
 Stash keeps one search term per query. During marker playback, results keep the
 original marker ranges. The chosen result plays at once, after the scene the
@@ -258,13 +272,13 @@ page. The DirtyMultiscreen tab of the Dirty Plugins settings has six groups:
 - **Scenes:** scene order, **Spread performers and studios**, **Split scenes
   between panes** and **Avoid the same scene on several screens**.
 - **Playback:** **Start muted**, **Random start**, **Loop scenes**, **Pause when
-  hidden** and the length of markers without an end time.
+  hidden** (also in the player's Playback menu) and the length of markers
+  without an end time.
 - **Navigation:** whether screens show performer next-scene buttons, and whether
   the grid button appears in the Stash header.
 - **Saved grids:** **Autosaves to keep**, from 0 to 10 (5 by default).
 - **Advanced:** **Lists from other plugins** (Off, Known plugins only, the
-  default, or Any plugin) and **List size limit**, the most items taken from one
-  plugin's list (10,000 by default, from 1,000 to 100,000).
+  default, or Any plugin). Up to 10,000 items are taken from one plugin's list.
 
 Spreading, avoiding duplicates, muting, random starts, looping and pausing are
 enabled by default.
@@ -286,13 +300,13 @@ Each pane gets its own playback list. **Scene order** decides how it is built:
 | --- | --- |
 | Random (default) | A uniform shuffle of the session's scenes. |
 | Fewer repeats | Like Spotify's Fewer Repeats shuffle: draws up to 16 shuffles and keeps the one that plays recently watched scenes last. A play counts half as much after each week. |
-| Favour unwatched scenes | A weighted shuffle. A scene played once comes early 8 times less often than an unwatched one, twice 27 times less often. |
-| Favour high ratings and O counts | A weighted shuffle. Every 20 rating points multiply the weight by about 2.7, unrated scenes count as 50, and each O count adds the base weight once more. |
-| Favour recently added scenes | Loads the newest scenes first, then shuffles them with a weight that halves every 30 days since a scene was added. |
-| Mix favourites with unwatched scenes | Like a smart shuffle: two scenes from the favourites order, then one from the unwatched order, never repeating a scene. |
-| Keep the list order | The launching list's own sort, a single group's own scene order, or title order when launched without a list. |
+| Unwatched | A weighted shuffle that favours unwatched scenes. A scene played once comes early 8 times less often than an unwatched one, twice 27 times less often. |
+| Favourites | A weighted shuffle that favours high ratings and O counts. Every 20 rating points multiply the weight by about 2.7, unrated scenes count as 50, and each O count adds the base weight once more. |
+| Recently added | Loads the newest scenes first, then shuffles them with a weight that halves every 30 days since a scene was added. |
+| Smart mix | Like a smart shuffle: two scenes from the Favourites order, then one from the Unwatched order, never repeating a scene. |
+| List order | The launching list's own sort, a single group's own scene order, or title order when launched without a list. |
 
-Every order except Favour recently added scenes and Keep the list order loads
+Every order except Recently added and List order loads
 the launching list (or the whole library) in a random order, one page at a time,
 and weights each page as it arrives; playback continues through every page. Weighted shuffles use the Efraimidis-Spirakis
 method: a scene with weight w leads w times as often as a scene with weight 1.

@@ -180,6 +180,10 @@ export interface ActionItem {
   tone?: string;
   href?: string;
   download?: boolean;
+  /** A submenu: clicking the item shows these beneath it, inside the menu, instead of choosing it. */
+  items?: (ActionItem | false | null | undefined)[];
+  /** Shown as it is instead of an item, such as a picker; given a function, it receives one that closes the menu. */
+  content?: R.ReactNode | ((close: () => void) => R.ReactNode);
 }
 export interface MenuProps extends SharedProps {
   items?: (ActionItem | false | null | undefined)[];

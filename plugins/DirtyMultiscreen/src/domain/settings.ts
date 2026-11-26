@@ -18,19 +18,13 @@ export { DEFAULT_SETTINGS };
 /** The largest grid the edit-mode picker offers. */
 export const GRID_LIMITS = { rows: LIMITS.rows.max, columns: LIMITS.columns.max };
 
-/** Which other plugins' lists the header button uses, and how many items it takes from one. */
+/** Which other plugins' lists the header button uses. */
 export function normalizeListSettings(rawSettings: Record<string, unknown>): ListSettings {
   const allow = rawSettings.otherPluginLists;
   return {
     allow: (typeof allow === "string" && LIST_PERMISSIONS.has(allow)
       ? allow
       : DEFAULT_SETTINGS.otherPluginLists) as OtherPluginLists,
-    limit: clampInteger(
-      rawSettings.listSizeLimit,
-      DEFAULT_SETTINGS.listSizeLimit,
-      LIMITS.listSizeLimit.min,
-      LIMITS.listSizeLimit.max,
-    ),
   };
 }
 
@@ -62,16 +56,12 @@ export function normalizeSettings(rawSettings: Record<string, unknown>): Setting
     spreadScenes: coerceBoolean(rawSettings.spreadScenes, DEFAULT_SETTINGS.spreadScenes),
     avoidDuplicates: coerceBoolean(rawSettings.avoidDuplicates, DEFAULT_SETTINGS.avoidDuplicates),
     splitScenes: coerceBoolean(rawSettings.splitScenes, DEFAULT_SETTINGS.splitScenes),
-    startMuted: coerceBoolean(rawSettings.startMuted, DEFAULT_SETTINGS.startMuted),
-    randomStart: coerceBoolean(rawSettings.randomStart, DEFAULT_SETTINGS.randomStart),
-    loopScenes: coerceBoolean(rawSettings.loopScenes, DEFAULT_SETTINGS.loopScenes),
     markerDuration: clampInteger(
       rawSettings.markerDuration,
       DEFAULT_SETTINGS.markerDuration,
       LIMITS.markerDuration.min,
       LIMITS.markerDuration.max,
     ),
-    pauseWhenHidden: coerceBoolean(rawSettings.pauseWhenHidden, DEFAULT_SETTINGS.pauseWhenHidden),
     showPerformerNavigation: coerceBoolean(
       rawSettings.showPerformerNavigation,
       DEFAULT_SETTINGS.showPerformerNavigation,
@@ -101,12 +91,16 @@ export function savedGridSettings(settings: Settings, fitVideos: boolean): Saved
     splitScenes: settings.splitScenes,
   };
 }
-export function getPlaybackSettings(settings: Settings): PlaybackSettings {
+/**
+ * The Playback settings, which the main menu also switches. Like Fit videos they stay out of the query settings, so
+ * switching one never reloads the playing queues.
+ */
+export function normalizePlayback(rawSettings: Record<string, unknown>): PlaybackSettings {
   return {
-    startMuted: settings.startMuted,
-    randomStart: settings.randomStart,
-    loop: settings.loopScenes,
-    pauseWhenHidden: settings.pauseWhenHidden,
+    startMuted: coerceBoolean(rawSettings.startMuted, DEFAULT_SETTINGS.startMuted),
+    randomStart: coerceBoolean(rawSettings.randomStart, DEFAULT_SETTINGS.randomStart),
+    loop: coerceBoolean(rawSettings.loopScenes, DEFAULT_SETTINGS.loopScenes),
+    pauseWhenHidden: coerceBoolean(rawSettings.pauseWhenHidden, DEFAULT_SETTINGS.pauseWhenHidden),
   };
 }
 export function getSceneLimit(settings: Pick<Settings, "splitScenes" | "totalScreens">) {

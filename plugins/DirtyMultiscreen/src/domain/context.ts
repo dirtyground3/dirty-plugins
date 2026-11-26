@@ -23,8 +23,8 @@ const DETAIL_KEYS = new Map([
   ["tag-detail", "tagId"],
   ["group-detail", "groupId"],
 ]);
-/** The highest List size limit: lists are kept whole up to it, so a raised limit applies to lists already held. */
-export const MAX_LIST_IDS = 100000;
+/** The most scenes or markers taken from another plugin's list. */
+export const MAX_LIST_IDS = 10000;
 const MAX_LABEL = 80;
 const STASH_ID = /^[0-9]+$/;
 const isKind = (value: unknown) => value === "scenes" || value === "markers";
@@ -60,7 +60,7 @@ export const isMarkerLaunchContext = (launchContext: LaunchContext | null): laun
 };
 /**
  * A `stash-scenes:context` event's detail, or null when any field is malformed. Unknown fields are
- * ignored, a duplicate ID keeps its first position and lists stop at the highest List size limit.
+ * ignored, a duplicate ID keeps its first position and lists stop at MAX_LIST_IDS.
  */
 export function parseAnnouncement(detail: unknown): Announcement | null {
   if (!isRecord(detail) || detail.version !== 1) return null;

@@ -68,7 +68,7 @@ export function BattleSettings(props: RankSettingsSectionProps) {
       </ui.SettingsSection>
       <ui.SettingsSection
         title="Matchmaking"
-        description="Choose what the matchmaker should make reliable. Every mode gives each eligible performer battles; narrower goals stop refining ratings that no longer affect the result. Fine-tune how quickly ratings settle under Advanced."
+        description="Choose what battles should make reliable: each battle is the pair whose verdict adds the most information to this goal. Every mode gives each eligible performer battles; narrower goals stop refining ratings that no longer affect the result. Fine-tune how quickly ratings settle under Advanced."
       >
         <div className="dirty-rank-settings-grid dirty-rank-settings-grid-compact">
           <Field id="dirty-rank-confidence-goal" label="Optimize battles for">

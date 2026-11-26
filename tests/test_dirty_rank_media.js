@@ -133,6 +133,7 @@ const VIEWS = [
   "domain/matchmaking",
   "domain/rating",
   "domain/rank",
+  "domain/verdicts",
   "components/Primitives",
   "components/Preview",
   "components/PerformerCard",
@@ -146,7 +147,6 @@ const VIEWS = [
   .map(name => 'export * from "./src/' + name + '";')
   .join(";");
 const views = { ...runSource("DirtyRank", "rank-test-views.ts", context, { contents: VIEWS }) };
-views.ratingPresets = views.RATING_PRESETS;
 const plugin = { testing: views, algorithms: views };
 const settings = plugin.algorithms.settingsFromConfiguration({});
 {
@@ -167,8 +167,11 @@ const settings = plugin.algorithms.settingsFromConfiguration({});
   const categoryPage = plugin.testing.DirtyRankRoute({ match: { params: { categoryId: "appearance" } } });
   assert.strictEqual(categoryPage.type, prefixPage.type);
   context.window.location.pathname += "/king-of-the-hill";
-  const kingsPage = plugin.testing.DirtyRankRoute({ match: { params: { categoryId: "appearance" } } });
-  assert.strictEqual(kingsPage.props.routeDetails.kingsMode, true);
+  assert.strictEqual(
+    plugin.testing.DirtyRankRoute({ match: { params: { categoryId: "appearance" } } }),
+    null,
+    "battles have one mode and no second category URL",
+  );
   context.window.location.pathname = "/plugins/dirty-rank-leaderboards";
   assert.strictEqual(
     plugin.testing.DirtyRankRoute({ match: { params: {} } }),
@@ -186,20 +189,15 @@ const data = {
 };
 let nextId = 0;
 function card(auto, overrides) {
-  let votes = 0;
   const state = { slots: [], effects: [], cursor: 0 };
   let tree;
   const props = {
     performer: { id: String(++nextId), name: "Example", image_path: "/portrait.svg", scene_count: 1 },
     pool: { matches: 0 },
     settings: { ...settings, autoPlayTopScenes: auto, ...overrides },
-    onChoose: () => votes++,
   };
   return {
     props,
-    get votes() {
-      return votes;
-    },
     render() {
       active = state;
       state.cursor = 0;
@@ -350,15 +348,9 @@ async function main() {
       find(tree, node => node.type === "img"),
       "photo and video must coexist",
     );
-    assert(!byClass(tree, "dirty-rank-portrait").props.onClick, "photo clicks must reach the voting card");
-    const click = event();
-    byClass(tree, "dirty-rank-scene-panel").props.onClick(click);
-    assert(click.stopped, "player clicks must not bubble into a vote");
-    const key = event();
-    byClass(tree, "dirty-rank-scene-panel").props.onKeyDown(key);
-    assert(key.stopped, "player keys must not trigger battle shortcuts");
-    tree.props.onClick({ ...event(), target: {} });
-    assert.strictEqual(automatic.votes, 1);
+    assert.strictEqual(tree.props.role, "group", "a battle card is not a voting button");
+    assert(!tree.props.onClick && !tree.props.onKeyDown, "verdicts come only from the numbered scale");
+    assert(!byClass(tree, "dirty-rank-photo-vote-hint"), "photos no longer offer a vote");
     const player = attachPlayer(tree, { duration: 1000, currentTime: 0, play: () => Promise.resolve() });
     video(tree).props.onLoadedMetadata({ currentTarget: player });
     assert(player.currentTime >= 300 && player.currentTime <= 700);
@@ -507,28 +499,8 @@ async function main() {
     "battles must render the native card",
   );
   const portrait = byClass(battleTree, "dirty-rank-native-portrait");
-  const photoEvent = {
-    ...event(),
-    button: 0,
-    target: { closest: selector => (selector === ".thumbnail-section" ? {} : null) },
-  };
-  portrait.props.onClickCapture(photoEvent);
-  assert.strictEqual(nativeBattle.votes, 1, "native photo clicks must vote");
-  assert(photoEvent.stopped, "photo voting must suppress profile navigation");
-  const nativeButtonEvent = { ...event(), button: 0, target: { closest: () => ({}) } };
-  portrait.props.onClickCapture(nativeButtonEvent);
-  battleTree.props.onClick(nativeButtonEvent);
-  assert.strictEqual(nativeBattle.votes, 1, "native buttons must not vote");
-  assert(!nativeButtonEvent.stopped, "native buttons must retain their own handlers");
-  const nativeLinkEvent = {
-    ...event(),
-    target: { closest: selector => (selector === ".dirty-rank-native-portrait" ? {} : null) },
-  };
-  battleTree.props.onClick(nativeLinkEvent);
-  assert.strictEqual(nativeBattle.votes, 1, "native profile links must not vote");
-  nativeBattle.props.disabled = true;
-  byClass(nativeBattle.render(), "dirty-rank-native-portrait").props.onClickCapture(photoEvent);
-  assert.strictEqual(nativeBattle.votes, 1, "disabled battles must reject photo votes");
+  assert(!portrait.props.onClickCapture, "native photo clicks keep Stash's own behaviour");
+  assert(!byClass(battleTree, "dirty-rank-native-vote-hint"), "native photos no longer offer a vote");
   assert(!find(card(false, { hidePerformerImages: true }).render(), node => node.type === nativeCard));
   assert(!byClass(gallery, "dirty-rank-gallery-image-link"), "native mode must not duplicate the image markup");
   const podium = plugin.testing.LeaderboardPodium(standingsProps);
@@ -574,25 +546,10 @@ async function main() {
     "/plugins/dirty-rank-leaderboards/etoile-face-1",
   );
   await verifyLeaderboardDisplays();
-  const royalCard = card(false);
-  royalCard.props.hillMode = true;
-  royalCard.props.hillOpening = true;
-  let royalTree = royalCard.render();
-  assert.strictEqual(visibleText(byClass(royalTree, "dirty-rank-hill-role")).trim(), "Contender");
-  royalCard.props.hillOpening = false;
-  royalCard.props.kingTarget = true;
-  royalTree = royalCard.render();
-  assert.strictEqual(visibleText(byClass(royalTree, "dirty-rank-hill-role-champion")).trim(), "Reigning champion");
-  assert(!byClass(royalTree, "dirty-rank-king-target"), "the crown banner stays outside native photos and controls");
-  royalCard.props.crowned = true;
-  royalTree = royalCard.render();
-  assert.strictEqual(visibleText(byClass(royalTree, "dirty-rank-hill-role")).trim(), "Hill conquered");
-  assert.strictEqual(royalTree.props.role, "group", "the final crown does not turn the winner into a voting button");
-  royalCard.unmount();
-  await verifyKingsMode();
+  await verifyBattleScreen();
   await verifySettingsFieldValidation();
   await verifyLeaderboardPresentationSettings();
-  await verifyRatingPresets();
+  await verifyRatingParameters();
   await verifyCategoryResets();
   await verifyNavigationSettings();
   await verifyNamedGenderBoxes();
@@ -706,7 +663,7 @@ async function verifySettingsFieldValidation() {
   }
 }
 
-async function verifyRatingPresets() {
+async function verifyRatingParameters() {
   const originalRunOperation = runtime.runPluginOperation;
   const originalResponse = response;
   let performerQueries = 0;
@@ -729,12 +686,8 @@ async function verifyRatingPresets() {
     genderBoxes: [{ id: "BOX-1", name: "Mixed", genders: ["FEMALE", "NON_BINARY"] }],
     categories: { "BOX-1": [{ id: "style", name: "Style", weight: 2 }] },
     evidenceWeight: 1.7,
-    avoidRepeatWindow: 19,
-    calibrationPercent: 7,
-    tau: 0.8,
     initialRating: 980,
     initialDeviation: 320,
-    initialVolatility: 0.07,
     deviationFloor: 35,
     provisionalDeviation: 95,
   };
@@ -744,7 +697,7 @@ async function verifyRatingPresets() {
   runtime.runPluginOperation = (_pluginId, args) => {
     if (args.mode === "getSettings") return Promise.resolve({ revision: saved.length, settings: configuration });
     if (args.mode === "saveSettings") {
-      assert.strictEqual(args.expectedRevision, saved.length, "preset saves preserve serialized revisions");
+      assert.strictEqual(args.expectedRevision, saved.length, "parameter saves preserve serialized revisions");
       saved.push(args.settings);
       if (holdNextSave) {
         holdNextSave = false;
@@ -755,14 +708,17 @@ async function verifyRatingPresets() {
       }
       return Promise.resolve({ revision: saved.length, settings: args.settings });
     }
-    throw new Error("Selecting a preset must not reset or rewrite rating pools: " + args.mode);
+    throw new Error("Editing rating parameters must not reset or rewrite rating pools: " + args.mode);
   };
   runtime.notifyConfigurationChanged = noop;
   const state = { slots: [], effects: [], cursor: 0 };
   function render() {
     active = state;
     state.cursor = 0;
-    const tree = plugin.testing.DirtyRankSettings({ configuration: { ...configuration, tau: 0.2 }, plugin: {} });
+    const tree = plugin.testing.DirtyRankSettings({
+      configuration: { ...configuration, initialDeviation: 200 },
+      plugin: {},
+    });
     state.effects.splice(0).forEach(effect => effect());
     return tree;
   }
@@ -770,12 +726,12 @@ async function verifyRatingPresets() {
     let tree = render();
     await flush();
     tree = render();
-    const presetButtons = () =>
-      findAll(
-        tree,
-        node => typeof node.type === "function" && node.type.name === "RankButton" && node.props.pressed != null,
-      );
     const field = id => find(tree, node => node.type === "input" && node.props.id === id);
+    const fieldId = key => "dirty-rank-" + ({ evidenceWeight: "evidence-weight" }[key] || key);
+    const edit = (key, value) => {
+      field(fieldId(key)).props.onChange({ target: { value: String(value) } });
+      tree = render();
+    };
     const currentButton = () =>
       find(
         tree,
@@ -784,61 +740,40 @@ async function verifyRatingPresets() {
           node.type.name === "RankButton" &&
           visibleText(node).trim() === "Undo changes",
       );
-    assert.notStrictEqual(currentButton().props.tone, "primary", "Undo changes never looks like a selected preset");
+    assert(!find(tree, node => node.props && node.props["aria-label"] === "Rating presets"), "presets are gone");
+    for (const retired of [
+      "dirty-rank-tau",
+      "dirty-rank-initialVolatility",
+      "dirty-rank-repeat-window",
+      "dirty-rank-calibration",
+    ])
+      assert(!field(retired), retired);
+    assert.notStrictEqual(currentButton().props.tone, "primary");
     assert.strictEqual(currentButton().props.disabled, false);
-    assert.strictEqual(saved.length, 0, "opening advanced configuration does not choose a preset");
-    assert(presetButtons().every(button => !button.props.pressed));
+    assert.strictEqual(saved.length, 0, "opening advanced configuration saves nothing");
     const initialPayload = plugin.testing.serializedSettings(
       plugin.algorithms.settingsFromConfiguration(configuration),
     );
     const estimateText = settings =>
       plugin.algorithms.freshCategoryBattleEstimate(2, settings).battles.toLocaleString() +
-      " battles expected to rank 1 category for 2 performers";
+      " verdicts expected to rank 1 category for 2 performers";
     const liveEstimate = () => visibleText(byClass(tree, "dirty-rank-preset-estimate")).trim();
     assert.strictEqual(
       liveEstimate(),
       estimateText(configuration),
       "estimate includes eligible members of every gender in the selected box",
     );
-    for (const preset of plugin.algorithms.ratingPresets) {
-      presetButtons()
-        .find(button => visibleText(button).trim() === preset.name)
-        .props.onClick();
-      tree = render();
-      assert.strictEqual(
-        liveEstimate(),
-        estimateText(preset.settings),
-        "preset estimate updates immediately before autosave",
-      );
-      assert.strictEqual(presetButtons().filter(button => button.props.pressed).length, 1);
-      assert.strictEqual(presetButtons().find(button => button.props.pressed).props.tone, "primary");
-      assert.strictEqual(field("dirty-rank-evidence-weight").props.value, preset.settings.evidenceWeight);
-      assert.strictEqual(field("dirty-rank-calibration").props.value, preset.settings.calibrationPercent);
-      assert.strictEqual(field("dirty-rank-repeat-window").props.value, preset.settings.avoidRepeatWindow);
-      assert.strictEqual(timers.size, 1, "all preset fields save in one debounce operation");
-      const previousCount = saved.length;
-      await flush();
-      tree = render();
-      assert.strictEqual(saved.length, previousCount + 1);
-      for (const [key, value] of Object.entries(preset.settings)) assert.strictEqual(saved.at(-1)[key], value);
-      for (const key of ["genderBoxes", "categories", "hideBattleStandings"]) {
-        assert.strictEqual(
-          JSON.stringify(saved.at(-1)[key]),
-          JSON.stringify(initialPayload[key]),
-          "presets preserve " + key,
-        );
-      }
-    }
-    field("dirty-rank-tau").props.onChange({ target: { value: "0.42" } });
-    tree = render();
-    assert(
-      presetButtons().every(button => !button.props.pressed),
-      "manual edits show Custom instead of a stale preset name",
-    );
-    assert(visibleText(tree).includes("Custom configuration"));
+    edit("evidenceWeight", 2.5);
+    assert.strictEqual(liveEstimate(), estimateText({ ...configuration, evidenceWeight: 2.5 }));
+    assert.strictEqual(timers.size, 1, "a parameter edit saves in one debounce operation");
     await flush();
     tree = render();
-    assert.strictEqual(saved.at(-1).tau, 0.42);
+    assert.strictEqual(saved.length, 1);
+    assert.strictEqual(saved.at(-1).evidenceWeight, 2.5);
+    for (const key of ["genderBoxes", "categories", "hideBattleStandings"]) {
+      assert.strictEqual(JSON.stringify(saved.at(-1)[key]), JSON.stringify(initialPayload[key]), "keeps " + key);
+    }
+    assert(!("tau" in saved.at(-1)) && !("initialVolatility" in saved.at(-1)), "retired settings are not saved");
     find(tree, node => node.props.label === "Hide standings during battles").props.onChange(false);
     tree = render();
     await flush();
@@ -846,80 +781,44 @@ async function verifyRatingPresets() {
     const beforeRestore = saved.length;
     currentButton().props.onClick();
     tree = render();
-    assert.strictEqual(
-      liveEstimate(),
-      estimateText(configuration),
-      "Current restores the opening estimate immediately",
-    );
-    for (const key of Object.keys(plugin.algorithms.ratingPresets[0].settings)) {
-      const id =
-        { evidenceWeight: "evidence-weight", avoidRepeatWindow: "repeat-window", calibrationPercent: "calibration" }[
-          key
-        ] || key;
-      assert.strictEqual(
-        field("dirty-rank-" + id).props.value,
-        initialPayload[key],
-        "Current restores page-open " + key,
-      );
+    assert.strictEqual(liveEstimate(), estimateText(configuration), "Undo changes restores the opening estimate");
+    for (const key of plugin.algorithms.RATING_PARAMETER_KEYS) {
+      assert.strictEqual(field(fieldId(key)).props.value, initialPayload[key], "Undo changes restores " + key);
     }
     await flush();
     tree = render();
-    assert.strictEqual(saved.length, beforeRestore + 1, "Current restores all parameters in one automatic save");
-    for (const key of Object.keys(plugin.algorithms.ratingPresets[0].settings))
+    assert.strictEqual(saved.length, beforeRestore + 1, "Undo changes restores all parameters in one save");
+    for (const key of plugin.algorithms.RATING_PARAMETER_KEYS)
       assert.strictEqual(saved.at(-1)[key], initialPayload[key]);
-    assert.strictEqual(
-      saved.at(-1).hideBattleStandings,
-      false,
-      "Current preserves unrelated settings edited since opening",
-    );
-    presetButtons()[0].props.onClick();
-    tree = render();
+    assert.strictEqual(saved.at(-1).hideBattleStandings, false, "unrelated edits since opening are kept");
+    edit("deviationFloor", 40);
     currentButton().props.onClick();
     tree = render();
     await flush();
     tree = render();
-    assert.strictEqual(
-      saved.length,
-      beforeRestore + 1,
-      "restoring before the debounce cancels the unsaved preset change",
-    );
-    assert.strictEqual(
-      field("dirty-rank-tau").props.value,
-      0.8,
-      "the opening snapshot is stable across repeated saves and restores",
-    );
+    assert.strictEqual(saved.length, beforeRestore + 1, "restoring before the debounce cancels the unsaved edit");
+    assert.strictEqual(field(fieldId("initialDeviation")).props.value, 320, "the opening snapshot stays stable");
     const beforeHeldSave = saved.length;
     holdNextSave = true;
-    presetButtons()[0].props.onClick();
-    tree = render();
+    edit("evidenceWeight", 0.5);
     await flush();
     tree = render();
-    assert.strictEqual(saved.length, beforeHeldSave + 1, "the preset save is in flight");
-    assert.strictEqual(currentButton().props.disabled, false, "Current stays available while the preset saves");
+    assert.strictEqual(saved.length, beforeHeldSave + 1, "the edit's save is in flight");
+    assert.strictEqual(currentButton().props.disabled, false, "Undo changes stays available while saving");
     currentButton().props.onClick();
     tree = render();
-    assert.strictEqual(
-      field("dirty-rank-tau").props.value,
-      0.8,
-      "Current restores values immediately during the request",
-    );
+    assert.strictEqual(field(fieldId("evidenceWeight")).props.value, 1.7, "values restore during the request");
     completeHeldSave();
     await flush();
     tree = render();
-    assert.strictEqual(
-      field("dirty-rank-tau").props.value,
-      0.8,
-      "the older response cannot replace the restored draft",
-    );
+    assert.strictEqual(field(fieldId("evidenceWeight")).props.value, 1.7, "the older response cannot win");
     await flush();
     tree = render();
-    assert.strictEqual(saved.length, beforeHeldSave + 2, "the restored values save after the older request completes");
-    for (const key of Object.keys(plugin.algorithms.ratingPresets[0].settings))
+    assert.strictEqual(saved.length, beforeHeldSave + 2, "the restored values save after the older request");
+    for (const key of plugin.algorithms.RATING_PARAMETER_KEYS)
       assert.strictEqual(saved.at(-1)[key], initialPayload[key]);
-    assert.strictEqual(saved.at(-1).hideBattleStandings, false);
     assert.strictEqual(currentButton().props.disabled, false);
-    field("dirty-rank-provisionalDeviation").props.onChange({ target: { value: "70" } });
-    tree = render();
+    edit("provisionalDeviation", 70);
     assert.strictEqual(
       liveEstimate(),
       estimateText({ ...configuration, provisionalDeviation: 70 }),
@@ -1358,6 +1257,8 @@ async function verifyNamedGenderBoxes() {
     renderBattle();
     await flush();
     renderBattle();
+    await flush();
+    renderBattle();
     let tree = renderBattle();
     const boxPicker = () => find(tree, node => node.props.id === "dirty-rank-battle-cohort");
     assert.deepStrictEqual(
@@ -1368,6 +1269,7 @@ async function verifyNamedGenderBoxes() {
       if (index) {
         boxPicker().props.onChange({ target: { value: boxes[index].id } });
         renderBattle();
+        await flush();
         renderBattle();
         tree = renderBattle();
       }
@@ -1567,20 +1469,20 @@ async function verifyMultiscreenContext(cards, render) {
   }
 }
 
-async function verifyKingsMode() {
+async function verifyBattleScreen() {
   const originalSettings = runtime.getPluginSettings;
   const originalOperation = runtime.runPluginOperation;
   const originalResponse = response;
   const originalPath = context.window.location.pathname;
   const originalSearch = context.window.location.search;
   const originalCrypto = context.window.crypto;
-  let battleCounter = 0;
-  context.window.crypto = { randomUUID: () => "kings-test-" + ++battleCounter };
+  let verdictCounter = 0;
+  context.window.crypto = { randomUUID: () => "verdict-test-" + ++verdictCounter };
   context.window.location.pathname = "/plugins/dirty-rank";
   timers.clear();
   const performers = Array.from({ length: 4 }, (_, index) => ({
-    id: "king-" + (index + 1),
-    name: "Contender " + (index + 1),
+    id: "rival-" + (index + 1),
+    name: "Rival " + (index + 1),
     gender: "FEMALE",
     image_path: "/portrait.svg",
     scene_count: 1,
@@ -1594,7 +1496,6 @@ async function verifyKingsMode() {
           "appearance|FEMALE": {
             rating: 1000 + index * 10,
             deviation: 250,
-            volatility: 0.06,
             matches: 1,
             wins: 1,
             losses: 0,
@@ -1605,15 +1506,24 @@ async function verifyKingsMode() {
     ]),
   );
   const recorded = [];
+  const verdictLoads = [];
   let battleConfiguration = {};
   runtime.getPluginSettings = () => Promise.resolve(battleConfiguration);
   runtime.runPluginOperation = (_pluginId, args) => {
     if (args.mode === "loadAll") return Promise.resolve({ revision: 101, states });
+    if (args.mode === "loadVerdicts") {
+      verdictLoads.push(args);
+      return Promise.resolve({ thresholds: [0.6, 1.8, 3.2], verdicts: [] });
+    }
     if (args.mode === "record" || args.mode === "undo") {
       recorded.push(args);
+      const [low, high] = [args.leftId, args.rightId].sort();
+      const score = args.mode === "undo" ? null : args.leftId === low ? args.score : -args.score;
       return Promise.resolve({
         left: { id: args.leftId, state: states[args.leftId] },
         right: { id: args.rightId, state: states[args.rightId] },
+        verdict: [low, high, score, 0],
+        thresholds: [0.6, 1.8, 3.2],
       });
     }
     throw new Error("Unexpected battle operation: " + args.mode);
@@ -1634,14 +1544,49 @@ async function verifyKingsMode() {
     state.effects.splice(0).forEach(effect => effect());
     return tree;
   }
+  async function mount() {
+    render();
+    await flush();
+    render();
+    await flush();
+    render();
+    return render();
+  }
+  function remount() {
+    state.slots.forEach(slot => {
+      if (slot && slot.cleanup) slot.cleanup();
+    });
+    state.slots = [];
+    state.effects = [];
+    return mount();
+  }
   const battleCards = tree => findAll(tree, node => node.type === plugin.testing.PerformerCard);
   const actions = tree =>
     findAll(tree, node => typeof node.type === "function" && node.type.name === "RankButton").map(visibleText);
-  render();
-  await flush();
-  render();
-  let tree = render();
-  assert(actions(tree).includes("Tie") && actions(tree).includes("Skip"), "standard battles keep tie and skip");
+  const scaleOf = tree => find(tree, node => node.type === plugin.testing.VerdictScale);
+  const stepsOf = scale =>
+    findAll(scale.type(scale.props), node => typeof node.type === "function" && node.type.name === "RankButton");
+  // Shortcuts follow the key's position (code); the typed letter (key) differs by layout.
+  const key = (code, typed = code) =>
+    documentListeners.get("keydown")({ code, key: typed, defaultPrevented: false, preventDefault: noop });
+  let tree = await mount();
+  assert.deepStrictEqual(
+    verdictLoads.map(load => [load.categoryId, load.cohort]),
+    [["appearance", "FEMALE"]],
+    "a battle page loads its pool's verdicts once",
+  );
+  let scale = scaleOf(tree);
+  assert(scale, "standard battles ask for a verdict on the seven-step scale");
+  assert.deepStrictEqual(actions(tree), ["Undo"], "every battle needs a verdict: there is no tie or skip button");
+  assert.strictEqual(
+    visibleText(byClass(tree, "dirty-rank-hint")),
+    "A S D · G · J K L or keypad 1 2 3 · 0 · 4 5 6 choose · ↓ or U undo",
+  );
+  assert(!find(tree, node => node.props.id === "dirty-rank-battle-mode"), "battles have a single mode");
+  assert(
+    battleCards(tree).every(card => !("onChoose" in card.props)),
+    "photos and cards keep their own actions and never vote",
+  );
   assert.strictEqual(visibleText(byClass(tree, "dirty-rank-title")), "DirtyRank");
   assert(
     byClass(tree, "dirty-rank-leaderboards-page-title"),
@@ -1668,6 +1613,7 @@ async function verifyKingsMode() {
     visibleText(byClass(tree, "dirty-rank-refinement-estimate")).includes("4 of 4 female performers need refinement"),
     "estimate covers the entire selected cohort",
   );
+  assert(visibleText(byClass(tree, "dirty-rank-refinement-estimate")).includes("more verdicts for the whole category"));
   const currentIds = battleCards(tree).map(card => card.props.performer.id);
   const refinedStates = JSON.parse(JSON.stringify(states));
   currentIds.forEach(id => {
@@ -1690,7 +1636,7 @@ async function verifyKingsMode() {
   tree = render();
   assert(byClass(tree, "dirty-rank-refinement-estimate"), "one provisional performer restores the estimate");
   const estimateSettings = plugin.algorithms.settingsFromConfiguration({});
-  const refinedPool = { rating: 1000, deviation: 75, volatility: 0.06, matches: 1 };
+  const refinedPool = { rating: 1000, deviation: 75, matches: 1 };
   assert.strictEqual(
     plugin.algorithms.precisionTier({ ...refinedPool, deviation: 40 }, estimateSettings).id,
     "excellent",
@@ -1699,7 +1645,7 @@ async function verifyKingsMode() {
   assert(
     plugin.algorithms.estimatedMatchesToConfidence({ ...refinedPool, matches: 0 }, 100, refinedPool, estimateSettings) >
       0,
-    "unrated performers still need a battle even below the RD threshold",
+    "unrated performers still need a verdict even below the RD threshold",
   );
   plugin.algorithms.applyRatingIndex({ revision: 105, states });
   tree = render();
@@ -1707,162 +1653,113 @@ async function verifyKingsMode() {
     find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"),
     "standard battles show the sidebar leaderboard",
   );
-  assert(!byClass(tree, "dirty-rank-hill-crest"), "standard battles have no royal mode identity");
-  assert(!byClass(tree, "dirty-rank-hill-progress"));
   await verifyMultiscreenContext(battleCards(tree), render);
-  const mode = find(tree, node => node.props.id === "dirty-rank-battle-mode");
-  assert(mode && mode.type !== "select", "hill mode is entered through a button");
-  assert.strictEqual(visibleText(mode), "King of the hill");
-  mode.props.onClick();
-  assert.strictEqual(
-    context.window.location.pathname,
-    "/plugins/dirty-rank/category/appearance/king-of-the-hill",
-    "hill mode has its own category URL",
-  );
-  render();
+
+  // The scale: the left performer's three numbers, equal, then the right performer's three.
   tree = render();
-  assert.strictEqual(visibleText(find(tree, node => node.props.id === "dirty-rank-battle-mode")), "Standard battles");
+  scale = scaleOf(tree);
+  let pair = battleCards(tree).map(card => card.props.performer);
+  assert.strictEqual(scale.props.leftName, pair[0].name);
+  assert.strictEqual(scale.props.rightName, pair[1].name);
+  assert.strictEqual(scale.props.saved, null, "a new pair has no saved verdict");
+  const steps = stepsOf(scale);
+  assert.deepStrictEqual(steps.map(visibleText), ["3", "2", "1", "0", "1", "2", "3"]);
+  assert.strictEqual(steps[0].props.ariaLabel, pair[0].name + " is much better than " + pair[1].name);
+  assert.strictEqual(steps[3].props.ariaLabel, pair[0].name + " and " + pair[1].name + " are equal");
+  assert.strictEqual(steps[5].props.ariaLabel, pair[1].name + " is better than " + pair[0].name);
   assert(
-    !find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"),
-    "hill mode removes the sidebar leaderboard",
+    steps.every(step => step.props.pressed === undefined),
+    "nothing is highlighted before a verdict",
   );
-  assert(
-    find(tree, node => (node.props.className || "").includes("dirty-rank-kings-route")),
-    "hill mode expands into a single-column layout",
-  );
-  assert.strictEqual(visibleText(byClass(tree, "dirty-rank-hill-crest")).trim(), "King of the hill");
-  assert.strictEqual(visibleText(byClass(tree, "dirty-rank-hill-progress-count")), "0 / 3 defeated");
-  assert.strictEqual(visibleText(byClass(tree, "dirty-rank-hill-progress-label")), "Claim the crown");
-  assert(!actions(tree).includes("Tie") && !actions(tree).includes("Skip"), "Kings of the hill is winner-only");
-  let cards = battleCards(tree);
-  assert.strictEqual(cards.length, 2);
-  assert(
-    cards.every(card => card.props.hillMode && card.props.hillOpening),
-    "the opening labels both performers as contenders",
-  );
-  assert(
-    cards.every(card => card.props.performer.id !== "king-4"),
-    "Kings opens among the lower-ranked performers",
-  );
-  const firstLeft = cards[0];
-  const firstRight = cards[1];
-  firstLeft.props.onChoose();
+  steps[0].props.onClick();
   tree = render();
-  cards = battleCards(tree);
-  assert.strictEqual(cards[0].props.performer.id, firstLeft.props.performer.id, "left winner stays in place");
-  assert.strictEqual(cards[0].props.key, firstLeft.props.key, "left winner keeps its mounted scene player");
-  assert.strictEqual(cards[0].props.kingTarget, true);
-  assert.strictEqual(cards[0].props.hillOpening, false);
-  assert.strictEqual(cards[1].props.kingTarget, false);
-  assert.strictEqual(visibleText(byClass(tree, "dirty-rank-hill-progress-count")), "1 / 3 defeated");
-  assert.strictEqual(visibleText(byClass(tree, "dirty-rank-hill-progress-label")), "Defend the crown");
-  assert.notStrictEqual(cards[1].props.performer.id, firstRight.props.performer.id, "the defeated challenger leaves");
+  assert.strictEqual(scaleOf(tree).props.chosen, 3, "the chosen number flashes on the scale");
+  const flashing = findAll(
+    scaleOf(tree).type(scaleOf(tree).props),
+    node => typeof node.type === "function" && node.type.name === "RankButton",
+  );
+  assert.deepStrictEqual(
+    flashing.map(step => step.props.className.includes("dirty-rank-verdict-chosen")),
+    [true, false, false, false, false, false, false],
+  );
   await flush();
   tree = render();
-  cards = battleCards(tree);
-  const secondRight = cards[1];
-  secondRight.props.onChoose();
+  assert.strictEqual(scaleOf(tree).props.chosen, null, "the flash ends by itself");
+  assert.deepStrictEqual(
+    [recorded.at(-1).mode, recorded.at(-1).leftId, recorded.at(-1).rightId, recorded.at(-1).score],
+    ["record", pair[0].id, pair[1].id, 3],
+    "the first number saves 'left much better'",
+  );
+  const decision = find(tree, node => node.type === plugin.testing.DecisionIndicator);
+  assert.strictEqual(
+    visibleText(byClass(decision.type(decision.props), "dirty-rank-decision-text")),
+    pair[0].name + " is much better than " + pair[1].name,
+    "the last verdict is shown in words",
+  );
+  const afterClick = battleCards(tree).map(card => card.props.performer.id);
+  assert.notDeepStrictEqual(
+    afterClick.slice().sort(),
+    pair.map(person => person.id).sort(),
+    "the judged pair makes way for a new one",
+  );
+  const before = recorded.length;
+  for (const ignored of ["ArrowLeft", "ArrowRight", "ArrowUp", "KeyF", "KeyH", "Digit1", "Digit4"]) key(ignored);
+  await flush();
+  assert.strictEqual(recorded.length, before, "only the numbers 1 to 7 give a verdict");
+  pair = battleCards(render()).map(card => card.props.performer);
+  key("Numpad5", "5");
+  await flush();
+  assert.deepStrictEqual(
+    [recorded.at(-1).leftId, recorded.at(-1).score],
+    [pair[0].id, -2],
+    "keypad 5 is 'right better'",
+  );
+  key("ArrowDown");
+  await flush();
   tree = render();
-  cards = battleCards(tree);
-  assert.strictEqual(cards[1].props.performer.id, secondRight.props.performer.id, "right winner stays on the right");
-  assert.strictEqual(cards[1].props.key, secondRight.props.key, "right winner keeps its mounted scene player");
-  assert.strictEqual(cards[1].props.kingTarget, true);
-  assert.strictEqual(cards[0].props.kingTarget, false, "the crown moves with the new reigning performer");
-  assert(
-    !cards.some(
-      card =>
-        card.props.performer.id === firstLeft.props.performer.id ||
-        card.props.performer.id === firstRight.props.performer.id,
+  assert.strictEqual(recorded.at(-1).mode, "undo");
+  assert.strictEqual(recorded.at(-1).verdictId, recorded.at(-2).verdictId, "undo reverses the last verdict");
+  assert.deepStrictEqual(
+    battleCards(tree).map(card => card.props.performer.id),
+    pair.map(person => person.id),
+    "undo shows the pair again",
+  );
+  // A judged pair shows its saved verdict; choosing it again keeps it.
+  const chosen = [];
+  const savedScale = plugin.testing.VerdictScale({
+    leftName: "Ann",
+    rightName: "Bea",
+    saved: { score: -1, confirmations: 0 },
+    onChoose: score => chosen.push(score),
+  });
+  const savedSteps = findAll(savedScale, node => typeof node.type === "function" && node.type.name === "RankButton");
+  assert.deepStrictEqual(
+    savedSteps.map(step => step.props.pressed),
+    [false, false, false, false, true, false, false],
+  );
+  assert(savedSteps[4].props.className.includes("dirty-rank-verdict-saved"), "the saved verdict stands out");
+  assert.deepStrictEqual(
+    savedSteps.map(step =>
+      step.props.className
+        .match(/dirty-rank-verdict-(left|equal|right) dirty-rank-verdict-strength-(\d)/)
+        .slice(1)
+        .join(""),
     ),
-    "neither earlier loser can return as a challenger",
-  );
-  await flush();
-  tree = render();
-  const countBeforeShortcuts = recorded.length;
-  for (const key of ["ArrowUp", "t", "s"]) {
-    documentListeners.get("keydown")({ key, defaultPrevented: false, preventDefault: noop });
-  }
-  await flush();
-  assert.strictEqual(recorded.length, countBeforeShortcuts, "tie and skip keys do nothing in Kings mode");
-  cards[1].props.onChoose();
-  tree = render();
-  const crownedCards = battleCards(tree);
-  assert.strictEqual(crownedCards.length, 1, "the hill ends with only the winner visible");
-  assert.strictEqual(crownedCards[0].props.performer.id, secondRight.props.performer.id);
-  assert.strictEqual(
-    crownedCards[0].props.key,
-    secondRight.props.key,
-    "the winning card keeps its mounted scene player",
-  );
-  assert.strictEqual(crownedCards[0].props.crowned, true, "the crowned card no longer accepts votes");
-  assert.strictEqual(visibleText(byClass(tree, "dirty-rank-hill-progress-count")), "3 / 3 defeated");
-  assert.strictEqual(byClass(tree, "dirty-rank-hill-progress-track").children[0].props.style.width, "100%");
-  assert(
-    find(tree, node => (node.props.className || "").includes("dirty-rank-coronation-right")),
-    "the winning card moves to the center",
+    ["left3", "left2", "left1", "equal0", "right1", "right2", "right3"],
+    "each step carries its side and strength for the colour gradient",
   );
   assert.strictEqual(
-    findAll(tree, node => (node.props.className || "") === "dirty-rank-firework").length,
-    18,
-    "victory includes staggered bursts and a six-burst finale",
+    visibleText(byClass(savedScale, "dirty-rank-verdict-saved-note")),
+    "Saved verdict: Bea is slightly better than Ann. Choose it again to keep it, or another number to change it.",
   );
-  assert.strictEqual(findAll(tree, node => node.props.className === "dirty-rank-firework-spark").length, 576);
-  assert.strictEqual(findAll(tree, node => node.props.className === "dirty-rank-victory-confetti").length, 64);
-  assert.strictEqual(byClass(tree, "dirty-rank-fireworks").props["aria-hidden"], "true");
-  const cleared = find(tree, node => node.props.title === "Hill cleared");
-  assert(cleared && cleared.props.detail.includes(secondRight.props.performer.name));
-  const clearedActions = findAll(
-    cleared.props.actions,
-    node => typeof node.type === "function" && node.type.name === "RankButton",
-  );
-  assert.strictEqual(clearedActions.length, 2, "the cleared hill offers undo and a new run");
-  clearedActions[0].props.onClick();
-  tree = render();
-  cards = battleCards(tree);
-  assert.strictEqual(cards.length, 2, "undo restores the final defeated challenger");
-  assert.strictEqual(visibleText(byClass(tree, "dirty-rank-hill-progress-count")), "2 / 3 defeated");
-  assert(!byClass(tree, "dirty-rank-fireworks"), "undo removes the victory effect");
-  await flush();
-  tree = render();
-  cards = battleCards(tree);
-  cards[1].props.onChoose();
-  await flush();
-  tree = render();
-  const restart = findAll(
-    find(tree, node => node.props.title === "Hill cleared").props.actions,
-    node => typeof node.type === "function" && node.type.name === "RankButton",
-  )[1];
-  assert.strictEqual(restart.props.disabled, false);
-  restart.props.onClick();
-  tree = render();
-  tree = render();
-  assert.strictEqual(battleCards(tree).length, 2, "a new run makes the pool available again");
-  assert.strictEqual(
-    visibleText(byClass(tree, "dirty-rank-hill-progress-count")),
-    "0 / 3 defeated",
-    "restarting resets the royal progress ribbon",
-  );
-  find(tree, node => node.props.id === "dirty-rank-battle-mode").props.onClick();
-  assert.strictEqual(
-    context.window.location.pathname,
-    "/plugins/dirty-rank/category/appearance",
-    "standard mode has a distinct category URL",
-  );
-  render();
-  tree = render();
-  assert.strictEqual(visibleText(find(tree, node => node.props.id === "dirty-rank-battle-mode")), "King of the hill");
-  assert(
-    find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"),
-    "returning to standard restores the sidebar",
-  );
-  assert(!byClass(tree, "dirty-rank-hill-crest"));
-  assert(
-    battleCards(tree).every(card => !card.props.hillMode),
-    "royal styling does not leak into standard cards",
-  );
-  assert(actions(tree).includes("Tie") && actions(tree).includes("Skip"));
+  savedSteps[4].props.onClick();
+  savedSteps[6].props.onClick();
+  assert.deepStrictEqual(chosen, [-1, -3]);
+
   find(tree, node => node.props.id === "dirty-rank-category").props.onSelect("performance");
   assert.strictEqual(context.window.location.pathname, "/plugins/dirty-rank/category/performance");
+  render();
+  await flush();
   render();
   tree = render();
   assert.strictEqual(
@@ -1870,36 +1767,11 @@ async function verifyKingsMode() {
     "performance",
     "category selection navigates to its own page",
   );
-  find(tree, node => node.props.id === "dirty-rank-battle-mode").props.onClick();
-  render();
-  tree = render();
-  assert.strictEqual(context.window.location.pathname, "/plugins/dirty-rank/category/performance/king-of-the-hill");
-  find(tree, node => node.props.id === "dirty-rank-category").props.onSelect("appearance");
-  render();
-  tree = render();
-  assert.strictEqual(
-    context.window.location.pathname,
-    "/plugins/dirty-rank/category/appearance/king-of-the-hill",
-    "category changes preserve hill mode",
+  assert.deepStrictEqual(
+    { ...verdictLoads.at(-1) },
+    { mode: "loadVerdicts", categoryId: "performance", cohort: "FEMALE" },
   );
-  context.window.location.pathname = "/plugins/dirty-rank/category/performance";
-  render();
-  tree = render();
-  assert.strictEqual(
-    find(tree, node => node.props.id === "dirty-rank-category").props.value,
-    "performance",
-    "browser history restores the URL's category",
-  );
-  assert(
-    find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"),
-    "browser history restores standard mode",
-  );
-  state.slots.forEach(slot => {
-    if (slot && slot.cleanup) slot.cleanup();
-  });
-  state.slots = [];
-  state.effects = [];
-  context.window.location.pathname = "/plugins/dirty-rank/category/appearance/king-of-the-hill";
+  context.window.location.pathname = "/plugins/dirty-rank/category/appearance";
   render();
   await flush();
   render();
@@ -1907,16 +1779,19 @@ async function verifyKingsMode() {
   assert.strictEqual(
     find(tree, node => node.props.id === "dirty-rank-category").props.value,
     "appearance",
-    "direct category links override the remembered category",
+    "browser history restores the URL's category",
   );
-  assert(
-    !find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard"),
-    "direct hill links open in hill mode",
+  context.window.location.pathname = "/plugins/dirty-rank/category/performance";
+  tree = await remount();
+  assert.strictEqual(
+    find(tree, node => node.props.id === "dirty-rank-category").props.value,
+    "performance",
+    "direct category links override the remembered category",
   );
   assert.strictEqual(battleCards(tree).length, 2);
   const encodedCategory = "face / body";
-  const encodedPath = plugin.algorithms.battleCategoryPath(encodedCategory, true);
-  assert.strictEqual(encodedPath, "/plugins/dirty-rank/category/face%20%2F%20body/king-of-the-hill");
+  const encodedPath = plugin.algorithms.battleCategoryPath(encodedCategory);
+  assert.strictEqual(encodedPath, "/plugins/dirty-rank/category/face%20%2F%20body");
   assert.strictEqual(plugin.algorithms.battleRouteFromPath(encodedPath).categoryId, encodedCategory);
   assert.strictEqual(
     plugin.algorithms.battleRouteFromPath("/plugins/dirty-rank/category/%ZZ"),
@@ -1924,29 +1799,22 @@ async function verifyKingsMode() {
     "malformed category URLs fail safely",
   );
   assert.strictEqual(plugin.algorithms.battleRouteFromPath("/plugins/dirty-rank/category/appearance/unknown"), null);
-  state.slots.forEach(slot => {
-    if (slot && slot.cleanup) slot.cleanup();
-  });
-  state.slots = [];
-  state.effects = [];
-  routeParams = { performerId: "king-1" };
-  context.window.location.pathname = "/plugins/dirty-rank/gauntlet/king-1";
-  render();
-  await flush();
-  render();
-  tree = render();
+  routeParams = { performerId: "rival-1" };
+  context.window.location.pathname = "/plugins/dirty-rank/gauntlet/rival-1";
+  tree = await remount();
   const targetConfidence = find(
     tree,
     node => typeof node.type === "function" && node.type.name === "GauntletConfidenceIndicator",
   );
   assert(targetConfidence, "Gauntlet retains its target precision bar");
+  assert(scaleOf(tree), "Gauntlet asks for verdicts on the same scale");
   assert.strictEqual(
     context.window.location.pathname,
-    "/plugins/dirty-rank/gauntlet/king-1/appearance",
+    "/plugins/dirty-rank/gauntlet/rival-1/appearance",
     "Gauntlet category is also bookmarkable",
   );
   assert(!byClass(tree, "dirty-rank-refinement-estimate"), "Gauntlet uses its own target estimate without duplication");
-  assert.strictEqual(targetConfidence.props.performer.id, "king-1");
+  assert.strictEqual(targetConfidence.props.performer.id, "rival-1");
   const confidenceTree = targetConfidence.type(targetConfidence.props);
   const confidenceBar = find(confidenceTree, node => node.props.role === "progressbar");
   assert(
@@ -1958,31 +1826,22 @@ async function verifyKingsMode() {
     "target precision tier remains visible",
   );
   for (const hideBattleStandings of [false, true]) {
-    for (const mode of ["standard", "hill", "gauntlet"]) {
-      state.slots.forEach(slot => {
-        if (slot && slot.cleanup) slot.cleanup();
-      });
-      state.slots = [];
-      state.effects = [];
+    for (const mode of ["standard", "gauntlet"]) {
       battleConfiguration = { hideBattleStandings };
-      routeParams = mode === "gauntlet" ? { performerId: "king-1" } : {};
+      routeParams = mode === "gauntlet" ? { performerId: "rival-1" } : {};
       context.window.location.pathname =
         mode === "gauntlet"
-          ? "/plugins/dirty-rank/gauntlet/king-1/appearance"
-          : "/plugins/dirty-rank/category/appearance" + (mode === "hill" ? "/king-of-the-hill" : "");
-      render();
-      await flush();
-      render();
-      tree = render();
-      const expectedHidden = hideBattleStandings || mode === "hill";
+          ? "/plugins/dirty-rank/gauntlet/rival-1/appearance"
+          : "/plugins/dirty-rank/category/appearance";
+      tree = await remount();
       assert.strictEqual(
         Boolean(find(tree, node => typeof node.type === "function" && node.type.name === "Leaderboard")),
-        !expectedHidden,
-        "hill always hides standings; other modes respect the preference",
+        !hideBattleStandings,
+        "battles respect the standings preference",
       );
       assert.strictEqual(
         Boolean(byClass(tree, "dirty-rank-standings-hidden")),
-        expectedHidden,
+        hideBattleStandings,
         "hidden sidebar frees the battle width",
       );
     }
@@ -1995,19 +1854,10 @@ async function verifyKingsMode() {
     ],
     categories: { FEMALE: [{ name: "Appearance" }, { name: "Performance" }] },
   };
-  state.slots.forEach(slot => {
-    if (slot && slot.cleanup) slot.cleanup();
-  });
-  state.slots = [];
-  state.effects = [];
-  routeParams = { performerId: "king-2" };
-  context.window.location.pathname = "/plugins/dirty-rank/gauntlet/king-2/appearance";
+  routeParams = { performerId: "rival-2" };
+  context.window.location.pathname = "/plugins/dirty-rank/gauntlet/rival-2/appearance";
   context.window.location.search = "";
-  render();
-  await flush();
-  render();
-  await flush();
-  render();
+  tree = await remount();
   await flush();
   render();
   tree = render();
@@ -2016,7 +1866,7 @@ async function verifyKingsMode() {
     2,
     "Gauntlet can use a mixed category even when the target's original set is disabled",
   );
-  assert.strictEqual(battleCards(tree)[0].props.performer.id, "king-2");
+  assert.strictEqual(battleCards(tree)[0].props.performer.id, "rival-2");
   assert.strictEqual(
     battleCards(tree)[1].props.performer.gender,
     "FEMALE",
@@ -2033,35 +1883,22 @@ async function verifyKingsMode() {
       .cohort,
     "FEMALE",
   );
-  state.slots.forEach(slot => {
-    if (slot && slot.cleanup) slot.cleanup();
-  });
-  state.slots = [];
-  state.effects = [];
-  render();
-  await flush();
-  render();
-  tree = render();
+  tree = await remount();
   assert.strictEqual(battleCards(tree).length, 2, "a direct mixed-category Gauntlet URL survives a fresh mount");
   battleConfiguration.genderBoxes[1].enabled = true;
-  state.slots.forEach(slot => {
-    if (slot && slot.cleanup) slot.cleanup();
-  });
-  state.slots = [];
-  state.effects = [];
-  render();
-  await flush();
-  render();
-  tree = render();
+  tree = await remount();
   const setSelector = find(tree, node => node.props.id === "dirty-rank-battle-cohort");
   assert.strictEqual(setSelector.props.value, "FEMALE");
   setSelector.props.onChange({ target: { value: "MALE" } });
+  render();
+  await flush();
   render();
   tree = render();
   assert.strictEqual(context.window.location.search, "?box=MALE", "URLs preserve a non-default box");
   assert.strictEqual(find(tree, node => node.props.id === "dirty-rank-battle-cohort").props.value, "MALE");
   context.window.location.search = "";
   render();
+  await flush();
   render();
   tree = render();
   assert.strictEqual(
@@ -2264,7 +2101,7 @@ async function verifyLeaderboardDisplays() {
     );
     assert.strictEqual(findAll(podium, node => node.type === PrecisionBadge).length, 0);
     findAll(podium, node => node.props.className === "dirty-rank-leaderboard-rating-row").forEach(row => {
-      assert(/^#\d+$/.test(visibleText(row.children[0])));
+      assert(/^#\d+( \d+–\d+)?$/.test(visibleText(row.children[0]).trim()), "a rank, then its likely positions");
       assert(row.children[1].props.className === "dirty-rank-podium-rating", "rank and score must share a row");
     });
     assert.strictEqual(
@@ -2384,7 +2221,7 @@ async function verifyLeaderboardDisplays() {
   const ratingRow = find(galleryCard, node =>
     (node.props.className || "").includes("dirty-rank-leaderboard-rating-row"),
   );
-  assert.strictEqual(visibleText(ratingRow.children[0]), "#6");
+  assert.strictEqual(visibleText(ratingRow.children[0]).trim(), "#6");
   assert(ratingRow.children[1].type === "strong", "gallery score belongs beside the rank");
 
   let configuration = {};

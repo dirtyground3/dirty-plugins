@@ -14,34 +14,15 @@ import {
   precisionTier,
   rankPerformers,
 } from "../domain/rank";
+import { VERDICT_SCORES } from "../domain/rating";
+import type { SavedVerdict } from "../domain/rating";
 import { boxFor, boxGendersLabel, categoriesFor } from "../domain/settings";
+import { verdictLabel } from "../domain/verdicts";
 import { PluginApi, React, ui } from "../runtime";
 import type * as R from "react";
 import type { SharedProps } from "../../../DirtyPlugins/src/types";
 import { OVERALL_LEADERBOARD_ID } from "../constants";
 import type { ConfidenceProps, Decision, DisplayPool, RankCategory, RankPerformer, RankSettings } from "../types";
-export function RankCrown(): R.JSX.Element | null {
-  return (
-    <svg
-      aria-hidden="true"
-      className="dirty-rank-crown-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      focusable="false"
-    >
-      <path d="M3 8l5 4 4-8 4 8 5-4-3 11H6z" fill="currentColor" fillOpacity="0.18" />
-      <path d="M6 22h12M7 16h10" />
-      <circle cx="12" cy="2.5" r="1.1" fill="currentColor" stroke="none" />
-      <circle cx="2" cy="6" r="1.1" fill="currentColor" stroke="none" />
-      <circle cx="22" cy="6" r="1.1" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
 export function RankButton(props: SharedProps): R.JSX.Element | null {
   return <ui.Button {...props}>{props.children}</ui.Button>;
 }
@@ -111,7 +92,7 @@ export function ConfidenceIndicator(props: ConfidenceProps): R.JSX.Element | nul
   return (
     <section
       className="dirty-rank-confidence"
-      title="Estimate based on current Glicko-2 rating deviations, expected information gain, and the selected confidence goal. Future results can change it."
+      title="Estimate based on current rating deviations, expected information gain, and the selected confidence goal. Future results can change it."
     >
       <div className="dirty-rank-confidence-copy">
         <div className="dirty-rank-confidence-heading">
@@ -171,7 +152,7 @@ export function GauntletConfidenceIndicator(
         representativeOpponent(pool, opponentDeviation, props.settings),
         props.settings,
       ),
-    [pool.rating, pool.deviation, pool.volatility, pool.matches, opponentDeviation, props.settings],
+    [pool.rating, pool.deviation, pool.matches, opponentDeviation, props.settings],
   );
   const ranked = rankPerformers(
     props.performers.filter(performer => categoryEligible(performer, props.category, props.settings, props.cohort)),
@@ -357,85 +338,89 @@ export function DecisionIndicator(props: { decision: Decision | null }): R.JSX.E
   const decision = props.decision;
   if (!decision) return null;
   function result(person: Decision["left"]) {
-    const label = person.tone === "winner" ? "Winner" : person.tone === "loser" ? "Loser" : "Tie";
     return (
       <span className={"dirty-rank-decision-person dirty-rank-decision-" + person.tone}>
-        <span className="dirty-rank-decision-label">{label}</span>
         <strong>{person.name}</strong>
       </span>
     );
   }
   return (
     <div aria-live="polite" className="dirty-rank-decision d-flex flex-wrap align-items-center">
-      <span className="dirty-rank-decision-title">Last decision</span>
+      <span className="dirty-rank-decision-title">Last verdict</span>
       {result(decision.left)}
       {result(decision.right)}
+      <span className="dirty-rank-decision-text">
+        {verdictLabel(decision.score, decision.left.name, decision.right.name)}
+      </span>
     </div>
   );
 }
 
-export function hillFireworks() {
-  const colors = ["#ffe6a3", "#65e8ff", "#d4a2ff", "#ff8ea8", "#a8ffc5"];
-  const bursts = [];
-  const confetti = [];
-  for (let burst = 0; burst < 18; burst += 1) {
-    const sparks = [];
-    const finale = burst >= 12;
-    for (let spark = 0; spark < 32; spark += 1) {
-      const angle = (spark * Math.PI * 2) / 32;
-      const radius = (finale ? 12 : 8) * (spark % 2 ? 0.65 : 1);
-      sparks.push(
-        <span
-          className="dirty-rank-firework-spark"
-          key={spark}
-          style={
-            {
-              "--spark-x": (Math.cos(angle) * radius).toFixed(3) + "rem",
-              "--spark-y": (Math.sin(angle) * radius).toFixed(3) + "rem",
-              "--spark-angle": (spark * 360) / 32 + "deg",
-            } as R.CSSProperties
-          }
-        />,
-      );
-    }
-    bursts.push(
-      <span
-        className="dirty-rank-firework"
-        key={"burst-" + burst}
-        style={
-          {
-            left: 8 + ((burst * 29) % 85) + "%",
-            top: 12 + ((burst * 17) % 48) + "%",
-            "--firework-color": colors[burst % colors.length],
-            "--firework-delay": (finale ? 5.4 + (burst - 12) * 0.12 : burst * 0.4).toFixed(2) + "s",
-          } as R.CSSProperties
-        }
-      >
-        {sparks}
-      </span>,
-    );
-  }
-  for (let piece = 0; piece < 64; piece += 1) {
-    confetti.push(
-      <span
-        className="dirty-rank-victory-confetti"
-        key={"confetti-" + piece}
-        style={
-          {
-            left: ((piece * 37) % 100) + "%",
-            "--confetti-color": colors[piece % colors.length],
-            "--confetti-drift": ((piece * 19) % 24) - 12 + "rem",
-            "--confetti-delay": 1.2 + (piece % 16) * 0.25 + "s",
-            "--confetti-turn": (piece % 2 ? 720 : -720) + "deg",
-          } as R.CSSProperties
-        }
-      />,
-    );
-  }
+/**
+ * Seven numbered steps from "left much better" (3) through equal (0) to "right much
+ * better" (3). A saved verdict is highlighted; choosing it again confirms it.
+ */
+export function VerdictScale(props: {
+  leftName?: string;
+  rightName?: string;
+  saved?: SavedVerdict | null;
+  /** The letters of the keys for each step, left to right. */
+  keyLabels?: string[];
+  /** The number just chosen for the previous pair: it flashes briefly. */
+  chosen?: number | null;
+  onChoose(score: number): void;
+}): R.JSX.Element | null {
+  const leftName = props.leftName || "Left";
+  const rightName = props.rightName || "Right";
+  const saved = props.saved || null;
+  const choosing = typeof props.chosen === "number";
   return (
-    <div className="dirty-rank-fireworks" aria-hidden="true">
-      {bursts}
-      {confetti}
+    <div className="dirty-rank-verdict-scale" role="group" aria-label="Verdict">
+      <div className="dirty-rank-verdict-steps">
+        {VERDICT_SCORES.slice()
+          .reverse()
+          .map((score, index) => {
+            // The side and strength colour each step: the left performer's colour deepens
+            // toward its 3, the right performer's toward theirs, and equal stays neutral.
+            const side = score > 0 ? "left" : score < 0 ? "right" : "equal";
+            const chosen = Boolean(saved && saved.score === score);
+            return (
+              <RankButton
+                ariaLabel={verdictLabel(score, leftName, rightName)}
+                className={
+                  "dirty-rank-verdict-step dirty-rank-verdict-" +
+                  side +
+                  " dirty-rank-verdict-strength-" +
+                  Math.abs(score) +
+                  (chosen ? " dirty-rank-verdict-saved" : "") +
+                  (choosing && props.chosen === score ? " dirty-rank-verdict-chosen" : "")
+                }
+                key={score}
+                onClick={() => {
+                  props.onChoose(score);
+                }}
+                pressed={saved ? chosen : undefined}
+                title={
+                  verdictLabel(score, leftName, rightName) + (props.keyLabels ? " · key " + props.keyLabels[index] : "")
+                }
+              >
+                {String(Math.abs(score))}
+              </RankButton>
+            );
+          })}
+      </div>
+      <div className="dirty-rank-verdict-ends" aria-hidden="true">
+        <span className="dirty-rank-verdict-end-left">{"← " + leftName + " better"}</span>
+        <span>Equal</span>
+        <span className="dirty-rank-verdict-end-right">{rightName + " better →"}</span>
+      </div>
+      {saved && (
+        <div className="dirty-rank-verdict-saved-note" role="note">
+          {"Saved verdict: " +
+            verdictLabel(saved.score, leftName, rightName) +
+            ". Choose it again to keep it, or another number to change it."}
+        </div>
+      )}
     </div>
   );
 }

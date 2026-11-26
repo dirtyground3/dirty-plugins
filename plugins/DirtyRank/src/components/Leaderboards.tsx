@@ -19,6 +19,7 @@ import {
   filteredLeaderboardPanelProps,
   leaderboardData,
   leaderboardEntries,
+  leaderboardRanges,
   leaderboardFeaturedCount,
   leaderboardPageSize,
   leaderboardPoolFor,
@@ -44,14 +45,38 @@ import type {
   PerformerFilter,
   PerformerFilterModel,
   RankPerformer,
+  RankRange,
   RankSettings,
 } from "../types";
 let leaderboardFilterListener: ((model: PerformerFilterModel) => void) | null = null;
+/** The likely positions "3–9" shown after a rank while the ratings are still uncertain. */
+export function rankRange(rank: number, range: RankRange | undefined): R.JSX.Element | null {
+  if (!range || (range.low >= rank && range.high <= rank)) return null;
+  return (
+    <span
+      className="dirty-rank-leaderboard-range"
+      title={
+        "Could rank " +
+        range.low +
+        " to " +
+        range.high +
+        ": " +
+        (range.low - 1) +
+        " clearly ahead, " +
+        (range.high - range.low) +
+        " too close to call (90% sure)"
+      }
+    >
+      {range.low + "–" + range.high}
+    </span>
+  );
+}
 export function LeaderboardPodium(props: LeaderboardProps): R.JSX.Element | null {
   const NativePerformerCard = PluginApi.components && PluginApi.components.PerformerCard;
   const topCount = leaderboardTopCount(props.topCount);
   const showcase = LEADERBOARD_TOP_OPTIONS.filter(option => option.count === topCount)[0];
   const top = props.ranked.slice(0, topCount);
+  const ranges = leaderboardRanges(props.ranked, props.leaderboardId, props.cohort, props.settings);
   const podiumOrder = [1, 0, 2];
   const displayOrder = topCount === 3 ? podiumOrder : top.map((_performer, index) => index);
   if (!top.length) {
@@ -102,7 +127,10 @@ export function LeaderboardPodium(props: LeaderboardProps): R.JSX.Element | null
                     </Router.NavLink>
                   )}
                   <div className="dirty-rank-leaderboard-rating-row">
-                    <strong className="dirty-rank-leaderboard-rank">{"#" + (index + 1)}</strong>
+                    <strong className="dirty-rank-leaderboard-rank">
+                      {"#" + (index + 1)}
+                      {rankRange(index + 1, ranges[index])}
+                    </strong>
                     <strong
                       className="dirty-rank-podium-rating"
                       title={overallCategoryScoresTitle(performer, props.leaderboardId, props.cohort, props.settings)}
@@ -235,7 +263,10 @@ export function LeaderboardTable(props: LeaderboardProps): R.JSX.Element | null 
           const pool = leaderboardPoolFor(performer, props.leaderboardId, props.cohort, props.settings);
           return (
             <tr key={performer.id}>
-              <td className="dirty-rank-table-rank">{"#" + entry.rank}</td>
+              <td className="dirty-rank-table-rank">
+                {"#" + entry.rank}
+                {rankRange(entry.rank, entry.range)}
+              </td>
               <td>
                 <Router.NavLink
                   className="dirty-rank-table-performer d-inline-flex align-items-center"
@@ -272,6 +303,7 @@ export function LeaderboardGalleryCard(props: {
   cohort: string;
   settings: RankSettings;
   rank: number;
+  range?: RankRange;
 }): R.JSX.Element | null {
   const NativePerformerCard = PluginApi.components && PluginApi.components.PerformerCard;
   const performer = props.performer;
@@ -319,7 +351,10 @@ export function LeaderboardGalleryCard(props: {
           </Router.NavLink>
         )}
         <div className="dirty-rank-gallery-rating-row dirty-rank-leaderboard-rating-row">
-          <strong className="dirty-rank-leaderboard-rank">{"#" + props.rank}</strong>
+          <strong className="dirty-rank-leaderboard-rank">
+            {"#" + props.rank}
+            {rankRange(props.rank, props.range)}
+          </strong>
           <strong title={overallCategoryScoresTitle(performer, props.leaderboardId, props.cohort, props.settings)}>
             {leaderboardRatingText(pool, props.settings)}
           </strong>
@@ -345,6 +380,7 @@ export function LeaderboardGallery(props: LeaderboardProps): R.JSX.Element | nul
           leaderboardId={props.leaderboardId}
           performer={entry.performer}
           rank={entry.rank}
+          range={entry.range}
           settings={props.settings}
         />
       ))}
@@ -494,7 +530,10 @@ export function DirtyRankLeaderboardsRoute(): R.JSX.Element | null {
     () => (settings && !loading && scores.ready ? leaderboardData(performers, leaderboardId, cohort, settings) : null),
     [cohort, leaderboardId, performers, settings, loading, scores.ready, scores.revision],
   );
-  const allEntries = React.useMemo(() => (data ? leaderboardEntries(data.ranked) : []), [data]);
+  const allEntries = React.useMemo(
+    () => (data && settings ? leaderboardEntries(data.ranked, leaderboardId, cohort, settings) : []),
+    [data, leaderboardId, cohort, settings],
+  );
   const standingEntries = React.useMemo(() => {
     if (filterActive) return filteredLeaderboardEntries(allEntries, filterIds);
     return allEntries.slice(leaderboardTopCount(topCount));
@@ -593,8 +632,8 @@ export function DirtyRankLeaderboardsRoute(): R.JSX.Element | null {
                   value={stats.medianDeviation.toFixed(1)}
                 />
                 <LeaderboardStat
-                  detail="Share of completed battles"
-                  label="Draw rate"
+                  detail="Share of verdicts that call a pair equal"
+                  label="Equal verdicts"
                   value={stats.drawRate.toFixed(1) + "%"}
                 />
                 <LeaderboardStat
@@ -628,7 +667,7 @@ export function DirtyRankLeaderboardsRoute(): R.JSX.Element | null {
               className="btn btn-secondary dirty-ui-button dirty-ui-control dirty-rank-leaderboards-battles"
               to={
                 selectedCategory
-                  ? battleCategoryPath(selectedCategory.id, false, "", box)
+                  ? battleCategoryPath(selectedCategory.id, "", box)
                   : ROUTE_PATH + (box ? "?box=" + encodeURIComponent(box) : "")
               }
             >

@@ -1,13 +1,6 @@
 import { useBattleSession } from "../battleSession";
 import { PerformerCard } from "./PerformerCard";
-import {
-  DecisionIndicator,
-  GauntletConfidenceIndicator,
-  Leaderboard,
-  RankButton,
-  RankCrown,
-  hillFireworks,
-} from "./Primitives";
+import { DecisionIndicator, GauntletConfidenceIndicator, Leaderboard, RankButton, VerdictScale } from "./Primitives";
 import { battleRouteFromPath } from "../domain/navigation";
 import { poolFor } from "../domain/rank";
 import { boxGendersLabel, boxOptions, categoriesForPerformer } from "../domain/settings";
@@ -60,7 +53,6 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
     settings,
     category,
     gauntletMode,
-    kingsMode,
     censorMedia,
     pairInfo,
     performers,
@@ -73,31 +65,15 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
     gauntletTarget,
     load,
     submit,
-    skip,
     undo,
-    restartKings,
   } = session;
   const ready = !loading && settings && category;
   const pair = ready ? pairInfo?.pair : null;
-  const hillWinner =
-    ready && kingsMode && pairInfo?.incumbentId && !pair
-      ? performers.find(performer => String(performer.id) === pairInfo!.incumbentId)
-      : null;
-  const arenaLeft = pair ? pair[0] : hillWinner && pairInfo!.incumbentSide === "left" ? hillWinner : null;
-  const arenaRight = pair ? pair[1] : hillWinner && pairInfo!.incumbentSide === "right" ? hillWinner : null;
-  // Keep the same mounted card and player when this performer wins.
-  const arenaLeftKey = arenaLeft
-    ? gauntletMode
-      ? "gauntlet:" + arenaLeft.id
-      : kingsMode
-        ? "kings:" + cohort + ":" + category!.id + ":" + arenaLeft.id
-        : pairInfo!.instanceId + ":left"
-    : null;
-  const arenaRightKey = arenaRight
-    ? kingsMode
-      ? "kings:" + cohort + ":" + category!.id + ":" + arenaRight.id
-      : pairInfo!.instanceId + ":right"
-    : null;
+  const arenaLeft = pair ? pair[0] : null;
+  const arenaRight = pair ? pair[1] : null;
+  // Keep the Gauntlet target's mounted card and player across verdicts.
+  const arenaLeftKey = arenaLeft ? (gauntletMode ? "gauntlet:" + arenaLeft.id : pairInfo!.instanceId + ":left") : null;
+  const arenaRightKey = arenaRight ? pairInfo!.instanceId + ":right" : null;
   const [leftSceneId, onLeftSceneChange] = useArenaScene(arenaLeftKey);
   const [rightSceneId, onRightSceneChange] = useArenaScene(arenaRightKey);
   const { pathname } = Router.useLocation();
@@ -143,9 +119,7 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
   if (!settings || !category) return null;
 
   const reveal = settings.showRatingsBeforeVote;
-  const hillDefeated = kingsMode ? session.defeatedCount : 0;
-  const hillTotal = kingsMode && pairInfo ? Math.max(0, pairInfo!.eligible - 1) : 0;
-  const hideStandings = kingsMode || settings.hideBattleStandings;
+  const hideStandings = settings.hideBattleStandings;
   const availableCohorts = boxOptions(settings, true).filter(
     item =>
       settings!.enabledCohorts.indexOf(item[0]) !== -1 &&
@@ -155,7 +129,7 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
     <React.Fragment>
       {Router.Prompt && (
         <Router.Prompt
-          message="DirtyRank is still saving queued votes or undos. Wait for the queue to finish before leaving this page."
+          message="DirtyRank is still saving queued verdicts or undos. Wait for the queue to finish before leaving this page."
           when={pendingVotes > 0}
         />
       )}
@@ -163,7 +137,6 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
         className={
           "dirty-rank-route dirty-ui-pilot dirty-ui-page-shell dirty-ui-page-shell-wide" +
           (gauntletMode ? " dirty-rank-gauntlet-route" : "") +
-          (kingsMode ? " dirty-rank-kings-route" : "") +
           (hideStandings ? " dirty-rank-standings-hidden" : "") +
           (censorMedia ? " dirty-rank-censored-media" : "")
         }
@@ -173,12 +146,6 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
             <header className="dirty-rank-header dirty-ui-page-header">
               <div className="dirty-rank-header-identity">
                 <h1 className="dirty-rank-title dirty-rank-leaderboards-page-title">DirtyRank</h1>
-                {kingsMode && (
-                  <div className="dirty-rank-hill-crest">
-                    <RankCrown />
-                    <span>King of the hill</span>
-                  </div>
-                )}
                 <fieldset className="dirty-rank-category-picker" disabled={pendingVotes > 0}>
                   <ui.StatisticSelector
                     id="dirty-rank-category"
@@ -193,16 +160,6 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
                 </fieldset>
               </div>
               <div className="dirty-rank-header-controls dirty-ui-control-row d-flex flex-wrap align-items-end justify-content-end">
-                {!gauntletMode && (
-                  <RankButton
-                    className="dirty-ui-control dirty-rank-options-link"
-                    disabled={pendingVotes > 0}
-                    id="dirty-rank-battle-mode"
-                    onClick={session.toggleBattleMode}
-                  >
-                    {kingsMode ? "Standard battles" : "King of the hill"}
-                  </RankButton>
-                )}
                 {availableCohorts.length > 1 && (
                   <div className="dirty-rank-control dirty-ui-field">
                     <label htmlFor="dirty-rank-battle-cohort">Gender box</label>
@@ -279,26 +236,7 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
                   boxGendersLabel(settings, cohort).toLowerCase() +
                   " performers need refinement · ≈" +
                   refinementConfidence.remainingBattles.toLocaleString() +
-                  " more battles for the whole category"}
-              </div>
-            )}
-            {kingsMode && (pair || hillWinner) && (
-              <div className="dirty-rank-hill-progress" role="status">
-                <span className="dirty-rank-hill-progress-label">
-                  {hillWinner ? "The crown is claimed" : pairInfo!.incumbentId ? "Defend the crown" : "Claim the crown"}
-                </span>
-                <span className="dirty-rank-hill-progress-track" aria-hidden="true">
-                  <span
-                    style={
-                      {
-                        width: (hillTotal ? Math.min(100, (hillDefeated / hillTotal) * 100) : 0) + "%",
-                      } as R.CSSProperties
-                    }
-                  />
-                </span>
-                <span className="dirty-rank-hill-progress-count">
-                  {hillDefeated.toLocaleString() + " / " + hillTotal.toLocaleString() + " defeated"}
-                </span>
+                  " more verdicts for the whole category"}
               </div>
             )}
             {gauntletMode && gauntletTarget && (
@@ -319,7 +257,7 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
                 {error}
               </div>
             )}
-            {!pair && !hillWinner && (
+            {!pair && (
               <ui.StateView
                 title="Not enough eligible performers"
                 detail={
@@ -336,99 +274,52 @@ export function DirtyRankBattlePage(props: BattleProps): R.JSX.Element | null {
                 }
               />
             )}
-            {(pair || hillWinner) && (
+            {pair && (
               <React.Fragment>
-                <div
-                  className={
-                    "dirty-rank-arena" +
-                    (hillWinner ? " dirty-rank-coronation dirty-rank-coronation-" + pairInfo!.incumbentSide : "")
-                  }
-                >
-                  {arenaLeft && (
-                    <PerformerCard
-                      crowned={Boolean(hillWinner)}
-                      disabled={false}
-                      key={arenaLeftKey}
-                      gauntletTarget={gauntletMode}
-                      hillMode={kingsMode}
-                      hillOpening={kingsMode && !pairInfo!.incumbentId}
-                      kingTarget={kingsMode && pairInfo!.incumbentId === String(arenaLeft.id)}
-                      onChoose={() => {
-                        submit("left");
-                      }}
-                      onSceneChange={onLeftSceneChange}
-                      performer={arenaLeft}
-                      pool={poolFor(arenaLeft, category.id, cohort, settings)}
-                      rank={pairInfo!.ranks[arenaLeft.id]}
-                      reveal={reveal}
-                      settings={settings}
-                    />
-                  )}
-                  {pair && <div className="dirty-rank-versus" aria-hidden="true" />}
-                  {arenaRight && (
-                    <PerformerCard
-                      crowned={Boolean(hillWinner)}
-                      disabled={false}
-                      key={arenaRightKey}
-                      hillMode={kingsMode}
-                      hillOpening={kingsMode && !pairInfo!.incumbentId}
-                      kingTarget={kingsMode && pairInfo!.incumbentId === String(arenaRight.id)}
-                      onChoose={() => {
-                        submit("right");
-                      }}
-                      onSceneChange={onRightSceneChange}
-                      performer={arenaRight}
-                      pool={poolFor(arenaRight, category.id, cohort, settings)}
-                      rank={pairInfo!.ranks[arenaRight.id]}
-                      reveal={reveal}
-                      settings={settings}
-                    />
-                  )}
-                  {hillWinner && hillFireworks()}
-                </div>
-                {pair && (
-                  <div className="dirty-rank-actions d-flex flex-wrap align-items-center justify-content-center">
-                    {!kingsMode && (
-                      <RankButton
-                        disabled={false}
-                        onClick={() => {
-                          submit("draw");
-                        }}
-                      >
-                        Tie
-                      </RankButton>
-                    )}
-                    {!kingsMode && (
-                      <RankButton disabled={false} onClick={skip}>
-                        Skip
-                      </RankButton>
-                    )}
-                    <RankButton disabled={!undoHistory.length} onClick={undo}>
-                      {"Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")}
-                    </RankButton>
-                    <div className="dirty-rank-hint">
-                      {kingsMode
-                        ? "← choose left · → choose right · ↓ undo"
-                        : "← choose left · → choose right · ↑ tie · ↓ undo · S skip"}
-                    </div>
-                  </div>
-                )}
-                {hillWinner && (
-                  <ui.StateView
-                    title="Hill cleared"
-                    detail={hillWinner.name + " has defeated every eligible challenger in this run."}
-                    actions={
-                      <React.Fragment>
-                        <RankButton disabled={!undoHistory.length} onClick={undo}>
-                          {"Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")}
-                        </RankButton>
-                        <RankButton disabled={pendingVotes > 0} onClick={restartKings}>
-                          Start a new run
-                        </RankButton>
-                      </React.Fragment>
-                    }
+                <div className="dirty-rank-actions">
+                  <RankButton className="dirty-rank-undo" disabled={!undoHistory.length} onClick={undo}>
+                    {"Undo" + (undoHistory.length ? " (" + undoHistory.length + ")" : "")}
+                  </RankButton>
+                  <VerdictScale
+                    chosen={session.chosen}
+                    key={pairInfo!.instanceId}
+                    keyLabels={session.keyLabels}
+                    leftName={pair[0].name}
+                    onChoose={submit}
+                    rightName={pair[1].name}
+                    saved={pairInfo!.saved}
                   />
-                )}
+                  <div className="dirty-rank-hint">
+                    {session.keyLabels.slice(0, 3).join(" ") +
+                      " · " +
+                      session.keyLabels[3] +
+                      " · " +
+                      session.keyLabels.slice(4).join(" ") +
+                      " or keypad 1 2 3 · 0 · 4 5 6 choose · ↓ or U undo"}
+                  </div>
+                </div>
+                <div className="dirty-rank-arena">
+                  <PerformerCard
+                    key={arenaLeftKey}
+                    gauntletTarget={gauntletMode}
+                    onSceneChange={onLeftSceneChange}
+                    performer={pair[0]}
+                    pool={poolFor(pair[0], category.id, cohort, settings)}
+                    rank={pairInfo!.ranks[pair[0].id]}
+                    reveal={reveal}
+                    settings={settings}
+                  />
+                  <div className="dirty-rank-versus" aria-hidden="true" />
+                  <PerformerCard
+                    key={arenaRightKey}
+                    onSceneChange={onRightSceneChange}
+                    performer={pair[1]}
+                    pool={poolFor(pair[1], category.id, cohort, settings)}
+                    rank={pairInfo!.ranks[pair[1].id]}
+                    reveal={reveal}
+                    settings={settings}
+                  />
+                </div>
               </React.Fragment>
             )}
           </section>

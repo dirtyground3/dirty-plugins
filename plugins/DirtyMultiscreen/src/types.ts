@@ -13,11 +13,7 @@ export interface Settings {
   spreadScenes: boolean;
   avoidDuplicates: boolean;
   splitScenes: boolean;
-  startMuted: boolean;
-  randomStart: boolean;
-  loopScenes: boolean;
   markerDuration: number;
-  pauseWhenHidden: boolean;
   showPerformerNavigation: boolean;
   moveWithoutEditing: boolean;
 }
@@ -27,6 +23,8 @@ export interface PlaybackSettings {
   loop: boolean;
   pauseWhenHidden: boolean;
 }
+/** Whether the open screens loop: all of them, none, or "mixed" when some follow a loop of their own. */
+export type LoopState = boolean | "mixed";
 export interface Performer {
   id: string;
   name?: string | null;
@@ -84,7 +82,6 @@ export type ListKind = "scenes" | "markers";
 export type OtherPluginLists = "off" | "known" | "any";
 export interface ListSettings {
   allow: OtherPluginLists;
-  limit: number;
 }
 /** One `stash-scenes:context` event after validation; `ids: null` withdraws the plugin's list for the path. */
 export interface Announcement {
@@ -362,7 +359,11 @@ export interface GridProps {
   onCloseScreen(index: number): void;
   onSessionChange(snapshot: GridSnapshot): void;
   onVisibleSceneIdsChange(ids: string[]): void;
+  /** Reports whether the open screens loop, and null when the grid leaves. */
+  onLoopChange(loop: LoopState | null): void;
   playback: PlaybackSettings;
+  /** Raised by the menu's Loop scenes: every screen drops its own loop and follows the setting again. */
+  loopReset: number;
   playlists: Item[][];
   /** Pane positions of a resumed session, read when the grid mounts. */
   savedPanes?: Array<SavedPane | null>;

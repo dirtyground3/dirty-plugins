@@ -166,12 +166,12 @@ async function main() {
   const inputs = h.nodes(node => node.type === "input");
   assert.deepEqual(
     inputs.map(node => node.props.id),
-    ["dirty-plugin-multiscreen-markerDuration", "dirty-plugin-multiscreen-listSizeLimit"],
+    ["dirty-plugin-multiscreen-markerDuration", "dirty-plugin-multiscreen-recentGrids"],
     "settings follow their schema sections",
   );
   assert.deepEqual(
     h.nodes(node => node.type === "h3").map(node => node.props.children),
-    ["Playback", "Advanced"],
+    ["Playback", "Saved grids"],
     "only sections with reported settings render",
   );
   const duration = () => h.nodes(node => node.props.id === "dirty-plugin-multiscreen-markerDuration")[0];
@@ -186,7 +186,7 @@ async function main() {
   assert.equal(h.window.handlers.get("beforeunload").size, 0);
   const write = h.requests.find(request => request.variables?.args?.mode === "setSettings").variables.args;
   assert.equal(write.expectedRevision, 1);
-  assert.equal(write.settings.listSizeLimit, 10000);
+  assert.equal(write.settings.recentGrids, 5);
   duration().props.onChange({ target: { value: "invalid" } });
   await h.settle();
   await h.tick();
@@ -304,6 +304,89 @@ async function main() {
   await combined.tick(1000);
   assert.equal(combined.requests.filter(request => request.variables?.args?.mode === "setSettings").length, 0);
   assert.equal(combined.window.handlers.get("beforeunload").size, 0);
+  // An action menu item with items of its own opens them beneath it, inside the menu, and they fold up with the menu.
+  const menuHost = createHubHarness();
+  menuHost.load();
+  const chosen = [];
+  menuHost.mount(
+    menuHost.window.PluginApi.React.createElement(menuHost.window.DirtyPlugins.react.ActionMenu, {
+      ariaLabel: "Menu",
+      items: [
+        { key: "edit", label: "Edit", onSelect: () => chosen.push("edit") },
+        false,
+        {
+          key: "orders",
+          label: "Orders",
+          items: [
+            { key: "a", label: "A", onSelect: () => chosen.push("a") },
+            null,
+            { key: "b", label: "B", tone: "danger", disabled: true, onSelect: () => chosen.push("b") },
+          ],
+        },
+        {
+          key: "sizes",
+          label: "Sizes",
+          // Content such as a picker renders as it is and may close the menu itself.
+          items: [
+            { key: "picker", content: close => menuHost.window.PluginApi.React.createElement("picker", { close }) },
+          ],
+        },
+      ],
+    }),
+  );
+  await menuHost.settle();
+  const dropdown = () => menuHost.nodes(node => node.type === "dropdown")[0].props;
+  const trigger = (index = 0) =>
+    menuHost.nodes(node => node.type === "button" && node.props.className?.includes("dirty-ui-action-menu-submenu"))[
+      index
+    ];
+  const content = () => menuHost.nodes(node => node.props.className?.includes("dirty-ui-action-menu-content"))[0];
+  const shownItems = () =>
+    menuHost
+      .nodes(node => node.type === "dropdown-item" && !node.props["aria-hidden"])
+      .map(node => [node.props.eventKey, node.props.className]);
+  assert.deepEqual(shownItems(), [["0", undefined]], "a submenu's items stay hidden until it opens");
+  // Hidden, they keep their width so the open menu does not widen past the window; they cannot be reached.
+  assert.deepEqual(
+    menuHost
+      .nodes(node => node.type === "dropdown-item" && node.props["aria-hidden"])
+      .map(node => [node.props.eventKey, node.props.disabled, node.props.className.includes("subitem-hidden")]),
+    [
+      ["1.0", true, true],
+      ["1.1", true, true],
+    ],
+  );
+  assert.equal(trigger().props.className, "dropdown-item dirty-ui-action-menu-submenu", "arrow keys reach it");
+  assert.equal(trigger().props["aria-expanded"], false);
+  trigger().props.onClick();
+  await menuHost.settle();
+  assert.equal(trigger().props["aria-expanded"], true);
+  assert.deepEqual(shownItems(), [
+    ["0", undefined],
+    ["1.0", "dirty-ui-action-menu-subitem"],
+    ["1.1", "dirty-ui-action-menu-subitem dirty-ui-action-menu-danger"],
+  ]);
+  for (const key of ["1.0", "1.1", "0"]) dropdown().onSelect(key);
+  assert.deepEqual(chosen, ["a", "edit"], "a submenu item is chosen by its own key; a disabled one is not");
+  dropdown().onToggle(false);
+  await menuHost.settle();
+  assert.deepEqual(shownItems(), [["0", undefined]], "the submenu folds up when the menu closes");
+  // Content stays laid out but hidden while its submenu is closed, and its close function closes the menu.
+  assert.equal(
+    content().props.className,
+    "dirty-ui-action-menu-content dirty-ui-action-menu-subitem dirty-ui-action-menu-subitem-hidden",
+  );
+  assert.equal(content().props["aria-hidden"], true);
+  dropdown().onToggle(true);
+  trigger(1).props.onClick();
+  await menuHost.settle();
+  assert.equal(dropdown().show, true);
+  assert.equal(content().props["aria-hidden"], undefined);
+  menuHost.nodes(node => node.type === "picker")[0].props.close();
+  await menuHost.settle();
+  assert.equal(dropdown().show, false, "content closes the menu");
+  assert.equal(content().props["aria-hidden"], true, "and its submenu folds up");
+  menuHost.unmount();
   console.log(
     "DirtyPlugins modules, host guards, partial failure, public compatibility, filters, tabs, autosave, validation and cleanup passed",
   );
