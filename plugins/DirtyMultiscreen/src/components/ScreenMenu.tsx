@@ -59,16 +59,20 @@ export function ScreenMenu({
   flipX,
   flipY,
   loop,
+  tvMode,
   rotation,
   onClose,
   onFill,
   onFlip,
   onLoop,
+  onToggleTvMode,
   onRotate,
 }: PictureControls & {
   at: MenuPoint;
   /** Where the screen sits in the grid, for its label. */
   position: number;
+  tvMode: boolean;
+  onToggleTvMode(): void;
   /** Closes the menu. */
   onDone(): void;
 }) {
@@ -106,6 +110,7 @@ export function ScreenMenu({
       run: onRotate,
     },
     { label: "Loop scene", glyph: icon("loop"), fallback: "↻", checked: loop, run: () => onLoop(!loop) },
+    { label: "TV mode", glyph: icon("tv"), fallback: "▣", checked: tvMode, run: onToggleTvMode },
     {
       label: "Fill screen",
       glyph: icon("fill"),

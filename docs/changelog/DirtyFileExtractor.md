@@ -2,6 +2,8 @@
 
 Newest first. Each GitHub Release of DirtyFileExtractor uses the entry that names its version.
 
+- **DirtyFileExtractor 1.0.9:** the package supplies the settings form and extraction defaults from its own schema.
+
 - **DirtyFileExtractor 1.0.8:** a run that writes no file says why.
   - The Stash log names each selected item that produced no file and the
     reason, for example a marker without an end time or a source file the

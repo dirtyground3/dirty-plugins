@@ -43,6 +43,8 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   Choosing a result moves that screen to its position in the session queue, so
   Previous/Next follows from there, including across pages. The filter narrows
   the results only; it does not change what the screen plays next.
+  Turn on **Start a new queue** to search the whole catalog and use those
+  results as the queue for that screen alone.
 - The menu button, between the O counter and Close in the top-right corner, holds **Edit screens**,
   **Grid**, **Add a screen**, **Saved grids**, **Reshuffle** and **Playback**. Grid,
   Reshuffle and Playback open submenus in a shaded panel beneath them, where a check in the icon column marks what is
@@ -50,10 +52,13 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   an order reshuffles every screen: the current order loads a new random sample, and another order
   reshuffles with that order and saves it as the **Scene order** setting. A list launched in its plugin's own order
   shows **List order** checked until you choose another.
-- **Playback** in the menu switches **Start muted**, **Random start**, **Loop scenes** and **Pause when hidden**,
+- **Playback** in the menu switches **Start muted**, **Random start**, **Loop scenes**, **Pause when hidden** and **TV mode**,
   checked while on. Each saves its setting and applies to the playing screens without reshuffling them. Loop
   scenes shows a dash while some screens loop on their own; choosing it when off or mixed makes every screen
   loop, and choosing it when on stops every screen looping.
+- **TV mode** advances each screen through its own queue after 30 seconds of playback by default. Pausing or buffering
+  stops the countdown until playback resumes. The right-click screen menu can toggle TV mode for the whole grid.
+  Adjust the interval in Playback settings.
 - **Edit screens** in the menu turns edit mode on and off, with a check while it is on. Videos
   keep playing, and every screen shows buttons to move, flip horizontally,
   flip vertically, rotate, loop, fill, remove the screen (a red minus), and
@@ -254,6 +259,17 @@ Stash keeps one search term per query. During marker playback, results keep the
 original marker ranges. The chosen result plays at once, after the scene the
 screen was playing, and Next and Previous then continue the screen's own queue.
 
+**Start a new queue** is off each time you open search. Turn it on to search
+all scenes, even from a grid launched with a filter, selection or marker list.
+Choosing a result starts this screen's own queue in the chosen sort, and
+Next, Previous and performer navigation follow its search and filters.
+Each screen can use a different queue. The queues are kept with the session
+and saved grids.
+
+**Shuffle** gives all matching results a new order across pages. The shuffle
+becomes the playback order when you start a new queue. **Random scene** plays
+a match from any page in the current result order and works with either queue mode.
+
 The authored source directory requires a build before installation. Back up
 replaced files, copy runtime files before the manifest, reload plugins, then
 hard-refresh the Stash browser tab (Ctrl+F5). Preserve settings, databases,
@@ -272,8 +288,9 @@ page. The DirtyMultiscreen tab of the Dirty Plugins settings has six groups:
 - **Scenes:** scene order, **Spread performers and studios**, **Split scenes
   between panes** and **Avoid the same scene on several screens**.
 - **Playback:** **Start muted**, **Random start**, **Loop scenes**, **Pause when
-  hidden** (also in the player's Playback menu) and the length of markers
-  without an end time.
+  hidden** and **TV mode** (also in the player's Playback menu). Set **TV mode
+  duration** in seconds, from 10 to 600. This group also sets **Marker length
+  without an end time (seconds)**.
 - **Navigation:** whether screens show performer next-scene buttons, and whether
   the grid button appears in the Stash header.
 - **Saved grids:** **Autosaves to keep**, from 0 to 10 (5 by default).

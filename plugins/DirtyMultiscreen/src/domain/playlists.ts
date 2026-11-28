@@ -1,5 +1,5 @@
 import type { Item, Scene } from "../types";
-import { orderMultiscreenItems, type Ordering } from "./order";
+import { orderMultiscreenItems, seededRandom, type Ordering } from "./order";
 
 /** Keep a restored item from another split lane between this lane's neighbors. */
 export function locatePlaylistItem(playlists: Item[][], screen: number, selected: Item) {
@@ -92,10 +92,6 @@ export function pagePlaylists<T extends { id: string; scene?: Scene }>(
   seed: number,
   page: number,
 ) {
-  let value = (seed + Math.imul(page, 2654435761)) >>> 0;
-  const random = () => {
-    value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
+  const random = seededRandom(seed + Math.imul(page, 2654435761));
   return createMultiscreenPlaylists(items, totalScreens, ordering, split, random);
 }

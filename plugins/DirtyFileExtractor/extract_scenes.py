@@ -23,12 +23,11 @@ from extract_scenes_destinations import (
     sanitize_folder_name, destination_key, resolve_destination,
     resolve_generated_destination, reserve_destination, marker_clip_basename, format_bytes,
 )
-
-
+from extract_scenes_metadata import DEFAULTS, LIMITS, OPTIONS
 from extract_scenes_plan import ExtractionOptions, ExtractionPlan, ExtractionProgress
 
 PLUGIN_ID = "extractScenes"
-VALID_COLLISION_POLICIES = {"rename", "skip", "overwrite"}
+VALID_COLLISION_POLICIES = {option["value"] for option in OPTIONS["collisionPolicy"]}
 COPY_CHUNK_SIZE = 4 * 1024 * 1024
 PROGRESS_INTERVAL_SECONDS = 0.5
 SELECTION_BATCH_SIZE = 100
@@ -152,15 +151,18 @@ def as_bool(value: Any, default: bool = False) -> bool:
     return bool(value)
 
 
-def as_nonnegative_float(value: Any, default: float) -> float:
+def copy_speed(value: Any) -> float:
     if value is None or value == "":
-        return default
+        return DEFAULTS["maxCopySpeedMBps"]
+    bounds = LIMITS.get("maxCopySpeedMBps", {})
     try:
         result = float(value)
     except (TypeError, ValueError) as exc:
-        raise PluginError(f"Expected a non-negative number, received {value!r}") from exc
-    if result < 0:
-        raise PluginError(f"Expected a non-negative number, received {value!r}")
+        raise PluginError(f"Maximum copy speed must be a number (received {value!r})") from exc
+    if "min" in bounds and result < bounds["min"]:
+        raise PluginError(f"Maximum copy speed must be at least {bounds['min']:g} MiB/s")
+    if "max" in bounds and result > bounds["max"]:
+        raise PluginError(f"Maximum copy speed must be at most {bounds['max']:g} MiB/s")
     return result
 
 
@@ -367,7 +369,7 @@ def _selected_by_id(fetch, ids, batch_size=SELECTION_BATCH_SIZE):
 
 
 def _normalize_extraction_settings(settings: dict[str, Any]) -> ExtractionOptions:
-    destination_value = str(settings.get("destinationFolder") or "").strip()
+    destination_value = str(settings.get("destinationFolder") or DEFAULTS["destinationFolder"]).strip()
     if not destination_value:
         raise PluginError("Set Destination folder under Settings > Plugins > DirtyFileExtractor first")
 
@@ -375,11 +377,13 @@ def _normalize_extraction_settings(settings: dict[str, Any]) -> ExtractionOption
     if destination_root.exists() and not destination_root.is_dir():
         raise PluginError(f"Destination is not a folder: {destination_root}")
 
-    policy = str(settings.get("collisionPolicy") or "rename").strip().lower()
+    policy = str(settings.get("collisionPolicy") or DEFAULTS["collisionPolicy"]).strip().lower()
     if policy not in VALID_COLLISION_POLICIES:
         raise PluginError(f"File collision policy must be rename, skip, or overwrite (received {policy!r})")
-    return ExtractionOptions(destination_root, policy, as_bool(settings.get("createSceneFolders")), as_bool(settings.get("dryRun")),
-                             as_nonnegative_float(settings.get("maxCopySpeedMBps"), 20.0))
+    return ExtractionOptions(destination_root, policy,
+                             as_bool(settings.get("createSceneFolders"), DEFAULTS["createSceneFolders"]),
+                             as_bool(settings.get("dryRun"), DEFAULTS["dryRun"]),
+                             copy_speed(settings.get("maxCopySpeedMBps")))
 
 
 SKIP_REASONS = {

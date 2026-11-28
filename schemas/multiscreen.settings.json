@@ -37,7 +37,7 @@
     "rightClickOptions": {
       "type": "BOOLEAN",
       "displayName": "Right-click a screen for its edit options",
-      "description": "Right-click a screen to open a menu with its flip, rotate, loop, fill and close options without opening edit mode. When off, right-click opens the browser's menu.",
+      "description": "Right-click a screen to open a menu with its flip, rotate, loop, fill and close options, plus the TV mode toggle. When off, right-click opens the browser's menu.",
       "default": false
     },
     "snapDividers": {
@@ -132,9 +132,25 @@
       "description": "Pause every pane while the browser tab is hidden.",
       "default": true
     },
+    "tvMode": {
+      "type": "BOOLEAN",
+      "displayName": "TV mode",
+      "description": "Automatically advance each screen to its next video after the chosen playback time.",
+      "default": false
+    },
+    "tvModeDuration": {
+      "type": "NUMBER",
+      "displayName": "TV mode duration (seconds) — from 10 to 600 (10 minutes)",
+      "description": "Defaults to 30 seconds.",
+      "default": 30,
+      "integer": true,
+      "min": 10,
+      "max": 600,
+      "step": 1
+    },
     "markerDuration": {
       "type": "NUMBER",
-      "displayName": "Marker length without an end time",
+      "displayName": "Marker length without an end time (seconds)",
       "description": "Seconds to play a marker that has no end time. Defaults to 30.",
       "default": 30,
       "integer": true,
@@ -215,6 +231,8 @@
         "randomStart",
         "loopScenes",
         "pauseWhenHidden",
+        "tvMode",
+        "tvModeDuration",
         "markerDuration"
       ]
     },

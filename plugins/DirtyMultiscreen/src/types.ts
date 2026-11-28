@@ -22,6 +22,8 @@ export interface PlaybackSettings {
   randomStart: boolean;
   loop: boolean;
   pauseWhenHidden: boolean;
+  tvMode: boolean;
+  tvModeDuration: number;
 }
 /** Whether the open screens loop: all of them, none, or "mixed" when some follow a loop of their own. */
 export type LoopState = boolean | "mixed";
@@ -65,8 +67,18 @@ export interface SessionSearchResult {
   count: number;
   items: Item[];
 }
-/** What Stash's own scene search and filter controls choose: find options and scene criteria. */
-export type SearchCondition = Pick<SceneCondition, "find" | "scene">;
+/** Native search and filters, with an optional shuffle of their results. */
+export type SearchCondition = Pick<SceneCondition, "find" | "scene"> & { shuffleSeed?: number };
+/** A screen's own scene queue uses the search's filters, sort and page size. */
+export interface CatalogQueue {
+  condition: SearchCondition;
+  pageCount: number;
+}
+export interface CatalogChoice {
+  condition: SearchCondition;
+  page: number;
+  result: SessionSearchResult;
+}
 export type SessionSearch = (
   condition: SearchCondition,
   page: number,
@@ -203,6 +215,7 @@ export interface SavedPane {
   itemId: string;
   /** The scene itself when no page of the session holds it for this pane. */
   item?: Item;
+  catalog?: CatalogQueue;
   time?: number;
   /** Like the time, it belongs to this visit of the item. */
   abLoop?: AbLoop;
@@ -361,6 +374,7 @@ export interface GridProps {
   onVisibleSceneIdsChange(ids: string[]): void;
   /** Reports whether the open screens loop, and null when the grid leaves. */
   onLoopChange(loop: LoopState | null): void;
+  onToggleTvMode(): void;
   playback: PlaybackSettings;
   /** Raised by the menu's Loop scenes: every screen drops its own loop and follows the setting again. */
   loopReset: number;

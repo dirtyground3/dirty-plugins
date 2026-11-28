@@ -2,6 +2,12 @@
 
 Newest first. Each GitHub Release of DirtyPlugins uses the entry that names its version.
 
+- **DirtyPlugins 1.0.24:** the settings hub shows DirtyMultiscreen's TV mode under Playback.
+  - The duration uses the same numeric control and autosave as marker length.
+  - Shared action menus support submenus and controls such as the DirtyMultiscreen grid picker.
+  - The settings form reads defaults, bounds and sections from each installed plugin's package. Schema changes can ship with that plugin.
+  - The hub keeps older installed plugins' settings editable and uses their saved values automatically during the transition.
+
 - **DirtyCaptions 1.0.11, DirtyFileExtractor 1.0.8, DirtyPlugins 1.0.23 and
   DirtyTasks 1.0.14:** when Stash's FFmpeg and FFprobe paths are empty, the
   plugins find the same programs Stash uses: in its configuration folder, on

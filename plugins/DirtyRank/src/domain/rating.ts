@@ -83,7 +83,8 @@ function opponentShrink(opponent: RatingPool) {
 }
 /**
  * The deviation one more verdict against `opponent` is expected to leave. An uncertain
- * opponent tells less (Glicko's g factor), so matchmaking prefers established opponents.
+ * opponent counts for less (Glicko's g factor), which keeps battle estimates on the safe
+ * side while ratings settle.
  */
 export function expectedDeviationAfterBattle(
   pool: RatingPool,
@@ -164,6 +165,12 @@ function slipPosterior(likelihood: number, answers: number) {
  * when they make the saved verdict less likely than it is with no evidence at all. A
  * verdict nothing else can check (a newcomer's only one) does not come back; a new
  * opponent tells more. Each confirmation makes a slip much less likely.
+ *
+ * An uncertain opponent counts in full by default: both performers keep battling and every
+ * verdict is refitted together, so the fit places that opponent later, and the backend's
+ * deviation counts the verdict in full too. Discounting it (Glicko's g factor) made the first
+ * rated performer everyone's opponent. `discountUncertainOpponents` suits a battle series
+ * where only one side keeps battling, such as Gauntlet.
  */
 export function verdictInformation(
   leftPool: RatingPool,
@@ -171,12 +178,13 @@ export function verdictInformation(
   settings: RatingSettings & Pick<RankSettings, "initialDeviation">,
   thresholds: Thresholds,
   saved?: SavedVerdict | null,
+  discountUncertainOpponents = false,
 ): VerdictInformation {
   const weight = settings.evidenceWeight;
   const left = sideOf(leftPool);
   const right = sideOf(rightPool);
-  const leftShrink = opponentShrink(rightPool);
-  const rightShrink = opponentShrink(leftPool);
+  const leftShrink = discountUncertainOpponents ? opponentShrink(rightPool) : 1;
+  const rightShrink = discountUncertainOpponents ? opponentShrink(leftPool) : 1;
   const priorDeviation = settings.initialDeviation / RATING_SCALE;
   const floor = 1 / (priorDeviation * priorDeviation);
   // Without the saved verdict: what the other verdicts alone say about the pair.

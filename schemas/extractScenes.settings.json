@@ -4,6 +4,7 @@
       "type": "STRING",
       "displayName": "Destination folder",
       "description": "Choose an existing folder with Browse, or edit the absolute path manually. The path is on the machine running Stash.",
+      "capturePlaceholder": "Path hidden for documentation",
       "default": ""
     },
     "collisionPolicy": {

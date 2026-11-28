@@ -21,6 +21,7 @@ const SETTING_KEYS = [
   "options",
   "disabledWhen",
   "placeholder",
+  "capturePlaceholder",
   "hidden",
 ];
 const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -96,6 +97,14 @@ export function validateSchema(pluginId, schema) {
       if (setting.type === "BOOLEAN" || setting.options) where("placeholder needs a number or text field");
       if (setting.type === "NUMBER" && setting.default !== undefined) where("placeholder replaces a number's default");
     }
+    if (
+      setting.capturePlaceholder !== undefined &&
+      (setting.type !== "STRING" ||
+        setting.options !== undefined ||
+        typeof setting.capturePlaceholder !== "string" ||
+        !setting.capturePlaceholder.trim())
+    )
+      where("capturePlaceholder must be text for a plain string field");
     if (setting.default === undefined) continue;
     const value = setting.default;
     if (setting.type === "BOOLEAN" && typeof value !== "boolean") where("default must be a boolean");
@@ -185,6 +194,18 @@ export function manifestSettings(schema) {
         { displayName: setting.displayName, description: setting.description, type: setting.type },
       ]),
   );
+}
+
+/** Metadata for the shared form, installed alongside the Stash manifest that supplies labels and field types. */
+export function settingsDefinition(pluginId, version, schema) {
+  const entries = Object.entries(schema.settings).filter(([, setting]) => !setting.hidden);
+  const settings = Object.fromEntries(
+    entries.map(([name, { displayName, description, hidden, ...definition }]) => [name, definition]),
+  );
+  const sections = (schema.sections || [])
+    .map(section => ({ ...section, settings: section.settings.filter(name => Object.hasOwn(settings, name)) }))
+    .filter(section => section.settings.length);
+  return JSON.stringify({ formatVersion: 1, pluginId, version, settings, sections }, null, 2) + "\n";
 }
 
 function header(pluginId, comment) {

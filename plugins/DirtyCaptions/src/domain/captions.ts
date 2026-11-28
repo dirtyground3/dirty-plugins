@@ -1,3 +1,4 @@
+import { defaults } from "@generated/dirtyCaptions.settings";
 import { coerceBoolean } from "../../../DirtyPlugins/src/shared/values";
 import type { CaptionTrack, CaptionSettings, Scene } from "../types";
 // FFmpeg commonly reports ISO 639-2 codes; browsers use ISO 639-1/BCP 47.
@@ -51,9 +52,9 @@ export function language(code: string) {
 
 export function settings(raw: Record<string, unknown>): CaptionSettings {
   return {
-    enabled: coerceBoolean(raw.enabled, true),
-    showByDefault: coerceBoolean(raw.showByDefault, true),
-    preferredLanguage: String(raw.preferredLanguage || "").trim(),
+    enabled: coerceBoolean(raw.enabled, defaults.enabled),
+    showByDefault: coerceBoolean(raw.showByDefault, defaults.showByDefault),
+    preferredLanguage: String(raw.preferredLanguage || defaults.preferredLanguage).trim(),
   };
 }
 

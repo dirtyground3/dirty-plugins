@@ -2,6 +2,7 @@ import { React } from "../runtime";
 import { isolateNativePlayer } from "../domain/playerIdentity";
 import { savedAbLoop } from "../domain/session";
 import type { AbLoop, AudioState, LoadedPlayerProps, Player, VideoPlayerElement } from "../types";
+import { useTvMode } from "./useTvMode";
 let nextPlayerId = 0;
 const usable = (player: Player | null | undefined): player is Player => !!player && !player.isDisposed?.();
 /** Each pane keeps its own audio: stop video.js persisting volume across players. */
@@ -47,6 +48,7 @@ export function LoadedNativePlayer({
   navigationRef.current = { nextItem, previousItem };
   const advance = React.useCallback(() => navigationRef.current.nextItem(), []);
   const goBack = React.useCallback(() => navigationRef.current.previousItem(), []);
+  useTvMode(tileRef, playback.tvMode ? playback.tvModeDuration : null, advance);
   audioStateRef.current = audioState;
   onAudioStateChangeRef.current = onAudioStateChange;
   const onPositionChangeRef = React.useRef(onPositionChange);

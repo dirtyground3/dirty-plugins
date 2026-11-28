@@ -12,6 +12,7 @@ import uuid
 from dirty_plugins_client import stash_tools
 import dirty_plugins_storage as storage
 from dirty_captions_media import CaptionError, TEXT_CODECS, file_identity, probe_subtitles
+from dirty_captions_metadata import DEFAULTS
 
 PLUGIN_ID = "dirtyCaptions"
 NAMESPACE = "dirtyCaptions.index"
@@ -29,7 +30,7 @@ SCENE_QUERY = "query($id:ID!){findScene(id:$id){id custom_fields files{" + FILE_
 
 
 def enabled():
-    return storage.get_plugin_settings(PLUGIN_ID).get("indexEnabled", True) not in (False, "false", 0)
+    return storage.get_plugin_settings(PLUGIN_ID).get("indexEnabled", DEFAULTS["indexEnabled"]) not in (False, "false", 0)
 
 
 def read_record(namespace, key, connection=None):
@@ -367,7 +368,7 @@ def bootstrap(client):
 def after_scan(client, args):
     """Request one refresh per completed Scan, shared across browser tabs."""
     settings = storage.get_plugin_settings(PLUGIN_ID)
-    if not enabled() or settings.get("refreshAfterScan", False) not in (True, "true", 1):
+    if not enabled() or settings.get("refreshAfterScan", DEFAULTS["refreshAfterScan"]) not in (True, "true", 1):
         return dict(status(), skipped="disabled")
     job_id = str(args.get("jobId") or "")
     start_time = args.get("startTime")

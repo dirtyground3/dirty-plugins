@@ -7,7 +7,8 @@ function createMultiscreenHarness(options = {}) {
   let mounted = true,
     mode = options.mode || "route",
     path = options.path || "/scenes",
-    nextTimer = 0;
+    nextTimer = 0,
+    now = 0;
   const routes = [],
     patches = new Map(),
     patchNames = [],
@@ -94,6 +95,7 @@ function createMultiscreenHarness(options = {}) {
       this.paused = false;
       this.ended = false;
       this.seeking = false;
+      this.readyState = options.readyState ?? 4;
       this.isConnected = true;
       this.playCount = 0;
       this.pauseCount = 0;
@@ -101,10 +103,12 @@ function createMultiscreenHarness(options = {}) {
     pause() {
       this.paused = true;
       this.pauseCount++;
+      this.tile.emit("pause", { target: this });
     }
     play() {
       this.paused = false;
       this.playCount++;
+      this.tile.emit("playing", { target: this });
       return Promise.resolve();
     }
   }
@@ -171,9 +175,10 @@ function createMultiscreenHarness(options = {}) {
         },
       });
     FakePlayer.players[player.id()] = player;
-    const tile = {
+    const tile = events({
       querySelector: selector => (selector === "video" ? video : selector === "video-js" ? { player } : null),
-    };
+    });
+    video.tile = tile;
     return { video, player, persist, tile };
   }
   const scenes = options.scenes || [
@@ -214,6 +219,7 @@ function createMultiscreenHarness(options = {}) {
       "ActionMenu",
       "Glyph",
       "NativeSceneFilter",
+      "SettingsToggle",
     ].map(name => [name, props => React.createElement(name, props, props.children)]),
   );
   // Like the hub's field, an action sits beside the control.
@@ -415,7 +421,7 @@ function createMultiscreenHarness(options = {}) {
     },
     setTimeout(fn, delay) {
       const id = ++nextTimer;
-      timers.set(id, { fn, delay });
+      timers.set(id, { fn, delay, due: now + delay });
       return id;
     },
     clearTimeout: id => timers.delete(id),
@@ -477,6 +483,7 @@ function createMultiscreenHarness(options = {}) {
     window,
     document,
     HTMLVideoElement: Video,
+    performance: { now: () => now },
     MutationObserver: Observer,
     console: { error: (...args) => errors.push(args) },
     URLSearchParams,
@@ -544,6 +551,14 @@ function createMultiscreenHarness(options = {}) {
         }
       await flush();
     },
+    async advanceTime(milliseconds) {
+      now += milliseconds;
+      for (const [id, timer] of [...timers]) {
+        if (timer.due > now || !timers.delete(id)) continue;
+        timer.fn();
+      }
+      await flush();
+    },
     async path(value) {
       path = value;
       renderer.invalidate();
@@ -570,6 +585,7 @@ function createMultiscreenHarness(options = {}) {
       pair.persist = next.persist;
       pair.tile.querySelector = next.tile.querySelector;
       pair.video = next.video;
+      pair.video.tile = pair.tile;
       for (const observer of observers) if (observer.connected) observer.callback();
       return pair;
     },

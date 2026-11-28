@@ -101,6 +101,13 @@ export function normalizePlayback(rawSettings: Record<string, unknown>): Playbac
     randomStart: coerceBoolean(rawSettings.randomStart, DEFAULT_SETTINGS.randomStart),
     loop: coerceBoolean(rawSettings.loopScenes, DEFAULT_SETTINGS.loopScenes),
     pauseWhenHidden: coerceBoolean(rawSettings.pauseWhenHidden, DEFAULT_SETTINGS.pauseWhenHidden),
+    tvMode: coerceBoolean(rawSettings.tvMode, DEFAULT_SETTINGS.tvMode),
+    tvModeDuration: clampInteger(
+      rawSettings.tvModeDuration,
+      DEFAULT_SETTINGS.tvModeDuration,
+      LIMITS.tvModeDuration.min,
+      LIMITS.tvModeDuration.max,
+    ),
   };
 }
 export function getSceneLimit(settings: Pick<Settings, "splitScenes" | "totalScreens">) {

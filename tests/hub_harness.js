@@ -1,8 +1,18 @@
 "use strict";
 const vm = require("node:vm");
+const fs = require("node:fs");
+const path = require("node:path");
+const { registry, SETTINGS_DEFINITION_FILE } = require("../scripts/build-lib.cjs");
 const { sourceFor } = require("./load_plugin_scripts");
+const { runtimePath } = require("./plugin_paths");
 const { events, createRenderer, findAll, text } = require("./ui_harness");
 const copy = value => JSON.parse(JSON.stringify(value));
+const stagedDefinitions = Object.fromEntries(
+  registry.flatMap(plugin => {
+    const file = path.join(runtimePath(plugin.directory), SETTINGS_DEFINITION_FILE);
+    return fs.existsSync(file) ? [[plugin.id, JSON.parse(fs.readFileSync(file, "utf8"))]] : [];
+  }),
+);
 
 function createHubHarness(options = {}) {
   let route,
@@ -20,19 +30,22 @@ function createHubHarness(options = {}) {
     },
   );
   const revisions = Object.fromEntries(Object.keys(settings).map(id => [id, 1]));
-  const plugins = options.plugins || [
-    {
-      id: "multiscreen",
-      name: "DirtyMultiscreen",
-      enabled: true,
-      settings: [
-        { name: "recentGrids", type: "NUMBER" },
-        { name: "markerDuration", type: "NUMBER" },
-      ],
-    },
-    { id: "dirtyPlugins", name: "DirtyPlugins", enabled: true, settings: [{ name: "visualTheme", type: "STRING" }] },
-    { id: "unmanaged", name: "Other plugin", enabled: true, settings: [] },
-  ];
+  const settingsDefinitions = copy(options.settingsDefinitions ?? stagedDefinitions);
+  const plugins = (
+    options.plugins || [
+      {
+        id: "multiscreen",
+        name: "DirtyMultiscreen",
+        enabled: true,
+        settings: [
+          { name: "recentGrids", type: "NUMBER" },
+          { name: "markerDuration", type: "NUMBER" },
+        ],
+      },
+      { id: "dirtyPlugins", name: "DirtyPlugins", enabled: true, settings: [{ name: "visualTheme", type: "STRING" }] },
+      { id: "unmanaged", name: "Other plugin", enabled: true, settings: [] },
+    ]
+  ).map(plugin => ({ version: stagedDefinitions[plugin.id]?.version, ...plugin }));
   const renderer = createRenderer();
   const React = {
     ...renderer.hooks,
@@ -129,7 +142,12 @@ function createHubHarness(options = {}) {
       return { ok: true, json: async () => ({ data: { configuration: { general: { stashBoxes: [] } } } }) };
     const args = request.variables.args;
     let output;
-    if (args.mode === "getAllSettings") output = { settings: copy(settings), pluginRevisions: copy(revisions) };
+    if (args.mode === "getAllSettings")
+      output = {
+        settings: copy(settings),
+        pluginRevisions: copy(revisions),
+        settingsDefinitions: copy(settingsDefinitions),
+      };
     else if (args.mode === "getSettings")
       output = { settings: copy(settings[args.pluginId] || {}), revision: revisions[args.pluginId] || 0 };
     else if (args.mode === "setSettings") {
@@ -221,6 +239,8 @@ function createHubHarness(options = {}) {
     errors,
     timers,
     settings,
+    settingsDefinitions,
+    plugins,
     revisions,
     nodes: predicate => findAll(renderer.tree, predicate),
     text: () => text(renderer.tree),

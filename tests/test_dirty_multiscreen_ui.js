@@ -1119,6 +1119,222 @@ async function fixedSessionSearch() {
   await library.unmount();
 }
 
+async function searchRandomActions() {
+  const scenes = Array.from({ length: 14 }, (_, index) => ({
+    id: String(index + 1),
+    title: `Match ${index + 1}`,
+    paths: { stream: `/${index + 1}` },
+  }));
+  const selectedIds = scenes.slice(0, -1).map(scene => scene.id);
+  const pending = deferred();
+  let holdPage = false;
+  let pendingSignal;
+  const h = await start({
+    scenes,
+    launch: { source: "selection", selectedIds },
+    settings: { rows: 1, columns: 2, splitScenes: true, sceneOrder: "list" },
+    graphql: (query, variables, options) => {
+      if (variables.ids) {
+        const selected = variables.ids.map(id => scenes.find(scene => scene.id === id));
+        return { findScenes: { count: selected.length, scenes: selected } };
+      }
+      if (query.includes("MultiscreenSceneIds")) return { findScenes: { scenes } };
+      const { q, page, sort } = variables.filter;
+      const matches = q === "match" ? (sort.startsWith("random_") ? scenes.slice().reverse() : scenes) : [];
+      if (holdPage && page === 2) {
+        pendingSignal = options.signal;
+        return pending.promise;
+      }
+      return { findScenes: { count: matches.length, scenes: matches.slice((page - 1) * 10, page * 10) } };
+    },
+  });
+  const players = () => h.nodes(node => node.type === "native-player");
+  const ids = () => players().map(player => player.props.scene.id);
+  const action = label => h.nodes(node => node.type === "Button" && text(node) === label)[0];
+  const search = async (q = "match") => {
+    h.nodes(node => node.type === "NativeSceneFilter")[0].props.onChange({ find: { q }, scene: {} });
+    await h.flush();
+    await h.tick(300);
+  };
+  const open = async () => {
+    activate(h, "Search scenes for screen 1");
+    await h.flush();
+    await search();
+  };
+  const selectRandom = async () => {
+    h.context.Math.random = () => 0.99;
+    action("Random scene").props.onClick();
+    await h.flush();
+  };
+  h.context.Math = Object.create(Math);
+  await open();
+  await selectRandom();
+  assert.deepEqual(ids(), ["13", "2"], "a random scene can come from the last page of the current scope");
+  players()[0].props.onPrevious();
+  await h.flush();
+  assert.deepEqual(ids(), ["11", "2"], "a random choice keeps the existing queue in place");
+
+  await open();
+  const requestCount = h.calls.length;
+  h.context.Math.random = () => 0.32;
+  action("Shuffle").props.onClick();
+  await h.flush();
+  await h.tick(300);
+  assert.match(h.text(), /13 results found · Shuffled/);
+  assert.deepEqual(ids(), ["11", "2"], "shuffling the results leaves playback running");
+  const first = Array.from(h.calls.at(-1).variables.ids);
+  assert.notDeepEqual(first, selectedIds.slice(0, 10));
+  h.nodes(node => node.type === "Pagination")[0].props.onPageChange(2);
+  await h.flush();
+  await h.tick(300);
+  const second = h.calls.at(-1).variables.ids;
+  assert.deepEqual([...first, ...second].sort(), selectedIds.slice().sort(), "one shuffle orders every page");
+  assert.equal(h.calls.length, requestCount + 2, "the shuffled selection reuses its matching ID scan");
+
+  h.nodes(node => node.type === "SettingsToggle" && node.props.label === "Start a new queue")[0].props.onChange(true);
+  await h.flush();
+  await h.tick(300);
+  const shuffledQuery = h.calls.at(-1).variables.filter;
+  assert.match(shuffledQuery.sort, /^random_\d+$/);
+  assert.equal(shuffledQuery.page, 1);
+
+  holdPage = true;
+  await selectRandom();
+  assert.match(h.text(), /Picking a random scene/);
+  await search("none");
+  assert.equal(pendingSignal.aborted, true, "changing the filter cancels a pending random choice");
+  pending.resolve({ findScenes: { count: scenes.length, scenes: scenes.slice(10) } });
+  await h.flush();
+  assert.deepEqual(ids(), ["11", "2"], "the cancelled choice leaves playback alone");
+  assert.equal(action("Random scene").props.disabled, true);
+  holdPage = false;
+  await search();
+  await selectRandom();
+  assert.deepEqual(ids(), ["1", "2"], "the new queue starts at the random result in the shuffled order");
+  players()[0].props.onNext();
+  await h.flush();
+  assert.deepEqual(ids(), ["14", "2"], "the shuffled queue wraps to its first result");
+  assert.equal(h.calls.at(-1).variables.filter.sort, shuffledQuery.sort, "playback reuses the search shuffle seed");
+  await h.unmount();
+}
+
+async function independentCatalogs() {
+  const performer = { id: "p1", name: "Alex" };
+  const scene = (id, title) => ({ id, title, paths: { stream: `/${id}` }, performers: [performer] });
+  const markers = ["a", "b"].map((id, index) => ({
+    id,
+    title: id,
+    seconds: 10 + index,
+    end_seconds: 20 + index,
+    primary_tag: { name: "Test" },
+    scene: scene(id, `Original ${id}`),
+  }));
+  const scenes = {
+    alpha: Array.from({ length: 12 }, (_, index) => scene(`a${index}`, `Alpha ${index}`)),
+    beta: [scene("b0", "Beta 0"), scene("b1", "Beta 1")],
+  };
+  const tags = { value: ["7"], modifier: "INCLUDES" };
+  let originalMarkers = markers;
+  const options = {
+    scenes: [...markers.map(marker => marker.scene), ...scenes.alpha, ...scenes.beta],
+    settings: { rows: 1, columns: 2, splitScenes: true, sceneOrder: "list", randomStart: false },
+    graphql: (query, variables) => {
+      if (query.includes("MultiscreenMarkers") || query.includes("MultiscreenMarkerSearch")) {
+        return { findSceneMarkers: { count: originalMarkers.length, scene_markers: originalMarkers } };
+      }
+      const { q, page, per_page: size } = variables.filter;
+      const matches = scenes[q] ?? [];
+      return {
+        findScenes: {
+          count: matches.length,
+          scenes: size < 0 ? matches : matches.slice((page - 1) * size, page * size),
+        },
+      };
+    },
+  };
+  const h = await start({
+    ...options,
+    launch: { source: "marker-filter", filter: { q: "original" }, markerFilter: { tags } },
+  });
+  const press = async label => {
+    activate(h, label);
+    await h.flush();
+  };
+  const players = h => h.nodes(node => node.type === "native-player");
+  const ids = h => players(h).map(node => node.props.scene.id);
+  const toggle = () => h.nodes(node => node.type === "SettingsToggle" && node.props.label === "Start a new queue")[0];
+  const results = () => h.nodes(node => node.type === "Button" && node.props.className === "ms-scene-search-result");
+  const condition = async (q, criteria = {}, sort = "title") => {
+    h.nodes(node => node.type === "NativeSceneFilter")[0].props.onChange({
+      find: { q, sort, direction: "ASC" },
+      scene: criteria,
+    });
+    await h.flush();
+    await h.tick(300);
+  };
+  const enable = async () => {
+    assert.equal(toggle().props.checked, false);
+    toggle().props.onChange(true);
+    await h.flush();
+    await h.tick(300);
+  };
+  assert.deepEqual(ids(h), ["a", "b"]);
+  await press("Search scenes for screen 1");
+  await condition("alpha", { tags }, "random");
+  assert.match(h.calls.at(-1).query, /MultiscreenMarkerSearch/);
+  await enable();
+  const catalogQuery = h.calls.at(-1);
+  assert.match(catalogQuery.query, /MultiscreenSceneSearch/);
+  assert.equal(catalogQuery.variables.filter.q, "alpha");
+  assert.match(catalogQuery.variables.filter.sort, /^random_\d+$/);
+  assert.deepEqual(JSON.parse(JSON.stringify(catalogQuery.variables.scene_filter)), { tags });
+  assert.deepEqual(ids(h), ["a", "b"], "toggling changes search scope without interrupting playback");
+  results()[9].props.onClick();
+  await h.flush();
+  assert.deepEqual(ids(h), ["a9", "b"]);
+  players(h)[0].props.onNext();
+  await h.flush();
+  assert.deepEqual(ids(h), ["a10", "b"], "Next continues into the new queue's second page");
+  assert.equal(h.calls.at(-1).variables.filter.sort, catalogQuery.variables.filter.sort);
+  players(h)[0].props.onPrevious();
+  await h.flush();
+  assert.deepEqual(ids(h), ["a9", "b"], "Previous crosses back into the first page");
+
+  await press("Search scenes for screen 1");
+  assert.equal(toggle().props.checked, false, "the next search defaults to the screen's current queue");
+  await condition("Beta", { AND: { organized: true } });
+  const scoped = h.calls.at(-1).variables;
+  assert.equal(scoped.filter.q, "alpha");
+  assert.equal(scoped.scene_filter.title.value, "(?i)Beta");
+  assert.deepEqual(JSON.parse(JSON.stringify(scoped.scene_filter.AND)), { organized: true, AND: { tags } });
+  await press("Close scene search");
+
+  await press("Search scenes for screen 2");
+  await enable();
+  await condition("beta");
+  results()[0].props.onClick();
+  await h.flush();
+  assert.deepEqual(ids(h), ["a9", "b0"], "each screen can have its own search scope");
+  h.nodes(
+    node => node.type === "Button" && node.props.ariaLabel === "Next scene featuring Alex for screen 1",
+  )[0].props.onClick();
+  await h.flush();
+  assert.deepEqual(ids(h), ["a10", "b0"]);
+  const portrait = h.calls.at(-1);
+  assert.match(portrait.query, /MultiscreenPerformerScenes/);
+  assert.equal(portrait.variables.filter.q, "alpha");
+  assert.deepEqual(JSON.parse(JSON.stringify(portrait.variables.scene_filter.AND)), { tags });
+  await h.unmount();
+
+  originalMarkers = [];
+  const reopened = await start({ ...options, localStorage: h.localStorage });
+  assert.deepEqual(ids(reopened), ["a10", "b0"], "both queues resume even when the grid's original scope is empty");
+  players(reopened)[1].props.onNext();
+  await reopened.flush();
+  assert.deepEqual(ids(reopened), ["a10", "b1"]);
+  await reopened.unmount();
+}
+
 async function searchDuringMarkersAndPaging() {
   const scenes = ["a", "b"].map(id => ({ id, title: id, paths: { stream: "/" + id } }));
   const marker = {
@@ -1835,11 +2051,11 @@ async function playbackMenu() {
   assert.equal(menuItem(h, "playback").onSelect, undefined, "Playback only opens its submenu");
   assert.deepEqual(
     [...menuItem(h, "playback").items.map(item => item.key)],
-    ["startMuted", "randomStart", "loop", "pauseWhenHidden"],
+    ["startMuted", "randomStart", "loop", "pauseWhenHidden", "tvMode"],
   );
   assert.deepEqual(
-    ["startMuted", "randomStart", "loop", "pauseWhenHidden"].map(key => state(h, key)),
-    ["on", "off", "off", "on"],
+    ["startMuted", "randomStart", "loop", "pauseWhenHidden", "tvMode"].map(key => state(h, key)),
+    ["on", "off", "off", "on", "off"],
     "each option shows its setting",
   );
 
@@ -1852,6 +2068,9 @@ async function playbackMenu() {
   await choose(h, "pauseWhenHidden");
   assert.equal(h.saved.at(-1).settings.pauseWhenHidden, false);
   assert.equal(state(h, "pauseWhenHidden"), "off");
+  await choose(h, "tvMode");
+  assert.equal(h.saved.at(-1).settings.tvMode, true);
+  assert.equal(state(h, "tvMode"), "on");
   assert.equal(sceneQueries(h), queries, "playback settings never reload the queues");
   assert.deepEqual(playing(h), [first, second]);
 
@@ -1888,6 +2107,57 @@ async function playbackMenu() {
   );
   assert.equal(sceneQueries(h), queries);
   await h.unmount();
+}
+
+async function tvModePlayback() {
+  const h = await start({
+    settings: { rows: 1, columns: 1, sceneOrder: "list", randomStart: false, loopScenes: true, tvModeDuration: 10 },
+  });
+  const player = () => h.nodes(node => node.type === "native-player")[0].props;
+  const active = () => [...h.media.values()].find(pair => pair.video.isConnected);
+  const toggle = async () => {
+    menuItem(h, "playback")
+      .items.find(item => item.key === "tvMode")
+      .onSelect();
+    await h.flush();
+  };
+  assert.equal(player().scene.id, "a");
+  await h.advanceTime(10_000);
+  assert.equal(player().scene.id, "a", "TV mode is off by default");
+  await toggle();
+  const first = active();
+  await h.advanceTime(3_000);
+  player().onComplete();
+  assert.equal(player().scene.id, "a", "looping keeps playing until the TV limit");
+  h.document.hidden = true;
+  h.document.emit("visibilitychange");
+  await h.advanceTime(20_000);
+  assert.equal(player().scene.id, "a", "a paused pane does not advance");
+  h.document.hidden = false;
+  h.document.emit("visibilitychange");
+  await h.advanceTime(2_000);
+  first.video.readyState = 2;
+  first.tile.emit("waiting", { target: first.video });
+  await h.advanceTime(20_000);
+  assert.equal(player().scene.id, "a", "buffering does not count as playback");
+  first.video.readyState = 4;
+  first.tile.emit("playing", { target: first.video });
+  await h.advanceTime(4_999);
+  assert.equal(player().scene.id, "a");
+  await h.advanceTime(1);
+  assert.equal(player().scene.id, "b", "the normal queue advances after 10 seconds of playback");
+  assert.equal(first.tile.handlers.get("playing").size, 0, "leaving a scene removes its timer listeners");
+  await h.advanceTime(5_000);
+  player().onPrevious();
+  await h.flush();
+  await h.advanceTime(5_000);
+  assert.equal(player().scene.id, "a", "manual navigation gives the new video a full interval");
+  await toggle();
+  await h.advanceTime(10_000);
+  assert.equal(player().scene.id, "a", "turning TV mode off cancels the current timer");
+  await toggle();
+  await h.unmount();
+  assert.equal(h.timers.size, 0);
 }
 
 async function pagedPlayback() {
@@ -2711,8 +2981,16 @@ async function rightClickOptions() {
   assert.equal(menuChecked(h, "edit"), false);
   assert.deepEqual(
     h.nodes(node => node.props.className === "ms-screen-menu-label").map(node => text(node)),
-    ["Flip horizontally", "Flip vertically", "Rotate clockwise", "Loop scene", "Fill screen", "Close screen"],
-    "the menu lists the picture options without Move",
+    [
+      "Flip horizontally",
+      "Flip vertically",
+      "Rotate clockwise",
+      "Loop scene",
+      "TV mode",
+      "Fill screen",
+      "Close screen",
+    ],
+    "the screen menu includes the TV mode toggle",
   );
   assert.equal(option(h, "Flip horizontally").props.role, "menuitemcheckbox");
   assert.equal(option(h, "Flip horizontally").props["aria-checked"], false);
@@ -2723,6 +3001,13 @@ async function rightClickOptions() {
   h.document.emit("pointerdown", pointer(inMenu(0)));
   await h.flush();
   assert.deepEqual(shown(h), ["Options for screen 1"], "a press inside the menu keeps it open");
+  assert.equal(option(h, "TV mode").props["aria-checked"], false);
+  await choose(h, "TV mode");
+  assert.equal(h.saved.at(-1).settings.tvMode, true);
+  await rightClick(h, 1);
+  assert.equal(option(h, "TV mode").props["aria-checked"], true, "the toggle applies to all screens");
+  await choose(h, "TV mode");
+  await rightClick(h, 0);
   await choose(h, "Flip horizontally");
   assert.match(cell(h, 0).props.className, /ms-flip-x/);
   assert.doesNotMatch(cell(h, 1).props.className, /ms-flip-x/);
@@ -4554,6 +4839,8 @@ async function recentGrids() {
   await staleCounts();
   await sceneSearch();
   await fixedSessionSearch();
+  await searchRandomActions();
+  await independentCatalogs();
   await searchDuringMarkersAndPaging();
   await searchedQueueNavigation();
   await performerNavigation();
@@ -4566,6 +4853,7 @@ async function recentGrids() {
   await avoidsDuplicateScenes();
   await reshuffleMenu();
   await playbackMenu();
+  await tvModePlayback();
   await unscopedLibraryPaging();
   await sessionRestore();
   await editMode();

@@ -2,6 +2,14 @@
 
 Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names its version.
 
+- **DirtyMultiscreen 1.1.2:** TV mode advances each screen after a set amount of playback time.
+  - The player menu brings together grid and screen controls, saved grids, reshuffling, and playback settings.
+  - Toggle it in Playback settings, the player's Playback menu, or the screen's right-click menu.
+  - Set the duration in Playback settings. It defaults to 30 seconds and accepts 10 to 600 seconds.
+  - **Start a new queue** in a screen's search lets it use its own catalog results, including when the grid was launched from a selection or markers.
+  - Scene search keeps a fixed dialog height and adds **Shuffle** and **Random scene** for matches across pages.
+  - DirtyMultiscreen ships the definition for its settings tab, including its defaults and bounds.
+
 - **DirtyMultiscreen 1.1.1:** saved A/B loops, a usable saved-filter menu in
   search, and launches from DirtyRank battles.
   - **A/B loops are saved.** An A/B loop set with the player's own controls or

@@ -327,7 +327,8 @@ function performer(id, rating, deviation, matches) {
 }
 
 {
-  // A rated opponent tells a new performer more than another new performer does.
+  // Every verdict is refitted together, so a battle between two newcomers places both of
+  // them and comes before a newcomer against a settled performer.
   const rated = [940, 980, 1000, 1020, 1060].map(function (rating, index) {
     return performer(71 + index, rating, 50, 20);
   });
@@ -354,15 +355,22 @@ function performer(id, rating, deviation, matches) {
         })
         .sort()
         .join(":");
-      assert.notStrictEqual(pair, ids, confidenceGoal + ": uncertain newcomers must meet a rated opponent first");
-      assert(
-        selected.pair.some(function (item) {
-          return fresh.indexOf(item) >= 0;
-        }),
-        confidenceGoal + ": the pair must still include a newcomer",
-      );
+      assert.strictEqual(pair, ids, confidenceGoal + ": two newcomers meet each other first");
     });
   });
+  // Gauntlet's opponents do not keep battling, so a settled opponent tells its target more.
+  const target = performer(81, 1000, 350, 0);
+  const settled = performer(82, 1000, 50, 20);
+  const unknown = performer(83, 1000, 350, 0);
+  const gauntlet = algorithms.selectGauntletPair(
+    [target, unknown, settled],
+    target,
+    category,
+    "FEMALE",
+    baseSettings,
+    null,
+  );
+  assert.strictEqual(gauntlet.pair[1].id, settled.id, "Gauntlet prefers a settled opponent for its target");
   const unrated = [performer(65, 1000, 350, 0), performer(66, 1000, 350, 0), performer(67, 1000, 350, 0)];
   const start = algorithms.selectPair(
     unrated.concat(performer(68, 1100, 253, 1)),

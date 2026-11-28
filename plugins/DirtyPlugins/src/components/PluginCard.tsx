@@ -1,4 +1,3 @@
-import { FIELD_DISABLED_WHEN, PLUGIN_SECTIONS } from "../constants";
 import { React } from "../runtime";
 import { defaultFieldValue, fieldValuesEqual, settingsAddons } from "../settings";
 import type { PluginCardProps } from "../types";
@@ -8,10 +7,10 @@ import { SettingsCard, SettingsSection } from "./Settings";
 export function PluginCard({ plugin, draft = {}, status, actionRevision, onFieldChange, onReset }: PluginCardProps) {
   const settings = plugin.settings || [],
     Addon = settingsAddons[plugin.id];
-  const atDefaults = settings.every(setting =>
-    fieldValuesEqual(plugin.id, setting, draft[setting.name], defaultFieldValue(plugin.id, setting)),
+  const atDefaults = settings.every(
+    setting => !setting.metadata || fieldValuesEqual(setting, draft[setting.name], defaultFieldValue(setting)),
   );
-  const footer = settings.length > 0 && (
+  const footer = !plugin.settingsUnavailable && settings.length > 0 && (
     <div className="card-footer dirty-plugins-card-footer">
       <div
         className={"dirty-plugins-save-status" + (status && status.error ? " dirty-ui-text-error" : "")}
@@ -30,9 +29,8 @@ export function PluginCard({ plugin, draft = {}, status, actionRevision, onField
       </button>
     </div>
   );
-  const rules = FIELD_DISABLED_WHEN[plugin.id] || {};
   const input = (setting: (typeof settings)[number]) => {
-    const rule = rules[setting.name];
+    const rule = setting.metadata?.disabledWhen;
     return (
       <SettingInput
         key={setting.name}
@@ -45,8 +43,8 @@ export function PluginCard({ plugin, draft = {}, status, actionRevision, onField
       />
     );
   };
-  // Settings Stash does not report (an older manifest) drop out of their section.
-  const sections = (PLUGIN_SECTIONS[plugin.id] || [])
+  // The hub can suppress a field it cannot offer on the current Stash page.
+  const sections = (plugin.settingsSections || [])
     .map(section => ({
       ...section,
       settings: section.settings
@@ -58,7 +56,11 @@ export function PluginCard({ plugin, draft = {}, status, actionRevision, onField
   const ungrouped = settings.filter(setting => !grouped.has(setting));
   return (
     <SettingsCard plugin={plugin} footer={footer}>
-      {settings.length === 0 ? (
+      {plugin.settingsUnavailable ? (
+        <p className="dirty-plugins-empty">
+          Install the current {plugin.name} package and reload plugins to edit these settings.
+        </p>
+      ) : settings.length === 0 ? (
         <p className="dirty-plugins-empty">This plugin has no settings.</p>
       ) : sections.length ? (
         <div className="dirty-plugins-sections">

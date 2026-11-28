@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { createHubHarness } = require("./hub_harness");
-const { requireSource, runSource } = require("./plugin_paths");
+const { requireSource } = require("./plugin_paths");
 
 const field = (h, name = "markerDuration") => h.nodes(node => node.props.id === "dirty-plugin-multiscreen-" + name)[0];
 const edit = (h, value, name) => field(h, name).props.onChange({ target: { value } });
@@ -69,32 +69,152 @@ test("numeric metadata rejects blank, non-finite, fractional integer and out-of-
   assert.equal(h.settings.multiscreen.markerDuration, 600);
   h.unmount();
 
-  const constants = requireSource("DirtyPlugins", "src/constants.ts");
-  const domain = runSource(
-    "DirtyPlugins",
-    "src/settings.ts",
-    {},
-    {
-      external: ["./constants"],
-      modules: {
-        "./constants": {
-          ...constants,
-          FIELD_LIMITS: { fixture: { amount: { min: 0.1, max: 1, step: 0.1 } } },
-          FIELD_INTEGERS: { fixture: new Set() },
-          FIELD_PLACEHOLDERS: { fixture: { optional: "Automatic" } },
-        },
-      },
-    },
-  );
+  const domain = requireSource("DirtyPlugins", "src/settings.ts");
   // Fractional steps use the authored minimum as their base; floating-point noise is harmless.
-  const setting = { name: "amount", type: "NUMBER" };
-  assert.equal(domain.serializeFieldValue("fixture", setting, "0.3"), 0.3);
-  assert.throws(() => domain.serializeFieldValue("fixture", setting, "0.35"), /increments of 0.1/);
+  const setting = { name: "amount", type: "NUMBER", metadata: { min: 0.1, max: 1, step: 0.1 } };
+  assert.equal(domain.serializeFieldValue(setting, "0.3"), 0.3);
+  assert.throws(() => domain.serializeFieldValue(setting, "0.35"), /increments of 0.1/);
   // A number with a placeholder may be emptied: null tells the save to remove the stored value.
-  const optional = { name: "optional", type: "NUMBER" };
+  const optional = { name: "optional", type: "NUMBER", metadata: { placeholder: "Automatic" } };
   assert.equal(domain.fieldDefinition("fixture", optional).placeholder, "Automatic");
-  assert.equal(domain.serializeFieldValue("fixture", optional, " "), null);
-  assert.equal(domain.serializeFieldValue("fixture", optional, "3"), 3);
+  assert.equal(domain.serializeFieldValue(optional, " "), null);
+  assert.equal(domain.serializeFieldValue(optional, "3"), 3);
+});
+
+test("the installed package controls validation and defaults even when the plugin is disabled", async () => {
+  const h = createHubHarness({
+    plugins: [
+      {
+        id: "multiscreen",
+        name: "DirtyMultiscreen",
+        enabled: false,
+        version: "2.0.0",
+        settings: [
+          { name: "tvModeDuration", type: "NUMBER" },
+          { name: "markerDuration", type: "NUMBER" },
+        ],
+      },
+    ],
+  });
+  const definition = h.settingsDefinitions.multiscreen;
+  definition.version = "2.0.0";
+  definition.settings.tvModeDuration = { ...definition.settings.tvModeDuration, max: 420, default: 45 };
+  h.load();
+  await h.settle();
+  assert.match(h.text(), /Disabled/);
+  assert.equal(field(h, "tvModeDuration").props.value, 45);
+  assert.equal(field(h, "tvModeDuration").props.max, 420);
+  edit(h, "421", "tvModeDuration");
+  await h.tick();
+  assert.match(h.text(), /must be at most 420/);
+  assert.equal(writes(h).length, 0);
+  edit(h, "420", "tvModeDuration");
+  await h.tick();
+  assert.equal(h.settings.multiscreen.tvModeDuration, 420);
+  h.settings.multiscreen.tvModeDuration = 600;
+  h.revisions.multiscreen++;
+  refresh(h, "multiscreen");
+  await h.settle();
+  assert.equal(field(h, "tvModeDuration").props.value, 600, "older saved values stay visible");
+  assert.doesNotMatch(h.text(), /Unsaved changes/);
+  edit(h, "40");
+  await h.tick();
+  assert.equal(h.settings.multiscreen.markerDuration, 40);
+  assert.equal(h.settings.multiscreen.tvModeDuration, 600, "saving another field preserves older stored values");
+  h.unmount();
+});
+
+test("an older package can be edited and upgraded without touching other saved values", async () => {
+  const h = createHubHarness();
+  const multiscreen = h.plugins.find(plugin => plugin.id === "multiscreen");
+  multiscreen.version = "1.1.2-rc";
+  multiscreen.settings.push({ name: "tvModeDuration", type: "NUMBER" }, { name: "oldMode", type: "STRING" });
+  const definition = h.settingsDefinitions.multiscreen;
+  delete h.settingsDefinitions.multiscreen;
+  h.settings.multiscreen.markerDuration = 34;
+  h.settings.multiscreen.tvModeDuration = 65;
+  h.settings.multiscreen.rows = 4;
+  h.settings.multiscreen.oldMode = "saved by the older plugin";
+  h.load();
+  await h.settle();
+  assert.equal(field(h).props.value, 34);
+  assert.equal(field(h, "tvModeDuration").props.max, 600);
+  assert.equal(writes(h).length, 0, "loading legacy metadata never writes settings");
+  edit(h, "35");
+  await h.tick();
+  assert.equal(h.settings.multiscreen.markerDuration, 35);
+  assert.equal(h.settings.multiscreen.rows, 4, "hidden settings survive a write");
+
+  multiscreen.version = "1.1.3-rc";
+  multiscreen.settings = multiscreen.settings.filter(setting => setting.name !== "oldMode");
+  definition.version = multiscreen.version;
+  definition.settings.tvModeDuration.max = 420;
+  h.settingsDefinitions.multiscreen = definition;
+  refresh(h);
+  await h.settle();
+  assert.equal(field(h).props.value, 35);
+  assert.equal(field(h, "tvModeDuration").props.value, 65);
+  assert.equal(field(h, "tvModeDuration").props.max, 420);
+  assert.equal(h.settings.multiscreen.oldMode, "saved by the older plugin");
+  assert.equal(writes(h).length, 1, "loading upgraded metadata never rewrites settings");
+  h.unmount();
+});
+
+test("an older Rank panel works with its own manifest and saved settings", async () => {
+  const h = createHubHarness({
+    plugins: [
+      {
+        id: "dirtyRank",
+        name: "DirtyRank",
+        version: "1.1.4-rc",
+        settings: [{ name: "groupTopCount", type: "NUMBER" }],
+      },
+    ],
+    settings: { dirtyRank: { groupTopCount: 50 } },
+  });
+  h.load();
+  h.window.DirtyPlugins.registerSettingsPanel(
+    "dirtyRank",
+    ({ configuration }) => `Group size ${configuration.groupTopCount}`,
+  );
+  await h.settle();
+  assert.match(h.text(), /Group size 50/);
+  assert.equal(writes(h).length, 0);
+  h.unmount();
+});
+
+test("a current package missing a matching definition leaves its stored values intact", async () => {
+  for (const missing of [true, false]) {
+    const h = createHubHarness();
+    h.plugins.find(plugin => plugin.id === "multiscreen").version = "1.1.2";
+    if (missing) delete h.settingsDefinitions.multiscreen;
+    else h.settingsDefinitions.multiscreen.version = "0.0.0";
+    h.load();
+    await h.settle();
+    assert.match(h.text(), /Install the current DirtyMultiscreen package/);
+    assert.doesNotMatch(h.text(), /Reset to defaults|Unsaved changes/);
+    assert.equal(field(h), undefined);
+    assert.equal(h.settings.multiscreen.markerDuration, 30);
+    assert.equal(writes(h).length, 0);
+    h.unmount();
+  }
+});
+
+test("capture masking comes from the installed field's definition", async () => {
+  const h = createHubHarness({
+    plugins: [
+      { id: "extractScenes", name: "DirtyFileExtractor", settings: [{ name: "destinationFolder", type: "STRING" }] },
+    ],
+    settings: { extractScenes: { destinationFolder: "private fixture path" } },
+  });
+  h.window.location.search = "?plugin=extractScenes&docsCapture=1";
+  h.load();
+  await h.settle();
+  const path = h.nodes(node => node.props.id === "dirty-plugin-extractScenes-destinationFolder")[0];
+  assert.equal(path.props.value, "Path hidden for documentation");
+  assert.equal(path.props.disabled, true);
+  assert.equal(writes(h).length, 0);
+  h.unmount();
 });
 
 test("unrelated events preserve valid pending and invalid raw drafts and fetch only the affected settings", async () => {

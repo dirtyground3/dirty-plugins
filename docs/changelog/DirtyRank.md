@@ -2,15 +2,11 @@
 
 Newest first. Each GitHub Release of DirtyRank uses the entry that names its version.
 
-- **DirtyRank 1.1.4:** new performers battle rated opponents instead of each
-  other.
-  - **Newcomers are placed against the leaderboard.** Standard battles no
-    longer keep pairing a few new performers with one another. A rated
-    opponent tells a new performer about twice as much as another newcomer
-    does, so new performers now meet rated ones first and reach Refined
-    slightly sooner.
-  - **First battles for everyone.** When nobody in a category is rated yet,
-    every performer still gets a first battle before anyone gets a second.
+- **DirtyRank 1.1.4:** each pair keeps one editable verdict on a seven-step scale.
+  - Ratings and rating deviations are fitted to all saved verdicts for each category and gender box.
+  - Standard battles prioritize the verdicts expected to add the most information. When nobody in a category is rated yet, each performer gets a first battle before anyone gets a second.
+  - Gauntlet chooses opponents based on how much a verdict is expected to clarify the target performer's rating.
+  - DirtyRank ships a settings definition for the shared form shown when its custom panel is disabled.
 
 - **DirtyRank 1.1.3:** the DirtyMultiscreen header button opens the scenes in
   the current battle previews in left-to-right order. A marker preview opens

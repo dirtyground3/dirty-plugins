@@ -9,6 +9,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dirty_plugins_protocol as protocol
 import dirty_plugins_storage as storage
+from dirty_plugins_definitions import installed_settings_definitions
 from dirty_plugins_metadata import CONSTANTS
 
 
@@ -32,7 +33,11 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         raise PluginError("Plugin arguments must be an object")
     mode = str(args.get("mode") or "getAllSettings")
     if mode == "getAllSettings":
-        return storage.get_all_plugin_settings()
+        snapshot = storage.get_all_plugin_settings()
+        snapshot["settingsDefinitions"] = installed_settings_definitions(
+            payload.get("server_connection") or {}, MANAGED_PLUGIN_IDS
+        )
+        return snapshot
     if mode == "getSettings":
         plugin_id = _managed_plugin_id(args)
         return {"pluginId": plugin_id, **storage.get_plugin_settings_snapshot(plugin_id)}

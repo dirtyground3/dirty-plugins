@@ -60,6 +60,7 @@ const PLAYBACK_OPTIONS = [
   { key: "randomStart", label: "Random start" },
   { key: "loop", label: "Loop scenes" },
   { key: "pauseWhenHidden", label: "Pause when hidden" },
+  { key: "tvMode", label: "TV mode" },
 ] as const;
 export type PlaybackOption = (typeof PLAYBACK_OPTIONS)[number]["key"];
 
@@ -109,7 +110,12 @@ export function MainMenu({
    * The Playback settings, or null until they load. Loop scenes is mixed while some screens loop on their own;
    * choosing it sets every screen.
    */
-  playback: (Omit<PlaybackSettings, "loop"> & { loop: LoopState; onToggle(option: PlaybackOption): void }) | null;
+  playback:
+    | (Pick<PlaybackSettings, Exclude<PlaybackOption, "loop">> & {
+        loop: LoopState;
+        onToggle(option: PlaybackOption): void;
+      })
+    | null;
 }) {
   const [savedOpen, setSavedOpen] = React.useState(false);
   // The dialog gives focus back to the burger, since the item that opened it is gone with the menu.

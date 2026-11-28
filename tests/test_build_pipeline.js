@@ -19,13 +19,14 @@ function files(directory) {
 
 for (const plugin of lib.registry) {
   const destination = runtimePath(plugin.directory);
-  const expected = lib.installFiles(plugin, lib.readManifest(plugin));
+  const expected = lib.installFiles(plugin, lib.readManifest(plugin, destination));
   assert.deepEqual(files(destination), [...expected].sort(), plugin.id + " stages exactly its install files");
   // Only the bundle, the manifest and generated constants are built; every other install file is copied verbatim.
   for (const file of expected) {
     if (
       file === plugin.entry ||
       file === plugin.id + ".yml" ||
+      file === lib.SETTINGS_DEFINITION_FILE ||
       (plugin.generatedFiles || []).includes(file) ||
       Object.values(plugin.chunks || {}).includes(file)
     )
@@ -162,6 +163,25 @@ try {
   );
   assert(metadata.identity.startsWith(sharedCommit + "-"));
   assert.equal(metadata.date, "2020-01-02 00:00:00");
+
+  // An installed hub should work with new plugin definitions without a new hub package or update date.
+  const hubBeforeSchemaChange = snapshot(path.join(fixture, ".build/plugins/DirtyPlugins"));
+  const multiscreenSchemaPath = "schemas/multiscreen.settings.json";
+  const multiscreenSchema = JSON.parse(fs.readFileSync(path.join(fixture, multiscreenSchemaPath), "utf8"));
+  multiscreenSchema.settings.tvModeDuration.max = 420;
+  write(multiscreenSchemaPath, JSON.stringify(multiscreenSchema));
+  git("add", multiscreenSchemaPath);
+  const schemaCommit = commit("2020-01-03T00:00:00Z", "Multiscreen setting change");
+  const schemaIdentities = lib.registry.map(plugin => identity(plugin.directory));
+  for (const [index, plugin] of lib.registry.entries())
+    if (plugin.id === "multiscreen") assert(schemaIdentities[index].startsWith(schemaCommit + "-"));
+    else assert.equal(schemaIdentities[index], sharedIdentities[index], plugin.id + " keeps its package identity");
+  build();
+  assert.deepEqual(snapshot(path.join(fixture, ".build/plugins/DirtyPlugins")), hubBeforeSchemaChange);
+  const updatedDefinition = JSON.parse(
+    fs.readFileSync(path.join(fixture, ".build/plugins/DirtyMultiscreen", lib.SETTINGS_DEFINITION_FILE), "utf8"),
+  );
+  assert.equal(updatedDefinition.settings.tvModeDuration.max, 420);
   for (const file of [
     "state.sqlite3",
     "state.sqlite3-wal",
@@ -172,10 +192,10 @@ try {
     write("plugins/DirtyRank/" + file, "synthetic ignored artifact");
   write("plugins/DirtyPlugins/src/shared/state.sqlite3", "synthetic database");
   git("add", "plugins/DirtyRank/state.sqlite3", "plugins/DirtyRank/archive.bak");
-  commit("2020-01-03T00:00:00Z", "synthetic runtime artifacts");
+  commit("2020-01-04T00:00:00Z", "synthetic runtime artifacts");
   assert.deepEqual(
     lib.registry.map(plugin => identity(plugin.directory)),
-    sharedIdentities,
+    schemaIdentities,
   );
 
   const manifestPath = path.join(fixture, "plugins/DirtyTasks/dirtyTasks.yml");

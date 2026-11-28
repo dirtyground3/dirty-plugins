@@ -628,13 +628,13 @@
   visibility: hidden !important;
 }
 
-/* Only the results scroll, so the title, the filter and the page buttons always stay in view. In a very short window
-   the list keeps a few rows and the whole dialog scrolls instead. */
+/* Reserve space for results so the dialog stays in place as the list changes. */
 .ms-scene-search-dialog {
   display: flex;
   flex-direction: column;
   width: min(44rem, 100%);
-  max-height: calc(100vh - 2rem);
+  height: min(40rem, calc(100vh - 2rem));
+  height: min(40rem, calc(100dvh - 2rem));
   overflow-y: auto;
   padding: 1rem;
   color: var(--dirty-ui-text);
@@ -647,21 +647,38 @@
 
 .ms-scene-search-dialog > .ms-scene-search-results {
   display: flex;
-  flex: 0 1 auto;
+  flex: 1 0 11rem;
   flex-direction: column;
   min-height: 0;
 }
 
 .ms-scene-search-results > .ms-scene-search-list {
-  flex: 0 1 auto;
+  flex: 1 1 0;
+  align-content: start;
   min-height: 0;
   overflow-y: auto;
   margin-inline: -0.15rem;
   padding-inline: 0.15rem;
 }
 
-.ms-scene-search-results > .ms-scene-search-list:has(> :nth-child(3)) {
-  min-height: 7rem;
+.ms-scene-search-result-bar,
+.ms-scene-search-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dirty-ui-space-2);
+}
+
+.ms-scene-search-result-bar {
+  margin-bottom: var(--dirty-ui-space-3);
+}
+
+.ms-scene-search-result-bar > p {
+  margin: 0;
+}
+
+.ms-scene-search-actions {
+  margin-inline-start: auto;
 }
 
 .ms-scene-search-help {

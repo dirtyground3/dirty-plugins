@@ -103,7 +103,8 @@ ui:
   source or installed plugins.
 - Install files are derived from the manifest: the manifest itself, its
   `ui.javascript` and `ui.css` entries, the top-level `*.py` modules, the
-  registry's `chunks`, `generatedFiles` and `extraFiles`, `README.md` and
+  registry's `chunks`, `generatedFiles` and `extraFiles`, the generated
+  `settings-definition.json` for manifests with settings, `README.md` and
   `LICENSE`. `scripts/plugin-registry.json` holds only what cannot be derived
   (`directory`, `id`, `entry`, `chunks`, `generatedImports`, `generatedFiles`,
   `bundledPackages`, `extraFiles`, `runtimeDirectories`). Never place runtime
@@ -136,8 +137,12 @@ ui:
   TS and Python live only in
   `schemas/<pluginId>.settings.json`. The build generates `@generated/<id>.settings`
   TS modules in `.build/generated/`, the staged manifest's `settings:` section,
-  and same-directory Python constants for registry `generatedFiles`. A bundle may
-  import only the modules in its registry `generatedImports`. Never put `settings:`
+  each package's form definition, and same-directory Python constants for registry
+  `generatedFiles`. The hub reads installed form definitions on settings load.
+  Its frozen legacy settings file serves older packages during independent
+  updates. Edit the authored schema for changes to a current package.
+  A bundle may import only the modules in its registry `generatedImports`.
+  Never put `settings:`
   back into a source manifest that has a schema. Keep normalization, coercion,
   migrations and algorithms handwritten in each language.
 - An entry is `hub?.registerPlugin(ID, () => { ... })`. The hub runs each
@@ -284,7 +289,7 @@ Rules behind the flow:
   a commit of its own, merge `main` into your branch before the next push to
   `prerelease`.
 - Stash offers an update when a package's date is newer, not its version. The
-  date is that of the last commit touching the plugin or shared build inputs,
+  date is that of the last commit touching the plugin, the schemas it uses, or shared build inputs,
   so the release commit is what moves candidate installs to the final version.
 - The workflow token may not push `.github/workflows` changes. Release such a
   candidate by hand with the commands in README, Releases.

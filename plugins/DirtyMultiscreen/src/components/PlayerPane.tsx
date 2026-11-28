@@ -1,9 +1,22 @@
 import type * as R from "react";
+import { catalogPageCount, findCatalogPerformerItems, searchCatalog } from "../catalog";
 import { React } from "../runtime";
 import { panCrop, zoomCrop } from "../domain/layout";
 import type { Crop, Rectangle } from "../domain/layout";
 import { locatePlaylistItem, nextFreeIndex, nextItemAfter } from "../domain/playlists";
-import type { AbLoop, AudioState, GridProps, Item, PaneView, PictureControls, SavedPane, SwapControls } from "../types";
+import type {
+  AbLoop,
+  AudioState,
+  CatalogChoice,
+  CatalogQueue,
+  GridProps,
+  Item,
+  PaneView,
+  PictureControls,
+  SavedPane,
+  SessionSearch,
+  SwapControls,
+} from "../types";
 import { NativePlayerTile } from "./NativePlayerTile";
 import { ScreenControls, useScreenDrag } from "./ScreenControls";
 import { ScreenMenu } from "./ScreenMenu";
@@ -20,6 +33,7 @@ interface PaneProps
     | "continuation"
     | "editing"
     | "onFinishEditing"
+    | "onToggleTvMode"
     | "moveWithoutEditing"
     | "rightClickOptions"
     | "fitVideos"
@@ -42,14 +56,14 @@ interface PaneProps
   onAudioChange(index: number, audio: AudioState): void;
   onPositionChange(index: number, seconds: number): void;
   onAbLoopChange(index: number, abLoop: AbLoop | undefined): void;
-  onSceneChange(index: number, item: Item | null, page: number, rotation: number): void;
+  onSceneChange(index: number, item: Item | null, page: number, rotation: number, catalog?: CatalogQueue): void;
   onViewChange(index: number, view: PaneView): void;
   /** Items the other panes are playing; absent when duplicates are allowed. */
   playingElsewhere?(screen: number): Set<string>;
   /** Where this pane was in a resumed session. */
   saved?: SavedPane | null;
 }
-type QueueStep = { direction: 1 | -1 } | { performerId: string };
+type QueueStep = { direction: 1 | -1 } | { performerId: string } | { pane: SavedPane };
 /** Presses that belong to the player's controls or the pane's own buttons never move the screen. */
 const PANE_CONTROLS =
   "button, a, input, select, textarea, [role='slider'], .vjs-control-bar, .vjs-menu, .vjs-modal-dialog, .ms-pane-header, .ms-queue-status, .ms-screen-menu";
@@ -71,6 +85,7 @@ export function NativePlayerPane({
   onAudioChange,
   onClose,
   onFinishEditing,
+  onToggleTvMode,
   onPositionChange,
   onSceneChange,
   onViewChange,
@@ -88,13 +103,14 @@ export function NativePlayerPane({
   ...player
 }: PaneProps) {
   // A restoring pane shows no scene until its page is back, so the queue's first scene never starts.
-  const restoring = React.useRef(saved && continuation ? saved : null);
+  const restoring = React.useRef(saved && (saved.catalog || continuation) ? saved : null);
   // The saved time applies until the pane leaves the restored item.
   const resumeAt = React.useRef(restoring.current);
   const [state, setState] = React.useState(() => ({
     items: restoring.current ? [] : playlist,
     cursor: 0,
-    page: continuation?.initialPage || 1,
+    page: saved?.catalog ? saved.page : continuation?.initialPage || 1,
+    catalog: saved?.catalog,
     busy: !!restoring.current,
     error: "",
   }));
@@ -102,7 +118,7 @@ export function NativePlayerPane({
     request = React.useRef(0),
     inserted = React.useRef<{ page: number; item: Item } | null>(null),
     retry = React.useRef<QueueStep>({ direction: 1 }),
-    performerLookup = React.useRef<AbortController | null>(null);
+    lookup = React.useRef<AbortController | null>(null);
   const [notice, setNotice] = React.useState("");
   const [view, setView] = React.useState<PaneView>(() => saved?.view ?? {});
   const changeView = (next: PaneView) => {
@@ -117,9 +133,18 @@ export function NativePlayerPane({
     setView(current => (current.loop === undefined ? current : { ...current, loop: undefined }));
   }, [loopReset]);
   const loop = view.loop ?? defaultPlayback.loop;
-  const playback = React.useMemo(
-    () => (loop === defaultPlayback.loop ? defaultPlayback : { ...defaultPlayback, loop }),
-    [defaultPlayback, loop],
+  const tvMode = defaultPlayback.tvMode && !state.busy && !state.error;
+  const playback = React.useMemo(() => ({ ...defaultPlayback, loop, tvMode }), [defaultPlayback, loop, tvMode]);
+  // Changes to the grid's shared deal only reset screens that use it.
+  const sharedPlaylist = state.catalog ? undefined : playlist;
+  const sharedContinuation = state.catalog ? undefined : continuation;
+  const catalogCondition = state.catalog?.condition;
+  const searchScreen = React.useMemo<SessionSearch>(
+    () =>
+      catalogCondition
+        ? (condition, page, signal) => searchCatalog(condition, page, signal, catalogCondition)
+        : searchSession,
+    [catalogCondition, searchSession],
   );
   current.current = state;
   React.useEffect(() => {
@@ -131,11 +156,12 @@ export function NativePlayerPane({
     request.current++;
     inserted.current = null;
     setNotice("");
-    if (!restoring.current) {
+    if (!restoring.current && sharedPlaylist) {
       const next = {
-        items: playlist,
+        items: sharedPlaylist,
         cursor: 0,
-        page: continuation?.initialPage || 1,
+        page: sharedContinuation?.initialPage || 1,
+        catalog: undefined,
         busy: false,
         error: "",
       };
@@ -144,19 +170,20 @@ export function NativePlayerPane({
     }
     return () => {
       request.current++;
-      performerLookup.current?.abort();
+      lookup.current?.abort();
     };
-  }, [playlist, continuation]);
+  }, [sharedPlaylist, sharedContinuation]);
   const item = state.items[state.cursor];
   const rotation = item && view.rotation?.itemId === item.id ? view.rotation.turns : 0;
   React.useEffect(() => {
     if (item && item.id !== resumeAt.current?.itemId) resumeAt.current = null;
-    onSceneChange(screenIndex, item || null, state.page, rotation);
-  }, [onSceneChange, screenIndex, item, state.page, rotation]);
+    onSceneChange(screenIndex, item || null, state.page, rotation, state.catalog);
+  }, [onSceneChange, screenIndex, item, state.page, rotation, state.catalog]);
   const navigate = async (direction: 1 | -1) => {
     const previous = current.current;
     if (previous.busy && "direction" in retry.current && direction === retry.current.direction) return;
     const revision = ++request.current;
+    lookup.current?.abort();
     retry.current = { direction };
     setNotice("");
     const publish = (next: typeof state) => {
@@ -174,7 +201,9 @@ export function NativePlayerPane({
       publish({ ...previous, cursor, busy: false, error: "" });
       return;
     }
-    if (!continuation || continuation.pageCount <= 1) {
+    const catalog = previous.catalog;
+    const pageCount = catalog?.pageCount ?? continuation?.pageCount ?? 1;
+    if (pageCount <= 1) {
       const count = previous.items.length;
       if (!count) return;
       // When every other item is on another screen, Next still moves on and repeats one.
@@ -185,18 +214,23 @@ export function NativePlayerPane({
     }
     publish({ ...previous, busy: true, error: "" });
     try {
+      const controller = catalog ? (lookup.current = new AbortController()) : undefined;
       let page = previous.page;
-      for (let attempts = 0; attempts < continuation.pageCount; attempts++) {
-        page = ((page - 1 + direction + continuation.pageCount) % continuation.pageCount) + 1;
-        const playlists = await continuation.loadPage(page);
+      for (let attempts = 0; attempts < pageCount; attempts++) {
+        page = ((page - 1 + direction + pageCount) % pageCount) + 1;
+        let items: Item[];
+        if (catalog && controller) items = (await searchCatalog(catalog.condition, page, controller.signal)).items;
+        else {
+          const playlists = (await continuation?.loadPage(page)) ?? [];
+          const anchor = inserted.current;
+          items =
+            (anchor?.page === page ? locatePlaylistItem(playlists, screenIndex, anchor.item)?.items : null) ||
+            playlists[screenIndex] ||
+            [];
+        }
         if (revision !== request.current) return;
-        const anchor = inserted.current;
-        const items =
-          (anchor?.page === page ? locatePlaylistItem(playlists, screenIndex, anchor.item)?.items : null) ||
-          playlists[screenIndex] ||
-          [];
         if (items.length) {
-          publish({ items, page, cursor: startOf(items), busy: false, error: "" });
+          publish({ ...previous, items, page, cursor: startOf(items), busy: false, error: "" });
           return;
         }
       }
@@ -205,7 +239,7 @@ export function NativePlayerPane({
       publish({ ...previous, busy: false, error: error instanceof Error ? error.message : String(error) });
     }
   };
-  /** One query finds the performer's next scene, so no page is scanned. Like search, it may be playing elsewhere. */
+  /** One query finds the performer's next scene in this screen's scope. Like search, it may be playing elsewhere. */
   const nextFeaturing = async (performerId: string) => {
     const previous = current.current;
     const revision = ++request.current;
@@ -216,12 +250,14 @@ export function NativePlayerPane({
       current.current = next;
       setState(next);
     };
-    performerLookup.current?.abort();
-    const lookup = (performerLookup.current = new AbortController());
+    lookup.current?.abort();
+    const controller = (lookup.current = new AbortController());
     publish({ ...previous, busy: true, error: "" });
     try {
       const playing = previous.items[previous.cursor];
-      const matches = await findPerformerItems(performerId, playing, lookup.signal);
+      const matches = previous.catalog
+        ? await findCatalogPerformerItems(previous.catalog.condition, performerId, controller.signal)
+        : await findPerformerItems(performerId, playing, controller.signal);
       if (revision !== request.current) return;
       const next = nextItemAfter(matches, playing);
       if (!next) {
@@ -249,15 +285,46 @@ export function NativePlayerPane({
       publish({ ...previous, busy: false, error: error instanceof Error ? error.message : String(error) });
     }
   };
-  const restore = async (pane: SavedPane, pages: NonNullable<typeof continuation>) => {
+  const restore = async (pane: SavedPane) => {
     const revision = ++request.current;
     const finish = (next: typeof state) => {
       restoring.current = null;
       current.current = next;
       setState(next);
-      if (!next.items.length) void navigate(1);
+      if (!next.items.length && !next.error) void navigate(1);
     };
-    const start = { items: playlist, cursor: 0, page: pages.initialPage, busy: false, error: "" };
+    if (pane.catalog) {
+      const { condition } = pane.catalog;
+      lookup.current?.abort();
+      const controller = (lookup.current = new AbortController());
+      retry.current = { pane };
+      restoring.current = pane;
+      setState(value => ({ ...value, busy: true, error: "" }));
+      try {
+        let result = await searchCatalog(condition, pane.page, controller.signal);
+        const pageCount = catalogPageCount(result.count);
+        const page = Math.min(pane.page, pageCount);
+        if (page !== pane.page) result = await searchCatalog(condition, page, controller.signal);
+        if (revision !== request.current) return;
+        const found = result.items.findIndex(item => item.id === pane.itemId);
+        const items = found < 0 && pane.item ? [pane.item, ...result.items] : result.items;
+        finish({ items, cursor: Math.max(0, found), page, catalog: { condition, pageCount }, busy: false, error: "" });
+      } catch (error) {
+        if (revision !== request.current) return;
+        finish({
+          items: pane.item ? [pane.item] : [],
+          cursor: 0,
+          page: pane.page,
+          catalog: pane.catalog,
+          busy: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+    const pages = continuation;
+    if (!pages) return;
+    const start = { items: playlist, cursor: 0, page: pages.initialPage, catalog: undefined, busy: false, error: "" };
     try {
       // A smaller library may no longer reach the saved page.
       const page = Math.min(pane.page, pages.pageCount);
@@ -267,26 +334,36 @@ export function NativePlayerPane({
       const position = found && locatePlaylistItem(playlists, screenIndex, found);
       if (found && position) {
         inserted.current = { page, item: found };
-        finish({ ...position, page, busy: false, error: "" });
-      } else if (pane.item)
-        finish({ items: [pane.item, ...(playlists[screenIndex] ?? [])], cursor: 0, page, busy: false, error: "" });
-      else if (playlists[screenIndex]?.length)
-        finish({ items: playlists[screenIndex], cursor: 0, page, busy: false, error: "" });
+        finish({ ...start, ...position, page });
+      } else if (pane.item) finish({ ...start, items: [pane.item, ...(playlists[screenIndex] ?? [])], page });
+      else if (playlists[screenIndex]?.length) finish({ ...start, items: playlists[screenIndex], page });
       else finish(start);
     } catch {
       if (revision === request.current) finish(start);
     }
   };
   /**
-   * A search result plays at once. Like a performer's next scene, one outside the queue goes after the playing one, so
-   * no page is loaded to find it; Next and Previous then continue the screen's own queue around it.
+   * A search result plays at once. A new catalog starts on its result page; an ordinary result joins the current queue.
    */
-  const select = (selected: Item) => {
+  const select = (selected: Item, choice?: CatalogChoice) => {
     restoring.current = null;
     // A newer choice wins over any page, performer or restore lookup still in flight.
     request.current++;
-    performerLookup.current?.abort();
+    lookup.current?.abort();
     setNotice("");
+    if (choice) {
+      const next = {
+        items: choice.result.items,
+        cursor: choice.result.items.indexOf(selected),
+        page: choice.page,
+        catalog: { condition: choice.condition, pageCount: catalogPageCount(choice.result.count) },
+        busy: false,
+        error: "",
+      };
+      current.current = next;
+      setState(next);
+      return;
+    }
     const previous = current.current;
     const found = previous.items.findIndex(item => item.id === selected.id);
     const at = Math.min(previous.cursor + 1, previous.items.length);
@@ -304,9 +381,9 @@ export function NativePlayerPane({
     setState(next);
   };
   React.useEffect(() => {
-    if (restoring.current && continuation) void restore(restoring.current, continuation);
-    else if (!playlist.length) void navigate(1);
-  }, [playlist, continuation]);
+    if (restoring.current) void restore(restoring.current);
+    else if (sharedPlaylist && !sharedPlaylist.length) void navigate(1);
+  }, [sharedPlaylist, sharedContinuation]);
   // A flip mirrors one video: it leaves with that item and returns with it.
   const flip = item && view.flip?.itemId === item.id ? view.flip : undefined;
   const cellClass =
@@ -374,7 +451,7 @@ export function NativePlayerPane({
         editing={editing}
         item={item}
         screenIndex={position}
-        searchSession={searchSession}
+        searchSession={searchScreen}
         onSelect={select}
         busy={state.busy}
         showPerformerNavigation={showPerformerNavigation}
@@ -394,7 +471,8 @@ export function NativePlayerPane({
           audio={saved?.audio}
           item={item}
           nextItem={() => {
-            void navigate(1);
+            // The time limit and a native end event can arrive together for the same video.
+            if (current.current.items[current.current.cursor] === item) void navigate(1);
           }}
           onAudioChange={audio => onAudioChange(screenIndex, audio)}
           onPositionChange={seconds => onPositionChange(screenIndex, seconds)}
@@ -423,6 +501,8 @@ export function NativePlayerPane({
           {...picture}
           at={options.at}
           position={position}
+          tvMode={defaultPlayback.tvMode}
+          onToggleTvMode={onToggleTvMode}
           onDone={options.hide}
         />
       )}
@@ -447,7 +527,8 @@ export function NativePlayerPane({
             className="btn btn-secondary dirty-ui-button"
             onClick={() => {
               const step = retry.current;
-              if ("performerId" in step) void nextFeaturing(step.performerId);
+              if ("pane" in step) void restore(step.pane);
+              else if ("performerId" in step) void nextFeaturing(step.performerId);
               else void navigate(step.direction);
             }}
           >

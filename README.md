@@ -15,13 +15,13 @@ a shared SQLite database, and is installed automatically as a dependency.
 
 | Plugin | What it does | Version |
 | --- | --- | ---: |
-| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.15 |
+| [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.16 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles: one editable verdict from -3 to 3 per pair, ratings fitted to every verdict, battles ordered by the information they add, Gauntlet mode and leaderboards. | 1.1.4 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.1.1 |
-| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.8 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.1.2 |
+| [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.9 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, updates tags with independent action triggers, and backs up library data. | 1.0.14 |
-| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.11 |
-| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.23 |
+| [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.12 |
+| [DirtyPlugins](plugins/DirtyPlugins/) | Required shared runtime, settings hub, suite theme, and database owner. Installed automatically. | 1.0.24 |
 
 ## Shared look and settings
 
@@ -358,6 +358,11 @@ plugin packages, so ordinary package updates do not replace them. Back up the
 shared database with **Create backup** in the DirtyPlugins **General** tab
 before major manual changes.
 
+Each current package includes its settings definition. The hub automatically
+uses its existing form metadata for older installed packages, so the hub and
+other plugins can update in either order. Updates keep the stored settings
+and apply defaults only to settings without a stored value.
+
 ## Data and settings
 
 The hidden DirtyPlugins hub owns `dirty_plugins.sqlite3` in its installed plugin
@@ -569,7 +574,8 @@ library. `npm run typecheck` runs the strict TypeScript check.
 Python backends retain their standard-library and same-directory import contract.
 Settings shown in Stash (labels, descriptions, defaults, bounds and options) and
 constants shared by browser and backend are authored once in `schemas/`; the build
-generates the manifest `settings:` section, TypeScript tables and, where a
+generates the manifest `settings:` section, a package-local
+`settings-definition.json` for the shared form, TypeScript tables and, where a
 backend needs them, Python constants such as `dirty_rank_metadata.py`.
 A schema may also group its settings under headed `sections` (listing every
 setting once, in schema order) and give a setting a `disabledWhen` rule naming

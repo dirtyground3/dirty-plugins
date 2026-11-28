@@ -13,11 +13,8 @@ async function main() {
   assert.equal(values.parseMaybeJson("invalid JSON"), "invalid JSON");
   assert.equal(values.coerceBoolean(" FALSE ", true), false);
   assert.equal(values.clampInteger("bad", 3, 1, 10), 3);
-  assert.equal(domain.serializeFieldValue("fixture", { name: "amount", type: "NUMBER" }, "5"), 5);
-  assert.throws(
-    () => domain.serializeFieldValue("fixture", { name: "amount", type: "NUMBER" }, "bad"),
-    /must be a number/,
-  );
+  assert.equal(domain.serializeFieldValue({ name: "amount", type: "NUMBER" }, "5"), 5);
+  assert.throws(() => domain.serializeFieldValue({ name: "amount", type: "NUMBER" }, "bad"), /must be a number/);
   const inertWindow = {};
   for (const name of ["Save", "Jobs", "SettingsDraft", "Register"]) loadFeature(inertWindow, name);
   assert.deepEqual(inertWindow, {}, "imports have no browser registration effects");
@@ -118,17 +115,23 @@ async function main() {
   for (const name of ["html", "SettingsField"]) assert.equal(hub.react[name], undefined, name);
   assert.deepEqual(Object.keys(hub.ui).sort(), ["manageDialog", "notify", "pickFolder"]);
   assert.equal(hub.theme.load, undefined);
+  const definition = (pluginId, name) => h.settingsDefinitions[pluginId].settings[name];
   const numberField = domain.fieldDefinition("multiscreen", {
     name: "markerDuration",
     display_name: "Marker length",
     type: "NUMBER",
+    metadata: definition("multiscreen", "markerDuration"),
   });
   assert.equal(numberField.kind, "number");
   assert.equal(numberField.min, 1);
   assert.equal(numberField.max, 600);
   assert.equal(numberField.placeholder, undefined);
-  assert.equal(domain.fieldDefinition("dirtyPlugins", { name: "visualTheme", type: "STRING" }).options.length, 8);
-  const orderField = domain.fieldDefinition("multiscreen", { name: "sceneOrder", type: "STRING" });
+  assert.equal(definition("dirtyPlugins", "visualTheme").options.length, 8);
+  const orderField = domain.fieldDefinition("multiscreen", {
+    name: "sceneOrder",
+    type: "STRING",
+    metadata: definition("multiscreen", "sceneOrder"),
+  });
   assert.equal(orderField.kind, "select");
   assert.deepEqual(
     orderField.options.map(option => option.value),
@@ -136,9 +139,9 @@ async function main() {
   );
   assert.equal(domain.fieldDefinition("multiscreen", { name: "spreadScenes", type: "BOOLEAN" }).kind, "checkbox");
   // An unset Stats header setting shows its schema default, as Stats itself applies it.
-  const statsMenu = { name: "showInMenu", type: "BOOLEAN" };
-  assert.equal(domain.initialFieldValue("dirtyStats", statsMenu, {}), true);
-  assert.equal(domain.initialFieldValue("dirtyStats", statsMenu, { showInMenu: false }), false);
+  const statsMenu = { name: "showInMenu", type: "BOOLEAN", metadata: definition("dirtyStats", "showInMenu") };
+  assert.equal(domain.initialFieldValue(statsMenu, {}), true);
+  assert.equal(domain.initialFieldValue(statsMenu, { showInMenu: false }), false);
   const patch = h.patches.find(item => item.name === "PluginSettings").callback;
   assert.equal(
     patch({ id: "unmanaged" }, () => "native settings"),
@@ -254,6 +257,39 @@ async function main() {
   await ordered.settle();
   assert.equal(spread().props.disabled, false);
   ordered.unmount();
+
+  const tv = createHubHarness({
+    plugins: [
+      {
+        id: "multiscreen",
+        name: "DirtyMultiscreen",
+        enabled: true,
+        settings: [
+          { name: "tvMode", type: "BOOLEAN" },
+          { name: "tvModeDuration", type: "NUMBER" },
+        ],
+      },
+    ],
+  });
+  tv.load();
+  await tv.settle();
+  const tvDuration = tv.nodes(node => node.props.id === "dirty-plugin-multiscreen-tvModeDuration")[0];
+  const toggle = tv.nodes(node => node.props.id === "dirty-plugin-multiscreen-tvMode")[0];
+  assert.equal(toggle.props.checked, false);
+  assert.equal(tvDuration.props.type, "number");
+  assert.equal(tvDuration.props.min, 10);
+  assert.equal(tvDuration.props.max, 600);
+  assert.equal(tvDuration.props.step, 1);
+  assert.equal(tvDuration.props.value, 30);
+  toggle.props.onChange({ target: { checked: true } });
+  await tv.settle();
+  tvDuration.props.onChange({ target: { value: "600" } });
+  await tv.settle();
+  await tv.tick();
+  assert.equal(tv.settings.multiscreen.tvMode, true);
+  assert.equal(tv.settings.multiscreen.tvModeDuration, 600);
+  tv.unmount();
+
   // Both real compiled bundles cooperate: hook dirty reports drive the existing
   // hub route's browser/tab protection, including rejecting a leave attempt.
   const combined = createHubHarness({

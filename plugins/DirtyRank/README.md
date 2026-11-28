@@ -74,9 +74,10 @@ capped integer score.
   performer's rating or uncertainty.
 - Battles come in order of the Shannon information their verdict is expected
   to add to the ratings that matter for the selected confidence goal. New
-  performers meet rated opponents rather than each other, because a rated
-  opponent places them more precisely. A judged pair competes too, but only
-  comes back when the other verdicts point to a slip (see **Rating model**).
+  performers also meet each other, since the refit places both, so battles
+  spread across the category instead of returning to a few settled
+  performers. A judged pair competes too, but only comes back when the other
+  verdicts point to a slip (see **Rating model**).
 - Selectable confidence goals for every performer rating, complete leaderboard
   order, or a configurable top N. Leaderboard modes stop refining performers
   once they no longer affect the requested ordering.
@@ -116,7 +117,8 @@ capped integer score.
   matchmaking search.
 - **Gauntlet** mode focuses every battle on one performer and chooses the
   opponent whose verdict tells the most about that performer's current
-  category rating. Launch it with **Start Gauntlet** on any Stash performer
+  category rating, preferring settled opponents because only the target keeps
+  battling. Launch it with **Start Gauntlet** on any Stash performer
   page. Its target confidence bar shows progress toward Refined and Excellent
   rating precision, with an estimate of the remaining battles.
 - Battles advance immediately while verdicts are persisted through an ordered
@@ -363,7 +365,9 @@ ratings; the expected divergence is the Shannon information (mutual
 information) the verdict adds. Performers that matter for the confidence goal
 weigh more, so the next battle is the pair whose verdict is expected to teach
 the most about the standings you asked for. Close, uncertain performers rank
-highest.
+highest. An opponent's own uncertainty does not lower a battle's value:
+every verdict is refitted together, so a battle between two uncertain
+performers places both of them as the fit learns more about either.
 
 A judged pair competes too. Its answer would replace the saved verdict, and
 choosing the same verdict changes nothing, so it only gains when the saved

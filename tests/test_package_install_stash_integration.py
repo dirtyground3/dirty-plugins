@@ -126,6 +126,16 @@ def main():
 
         settings = operation(fixture, "dirtyPlugins", "getAllSettings")
         assert isinstance(settings.get("settings"), dict)
+        definitions = settings["settingsDefinitions"]
+        for plugin in registry:
+            directory = installed_directory(plugins, plugin["id"])
+            definition = directory / "settings-definition.json"
+            if definition.is_file():
+                assert definitions[plugin["id"]] == json.loads(definition.read_text(encoding="utf-8")), plugin["id"]
+        fixture.gql("mutation{setPluginsEnabled(enabledMap:{multiscreen:false})}")
+        assert operation(fixture, "dirtyPlugins", "getAllSettings")["settingsDefinitions"]["multiscreen"] == definitions["multiscreen"]
+        fixture.gql("mutation{setPluginsEnabled(enabledMap:{multiscreen:true})}")
+        print("PASS: installed settings definitions come from the packages, including disabled plugins", flush=True)
         # Backends import their generated metadata when they load, so any operation proves it shipped.
         rank = operation(fixture, "dirtyRank", "getSettings")
         assert rank["settings"] == {} and rank["revision"] == 0, rank

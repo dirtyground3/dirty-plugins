@@ -2,6 +2,10 @@
 
 Newest first. Each GitHub Release of DirtyStats uses the entry that names its version.
 
+- **DirtyStats 1.0.16:**
+  - DirtyStats ships the definition for its settings tab.
+  - **Rating vs scenes** shows the highlighted performers' cards by default.
+
 - **DirtyCaptions 1.0.10, DirtyRank 1.1.2, DirtyStats 1.0.15, DirtyFileExtractor
   1.0.7, DirtyMultiscreen 1.0.29 and DirtyPlugins 1.0.22:** setting descriptions
   no longer say whether a toggle is enabled or disabled by default.

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
 import YAML from "yaml";
 import lib from "./build-lib.cjs";
-import { manifestSettings, pythonModule, writeGenerated } from "./generate-settings.mjs";
+import { manifestSettings, pythonModule, settingsDefinition, writeGenerated } from "./generate-settings.mjs";
 
 const {
   root,
@@ -12,6 +12,7 @@ const {
   pluginsRoot,
   registry,
   FORBIDDEN_INSTALL_FILE,
+  SETTINGS_DEFINITION_FILE,
   pluginDirectory,
   installPath,
   recoverBuild,
@@ -28,7 +29,7 @@ const SOURCE_RULES = [
 ];
 
 /** Checks the manifest and returns the plugin's install files. */
-function validatePlugin(plugin, manifest, schemas) {
+function validatePlugin(plugin, manifest, schemas, settings) {
   const fail = message => {
     throw new Error(plugin.directory + ": " + message);
   };
@@ -46,7 +47,7 @@ function validatePlugin(plugin, manifest, schemas) {
     if (!fs.existsSync(path.join(root, "node_modules", name, "package.json")))
       fail("missing bundled package " + name + "; run npm ci");
   }
-  const files = installFiles(plugin, manifest);
+  const files = installFiles(plugin, manifest, settings);
   const exec = (manifest.exec || [])
     .filter(argument => /^\{pluginDir\}[\\/]/.test(argument))
     .map(argument => argument.slice(12));
@@ -62,7 +63,13 @@ function validatePlugin(plugin, manifest, schemas) {
     const source = installPath(pluginDirectory(plugin), file);
     if (FORBIDDEN_INSTALL_FILE.test(file.replaceAll("\\", "/")))
       fail("source or runtime data in install files: " + file);
-    if (file === plugin.entry || plugin.generatedFiles?.includes(file) || isChunk(plugin, file)) continue;
+    if (
+      file === plugin.entry ||
+      file === SETTINGS_DEFINITION_FILE ||
+      plugin.generatedFiles?.includes(file) ||
+      isChunk(plugin, file)
+    )
+      continue;
     if (!fs.statSync(source, { throwIfNoEntry: false })?.isFile()) fail("missing install file " + file);
     const relative = path.relative(fs.realpathSync(pluginDirectory(plugin)), fs.realpathSync(source));
     if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative))
@@ -172,14 +179,18 @@ export async function buildPlugins(mode = "release") {
   }
   for (const plugin of registry) {
     const manifest = readManifest(plugin);
-    const files = validatePlugin(plugin, manifest, schemas);
+    const schema = schemas[plugin.id];
+    const settings = schema && manifestSettings(schema);
+    const files = validatePlugin(plugin, manifest, schemas, settings);
     const destination = installPath(staging, plugin.directory);
     fs.mkdirSync(destination, { recursive: true });
     for (const file of files) {
       const output = installPath(destination, file);
       fs.mkdirSync(path.dirname(output), { recursive: true });
       if (file === plugin.entry || file === plugin.id + ".yml" || isChunk(plugin, file)) continue;
-      if (plugin.generatedFiles?.includes(file)) fs.writeFileSync(output, pythonModule(plugin.id, schemas[plugin.id]));
+      if (file === SETTINGS_DEFINITION_FILE)
+        fs.writeFileSync(output, settingsDefinition(plugin.id, manifest.version, schema));
+      else if (plugin.generatedFiles?.includes(file)) fs.writeFileSync(output, pythonModule(plugin.id, schema));
       else fs.copyFileSync(installPath(pluginDirectory(plugin), file), output);
     }
     await esbuild.build({
@@ -194,7 +205,6 @@ export async function buildPlugins(mode = "release") {
         outfile: installPath(destination, output),
         plugins: [boundaries(plugin)],
       });
-    const settings = schemas[plugin.id] && manifestSettings(schemas[plugin.id]);
     if (settings && Object.keys(settings).length) manifest.settings = settings;
     fs.writeFileSync(path.join(destination, plugin.id + ".yml"), YAML.stringify(manifest));
   }

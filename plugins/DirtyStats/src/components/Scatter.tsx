@@ -87,10 +87,11 @@ export function PerformerScatterPage(props: PageProps): R.ReactElement | null {
   React.useEffect(() => {
     if (chartRef.current) chartRef.current.setOption({ series: [{ data: scatterSeriesData(stats, selected) }] });
   }, [selected, stats, loading, error, chartTheme]);
-  const matching = React.useMemo(
-    () => (selected == null ? stats.points : stats.points.filter(point => point.id === selected)),
-    [stats, selected],
-  );
+  const hasLimits = minRating > 0 || maxScenes > 0;
+  const matching = React.useMemo(() => {
+    if (selected != null) return stats.points.filter(point => point.id === selected);
+    return hasLimits ? stats.points.filter(point => point.highlight) : stats.points;
+  }, [stats, selected, hasLimits]);
   return (
     <section className="dirty-stats-content">
       {pageToolbar(
@@ -115,7 +116,7 @@ export function PerformerScatterPage(props: PageProps): R.ReactElement | null {
                   setSelected(null);
                 }}
               >
-                Show all performers
+                Clear selection
               </button>
             ) : null}
             <label className="dirty-stats-date-basis">
@@ -172,10 +173,9 @@ export function PerformerScatterPage(props: PageProps): R.ReactElement | null {
         <StatsState title="No rated performers match these filters." />
       ) : null}
       <p>
-        Each dot is a distinct performer: rating out of ten on the x-axis and scene count on the y-axis. The upper-left
-        corner holds promising performers with a high rating and few scenes; highlighted dots meet both limits. Click a
-        dot to show that performer below. Click empty space near the bottom (rating axis) to set the minimum rating, or
-        near the left (scenes axis) to set the maximum scenes.
+        Each dot shows a performer's rating out of ten and their scene count. The cards below show performers who meet
+        the selected limits. Click any dot to show that performer. Click empty space near the bottom to set the minimum
+        rating or near the left to set the maximum scenes.
       </p>
       {!loading && !error && (stats.missingRating || stats.missingScenes) ? (
         <p role="status">
@@ -189,12 +189,12 @@ export function PerformerScatterPage(props: PageProps): R.ReactElement | null {
         <PerformerCards
           performers={matching}
           filter={props.filter}
-          title={selected == null ? "Performers" : "Selected performer"}
+          title={selected == null ? "Matching performers" : "Selected performer"}
           selection={selected}
           clearSelection={() => {
             setSelected(null);
           }}
-          clearLabel="Show all performers"
+          clearLabel="Clear selection"
         />
       ) : null}
     </section>

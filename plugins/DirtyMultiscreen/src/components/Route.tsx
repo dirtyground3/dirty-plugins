@@ -393,8 +393,9 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
       ? `No ${itemType}${launchContext.label ? " in " + launchContext.label : ""}`
       : "";
   const docsCapture = DirtyPlugins.captureEnabled(window.location.search);
+  const hasPlayableScreens = items.length > 0 || resume.current?.panes.some(pane => pane?.catalog);
   // Edit mode, the Grid submenu and + need screens that play.
-  const playing = !loading && !error && items.length > 0;
+  const playing = !loading && !error && hasPlayableScreens;
   useClickAwayFinish(editing, () => setEditing(false));
   const retryAll = () => {
     void reloadSettings();
@@ -408,7 +409,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
         <StateView title="Could not load DirtyMultiscreen" detail={error.message} onRetry={retryAll} />
       )}
       {!loading && !error && emptyList && <StateView title={emptyList} />}
-      {!loading && !error && !emptyList && items.length === 0 && (
+      {!loading && !error && !emptyList && !hasPlayableScreens && (
         <StateView
           title={`No playable ${itemType} found`}
           detail={
@@ -419,7 +420,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           onRetry={activeQuery.refresh}
         />
       )}
-      {!loading && !error && items.length > 0 && nativePlayerQuery.component && (
+      {!loading && !error && hasPlayableScreens && nativePlayerQuery.component && (
         <NativeMultiscreenGrid
           rows={settings.rows}
           columns={settings.columns}
@@ -445,6 +446,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
           onSessionChange={saveSession}
           onVisibleSceneIdsChange={setVisibleNativeSceneIds}
           onLoopChange={setScreensLoop}
+          onToggleTvMode={() => togglePlayback("tvMode")}
           loopReset={loopReset}
           savedPanes={resume.current?.panes}
           savedOrder={resume.current?.order}

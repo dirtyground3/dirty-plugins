@@ -1,7 +1,9 @@
 "use strict";
 // A simulated voter with a known true ranking checks how DirtyRank orders battles:
-// information-ordered pairs should rank better than random ones, and judged pairs
-// should come back mostly when their saved verdict was a slip.
+// information-ordered pairs should rank better than random ones while verdicts are few
+// (graded verdicts keep random pairs informative later), no performer should become
+// everyone's opponent, and judged pairs should come back mostly when their saved
+// verdict was a slip.
 const assert = require("node:assert/strict");
 const { requireRankDomain } = require("./rank_modules");
 
@@ -35,6 +37,8 @@ const rank = requireRankDomain();
 const SCALE = 173.7178;
 const PERFORMERS = 40;
 const VERDICTS = 260;
+// About one and a half verdicts per performer, where the choice of pairs matters most.
+const EARLY = 60;
 // How this simulated voter uses "slightly", "better" and "much better", and how often they slip.
 const TRUE_THRESHOLDS = [0.8, 2.0, 3.3];
 const SLIP_RATE = 0.05;
@@ -144,6 +148,8 @@ function simulate(seed, informed) {
   let verdicts = rank.emptyPoolVerdicts("appearance", "FEMALE");
   const slips = new Set();
   const asked = { again: 0, slips: 0 };
+  const estimate = () => Object.fromEntries(ids.map(id => [id, theta.get(id)]));
+  let early = 0;
   let states = {};
   const originalRandom = Math.random;
   Math.random = choice;
@@ -171,12 +177,20 @@ function simulate(seed, informed) {
       verdicts = rank.withVerdict(verdicts, left.id, right.id, rank.chosenVerdict(previous, given.score));
       states = fit(ids, verdicts, TRUE_THRESHOLDS, theta);
       for (const state of Object.values(states)) state.revision = revision + 1;
+      if (step + 1 === EARLY) early = spearman(truth, estimate());
     }
   } finally {
     Math.random = originalRandom;
   }
-  const estimate = Object.fromEntries(ids.map(id => [id, theta.get(id)]));
-  return { correlation: spearman(truth, estimate), asked, slipsLeft: slips.size };
+  const battles = new Map(ids.map(id => [id, 0]));
+  for (const key of verdicts.byPair.keys()) for (const id of key.split(":")) battles.set(id, battles.get(id) + 1);
+  return {
+    correlation: spearman(truth, estimate()),
+    early,
+    asked,
+    slipsLeft: slips.size,
+    mostBattles: Math.max(...battles.values()),
+  };
 }
 
 const seeds = [11, 23, 37, 41, 53, 67];
@@ -185,8 +199,12 @@ const random = seeds.map(seed => simulate(seed, false));
 const mean = values => values.reduce((sum, value) => sum + value, 0) / values.length;
 const informedCorrelation = mean(informed.map(run => run.correlation));
 const randomCorrelation = mean(random.map(run => run.correlation));
+const informedEarly = mean(informed.map(run => run.early));
+const randomEarly = mean(random.map(run => run.early));
 const again = informed.reduce((sum, run) => sum + run.asked.again, 0);
 const slipsAgain = informed.reduce((sum, run) => sum + run.asked.slips, 0);
+const mostBattles = Math.max(...informed.map(run => run.mostBattles));
+const averageBattles = (2 * VERDICTS) / PERFORMERS;
 console.log(
   "simulated " +
     PERFORMERS +
@@ -196,14 +214,26 @@ console.log(
     informedCorrelation.toFixed(3) +
     " informed vs " +
     randomCorrelation.toFixed(3) +
-    " random; " +
+    " random (" +
+    informedEarly.toFixed(3) +
+    " vs " +
+    randomEarly.toFixed(3) +
+    " after " +
+    EARLY +
+    "); " +
     again +
     " judged pairs asked again, " +
     slipsAgain +
-    " of them slips",
+    " of them slips; at most " +
+    mostBattles +
+    " battles for one performer (average " +
+    averageBattles +
+    ")",
 );
 assert(informedCorrelation > 0.9, "information-ordered verdicts recover the true ranking");
-assert(informedCorrelation > randomCorrelation, "information ordering ranks better than random pairs");
+assert(informedEarly > randomEarly, "information ordering ranks better than random pairs while verdicts are few");
+assert(informedCorrelation > randomCorrelation - 0.01, "information ordering is no worse than random pairs later");
 assert(again <= 0.05 * VERDICTS * seeds.length, "judged pairs come back rarely");
 assert(slipsAgain >= 3 * SLIP_RATE * again, "a judged pair that comes back is far likelier than most to hold a slip");
+assert(mostBattles <= 2 * averageBattles, "no performer becomes everyone's opponent");
 console.log("DirtyRank simulated-voter matchmaking tests passed");

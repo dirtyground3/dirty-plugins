@@ -647,8 +647,13 @@ async function main() {
     randomStart: true,
     loop: true,
     pauseWhenHidden: true,
+    tvMode: false,
+    tvModeDuration: 30,
   });
   assert.equal(a.normalizePlayback({ loopScenes: "false" }).loop, false);
+  assert.equal(a.normalizePlayback({ tvMode: "true" }).tvMode, true);
+  assert.equal(a.normalizePlayback({ tvModeDuration: 1 }).tvModeDuration, 10);
+  assert.equal(a.normalizePlayback({ tvModeDuration: 900 }).tvModeDuration, 600);
 
   assert.equal(a.isMultiscreenLaunchContext(null), false);
   assert.equal(a.isMultiscreenLaunchContext({}), false);

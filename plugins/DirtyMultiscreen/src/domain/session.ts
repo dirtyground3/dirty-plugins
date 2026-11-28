@@ -64,6 +64,15 @@ const isPane = (value: unknown): value is SavedPane =>
     (isRecord(value.item) && value.item.id === value.itemId && isRecord(value.item.scene))) &&
   isFiniteNumber(value.page) &&
   value.page >= 1 &&
+  (value.catalog === undefined ||
+    (isRecord(value.catalog) &&
+      isRecord(value.catalog.condition) &&
+      isRecord(value.catalog.condition.find) &&
+      isRecord(value.catalog.condition.scene) &&
+      (value.catalog.condition.shuffleSeed === undefined ||
+        Number.isSafeInteger(value.catalog.condition.shuffleSeed)) &&
+      Number.isSafeInteger(value.catalog.pageCount) &&
+      (value.catalog.pageCount as number) >= 1)) &&
   (value.time === undefined || (isFiniteNumber(value.time) && value.time >= 0)) &&
   (value.abLoop === undefined || isAbLoop(value.abLoop)) &&
   (value.audio === undefined || isAudio(value.audio)) &&

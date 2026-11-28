@@ -2,6 +2,8 @@
 
 Newest first. Each GitHub Release of DirtyCaptions uses the entry that names its version.
 
+- **DirtyCaptions 1.0.12:** DirtyCaptions ships the definition for its settings tab and uses the same defaults for playback and indexing.
+
 - **DirtyCaptions 1.0.11, DirtyFileExtractor 1.0.8, DirtyPlugins 1.0.23 and
   DirtyTasks 1.0.14:** when Stash's FFmpeg and FFprobe paths are empty, the
   plugins find the same programs Stash uses: in its configuration folder, on

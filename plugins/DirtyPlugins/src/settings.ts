@@ -2,19 +2,24 @@ import type * as R from "react";
 import {
   CONFIGURATION_CHANGED_EVENT,
   FIELD_ACTIONS_CHANGED_EVENT,
-  FIELD_LIMITS,
-  FIELD_INTEGERS,
-  FIELD_OPTIONS,
-  FIELD_PLACEHOLDERS,
   MANAGED_PLUGIN_IDS,
   MANAGED_PLUGIN_ID_SET,
-  PLUGIN_DEFAULTS,
-  PLUGIN_SETTING_ORDER,
   ROUTE_PATH,
   SETTINGS_PANELS_CHANGED_EVENT,
 } from "./constants";
+import legacySettings from "./legacy-settings.json";
 import { graphql, rememberPluginRevision, runSharedOperation } from "./transport";
-import type { Drafts, FieldAction, FieldValue, PanelProps, Plugin, Setting, Snapshot } from "./types";
+import type {
+  Drafts,
+  FieldAction,
+  FieldValue,
+  PanelProps,
+  Plugin,
+  Setting,
+  SettingMetadata,
+  SettingsGroup,
+  Snapshot,
+} from "./types";
 import { asObject } from "./shared/values";
 
 type Panel = R.ComponentType<PanelProps>;
@@ -56,7 +61,7 @@ export interface FieldDefinition {
   label: string;
   help?: string;
   kind: "checkbox" | "select" | "number" | "text";
-  options?: { value: string; label: string }[];
+  options?: SettingMetadata["options"];
   min?: number;
   max?: number;
   step?: number;
@@ -64,7 +69,7 @@ export interface FieldDefinition {
 }
 /** Ordinary controls share authored metadata; domain editors keep their policies. */
 export function fieldDefinition(pluginId: string, setting: Setting): FieldDefinition {
-  const options = FIELD_OPTIONS[pluginId]?.[setting.name];
+  const { options, min, max, step, placeholder } = setting.metadata ?? {};
   return {
     id: "dirty-plugin-" + pluginId + "-" + setting.name,
     containerId: "plugin-" + pluginId + "-" + setting.name,
@@ -72,8 +77,62 @@ export function fieldDefinition(pluginId: string, setting: Setting): FieldDefini
     help: setting.description,
     kind: setting.type === "BOOLEAN" ? "checkbox" : options ? "select" : setting.type === "NUMBER" ? "number" : "text",
     options,
-    placeholder: FIELD_PLACEHOLDERS[pluginId]?.[setting.name],
-    ...FIELD_LIMITS[pluginId]?.[setting.name],
+    min,
+    max,
+    step,
+    placeholder,
+  };
+}
+
+interface SettingsMetadata {
+  settings: Record<string, SettingMetadata>;
+  sections: SettingsGroup[];
+}
+// Frozen metadata from before packages supplied their own definitions.
+const legacyDefinitions: Record<string, SettingsMetadata & { version: string }> = legacySettings;
+const releaseVersion = /^(\d+)\.(\d+)\.(\d+)(-rc)?$/;
+
+function legacyDefinition(plugin: Plugin) {
+  const definition = legacyDefinitions[plugin.id];
+  const installed = plugin.version?.match(releaseVersion);
+  if (!definition || !installed) return undefined;
+  const latest = definition.version.match(releaseVersion)!;
+  const comparison =
+    Number(installed[1]) - Number(latest[1]) ||
+    Number(installed[2]) - Number(latest[2]) ||
+    Number(installed[3]) - Number(latest[3]) ||
+    Number(!!latest[4]) - Number(!!installed[4]);
+  return comparison <= 0 ? definition : undefined;
+}
+
+/** Older manifests still use their previous form metadata. A matching package definition takes precedence. */
+function withSettingsDefinition(plugin: Plugin, value: unknown): Plugin {
+  const reported = plugin.settings ?? [];
+  if (!reported.length) return plugin;
+  const definition = asObject(value);
+  const settings = asObject(definition.settings) as Record<string, SettingMetadata>;
+  const installed =
+    definition.formatVersion === 1 &&
+    definition.pluginId === plugin.id &&
+    typeof definition.version === "string" &&
+    definition.version === plugin.version &&
+    reported.every(setting => settings[setting.name]?.type === setting.type) &&
+    Array.isArray(definition.sections)
+      ? { settings, sections: definition.sections as SettingsGroup[] }
+      : legacyDefinition(plugin);
+  if (!installed) return { ...plugin, settingsUnavailable: true };
+  const order = new Map(Object.keys(installed.settings).map((name, index) => [name, index]));
+  const position = (setting: Setting) => order.get(setting.name) ?? Number.MAX_SAFE_INTEGER;
+  return {
+    ...plugin,
+    settings: reported
+      .slice()
+      .sort((left, right) => position(left) - position(right))
+      .map(setting => {
+        const metadata = installed.settings[setting.name];
+        return metadata?.type === setting.type ? { ...setting, metadata } : setting;
+      }),
+    settingsSections: installed.sections,
   };
 }
 
@@ -86,20 +145,13 @@ export function loadSettingsSnapshot(): Promise<Snapshot> {
     runSharedOperation({ mode: "getAllSettings" }),
   ]).then(([data, payload]) => {
     const settingsPayload = asObject(payload);
+    const definitions = asObject(settingsPayload.settingsDefinitions);
     const revisions = asObject(settingsPayload.pluginRevisions) as Snapshot["pluginRevisions"];
     Object.keys(revisions).forEach(pluginId => rememberPluginRevision(pluginId, revisions[pluginId]));
     const plugins = (Array.isArray(data.plugins) ? data.plugins : [])
       .filter(plugin => MANAGED_PLUGIN_ID_SET.has(plugin.id))
       .sort((left, right) => MANAGED_PLUGIN_IDS.indexOf(left.id) - MANAGED_PLUGIN_IDS.indexOf(right.id))
-      .map(plugin => {
-        const order = new Map((PLUGIN_SETTING_ORDER[plugin.id] || []).map((name, index) => [name, index]));
-        const position = (setting: Setting) =>
-          order.has(setting.name) ? order.get(setting.name)! : Number.MAX_SAFE_INTEGER;
-        return {
-          ...plugin,
-          settings: (plugin.settings || []).slice().sort((left, right) => position(left) - position(right)),
-        };
-      });
+      .map(plugin => withSettingsDefinition(plugin, definitions[plugin.id]));
     return {
       configuration: asObject(settingsPayload.settings) as Snapshot["configuration"],
       pluginRevisions: revisions,
@@ -120,15 +172,15 @@ export function loadPluginConfiguration(pluginId: string) {
 }
 
 /** The schema default; a setting without one starts empty (or unchecked). */
-export function defaultFieldValue(pluginId: string, setting: Setting) {
-  const defaults = PLUGIN_DEFAULTS[pluginId] || {};
-  if (Object.prototype.hasOwnProperty.call(defaults, setting.name)) return defaults[setting.name];
+export function defaultFieldValue(setting: Setting) {
+  if (setting.metadata && Object.prototype.hasOwnProperty.call(setting.metadata, "default"))
+    return setting.metadata.default;
   return setting.type === "BOOLEAN" ? false : "";
 }
 
-export function initialFieldValue(pluginId: string, setting: Setting, rawSettings: Record<string, unknown>) {
+export function initialFieldValue(setting: Setting, rawSettings: Record<string, unknown>) {
   if (Object.prototype.hasOwnProperty.call(rawSettings, setting.name)) return rawSettings[setting.name];
-  return defaultFieldValue(pluginId, setting);
+  return defaultFieldValue(setting);
 }
 
 export function createDrafts(snapshot: Snapshot) {
@@ -137,40 +189,38 @@ export function createDrafts(snapshot: Snapshot) {
     const rawSettings = asObject(snapshot.configuration[plugin.id]);
     drafts[plugin.id] = {};
     (plugin.settings || []).forEach(setting => {
-      drafts[plugin.id][setting.name] = initialFieldValue(plugin.id, setting, rawSettings);
+      drafts[plugin.id][setting.name] = initialFieldValue(setting, rawSettings);
     });
   });
   return drafts;
 }
 
 /** Null clears a number that may stay empty, so the plugin applies its own fallback. */
-export function serializeFieldValue(pluginId: string, setting: Setting, value: FieldValue) {
+export function serializeFieldValue(setting: Setting, value: FieldValue) {
   if (setting.type === "BOOLEAN") return Boolean(value);
   if (setting.type === "NUMBER") {
-    if (FIELD_PLACEHOLDERS[pluginId]?.[setting.name] && !String(value ?? "").trim()) return null;
+    const { placeholder, integer, min, max, step } = setting.metadata ?? {};
+    if (placeholder && !String(value ?? "").trim()) return null;
     const label = setting.display_name || setting.name;
     const numberValue = typeof value === "number" || (typeof value === "string" && value.trim()) ? Number(value) : NaN;
     if (!Number.isFinite(numberValue)) throw new Error(label + " must be a number.");
-    if (FIELD_INTEGERS[pluginId]?.has(setting.name) && !Number.isInteger(numberValue))
-      throw new Error(label + " must be a whole number.");
-    const limits = FIELD_LIMITS[pluginId]?.[setting.name];
-    if (limits?.min !== undefined && numberValue < limits.min)
-      throw new Error(label + " must be at least " + limits.min + ".");
-    if (limits?.max !== undefined && numberValue > limits.max)
-      throw new Error(label + " must be at most " + limits.max + ".");
-    if (limits?.step !== undefined) {
-      const steps = (numberValue - (limits.min ?? 0)) / limits.step;
-      if (Math.abs(steps - Math.round(steps)) > 1e-8)
-        throw new Error(label + " must use increments of " + limits.step + ".");
+    if (integer && !Number.isInteger(numberValue)) throw new Error(label + " must be a whole number.");
+    if (min !== undefined && numberValue < min) throw new Error(label + " must be at least " + min + ".");
+    if (max !== undefined && numberValue > max) throw new Error(label + " must be at most " + max + ".");
+    if (step !== undefined) {
+      const steps = (numberValue - (min ?? 0)) / step;
+      if (Math.abs(steps - Math.round(steps)) > 1e-8) throw new Error(label + " must use increments of " + step + ".");
     }
     return numberValue;
   }
   return String(value == null ? "" : value);
 }
 
-export function fieldValuesEqual(pluginId: string, setting: Setting, left: FieldValue, right: FieldValue) {
+export function fieldValuesEqual(setting: Setting, left: FieldValue, right: FieldValue) {
+  // A value saved by an older definition can be out of range under the current one.
+  if (Object.is(left, right)) return true;
   try {
-    return serializeFieldValue(pluginId, setting, left) === serializeFieldValue(pluginId, setting, right);
+    return serializeFieldValue(setting, left) === serializeFieldValue(setting, right);
   } catch (_error) {
     return false;
   }
@@ -188,8 +238,7 @@ export function mergePluginDraft(
   (plugin.settings || []).forEach(setting => {
     if (
       draft &&
-      (editedFields.has(setting.name) ||
-        !fieldValuesEqual(plugin.id, setting, draft[setting.name], saved?.[setting.name]))
+      (editedFields.has(setting.name) || !fieldValuesEqual(setting, draft[setting.name], saved?.[setting.name]))
     )
       next[setting.name] = draft[setting.name];
   });
@@ -201,13 +250,9 @@ export function standardDraftsAreDirty(snapshot: Snapshot | null, drafts: Drafts
   return snapshot.plugins.some(
     plugin =>
       !settingsPanels[plugin.id] &&
+      !plugin.settingsUnavailable &&
       (plugin.settings || []).some(setting => {
-        return !fieldValuesEqual(
-          plugin.id,
-          setting,
-          drafts[plugin.id]?.[setting.name],
-          savedDrafts[plugin.id]?.[setting.name],
-        );
+        return !fieldValuesEqual(setting, drafts[plugin.id]?.[setting.name], savedDrafts[plugin.id]?.[setting.name]);
       }),
   );
 }

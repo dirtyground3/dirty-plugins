@@ -58,11 +58,29 @@ export interface Host {
   };
 }
 export type FieldValue = unknown;
+export interface SettingMetadata {
+  type: string;
+  default?: FieldValue;
+  options?: { value: string | number; label: string }[];
+  integer?: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
+  placeholder?: string;
+  capturePlaceholder?: string;
+  disabledWhen?: { setting: string; value: string | number | boolean };
+}
+export interface SettingsGroup {
+  title: string;
+  description?: string;
+  settings: string[];
+}
 export interface Setting {
   name: string;
   display_name?: string;
   description?: string;
   type: string;
+  metadata?: SettingMetadata;
 }
 export interface Plugin {
   id: string;
@@ -71,6 +89,8 @@ export interface Plugin {
   version?: string;
   enabled?: boolean;
   settings?: Setting[];
+  settingsSections?: SettingsGroup[];
+  settingsUnavailable?: boolean;
 }
 export interface Snapshot {
   configuration: Record<string, Record<string, unknown>>;

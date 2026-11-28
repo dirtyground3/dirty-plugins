@@ -62,6 +62,14 @@ export function shuffleMultiscreenItems<T>(items: T[], random: Random = Math.ran
   return shuffledItems;
 }
 
+export function seededRandom(seed: number): Random {
+  let value = seed >>> 0;
+  return () => {
+    value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
+    return value / 4294967296;
+  };
+}
+
 /**
  * Spotify's 2014 artist spreading: each group's shuffled members sit at evenly spaced positions with a
  * random offset and +-20% jitter, then all groups merge by position. Ungrouped items land uniformly.

@@ -38,11 +38,13 @@ const SAVE_MESSAGES: Record<string, string> = {
   saved: "Saved automatically.",
 };
 
-function pluginInput(plugin: Plugin, draft: Record<string, FieldValue>, snapshot: Snapshot, fields?: string[]) {
-  const input = Object.assign({}, asObject(snapshot.configuration[plugin.id]));
+function pluginInput(pluginId: string, draft: Record<string, FieldValue>, snapshot: Snapshot, fields?: string[]) {
+  const plugin = snapshot.plugins.find(entry => entry.id === pluginId);
+  if (!plugin || plugin.settingsUnavailable) throw new Error("Reload this plugin's settings before saving.");
+  const input = Object.assign({}, asObject(snapshot.configuration[pluginId]));
   (plugin.settings || []).forEach(setting => {
     if (!fields || fields.includes(setting.name)) {
-      const value = serializeFieldValue(plugin.id, setting, draft[setting.name]);
+      const value = serializeFieldValue(setting, draft[setting.name]);
       if (value === null) delete input[setting.name];
       else input[setting.name] = value;
     }
@@ -266,7 +268,7 @@ export function DirtyPluginsRoute() {
         delay: 350,
         validate: request => {
           try {
-            pluginInput(plugin, request.draft, snapshotRef.current!);
+            pluginInput(plugin.id, request.draft, snapshotRef.current!, request.fields);
             return "";
           } catch (error) {
             return (error as Error).message;
@@ -274,7 +276,7 @@ export function DirtyPluginsRoute() {
         },
         save: request => {
           const current = snapshotRef.current!;
-          const input = pluginInput(plugin, request.draft, current, request.fields);
+          const input = pluginInput(plugin.id, request.draft, current, request.fields);
           const expected = current.pluginRevisions && current.pluginRevisions[plugin.id];
           return configurePlugin(plugin.id, input, expected).then(result => ({ input, revision: result.revision }));
         },
@@ -301,17 +303,17 @@ export function DirtyPluginsRoute() {
 
   function updateFields(pluginId: string, values: Record<string, FieldValue>) {
     const plugin = snapshot && snapshot.plugins.find(item => item.id === pluginId);
+    if (!plugin || plugin.settingsUnavailable) return;
     const nextPluginDraft = { ...draftsRef.current[pluginId], ...values };
     const nextDrafts = { ...draftsRef.current, [pluginId]: nextPluginDraft };
     draftsRef.current = nextDrafts;
     setDrafts(nextDrafts);
     const fields = editedFieldsRef.current[pluginId] || (editedFieldsRef.current[pluginId] = new Set());
     Object.keys(values).forEach(name => fields.add(name));
-    if (plugin)
-      saveController(plugin).schedule({
-        draft: nextPluginDraft,
-        fields: [...fields],
-      });
+    saveController(plugin).schedule({
+      draft: nextPluginDraft,
+      fields: [...fields],
+    });
   }
 
   function updateField(pluginId: string, settingName: string, value: FieldValue) {
@@ -323,7 +325,11 @@ export function DirtyPluginsRoute() {
     if (!window.confirm("Reset every " + plugin.name + " setting shown to its default value?")) return;
     updateFields(
       plugin.id,
-      Object.fromEntries((plugin.settings || []).map(setting => [setting.name, defaultFieldValue(plugin.id, setting)])),
+      Object.fromEntries(
+        (plugin.settings || [])
+          .filter(setting => setting.metadata)
+          .map(setting => [setting.name, defaultFieldValue(setting)]),
+      ),
     );
   }
 

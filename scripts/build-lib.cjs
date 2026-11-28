@@ -11,13 +11,13 @@ const root = path.resolve(__dirname, "..");
 const buildRoot = path.join(root, ".build");
 const pluginsRoot = path.join(buildRoot, "plugins");
 const registry = JSON.parse(fs.readFileSync(path.join(__dirname, "plugin-registry.json"), "utf8"));
+const SETTINGS_DEFINITION_FILE = "settings-definition.json";
 const sharedInputs = [
   "scripts",
   "package.json",
   "package-lock.json",
   "tsconfig.json",
   "types",
-  "schemas",
   "build_site.sh",
   "plugins/DirtyPlugins/src/shared",
 ];
@@ -115,7 +115,7 @@ function readManifest(plugin, directory = pluginDirectory(plugin)) {
 }
 
 /** Install files: the manifest and its assets, same-directory Python, compiled chunks, generated and listed extras, README and LICENSE. */
-function installFiles(plugin, manifest) {
+function installFiles(plugin, manifest, settings = manifest.settings) {
   const python = fs.readdirSync(pluginDirectory(plugin)).filter(name => name.endsWith(".py"));
   return [
     ...new Set([
@@ -125,6 +125,7 @@ function installFiles(plugin, manifest) {
       ...python,
       ...Object.values(plugin.chunks || {}),
       ...(plugin.generatedFiles || []),
+      ...(Object.keys(settings || {}).length ? [SETTINGS_DEFINITION_FILE] : []),
       ...(plugin.extraFiles || []),
       "README.md",
       "LICENSE",
@@ -168,8 +169,12 @@ function walkFiles(directory) {
 
 /** Package identity: the last commit touching the plugin or shared inputs, plus a hash of their current contents. */
 function sourceMetadata(plugin) {
+  const schemaInputs = [...new Set([plugin.id, ...(plugin.generatedImports || [])])].map(
+    id => "schemas/" + id + ".settings.json",
+  );
+  const buildInputs = [...sharedInputs, ...schemaInputs];
   const inputs = Array.from(
-    new Set([...walkFiles(pluginDirectory(plugin)), ...sharedInputs.flatMap(file => walkFiles(path.join(root, file)))]),
+    new Set([...walkFiles(pluginDirectory(plugin)), ...buildInputs.flatMap(file => walkFiles(path.join(root, file)))]),
   )
     .filter(file => !runtimeInput.test(path.relative(root, file).split(path.sep).join("/")))
     .sort();
@@ -181,7 +186,7 @@ function sourceMetadata(plugin) {
       .update("\0");
   const revision = spawnSync(
     "git",
-    ["log", "-1", "--format=%h%n%aI", "--", "plugins/" + plugin.directory, ...sharedInputs, ...historyExclusions],
+    ["log", "-1", "--format=%h%n%aI", "--", "plugins/" + plugin.directory, ...buildInputs, ...historyExclusions],
     { cwd: root, encoding: "utf8" },
   );
   const [commit, date] = revision.status === 0 ? revision.stdout.trim().split(/\r?\n/) : [];
@@ -206,6 +211,7 @@ module.exports = {
   pluginsRoot,
   registry,
   FORBIDDEN_INSTALL_FILE,
+  SETTINGS_DEFINITION_FILE,
   pluginFor,
   pluginDirectory,
   installPath,

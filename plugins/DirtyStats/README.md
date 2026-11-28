@@ -129,18 +129,16 @@ performer cards below, with at most five per row; clicking again clears it.
 PNG export is available inside the chart.
 
 **Rating vs scenes** is a scatter plot using native performer filters and their
-saved defaults. Each dot is a distinct performer: the x-axis is the performer's
-rating out of ten and the y-axis is their scene count, so the upper-left corner
-holds promising performers with a high rating and few scenes. **Minimum rating**
-and **Maximum scenes** outline that region with dashed guide lines and highlight
-the dots that meet both limits; they start at **9+** and **10** scenes and either
-can be set to **Any**. Click a dot to show
-that performer below, or click it again to clear the selection. Clicking empty
-space inside the plot also moves the nearer guide: clicks near the bottom
-(rating axis) set the minimum rating, and clicks near the left (scenes axis) set
-the maximum scenes, snapped to the options offered by the controls. Unrated
-performers and performers without a scene count are omitted and reported.
-PNG export is available inside the chart.
+saved defaults. Each dot shows a performer's rating out of ten on the x-axis and
+their scene count on the y-axis. **Minimum rating** and **Maximum scenes** start
+at **9+** and **10** scenes. The chart highlights performers who meet both limits,
+and the cards below show those performers by default. Set both limits to **Any**
+to see all performers in the chart as cards. Click any dot to show that performer,
+or click it again to return to the matching performers. Click empty space near the
+bottom of the plot to set the minimum rating or near the left to set the maximum
+scenes. The guides snap to the options offered by the controls. Unrated performers
+and performers without a scene count are omitted and reported. PNG export is
+available inside the chart.
 
 **Performer vs scene rating** compares each performer's own rating on the x-axis
 with the average rating of their scenes on the y-axis, both out of ten. It uses

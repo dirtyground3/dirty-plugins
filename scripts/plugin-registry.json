@@ -2,12 +2,21 @@
   {
     "directory": "DirtyCaptions",
     "id": "dirtyCaptions",
-    "entry": "dirtyCaptions.js"
+    "entry": "dirtyCaptions.js",
+    "generatedImports": [
+      "dirtyCaptions"
+    ],
+    "generatedFiles": [
+      "dirty_captions_metadata.py"
+    ]
   },
   {
     "directory": "DirtyFileExtractor",
     "id": "extractScenes",
-    "entry": "extractScenes.js"
+    "entry": "extractScenes.js",
+    "generatedFiles": [
+      "extract_scenes_metadata.py"
+    ]
   },
   {
     "directory": "DirtyMultiscreen",
@@ -25,11 +34,7 @@
     "id": "dirtyPlugins",
     "entry": "dirtyPlugins.js",
     "generatedImports": [
-      "dirtyPlugins",
-      "dirtyCaptions",
-      "extractScenes",
-      "multiscreen",
-      "dirtyStats"
+      "dirtyPlugins"
     ],
     "generatedFiles": [
       "dirty_plugins_metadata.py"

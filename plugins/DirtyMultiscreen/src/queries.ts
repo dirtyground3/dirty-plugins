@@ -1,5 +1,5 @@
 import { isRecord } from "./domain/context";
-import { playbackSort } from "./domain/order";
+import { playbackSort, seededRandom, shuffleMultiscreenItems } from "./domain/order";
 import { getSceneLimit, NON_RANDOM_SCENE_SORT, normalizeSettings } from "./domain/settings";
 import type {
   Hub,
@@ -95,12 +95,24 @@ const titleMatching = (text: string) => ({
 });
 const searchText = (condition: SearchCondition) =>
   typeof condition.find?.q === "string" ? condition.find.q.trim() : "";
-/** The scene sort Stash's controls chose; markers have none, since scene sorts do not apply to them. */
+/** Explicit Shuffle works on scenes and markers. Other sorts come from the native scene controls. */
 function chosenSort(condition: SearchCondition, marker: boolean) {
+  if (condition.shuffleSeed !== undefined) return { sort: `random_${condition.shuffleSeed}`, direction: "ASC" };
   const { sort, direction } = condition.find ?? {};
   return !marker && typeof sort === "string" && sort
     ? { sort, direction: direction === "ASC" ? "ASC" : "DESC" }
     : undefined;
+}
+const DEFAULT_SEARCH_SORT = { sort: "title", direction: "ASC" };
+export function catalogScope(condition: SearchCondition): QueryVariables {
+  const q = searchText(condition);
+  return {
+    filter: { ...(chosenSort(condition, false) ?? DEFAULT_SEARCH_SORT), ...(q ? { q } : {}) },
+    scene_filter: condition.scene,
+  };
+}
+function andSceneFilters(first: Record<string, unknown>, second: Record<string, unknown>): Record<string, unknown> {
+  return { ...first, AND: isRecord(first.AND) ? andSceneFilters(first.AND, second) : second };
 }
 const withCount = (data: QueryResult, marker: boolean, count: number): QueryResult =>
   marker
@@ -174,14 +186,17 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
     page: number,
     signal: AbortSignal,
   ) {
+    const { shuffleSeed } = condition;
     const q = searchText(condition),
       scene = condition.scene ?? {},
-      sort = chosenSort(condition, marker);
+      sort = shuffleSeed === undefined ? chosenSort(condition, marker) : undefined;
     const matches =
       q || sort || Object.keys(scene).length
         ? (await matchListed(list, marker, scene, signal, q, sort)).map(row => row.id)
         : list;
-    const shown = matches.slice((page - 1) * SEARCH_PAGE_SIZE, page * SEARCH_PAGE_SIZE);
+    // The matching ID list is already available, so shuffling it does not require a new catalog scan.
+    const ordered = shuffleSeed === undefined ? matches : shuffleMultiscreenItems(matches, seededRandom(shuffleSeed));
+    const shown = ordered.slice((page - 1) * SEARCH_PAGE_SIZE, page * SEARCH_PAGE_SIZE);
     return withCount(await findListed(marker, shown, signal), marker, matches.length);
   }
   /** Only the performer's next item after `playing` in list order, skipping the playing scene's other markers. */
@@ -298,7 +313,7 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
   /** The session's own query narrowed by one more scene condition, so its scope and sort still apply. */
   const narrowed = (scope: QueryVariables, marker: boolean, condition: Record<string, unknown>) => {
     const existing = marker ? scope.scene_marker_filter?.scene_filter : scope.scene_filter;
-    const sceneFilter = { ...condition, ...(existing ? { AND: existing } : {}) };
+    const sceneFilter = isRecord(existing) ? andSceneFilters(condition, existing) : condition;
     return marker
       ? { scene_marker_filter: { ...scope.scene_marker_filter, scene_filter: sceneFilter } }
       : { scene_filter: sceneFilter };
@@ -323,7 +338,9 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
       const q = searchText(condition),
         sessionQ = typeof scope.filter.q === "string" && scope.filter.q.trim() ? scope.filter.q : "";
       // Stash keeps one search term: the session's own stays, and the searched one then matches titles.
-      const scene = { ...condition.scene, ...(q && sessionQ ? titleMatching(q) : {}) };
+      const criteria = condition.scene ?? {};
+      const title = q && sessionQ ? titleMatching(q) : undefined;
+      const scene = title && criteria.title ? andSceneFilters(criteria, title) : { ...criteria, ...title };
       return graphqlRequest<QueryResult>(
         marker ? MARKER_SEARCH : SCENE_SEARCH,
         {
@@ -331,7 +348,7 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
           filter: {
             ...scope.filter,
             ...(q && !sessionQ ? { q } : {}),
-            ...(chosenSort(condition, marker) ?? { sort: "title", direction: "ASC" }),
+            ...(chosenSort(condition, marker) ?? DEFAULT_SEARCH_SORT),
             page,
             per_page: SEARCH_PAGE_SIZE,
           },
@@ -340,20 +357,24 @@ export function createQueries(DirtyPlugins: Pick<Hub, "graphql">) {
         { signal },
       );
     },
-    /** Find the clicked performer in the session's sort, retaining its other filters. */
+    /** Find the clicked performer in the scope's sort, retaining its other filters. */
     findPerformerItems: (
       scope: QueryVariables,
       marker: boolean,
       performerId: string,
       signal: AbortSignal,
       playing?: Item,
+      preservePerformerFilter = false,
     ) => {
       if (scope.ids) throw new Error("Selected session items must be searched locally.");
       if (scope.list) return nextListed(scope.list, marker, performerId, playing, signal);
       const { performers: original, ...otherFilters } = scope.scene_filter ?? {};
       // Following another portrait replaces the positive performer criterion on a scene list.
       const replacePerformer =
-        !marker && isRecord(original) && (original.modifier === "INCLUDES" || original.modifier === "INCLUDES_ALL");
+        !marker &&
+        !preservePerformerFilter &&
+        isRecord(original) &&
+        (original.modifier === "INCLUDES" || original.modifier === "INCLUDES_ALL");
       const lookup = replacePerformer
         ? { ...scope, scene_filter: Object.keys(otherFilters).length ? otherFilters : undefined }
         : scope;

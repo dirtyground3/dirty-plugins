@@ -43,6 +43,7 @@ function environment(overrides = {}) {
     echarts: {
       registerMap: name => registrations.push(name),
       init() {
+        const zr = events();
         const instance = {
           options: [],
           option: undefined,
@@ -53,6 +54,9 @@ function environment(overrides = {}) {
           },
           getOption() {
             return this.option;
+          },
+          getZr() {
+            return zr;
           },
           setOption(option, replace) {
             this.options.push(option);
@@ -98,6 +102,58 @@ function environment(overrides = {}) {
   const modules = load({ window, AbortController, ResizeObserver: Observer });
   return { renderer, window, modules, instances, observers, registrations };
 }
+
+test("Rating vs scenes shows highlighted performer cards until a dot is selected", async () => {
+  const performers = [
+    { id: "1", rating100: 90, scene_count: 10 },
+    { id: "2", rating100: 95, scene_count: 11 },
+    { id: "3", rating100: 85, scene_count: 5 },
+  ];
+  const e = environment({
+    createSaveController: () => ({ schedule() {} }),
+    graphql: async () => ({ findPerformers: { count: performers.length, performers } }),
+  });
+  const { PerformerScatterPage } = runComponent(
+    "src/components/Scatter.tsx",
+    { window: e.window, AbortController },
+    { external: ["./Cards"], modules: { "./Cards": { PerformerCards: props => element("performer-cards", props) } } },
+  );
+  const filter = { makeFindFilter: () => ({}), makeFilter: () => ({}) };
+  const render = () => e.renderer.render(element(PerformerScatterPage, { filter }));
+  const cards = () => findAll(e.renderer.tree, node => node.type === "performer-cards")[0].props;
+  const cardIds = () => Array.from(cards().performers, point => point.id);
+  render();
+  await e.renderer.flush(render);
+
+  const chart = e.instances[0];
+  const points = chart.option.series[0].data;
+  assert.deepEqual(
+    Array.from(points, point => point.id),
+    ["1", "2", "3"],
+  );
+  assert.deepEqual(cardIds(), ["1"]);
+
+  chart.handlers.get("click")({ componentType: "series", data: points[1] });
+  await e.renderer.flush(render);
+  assert.deepEqual(cardIds(), ["2"]);
+  cards().clearSelection();
+  await e.renderer.flush(render);
+  assert.deepEqual(cardIds(), ["1"]);
+
+  const setLimit = async (label, value) => {
+    const [control] = findAll(e.renderer.tree, node => node.type === "label" && node.children.includes(label));
+    const [select] = findAll(control, node => node.type === "select");
+    select.props.onChange({ target: { value } });
+    await e.renderer.flush(render);
+  };
+  await setLimit("Maximum scenes", "5");
+  assert.deepEqual(cardIds(), []);
+  await setLimit("Minimum rating", "0");
+  assert.deepEqual(cardIds(), ["3"]);
+  await setLimit("Maximum scenes", "0");
+  assert.deepEqual(cardIds(), ["1", "2", "3"]);
+  e.renderer.unmount();
+});
 
 test("performer versus scene ratings paginates native filters, selects performers, and refreshes", async () => {
   const requests = [];

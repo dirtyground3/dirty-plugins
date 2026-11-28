@@ -50,6 +50,24 @@ async function main() {
     assert.equal(lib.readManifest(plugin).settings, undefined, id + " source manifest must not repeat its schema");
     const staged = lib.readManifest(plugin, runtimePath(plugin.directory));
     assert.deepEqual(staged.settings || {}, generator.manifestSettings(schema), id + " staged manifest settings");
+    const installedDefinition = path.join(runtimePath(plugin.directory), lib.SETTINGS_DEFINITION_FILE);
+    if (staged.settings) {
+      assert.equal(
+        fs.readFileSync(installedDefinition, "utf8"),
+        generator.settingsDefinition(id, staged.version, schema),
+      );
+      const definition = JSON.parse(fs.readFileSync(installedDefinition, "utf8"));
+      assert.deepEqual(
+        Object.keys(definition.settings),
+        Object.keys(staged.settings),
+        id + " visible definition fields",
+      );
+      for (const group of definition.sections)
+        assert(
+          group.settings.every(name => Object.hasOwn(staged.settings, name)),
+          id + " visible section fields",
+        );
+    } else assert(!fs.existsSync(installedDefinition), id + " has no standard fields");
     assert.deepEqual(
       Object.keys(staged.settings || {}),
       Object.keys(schema.settings).filter(name => !schema.settings[name].hidden),

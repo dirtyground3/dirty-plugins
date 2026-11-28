@@ -47,6 +47,7 @@ export function NativeMultiscreenGrid({
   onFinishEditing,
   onLayoutChange,
   onLoopChange,
+  onToggleTvMode,
   onSessionChange,
   onVisibleSceneIdsChange,
   loopReset,
@@ -333,7 +334,7 @@ export function NativeMultiscreenGrid({
     };
   }, [snapshotRef, totalScreens]);
   const onSceneChange = React.useCallback(
-    (index: number, item: Item | null, page: number, rotation: number) => {
+    (index: number, item: Item | null, page: number, rotation: number, catalog?: SavedPane["catalog"]) => {
       setRotations(current => {
         if (current[index] === rotation) return current;
         const next = current.slice();
@@ -357,7 +358,8 @@ export function NativeMultiscreenGrid({
           ...previous,
           page,
           itemId: item.id,
-          item: item.outsidePage ? item : undefined,
+          item: item.outsidePage || catalog ? item : undefined,
+          catalog,
           time: previous?.itemId === item.id ? previous.time : undefined,
           abLoop: previous?.itemId === item.id ? previous.abLoop : undefined,
         };
@@ -522,6 +524,7 @@ export function NativeMultiscreenGrid({
             continuation={continuation}
             editing={editing}
             onFinishEditing={onFinishEditing}
+            onToggleTvMode={onToggleTvMode}
             moveWithoutEditing={moveWithoutEditing}
             rightClickOptions={rightClickOptions}
             findPerformerItems={findPerformerItems}

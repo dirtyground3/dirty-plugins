@@ -1,0 +1,291 @@
+{
+  "dirtyCaptions": {
+    "version": "1.0.11",
+    "settings": {
+      "enabled": {
+        "type": "BOOLEAN",
+        "default": true
+      },
+      "showByDefault": {
+        "type": "BOOLEAN",
+        "default": true
+      },
+      "preferredLanguage": {
+        "type": "STRING",
+        "default": ""
+      },
+      "indexEnabled": {
+        "type": "BOOLEAN",
+        "default": true
+      },
+      "refreshAfterScan": {
+        "type": "BOOLEAN",
+        "default": false
+      }
+    },
+    "sections": []
+  },
+  "extractScenes": {
+    "version": "1.0.8",
+    "settings": {
+      "destinationFolder": {
+        "type": "STRING",
+        "capturePlaceholder": "Path hidden for documentation",
+        "default": ""
+      },
+      "collisionPolicy": {
+        "type": "STRING",
+        "default": "rename",
+        "options": [
+          {
+            "value": "rename",
+            "label": "Rename the new file"
+          },
+          {
+            "value": "skip",
+            "label": "Skip the new file"
+          },
+          {
+            "value": "overwrite",
+            "label": "Overwrite the existing file"
+          }
+        ]
+      },
+      "createSceneFolders": {
+        "type": "BOOLEAN",
+        "default": false
+      },
+      "dryRun": {
+        "type": "BOOLEAN",
+        "default": false
+      },
+      "maxCopySpeedMBps": {
+        "type": "NUMBER",
+        "default": 20,
+        "min": 0
+      }
+    },
+    "sections": []
+  },
+  "multiscreen": {
+    "version": "1.1.2-rc",
+    "settings": {
+      "fitVideos": {
+        "type": "BOOLEAN",
+        "default": true
+      },
+      "moveWithoutEditing": {
+        "type": "BOOLEAN",
+        "default": false
+      },
+      "rightClickOptions": {
+        "type": "BOOLEAN",
+        "default": false
+      },
+      "snapDividers": {
+        "type": "BOOLEAN",
+        "default": true
+      },
+      "sceneOrder": {
+        "type": "STRING",
+        "default": "random",
+        "options": [
+          {
+            "value": "random",
+            "label": "Random"
+          },
+          {
+            "value": "fresh",
+            "label": "Fewer repeats"
+          },
+          {
+            "value": "unwatched",
+            "label": "Unwatched"
+          },
+          {
+            "value": "favorites",
+            "label": "Favourites"
+          },
+          {
+            "value": "newest",
+            "label": "Recently added"
+          },
+          {
+            "value": "mix",
+            "label": "Smart mix"
+          },
+          {
+            "value": "list",
+            "label": "List order"
+          }
+        ]
+      },
+      "spreadScenes": {
+        "type": "BOOLEAN",
+        "default": true,
+        "disabledWhen": {
+          "setting": "sceneOrder",
+          "value": "list"
+        }
+      },
+      "splitScenes": {
+        "type": "BOOLEAN",
+        "default": false
+      },
+      "avoidDuplicates": {
+        "type": "BOOLEAN",
+        "default": true,
+        "disabledWhen": {
+          "setting": "splitScenes",
+          "value": true
+        }
+      },
+      "startMuted": {
+        "type": "BOOLEAN",
+        "default": true
+      },
+      "randomStart": {
+        "type": "BOOLEAN",
+        "default": true
+      },
+      "loopScenes": {
+        "type": "BOOLEAN",
+        "default": true
+      },
+      "pauseWhenHidden": {
+        "type": "BOOLEAN",
+        "default": true
+      },
+      "tvMode": {
+        "type": "BOOLEAN",
+        "default": false
+      },
+      "tvModeDuration": {
+        "type": "NUMBER",
+        "default": 30,
+        "integer": true,
+        "min": 10,
+        "max": 600,
+        "step": 1
+      },
+      "markerDuration": {
+        "type": "NUMBER",
+        "default": 30,
+        "integer": true,
+        "min": 1,
+        "max": 600,
+        "step": 1
+      },
+      "showPerformerNavigation": {
+        "type": "BOOLEAN",
+        "default": true
+      },
+      "showInMenu": {
+        "type": "BOOLEAN",
+        "default": true
+      },
+      "recentGrids": {
+        "type": "NUMBER",
+        "default": 5,
+        "integer": true,
+        "min": 0,
+        "max": 10,
+        "step": 1
+      },
+      "otherPluginLists": {
+        "type": "STRING",
+        "default": "known",
+        "options": [
+          {
+            "value": "off",
+            "label": "Off"
+          },
+          {
+            "value": "known",
+            "label": "Known plugins only (Cherry Pick and DirtyRank)"
+          },
+          {
+            "value": "any",
+            "label": "Any plugin"
+          }
+        ]
+      }
+    },
+    "sections": [
+      {
+        "title": "Grid",
+        "description": "Rows and columns are chosen in the player's edit mode.",
+        "settings": [
+          "fitVideos",
+          "moveWithoutEditing",
+          "rightClickOptions",
+          "snapDividers"
+        ]
+      },
+      {
+        "title": "Scenes",
+        "description": "Which scene each pane plays next.",
+        "settings": [
+          "sceneOrder",
+          "spreadScenes",
+          "splitScenes",
+          "avoidDuplicates"
+        ]
+      },
+      {
+        "title": "Playback",
+        "settings": [
+          "startMuted",
+          "randomStart",
+          "loopScenes",
+          "pauseWhenHidden",
+          "tvMode",
+          "tvModeDuration",
+          "markerDuration"
+        ]
+      },
+      {
+        "title": "Navigation",
+        "settings": [
+          "showPerformerNavigation",
+          "showInMenu"
+        ]
+      },
+      {
+        "title": "Saved grids",
+        "settings": [
+          "recentGrids"
+        ]
+      },
+      {
+        "title": "Advanced",
+        "settings": [
+          "otherPluginLists"
+        ]
+      }
+    ]
+  },
+  "dirtyStats": {
+    "version": "1.0.15",
+    "settings": {
+      "showInMenu": {
+        "type": "BOOLEAN",
+        "default": true
+      },
+      "replaceStatsPage": {
+        "type": "BOOLEAN",
+        "default": false
+      },
+      "hideWidgetTitles": {
+        "type": "BOOLEAN",
+        "default": false
+      }
+    },
+    "sections": []
+  },
+  "dirtyRank": {
+    "version": "1.1.4-rc",
+    "settings": {},
+    "sections": []
+  }
+}
