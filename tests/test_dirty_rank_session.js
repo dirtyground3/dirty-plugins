@@ -26,7 +26,8 @@ function createSession(options = {}) {
     calls = [],
     paths = [],
     publications = [],
-    selections = [];
+    selections = [],
+    exclusions = [];
   let nextId = 0;
   const hooks = createHooks(() => owner);
   const useState = hooks.useState,
@@ -78,6 +79,7 @@ function createSession(options = {}) {
     CONFIGURATION_CHANGED_EVENT: "configuration",
     DirtyPlugins: {
       react: { usePageTitle() {} },
+      captureUrl: value => value,
       getPluginSettings: options.getPluginSettings || (async () => settings),
     },
     Router: { useHistory: () => history, useLocation: () => location },
@@ -98,8 +100,11 @@ function createSession(options = {}) {
     queryPerformers: async () => people,
     ratingDelta: (after, before) => String(after - before),
     rememberCategory() {},
-    selectPair: (performers, _category, _cohort, _settings, verdicts) => {
+    selectPair: (performers, _category, _cohort, _settings, verdicts, excluded) => {
       selections.push(verdictFor(verdicts, "left", "right"));
+      exclusions.push(Array.from(excluded));
+      // The fake library has one pair, so skipping it leaves nothing to ask.
+      if (excluded.has("left:right")) return { pair: null, eligible: 2, ranks: {} };
       return { pair: people, eligible: 2, ranks: { left: 1, right: 2 }, saved: verdictFor(verdicts, "left", "right") };
     },
     settingsFromConfiguration: value => value,
@@ -149,6 +154,7 @@ function createSession(options = {}) {
     paths,
     publications,
     selections,
+    exclusions,
     poolFor: fakes.poolFor,
     owner,
     render,
@@ -195,6 +201,11 @@ const result = (rating, verdict) => ({
   assert(prevented, "number keys choose a verdict");
   assert.equal(session.undoHistory.length, 1);
   assert.deepEqual(host.selections.at(-1), { score: 0, confirmations: 0 }, "the next pair appears at once");
+  assert.deepEqual(
+    host.exclusions.slice(-2),
+    [["left:right"], []],
+    "a pair waits for its refit, unless no other pair is left to ask",
+  );
   assert.equal(session.chosen, 0, "the chosen number flashes on the scale");
   session = host.advance();
   assert.equal(session.chosen, null, "the flash ends by itself");
@@ -267,6 +278,10 @@ const result = (rating, verdict) => ({
   assert.equal(host.publications.length, 2, "undo publishes its complete pair only once with replayed React updaters");
   assert.equal(host.publications[1].length, 2);
   assert.equal(session.pendingVotes, 0);
+  const attempts = host.exclusions.length;
+  session.selectCategory("appearance");
+  host.render();
+  assert.deepEqual(host.exclusions.slice(attempts), [[]], "once its refit is saved, the pair can be chosen again");
   assert.equal(host.window.handlers.get("beforeunload").size, 0, "saving removes the exit guard");
   host.unmount();
   assert.equal(host.document.handlers.get("keydown").size, 0, "unmount removes shortcuts");

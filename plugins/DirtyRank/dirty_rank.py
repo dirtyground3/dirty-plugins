@@ -459,11 +459,17 @@ class RatingRepository:
         """).fetchall()
         return sorted((str(row[0]), str(row[1])) for row in rows)
 
-    def refit_all(self, connection: Any, settings: dict[str, Any]) -> set[str]:
-        changed: set[str] = set()
+    def refit_all(self, connection: Any, settings: dict[str, Any]) -> None:
+        """Refit every pool, each in a write of its own, so other writers to the shared database never wait long."""
         for category_id, cohort in self.pool_keys(connection):
-            changed |= self.refit(connection, category_id, cohort, settings)
-        return changed
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                self.refit(connection, category_id, cohort, settings)
+                self.increment_revision(connection)
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
 
     def refit(self, connection: Any, category_id: str, cohort: str, settings: dict[str, Any]) -> set[str]:
         """Fit one pool to its verdicts. Returns the performers whose pool changed."""
@@ -690,22 +696,21 @@ def save_settings(repository: RatingRepository, connection: Any, args: dict[str,
                 remaps[cohort] = {old: new for old, new in mapping.items() if old in existing_ids}
         else:
             remaps = {}
-        ratings_changed = _move_category_rating_ids(connection, remaps)
+        if _move_category_rating_ids(connection, remaps):
+            repository.increment_revision(connection)
         response = shared_storage.set_plugin_settings_on_connection(
             PLUGIN_ID, canonical, connection, expected_revision
         )
-        previous, updated = normalize_settings(current), normalize_settings(canonical)
-        if any(previous[key] != updated[key] for key in FIT_SETTINGS):
-            # New starting values and evidence apply to every verdict, not only future ones.
-            repository.refit_all(connection, updated)
-            ratings_changed = True
-        if ratings_changed:
-            repository.increment_revision(connection)
         connection.commit()
-        return response
     except Exception:
         connection.rollback()
         raise
+    previous, updated = normalize_settings(current), normalize_settings(canonical)
+    if any(previous[key] != updated[key] for key in FIT_SETTINGS):
+        # New starting values and evidence apply to every verdict, not only future ones.
+        # The settings are saved first; then each pool refits in a short write of its own.
+        repository.refit_all(connection, updated)
+    return response
 
 
 def _category(

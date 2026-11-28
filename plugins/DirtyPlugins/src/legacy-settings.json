@@ -68,7 +68,7 @@
     "sections": []
   },
   "multiscreen": {
-    "version": "1.1.2-rc",
+    "version": "1.1.1",
     "settings": {
       "fitVideos": {
         "type": "BOOLEAN",
@@ -100,23 +100,23 @@
           },
           {
             "value": "unwatched",
-            "label": "Unwatched"
+            "label": "Favour unwatched scenes"
           },
           {
             "value": "favorites",
-            "label": "Favourites"
+            "label": "Favour high ratings and O counts"
           },
           {
             "value": "newest",
-            "label": "Recently added"
+            "label": "Favour recently added scenes"
           },
           {
             "value": "mix",
-            "label": "Smart mix"
+            "label": "Mix favourites with unwatched scenes"
           },
           {
             "value": "list",
-            "label": "List order"
+            "label": "Keep the list order"
           }
         ]
       },
@@ -155,18 +155,6 @@
       "pauseWhenHidden": {
         "type": "BOOLEAN",
         "default": true
-      },
-      "tvMode": {
-        "type": "BOOLEAN",
-        "default": false
-      },
-      "tvModeDuration": {
-        "type": "NUMBER",
-        "default": 30,
-        "integer": true,
-        "min": 10,
-        "max": 600,
-        "step": 1
       },
       "markerDuration": {
         "type": "NUMBER",
@@ -209,6 +197,18 @@
             "label": "Any plugin"
           }
         ]
+      },
+      "listSizeLimit": {
+        "type": "NUMBER",
+        "default": 10000,
+        "integer": true,
+        "min": 1000,
+        "max": 100000,
+        "step": 1000,
+        "disabledWhen": {
+          "setting": "otherPluginLists",
+          "value": "off"
+        }
       }
     },
     "sections": [
@@ -239,8 +239,6 @@
           "randomStart",
           "loopScenes",
           "pauseWhenHidden",
-          "tvMode",
-          "tvModeDuration",
           "markerDuration"
         ]
       },
@@ -260,7 +258,8 @@
       {
         "title": "Advanced",
         "settings": [
-          "otherPluginLists"
+          "otherPluginLists",
+          "listSizeLimit"
         ]
       }
     ]

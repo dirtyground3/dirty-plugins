@@ -122,6 +122,9 @@ export function useBattleSession(props: { routeDetails: { categoryId?: string };
   const loadRequestRef = React.useRef(0);
   const undoHistoryRef = React.useRef<UndoEntry[]>([]);
   const operationStatusRef = React.useRef(new Map<string, { recordFailed: boolean; undone: boolean }>());
+  // Pairs with a queued verdict or undo, by pair token. Until its refit arrives, a pair's ratings lack the verdict
+  // that matchmaking already sees, so a strong new verdict would look like a slip and bring the pair straight back.
+  const queuedPairsRef = React.useRef(new Map<string, number>());
   const preparedPairRef = React.useRef<PreparedPair | null>(null);
   const preparedImagesRef = React.useRef<HTMLImageElement[]>([]);
   // The number just chosen flashes briefly on the scale; the next pair does not wait for it.
@@ -318,17 +321,23 @@ export function useBattleSession(props: { routeDetails: { categoryId?: string };
     ) => {
       const target = findTarget(sourcePerformers);
       const poolVerdicts = verdictsRef.current;
-      return target
-        ? selectGauntletPair(
-            sourcePerformers,
-            target,
-            sourceCategory,
-            sourceCohort,
-            sourceSettings,
-            poolVerdicts,
-            excluded,
-          )
-        : selectPair(sourcePerformers, sourceCategory, sourceCohort, sourceSettings, poolVerdicts, excluded);
+      const select = (skipped: Set<string>) =>
+        target
+          ? selectGauntletPair(
+              sourcePerformers,
+              target,
+              sourceCategory,
+              sourceCohort,
+              sourceSettings,
+              poolVerdicts,
+              skipped,
+            )
+          : selectPair(sourcePerformers, sourceCategory, sourceCohort, sourceSettings, poolVerdicts, skipped);
+      const queued = Array.from(queuedPairsRef.current.keys()).filter(token => !excluded.has(token));
+      if (!queued.length) return select(excluded);
+      // Queued pairs wait for their refit, unless no other pair is left to ask.
+      const selected = select(new Set([...excluded, ...queued]));
+      return selected.pair ? selected : select(excluded);
     },
     [gauntletMode, gauntletTargetId],
   );
@@ -442,12 +451,15 @@ export function useBattleSession(props: { routeDetails: { categoryId?: string };
     };
   }, [category, cohort, error, loading, pairInfo, performers, selectModePair, settings, verdictsReady]);
 
-  /** Persist operations one at a time, after the UI has already moved on. */
+  /** Persist operations one at a time, after the UI has already moved on. Matchmaking skips `pair` meanwhile. */
   function enqueue(
+    pair: string,
     operation: () => Promise<RankOperationResult> | null,
     saved: (result: RankOperationResult | null) => void,
     failed: (caught: Error) => void,
   ) {
+    const queuedPairs = queuedPairsRef.current;
+    queuedPairs.set(pair, (queuedPairs.get(pair) || 0) + 1);
     pendingVotesRef.current += 1;
     setPendingVotes(pendingVotesRef.current);
     voteQueueRef.current = voteQueueRef.current
@@ -455,6 +467,9 @@ export function useBattleSession(props: { routeDetails: { categoryId?: string };
       .then(saved)
       .catch(failed)
       .finally(() => {
+        const remaining = (queuedPairs.get(pair) || 1) - 1;
+        if (remaining) queuedPairs.set(pair, remaining);
+        else queuedPairs.delete(pair);
         pendingVotesRef.current = Math.max(0, pendingVotesRef.current - 1);
         if (mountedRef.current) setPendingVotes(pendingVotesRef.current);
       });
@@ -508,16 +523,10 @@ export function useBattleSession(props: { routeDetails: { categoryId?: string };
     undoHistoryRef.current = nextUndoHistory;
     setUndoHistory(nextUndoHistory);
     operationStatusRef.current.set(id, operationStatus);
-    showPreparedOrPickNext();
-    setChosen(score);
-    cancelFlash();
-    flashTimerRef.current = window.setTimeout(() => {
-      flashTimerRef.current = null;
-      if (mountedRef.current) setChosen(null);
-    }, CHOICE_FLASH_MS);
-    setFeedback({ text: "Verdict queued" });
 
+    // Queued before the next pair is chosen, so this pair waits for its refit.
     enqueue(
+      pairToken(left, right),
       () =>
         runOperation({
           mode: "record",
@@ -562,6 +571,14 @@ export function useBattleSession(props: { routeDetails: { categoryId?: string };
         setError("A queued verdict could not be saved: " + (caught.message || String(caught)));
       },
     );
+    showPreparedOrPickNext();
+    setChosen(score);
+    cancelFlash();
+    flashTimerRef.current = window.setTimeout(() => {
+      flashTimerRef.current = null;
+      if (mountedRef.current) setChosen(null);
+    }, CHOICE_FLASH_MS);
+    setFeedback({ text: "Verdict queued" });
   }
 
   function undo() {
@@ -584,6 +601,7 @@ export function useBattleSession(props: { routeDetails: { categoryId?: string };
 
     // A verdict that failed to record has nothing to undo on the server.
     enqueue(
+      pairToken(lastVerdict.pairInfo.pair![0], lastVerdict.pairInfo.pair![1]),
       () =>
         operationStatus.recordFailed
           ? null

@@ -365,6 +365,37 @@ class DirtyRankOperationTests(unittest.TestCase):
         self.assertAlmostEqual(shifted["rating"] - 1500, weighted["rating"] - 1000, delta=0.01)
         self.assertGreater(self.repository.all_states()["revision"], 2)
 
+    def test_settings_save_first_and_each_pool_refits_in_its_own_write(self):
+        database = self.repository.path
+        self.record()
+        self.record("other-pool", categoryId="performance")
+        refit = dirty_rank.RatingRepository.refit
+        seen = []
+
+        def observed(repository, connection, category_id, cohort, settings):
+            # Another connection sees only what is committed while this pool refits.
+            reader = dirty_rank.shared_storage.connect(database)
+            try:
+                stored = dirty_rank.shared_storage.get_plugin_settings(dirty_rank.PLUGIN_ID, connection=reader)
+                deviations = [row[0] for row in reader.execute(
+                    "SELECT deviation FROM dirty_rank_pools WHERE performer_id='1' ORDER BY category_id"
+                )]
+            finally:
+                reader.close()
+            seen.append((category_id, stored.get("evidenceWeight"), deviations))
+            return refit(repository, connection, category_id, cohort, settings)
+
+        with mock.patch.dict(os.environ, {"DIRTY_PLUGINS_DATABASE_PATH": str(database)}), \
+                mock.patch.object(dirty_rank.RatingRepository, "refit", observed):
+            snapshot = dirty_rank.run({"args": {"mode": "getSettings"}})
+            dirty_rank.run({"args": {"mode": "saveSettings", "settings": dict(snapshot["settings"], evidenceWeight=2),
+                                     "expectedRevision": snapshot["revision"]}})
+
+        self.assertEqual([entry[0] for entry in seen], ["appearance", "performance"])
+        self.assertEqual([entry[1] for entry in seen], [2, 2], "the settings are saved before any pool refits")
+        self.assertLess(seen[1][2][0], seen[0][2][0], "each pool's refit is saved before the next one starts")
+        self.assertEqual(seen[1][2][1], seen[0][2][1])
+
     def previous_database(self, version):
         """A database written before verdicts: Glicko-2 battles (1, 2) or fitted battles (3)."""
         database = Path(self.temp_dir.name) / f"previous-{version}.sqlite3"

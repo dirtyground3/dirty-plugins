@@ -276,11 +276,18 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
   );
   const loading = settingsQuery.loading || activeQuery.loading || nativePlayerQuery.loading;
   const error = settingsQuery.error ?? activeQuery.error ?? nativePlayerQuery.error;
+  // One settings write at a time, so each carries the revision the one before it returned.
+  const settingsWrites = React.useRef<Promise<unknown>>(Promise.resolve());
+  const writeSettings = (data: Record<string, unknown>) => {
+    const write = settingsWrites.current.then(() => DirtyPlugins.configurePlugin(PLUGIN_ID, data));
+    settingsWrites.current = write.catch(() => undefined);
+    return write;
+  };
   /** Settings chosen in the player apply at once and are saved; a failed save keeps them for this session only. */
   const saveSettings = (change: Record<string, unknown>, what: string) => {
     const data = { ...rawSettings, ...change };
     setSettingsQuery(current => ({ ...current, data }));
-    DirtyPlugins.configurePlugin(PLUGIN_ID, data).catch(() =>
+    writeSettings(data).catch(() =>
       DirtyPlugins.ui.notify(`Could not save ${what}. It applies to this session only.`, "error"),
     );
   };
@@ -362,7 +369,7 @@ function MultiscreenSession({ onRestart }: { onRestart(): void }) {
       normalizeSettings({ ...rawSettings, ...grid.settings }),
       grid.settings.fitVideos === undefined ? fitVideos : normalizeFitVideos(grid.settings),
     );
-    await DirtyPlugins.configurePlugin(PLUGIN_ID, { ...rawSettings, ...opened });
+    await writeSettings({ ...rawSettings, ...opened });
     replaced.current = true;
     if (!writeSession({ ...grid.session, recent: summary.recent ? summary.id : undefined })) {
       replaced.current = false;

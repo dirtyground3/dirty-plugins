@@ -127,26 +127,33 @@ test("the installed package controls validation and defaults even when the plugi
 test("an older package can be edited and upgraded without touching other saved values", async () => {
   const h = createHubHarness();
   const multiscreen = h.plugins.find(plugin => plugin.id === "multiscreen");
-  multiscreen.version = "1.1.2-rc";
-  multiscreen.settings.push({ name: "tvModeDuration", type: "NUMBER" }, { name: "oldMode", type: "STRING" });
+  // The released 1.1.1 package ships no definition of its own; the hub's frozen copy describes it.
+  multiscreen.version = "1.1.1";
+  multiscreen.settings.push({ name: "listSizeLimit", type: "NUMBER" }, { name: "oldMode", type: "STRING" });
   const definition = h.settingsDefinitions.multiscreen;
   delete h.settingsDefinitions.multiscreen;
   h.settings.multiscreen.markerDuration = 34;
+  h.settings.multiscreen.listSizeLimit = 20000;
   h.settings.multiscreen.tvModeDuration = 65;
   h.settings.multiscreen.rows = 4;
   h.settings.multiscreen.oldMode = "saved by the older plugin";
   h.load();
   await h.settle();
   assert.equal(field(h).props.value, 34);
-  assert.equal(field(h, "tvModeDuration").props.max, 600);
+  assert.equal(field(h, "listSizeLimit").props.value, 20000);
+  assert.equal(field(h, "listSizeLimit").props.max, 100000, "the older package keeps its own limits");
+  assert.equal(field(h, "tvModeDuration"), undefined, "a newer setting waits for the newer package");
   assert.equal(writes(h).length, 0, "loading legacy metadata never writes settings");
   edit(h, "35");
   await h.tick();
   assert.equal(h.settings.multiscreen.markerDuration, 35);
   assert.equal(h.settings.multiscreen.rows, 4, "hidden settings survive a write");
+  assert.equal(h.settings.multiscreen.tvModeDuration, 65);
 
   multiscreen.version = "1.1.3-rc";
-  multiscreen.settings = multiscreen.settings.filter(setting => setting.name !== "oldMode");
+  multiscreen.settings = multiscreen.settings
+    .filter(setting => setting.name !== "oldMode" && setting.name !== "listSizeLimit")
+    .concat({ name: "tvModeDuration", type: "NUMBER" });
   definition.version = multiscreen.version;
   definition.settings.tvModeDuration.max = 420;
   h.settingsDefinitions.multiscreen = definition;

@@ -241,6 +241,8 @@ function createMultiscreenHarness(options = {}) {
     return React.createElement("ActionMenu", props, ...contents);
   };
   const saved = [],
+    // With holdSaves, each settings write waits here until the test releases it.
+    heldSaves = [],
     notices = [],
     operations = [],
     confirms = [];
@@ -320,6 +322,7 @@ function createMultiscreenHarness(options = {}) {
     ui: { notify: (message, tone) => notices.push({ message, tone }) },
     configurePlugin: async (id, settings) => {
       saved.push({ id, settings });
+      if (options.holdSaves) await new Promise(resolve => heldSaves.push(resolve));
       if (options.saveFails) throw new Error("conflict");
       return { revision: saved.length + 1, settings };
     },
@@ -515,6 +518,7 @@ function createMultiscreenHarness(options = {}) {
     patchNames,
     calls,
     saved,
+    heldSaves,
     notices,
     operations,
     confirms,

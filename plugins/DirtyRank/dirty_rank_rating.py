@@ -145,6 +145,27 @@ def fit_ratings(
             if verdict.updated_at and verdict.updated_at > latest.get(performer, ""):
                 latest[performer] = verdict.updated_at
 
+    # Verdicts only see rating differences, so the prior alone places each connected group:
+    # at the optimum its ratings average the initial rating. Recentring every sweep settles
+    # that slowest direction at once instead of over hundreds of sweeps.
+    parent = {performer: performer for performer in games}
+
+    def root(performer: str) -> str:
+        while parent[performer] != performer:
+            parent[performer] = parent[parent[performer]]
+            performer = parent[performer]
+        return performer
+
+    for favoured, other, _size in oriented:
+        parent[root(favoured)] = root(other)
+    groups: dict[str, list[str]] = {}
+    for performer in games:
+        groups.setdefault(root(performer), []).append(performer)
+    # Each threshold bounds the verdict sizes on either side of it.
+    threshold_users = [
+        [verdict for verdict in oriented if verdict[2] in (index, index + 1)] for index in range(len(defaults))
+    ]
+
     theta = {performer: 0.0 for performer in games}
     thresholds = list(defaults)
 
@@ -167,11 +188,16 @@ def fit_ratings(
             step = max(-MAX_STEP, min(MAX_STEP, gradient / curvature))
             theta[performer] += step
             largest = max(largest, abs(step))
+        for members in groups.values():
+            shift = sum(theta[performer] for performer in members) / len(members)
+            for performer in members:
+                theta[performer] -= shift
+            largest = max(largest, abs(shift))
         if oriented:
             for index in range(len(thresholds)):
                 gradient = (defaults[index] - thresholds[index]) * threshold_precision
                 curvature = -threshold_precision
-                for favoured, other, size in oriented:
+                for favoured, other, size in threshold_users[index]:
                     for term_index, slope, bend in _threshold_terms(theta[favoured] - theta[other], size, thresholds):
                         if term_index == index:
                             gradient += weight * slope

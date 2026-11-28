@@ -2107,6 +2107,26 @@ async function playbackMenu() {
   );
   assert.equal(sceneQueries(h), queries);
   await h.unmount();
+
+  // A choice made while the previous one is still saving waits for it, so it carries the newer revision.
+  const held = await start({ scenes, settings, holdSaves: true });
+  await choose(held, "startMuted");
+  await choose(held, "tvMode");
+  assert.equal(held.saved.length, 1, "the second save waits for the first");
+  assert.deepEqual(
+    ["startMuted", "tvMode"].map(key => state(held, key)),
+    ["off", "on"],
+    "both choices apply at once",
+  );
+  held.heldSaves.shift()();
+  await held.flush();
+  assert.equal(held.saved.length, 2);
+  assert.equal(held.saved[1].settings.startMuted, false, "the later save keeps the earlier choice");
+  assert.equal(held.saved[1].settings.tvMode, true);
+  held.heldSaves.shift()();
+  await held.flush();
+  assert.equal(held.notices.length, 0);
+  await held.unmount();
 }
 
 async function tvModePlayback() {
