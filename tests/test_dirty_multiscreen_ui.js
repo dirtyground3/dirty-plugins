@@ -2141,6 +2141,9 @@ async function tvModePlayback() {
       .onSelect();
     await h.flush();
   };
+  // Each item plays up to 10% shorter or longer; the middle of that range is the set duration.
+  h.context.Math = Object.create(Math);
+  h.context.Math.random = () => 0.5;
   assert.equal(player().scene.id, "a");
   await h.advanceTime(10_000);
   assert.equal(player().scene.id, "a", "TV mode is off by default");
@@ -2175,7 +2178,18 @@ async function tvModePlayback() {
   await toggle();
   await h.advanceTime(10_000);
   assert.equal(player().scene.id, "a", "turning TV mode off cancels the current timer");
+  h.context.Math.random = () => 0;
   await toggle();
+  // The next item draws its own time when it starts.
+  h.context.Math.random = () => 0.75;
+  await h.advanceTime(8_999);
+  assert.equal(player().scene.id, "a");
+  await h.advanceTime(1);
+  assert.equal(player().scene.id, "b", "an item can play 10% shorter than the duration");
+  await h.advanceTime(10_499);
+  assert.equal(player().scene.id, "b");
+  await h.advanceTime(1);
+  assert.notEqual(player().scene.id, "b", "and the next one longer, here by 5%");
   await h.unmount();
   assert.equal(h.timers.size, 0);
 }

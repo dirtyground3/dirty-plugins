@@ -56,8 +56,9 @@ DirtyMultiscreen adds an immersive multiscreen playback grid to Stash. It can la
   checked while on. Each saves its setting and applies to the playing screens without reshuffling them. Loop
   scenes shows a dash while some screens loop on their own; choosing it when off or mixed makes every screen
   loop, and choosing it when on stops every screen looping.
-- **TV mode** advances each screen through its own queue after 30 seconds of playback by default. Pausing or buffering
-  stops the countdown until playback resumes. The right-click screen menu can toggle TV mode for the whole grid.
+- **TV mode** advances each screen through its own queue after 30 seconds of playback by default. Each video plays up
+  to 10% shorter or longer, so the screens do not all change together. Pausing or buffering stops the countdown until
+  playback resumes. The right-click screen menu can toggle TV mode for the whole grid.
   Adjust the interval in Playback settings.
 - **Edit screens** in the menu turns edit mode on and off, with a check while it is on. Videos
   keep playing, and every screen shows buttons to move, flip horizontally,

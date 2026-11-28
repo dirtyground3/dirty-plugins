@@ -4,13 +4,15 @@ import { React } from "../runtime";
 const startEvents = ["playing", "seeked"];
 const stopEvents = ["pause", "waiting", "seeking", "ended", "emptied"];
 const isPlaying = (video: HTMLVideoElement) => !video.paused && !video.ended && !video.seeking && video.readyState >= 3;
+/** Each item plays up to 10% shorter or longer than the duration, so the screens do not all change together. */
+const TV_MODE_VARIATION = 0.1;
 
 /** Time spent watching this item, independent of its initial position and any seeks or loops. */
 export function useTvMode(tileRef: R.RefObject<HTMLDivElement>, duration: number | null, advance: () => void) {
   React.useEffect(() => {
     const tile = tileRef.current;
     if (!tile || duration === null) return;
-    let remaining = duration * 1000;
+    let remaining = duration * 1000 * (1 + TV_MODE_VARIATION * (2 * Math.random() - 1));
     let pending: { video: HTMLVideoElement; timer: number; startedAt: number } | undefined;
     let advanced = false;
 
