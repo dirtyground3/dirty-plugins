@@ -2,6 +2,8 @@
 
 Newest first. Each GitHub Release of DirtyMultiscreen uses the entry that names its version.
 
+- **DirtyMultiscreen 1.1.3:** in TV mode each video plays up to 10% shorter or longer than the TV mode duration, so the screens do not all change together.
+
 - **DirtyMultiscreen 1.1.2:** TV mode advances each screen after a set amount of playback time.
   - The player menu brings together grid and screen controls, saved grids, reshuffling, and playback settings.
   - Toggle it in Playback settings, the player's Playback menu, or the screen's right-click menu.

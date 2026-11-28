@@ -17,7 +17,7 @@ a shared SQLite database, and is installed automatically as a dependency.
 | --- | --- | ---: |
 | [DirtyStats](plugins/DirtyStats/) | A customizable dashboard plus full views for origins, growth, ages, ratings, viewing concentration, efficiency, studios, tags, birthdays and cast connections, with native filters and PNG export. | 1.0.16 |
 | [DirtyRank](plugins/DirtyRank/) | Ranks performers in gender boxes through category battles: one editable verdict from -3 to 3 per pair, ratings fitted to every verdict, battles ordered by the information they add, Gauntlet mode and leaderboards. | 1.1.4 |
-| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.1.2 |
+| [DirtyMultiscreen](plugins/DirtyMultiscreen/) | Plays scenes or markers in a configurable, immersive multi-pane grid. | 1.1.3 |
 | [DirtyFileExtractor](plugins/DirtyFileExtractor/) | Copies selected scene or image files and extracts selected markers as precisely bounded MP4 clips without changing the originals. | 1.0.9 |
 | [DirtyTasks](plugins/DirtyTasks/) | Organizes files, creates additional encoded versions on the same scene, updates tags with independent action triggers, and backs up library data. | 1.0.14 |
 | [DirtyCaptions](plugins/DirtyCaptions/) | Displays embedded text subtitles and filters scenes by embedded caption tracks without separate subtitle files or video re-encoding. | 1.0.12 |
